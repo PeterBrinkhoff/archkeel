@@ -799,7 +799,7 @@
     document.querySelectorAll("[data-atlas-component-route]").forEach((link) => {
       link.href = atlasComponentHref(link.dataset.atlasComponentRoute || null);
     });
-    if (!NAV || !routeReady || !["file:", "http:", "https:"].includes(location.protocol)) return;
+    if (!NAV || !routeReady || routeNotice || !["file:", "http:", "https:"].includes(location.protocol)) return;
     const query = new URLSearchParams();
     if (SIDECAR) {
       if (umlPath[0]) query.set(REPORT_SCENE.componentRoute(umlPath[0].id).length ? "component" : "module", umlPath[0].id);
@@ -819,7 +819,6 @@
     if (selected) query.set("selected", selected);
     if (ATLAS && atlasCell !== null) query.set("cell", String(atlasCell));
     query.set("theme", document.documentElement.dataset.theme);
-    if (routeNotice) query.set(routeNotice.field, routeNotice.requested);
     const permissionHash = [...(DATA.boundary_permissions?.declared || []),
       ...(DATA.boundary_permissions?.applied || [])].some((row) => location.hash === `#${encodeURIComponent(row.id)}`)
       ? location.hash : "";
