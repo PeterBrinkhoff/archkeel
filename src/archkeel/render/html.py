@@ -51,7 +51,7 @@ from archkeel.ir.structure import (
 )
 from archkeel.ir.type_fanin import MINIMUM_CROSSINGS, TypeFanin, type_fanin
 
-from .atlas import atlas_payload
+from .atlas import atlas_payload, boundary_permissions_payload
 from .summary import (
     Comparison,
     VerdictRow,
@@ -867,6 +867,7 @@ def _atlas_document(
         repository=repository,
         architecture_href=architecture_href,
     )
+    data["boundary_permissions"] = boundary_permissions_payload(observation, report, projection)
     data["navigation"] = {
         "repository": repository,
         "main_href": f"{_PurePosixPath(architecture_href).stem}.report.html",
@@ -952,6 +953,9 @@ def render_architecture_details(
         else ()
     )
     data = json.loads(_html_report_bytes(report))
+    data["boundary_permissions"] = boundary_permissions_payload(
+        observation, report, result.architecture_projection
+    )
     data["initial_view"] = "diagram"
     data["navigation"] = _component_navigation(
         result.architecture_projection,
