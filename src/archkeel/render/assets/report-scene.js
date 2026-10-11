@@ -527,7 +527,7 @@
   function search(index, text, visibleIds = [], limit = 40) {
     const needle = text.trim().toLowerCase();
     const visible = new Set(visibleIds);
-    const order = { component: 0, module: 1, rule: 2 };
+    const order = { component: 0, module: 1, rule: 2, element: 3 };
     return index.map((row) => {
       const label = row.label.toLowerCase();
       const score = !needle ? visible.has(row.id) ? 0 : null

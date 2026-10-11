@@ -55,6 +55,11 @@ def test_explorer_is_default_and_keeps_architecture_evidence(tmp_path):
         assert page.get_by_role("button", name="Search", exact=True).is_visible()
         assert page.get_by_role("button", name="Target", exact=True).is_visible()
         assert page.get_by_role("button", name="Diff", exact=True).is_visible()
+        assert page.locator(".report-heading").is_visible()
+        assert page.locator(".atlas-verdict-grid").is_visible()
+        assert page.locator("#flow").evaluate("e => getComputedStyle(e).position") == "relative"
+        assert page.get_by_role("button", name="Fullscreen", exact=True).is_visible()
+        assert page.get_by_role("button", name="Report evidence", exact=True).count() == 0
         assert not errors
     finally:
         browser.close()
@@ -85,6 +90,25 @@ def test_search_selects_components_rules_and_declared_modules(explorer):
     assert query["origin"] == ["declared"]
     assert "Requested scope unavailable" not in page.locator("body").inner_text()
     assert urlsplit(page.url).path.endswith("architecture.detail.html")
+    assert page.locator(".ak-brand").is_visible()
+    assert not page.locator(".flow-toolbar").is_visible()
+    page.get_by_role("button", name="Search", exact=True).click()
+    assert page.get_by_role("combobox").get_attribute("placeholder") == "Search this diagram"
+    page.keyboard.press("Escape")
+    page.get_by_role("button", name="Legend", exact=True).click()
+    assert page.locator(".ak-pop .flow-legend").is_visible()
+    page.keyboard.press("Escape")
+    page.locator(".flow-filters > summary").click()
+    page.get_by_role("button", name="Reset and fit", exact=True).click()
+    page.locator(".flow-filters > summary").click()
+    page.get_by_role("button", name="Fullscreen", exact=True).click()
+    pytest.importorskip("playwright.sync_api").expect(page.locator("#flow")).to_have_attribute(
+        "data-expanded", "native"
+    )
+    page.get_by_role("button", name="Restore", exact=True).click()
+    page.get_by_role("link", name="Back to architecture map", exact=True).click()
+    _wait_for_layout(page)
+    assert page.locator(".ak-brand").is_visible()
 
 
 def test_dialog_keyboard_and_object_sorting(explorer):
@@ -226,10 +250,19 @@ def test_existing_finding_links_open_visible_health_check(explorer):
     assert page.locator(".ak-drawer #atlas-rule-dependencies").is_visible()
 
 
-def test_svg_export_is_standalone_and_evidence_view_is_reachable(explorer):
-    page, _ = explorer
+def test_svg_export_is_standalone_and_old_mode_keeps_new_explorer(explorer):
+    page, index = explorer
     page.get_by_role("button", name="Decided by", exact=True).click()
     page.get_by_role("button", name="Share", exact=True).click()
+    anchor = page.get_by_role("button", name="Share", exact=True).bounding_box()
+    menu = page.get_by_role("menu").bounding_box()
+    assert (
+        min(
+            abs(menu["y"] - anchor["y"] - anchor["height"]),
+            abs(anchor["y"] - menu["y"] - menu["height"]),
+        )
+        <= 9
+    )
     with page.expect_download() as download:
         page.get_by_role("menuitem", name="Download SVG").click()
     svg = download.value.path().read_text()
@@ -239,16 +272,53 @@ def test_svg_export_is_standalone_and_evidence_view_is_reachable(explorer):
     assert "rgb(" in svg
     assert "peer" in svg and "core" in svg
     assert any('url("#flow-arrow' in node.get("style", "") for node in root.iter())
-    page.get_by_role("button", name="Report evidence", exact=True).click()
-    page.locator(".atlas-source > summary").wait_for(state="visible")
-    assert page.get_by_text("Snapshot and audit", exact=True).is_visible()
-    assert not page.locator("html").evaluate("e => e.classList.contains('ak-canvas')")
-    page.get_by_role("button", name="Target", exact=True).click()
+    page.goto(index.as_uri() + "?explorer=0&view=target&perspective=decision")
     _wait_for_layout(page)
-    page.get_by_role("link", name="Open ArchQ Explorer", exact=True).click()
-    page.locator(".ak-brand").wait_for(state="visible")
+    assert page.get_by_text("Snapshot and audit", exact=True).is_visible()
+    assert page.locator(".ak-brand").is_visible()
+    assert page.get_by_role("link", name="Open ArchQ Explorer", exact=True).count() == 0
     assert parse_qs(urlsplit(page.url).query)["perspective"] == ["decision"]
     assert parse_qs(urlsplit(page.url).query)["view"] == ["target"]
+
+
+@pytest.mark.parametrize("native", [False, True])
+def test_fullscreen_is_the_same_explorer_and_restores_report(explorer, native):
+    expect = pytest.importorskip("playwright.sync_api").expect
+    page, _ = explorer
+    if not native:
+        page.evaluate("Element.prototype.requestFullscreen = undefined")
+    page.get_by_role("button", name="Target", exact=True).click()
+    _wait_for_layout(page)
+    page.locator('.flow-nodes [data-uml-id="peer"]').click()
+    page.get_by_role("button", name="Decided by", exact=True).click()
+    page.get_by_role("button", name="Zoom in", exact=True).click()
+    page.get_by_role("button", name="Fullscreen", exact=True).scroll_into_view_if_needed()
+    before = page.evaluate("({url: location.href, scroll: scrollY, state: ArchkeelFlow.state()})")
+    page.get_by_role("button", name="Fullscreen", exact=True).click()
+    expect(page.locator("#flow")).to_have_attribute(
+        "data-expanded", "native" if native else "fallback"
+    )
+    assert page.locator("#flow").get_attribute("data-expanded") == (
+        "native" if native else "fallback"
+    )
+    box = page.locator("#flow").bounding_box()
+    assert box["x"] == 0 and box["y"] == 0
+    assert box["height"] == page.viewport_size["height"]
+    page.get_by_role("button", name="Search", exact=True).click()
+    page.get_by_role("combobox").fill("core")
+    page.keyboard.press("Escape")
+    assert page.locator("#flow").get_attribute("data-expanded")
+    page.get_by_role("button", name="Share", exact=True).click()
+    assert page.get_by_role("menuitem", name="Download SVG").is_visible()
+    page.keyboard.press("Escape")
+    assert page.locator("#flow").get_attribute("data-expanded")
+    page.get_by_role("button", name="Restore", exact=True).click()
+    expect(page.locator("#flow")).not_to_have_attribute("data-expanded")
+    assert page.url == before["url"]
+    assert page.evaluate("ArchkeelFlow.state().selection") == before["state"]["selection"]
+    assert page.evaluate("ArchkeelFlow.state().zoom") == before["state"]["zoom"]
+    assert page.evaluate("scrollY") == before["scroll"]
+    assert page.locator(".report-heading").is_visible()
 
 
 def test_print_retains_the_document_evidence(explorer):
@@ -258,6 +328,36 @@ def test_print_retains_the_document_evidence(explorer):
     assert page.locator(".atlas-source > summary").is_visible()
     assert page.locator(".report-heading").is_visible()
     assert not page.locator(".flow-section").is_visible()
+
+
+@pytest.mark.parametrize("detail", [False, True])
+def test_landscape_fullscreen_keeps_diagram_and_details_visible(explorer, detail):
+    page, index = explorer
+    page.set_viewport_size({"width": 844, "height": 390})
+    if detail:
+        module = page.evaluate("ArchkeelFlow.atlas.modules.find(m => m.name === 'sample.core').id")
+        page.goto(
+            index.with_name("architecture.detail.html").as_uri() + f"?module={module}&view=diagram"
+        )
+        _wait_for_layout(page)
+    page.evaluate("Element.prototype.requestFullscreen = undefined")
+    page.get_by_role("button", name="Fullscreen", exact=True).click()
+    canvas = page.locator(".flow-canvas").bounding_box()
+    inspector = page.locator(".flow-inspector").bounding_box()
+    assert canvas["height"] >= 200 and canvas["width"] >= 350
+    assert inspector["height"] >= 200
+    assert canvas["x"] + canvas["width"] <= inspector["x"]
+    if detail:
+        node = page.locator(".flow-nodes [data-uml-id]").first
+        identity = node.get_attribute("data-uml-id")
+        page.get_by_role("button", name="Search", exact=True).click()
+        search = page.get_by_role("combobox")
+        search.fill(identity)
+        search.press("Enter")
+        assert (
+            page.locator(f'.flow-nodes [data-uml-id="{identity}"]').get_attribute("aria-pressed")
+            == "true"
+        )
 
 
 def test_mobile_matrix_selection_reveals_details(explorer):

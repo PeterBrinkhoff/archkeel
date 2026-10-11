@@ -2,18 +2,8 @@
 // ArchQ Explorer presents recorded evidence; it never computes verdicts.
 (function () {
   const F = window.ArchkeelFlow;
-  if (!F || !F.atlas) return;
+  if (!F || !F.root.hasAttribute("data-atlas")) return;
   const query = () => new URLSearchParams(location.search);
-  if (query().get("explorer") === "0") {
-    const link = document.querySelector(".explorer-return");
-    const updateLink = () => {
-      const next = query(); next.delete("explorer");
-      if (link) link.href = `?${next}${location.hash}`;
-    };
-    F.root.addEventListener("archkeel:rendered", updateLink);
-    updateLink();
-    return;
-  }
 
   const A = F.atlas;
   const root = F.root;
@@ -22,6 +12,7 @@
   const isMac = /Mac|iPhone|iPad/.test(navigator.platform);
   const MOD = isMac ? "⌘" : "Ctrl";
   html.classList.add("ak-canvas");
+  root.classList.toggle("ak-detail", !A);
 
   // ---------- small DOM helpers ----------
   function h(tag, attrs = {}, ...kids) {
@@ -50,7 +41,6 @@
     keys: "M3 7h18v10H3zM7 11h.01M11 11h.01M15 11h.01M8 14h8",
     fit: "M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5",
     focus: "M12 8a4 4 0 1 1 0 8 4 4 0 0 1 0-8zM12 2v3M12 19v3M2 12h3M19 12h3",
-    exit: "M14 4h6v16h-6M10 12H3m3-3-3 3 3 3",
     chevron: "M7 10l5 5 5-5",
     open: "M7 17 17 7M9 7h8v8",
     details: "M4 5h16v14H4zM14 5v14",
@@ -63,17 +53,17 @@
   }
   function toast(text) {
     const element = h("div", { class: "ak-toast", role: "status" }, text);
-    document.body.append(element);
+    root.append(element);
     setTimeout(() => element.remove(), 1800);
   }
 
   // ---------- Atlas indexes (facts come from the payload, never from labels) ----------
-  const components = A.components;
+  const components = A?.components || [];
   const componentById = new Map(components.map((item) => [item.id, item]));
   const depthOf = (item) => { let depth = 0; for (let p = item.parent_id; p; p = componentById.get(p)?.parent_id) depth += 1; return depth; };
   const pathOf = (item) => { const names = []; for (let c = item; c; c = componentById.get(c.parent_id)) names.unshift(c.label); return names.join(" / "); };
   const moduleLevel = new Map();
-  for (const level of A.levels) {
+  for (const level of A?.levels || []) {
     const depth = level.parent_id ? depthOf(componentById.get(level.parent_id)) + 1 : 0;
     for (const module of level.modules) {
       const previous = moduleLevel.get(module.id);
@@ -101,16 +91,25 @@
     component: { order: 0, letter: "C", color: "#2563eb", group: "Components" },
     module: { order: 1, letter: "M", color: "#7c3aed", group: "Modules" },
     rule: { order: 2, letter: "R", color: "#0f766e", group: "Rules" },
+    element: { order: 3, letter: "E", color: "#2563eb", group: "On this diagram" },
   };
   const indexes = new Map();
   function search(text) {
+    if (!A) {
+      const nodes = F.state().scene?.nodes || [];
+      return window.ArchkeelReportScene.search(nodes.map((node) => ({
+        kind: "element", id: node.id, label: node.label, sub: node.kind,
+        text: `${node.label} ${node.id} ${node.kind}`.toLowerCase(),
+      })), text, nodes.map((node) => node.id));
+    }
     const view = F.state().viewMode;
     if (!indexes.has(view)) indexes.set(view, F.reportScene.searchIndex(view));
     return window.ArchkeelReportScene.search(indexes.get(view), text,
       (F.state().scene?.nodes || []).map((node) => node.id));
   }
   function openResult(row) {
-    if (row.kind === "component") showComponent(componentById.get(row.id));
+    if (row.kind === "element") F.selectElement(row.id);
+    else if (row.kind === "component") showComponent(componentById.get(row.id));
     else if (row.kind === "module") showModule(row.module);
     else showRule(row.rule);
   }
@@ -124,7 +123,7 @@
       oncancel: (event) => { event.preventDefault(); closeOverlay(); } },
       h("button", { class: "ak-close", "aria-label": "Close dialog", onclick: closeOverlay }, "×"), content);
     overlay = box;
-    document.body.append(overlay);
+    root.append(overlay);
     box.showModal();
     box.addEventListener("keydown", (event) => {
       if (event.key !== "Tab") return;
@@ -138,7 +137,7 @@
 
   function openPalette() {
     closePop();
-    const input = h("input", { type: "text", placeholder: "Search components, modules and rules", "aria-label": "Search",
+    const input = h("input", { type: "text", placeholder: A ? "Search components, modules and rules" : "Search this diagram", "aria-label": "Search",
       role: "combobox", "aria-expanded": "true", "aria-controls": "ak-results", autocomplete: "off" });
     const list = h("ul", { class: "ak-results", id: "ak-results", role: "listbox" });
     const footer = h("footer", {}, h("span", {}, h("kbd", {}, "↑"), " ", h("kbd", {}, "↓"), " move"),
@@ -151,7 +150,7 @@
       list.replaceChildren();
       if (!rows.length) {
         input.removeAttribute("aria-activedescendant");
-        list.append(h("li", { class: "ak-empty", role: "presentation" }, "No matching component, module or rule."));
+        list.append(h("li", { class: "ak-empty", role: "presentation" }, A ? "No matching component, module or rule." : "No matching element on this diagram."));
         return;
       }
       if (!input.value.trim()) list.append(h("li", { class: "ak-group", role: "presentation" }, "On this diagram"));
@@ -193,6 +192,7 @@
   let pop = null, popAnchor = null;
   function closePop() {
     if (pop?.contains(document.activeElement)) popAnchor?.focus();
+    if (pop?.contains(legendContent)) legendPanel.append(legendContent);
     pop?.remove(); pop = null; popAnchor = null;
   }
   function openPop(anchor, content, align = "left") {
@@ -208,11 +208,14 @@
             : (index + (event.key === "ArrowDown" ? 1 : -1) + items.length) % items.length]?.focus();
         }
       } }, content);
-    document.body.append(pop);
+    root.append(pop);
     const box = anchor.getBoundingClientRect();
-    const top = box.bottom + 8 + pop.offsetHeight > innerHeight ? box.top - pop.offsetHeight - 8 : box.bottom + 8;
-    pop.style.top = `${Math.max(8, top)}px`;
-    pop.style.left = `${Math.max(8, Math.min(innerWidth - pop.offsetWidth - 8, align === "right" ? box.right - pop.offsetWidth : box.left))}px`;
+    const bounds = root.getBoundingClientRect();
+    const top = box.bottom + 8 + pop.offsetHeight > Math.min(innerHeight, bounds.bottom)
+      ? box.top - pop.offsetHeight - 8 : box.bottom + 8;
+    pop.style.top = `${Math.max(8, top - bounds.top)}px`;
+    pop.style.left = `${Math.max(8, Math.min(root.clientWidth - pop.offsetWidth - 8,
+      (align === "right" ? box.right - pop.offsetWidth : box.left) - bounds.left))}px`;
     pop.querySelector("button")?.focus();
   }
   document.addEventListener("pointerdown", (event) => {
@@ -423,7 +426,7 @@
     clone.setAttribute("height", String(F.svg.clientHeight));
     clone.style.background = getComputedStyle(html).getPropertyValue("--ak-canvas");
     const blob = new Blob([new XMLSerializer().serializeToString(clone)], { type: "image/svg+xml" });
-    const link = h("a", { href: URL.createObjectURL(blob), download: `${A.repository}-${F.state().viewMode}-${F.state().scope || "system"}.svg` });
+    const link = h("a", { href: URL.createObjectURL(blob), download: `${A?.repository || "architecture"}-${F.state().viewMode}-${F.state().scope || "system"}.svg` });
     document.body.append(link);
     link.click();
     link.remove();
@@ -447,8 +450,10 @@
     { keys: ["Shift 1"], label: "Fit whole diagram", match: (e) => e.shiftKey && e.code === "Digit1", run: () => fitDiagram() },
     { keys: ["1", "2", "3"], label: "As-Is · Target · Diff", match: (e) => !e.shiftKey && !e.metaKey && !e.ctrlKey && ["1", "2", "3"].includes(e.key),
       run: (e) => view({ 1: "diagram", 2: "target", 3: "diff" }[e.key]) },
-    { keys: ["P"], label: "Next perspective", match: (e) => !e.metaKey && !e.ctrlKey && e.key.toLowerCase() === "p", run: cyclePerspective },
-    { keys: ["O"], label: "Objects list", match: (e) => !e.metaKey && !e.ctrlKey && e.key.toLowerCase() === "o", run: () => toggleDrawer("objects", objectsDrawer) },
+    ...(A ? [
+      { keys: ["P"], label: "Next perspective", match: (e) => !e.metaKey && !e.ctrlKey && e.key.toLowerCase() === "p", run: cyclePerspective },
+      { keys: ["O"], label: "Objects list", match: (e) => !e.metaKey && !e.ctrlKey && e.key.toLowerCase() === "o", run: () => toggleDrawer("objects", objectsDrawer) },
+    ] : []),
     { keys: ["?"], label: "Keyboard shortcuts", match: (e) => e.key === "?", run: () => help() },
     { keys: [`${MOD} wheel`, "pinch"], label: "Zoom at pointer" },
     { keys: ["Space drag", "middle drag"], label: "Pan over cards" },
@@ -478,34 +483,41 @@
   const topLeft = h("div", { class: "ak-bar ak-top-left" },
     markSrc ? h("img", { class: "ak-logo", src: markSrc, alt: "" }) : null,
     h("strong", { class: "ak-brand" }, "ArchQ Explorer"),
-    move(".flow-breadcrumb"), belongs, h("span", { class: "ak-sep" }), move(".atlas-content-choice"));
+    move(".flow-breadcrumb"), A ? belongs : null, h("span", { class: "ak-sep" }), move(".atlas-content-choice"));
   const topCenter = h("div", { class: "ak-bar ak-top-center" }, move(".flow-views"));
   const openSelected = move(".flow-open-selected");
   openSelected?.replaceChildren(icon("open"), "Open");
   const detailsToggle = move(".flow-details-toggle");
   detailsToggle?.replaceChildren(icon("details"), "Details");
+  const back = !A ? move(".flow-back") : null;
+  back?.setAttribute("aria-label", back.textContent);
   const topRight = h("div", { class: "ak-bar ak-top-right" },
     h("button", { class: "ak-search-btn", onclick: openPalette, "aria-label": "Search" },
       h("span", { style: "display:inline-flex;gap:8px;align-items:center" }, icon("search"), "Search"), h("kbd", {}, `${MOD} K`)),
     openSelected, detailsToggle,
     h("button", { class: "ak-icon-only", title: "Share", "aria-label": "Share", "data-ak-pop": "", onclick: (event) => shareMenu(event.currentTarget) }, icon("share")),
-    document.querySelector(".theme-toggle"),
-    h("button", { class: "ak-icon-only", title: "Report evidence", "aria-label": "Report evidence",
-      onclick: () => { const next = query(); next.set("explorer", "0"); location.search = next.toString(); } }, icon("exit")));
+    document.querySelector(".theme-toggle"), move(".flow-fullscreen"));
   const rail = h("div", { class: "ak-bar ak-rail", role: "toolbar", "aria-label": "Panels" },
-    h("button", { "data-drawer": "overview", title: "Health check", "aria-label": "Health check", "aria-expanded": "false",
-      onclick: () => toggleDrawer("overview", overviewDrawer) }, icon("overview")),
-    h("button", { "data-drawer": "objects", title: "Objects (O)", "aria-label": "Objects", "aria-expanded": "false",
-      onclick: () => toggleDrawer("objects", objectsDrawer) }, icon("list")),
+    back,
+    A ? h("button", { "data-drawer": "overview", title: "Health check", "aria-label": "Health check", "aria-expanded": "false",
+      onclick: () => toggleDrawer("overview", overviewDrawer) }, icon("overview")) : null,
+    A ? h("button", { "data-drawer": "objects", title: "Objects (O)", "aria-label": "Objects", "aria-expanded": "false",
+      onclick: () => toggleDrawer("objects", objectsDrawer) }, icon("list")) : null,
     h("button", { title: "Keyboard shortcuts (?)", "aria-label": "Keyboard shortcuts", onclick: help }, icon("keys")));
   const legendPanel = move(".flow-legend-panel");
+  const legendContent = move(".flow-legend");
   legendPanel?.remove();
   const legendButton = h("button", { "data-ak-pop": "", title: "What the lines mean",
-    onclick: (event) => openPop(event.currentTarget, [h("h4", {}, "Legend"),
-      h("p", { style: "margin:4px 10px 10px;max-width:340px;line-height:1.45" }, root.querySelector(".flow-legend")?.textContent || "")]) }, "Legend");
+    onclick: (event) => openPop(event.currentTarget, [h("h4", {}, "Legend"), legendContent]) }, "Legend");
   root.append(h("div", { hidden: true }, legendPanel));
   const bottomLeft = h("div", { class: "ak-bar ak-bottom-left" }, legendButton, move(".flow-filters"),
-    h("span", { class: "ak-run-status" }, `Rules: ${A.declared_rules} · Observation: ${A.observation_complete}`));
+    A ? h("span", { class: "ak-run-status" }, `Rules: ${A.declared_rules} · Observation: ${A.observation_complete}`) : null);
+  if (!A) {
+    bottomLeft.append(h("div", { class: "ak-detail-actions" },
+      move(".flow-member-previews"), move(".flow-use-summary"), move(".flow-arrange")));
+    bottomLeft.querySelector(".flow-filter-controls").append(move(".flow-unassigned-code"), move(".flow-zoom-100"));
+    move(".flow-element-index").classList.add("ak-element-index");
+  }
   const summary = move(".atlas-summary");
   if (summary) summary.classList.add("ak-scene-summary");
   const tagBar = h("div", { class: "ak-bar ak-bottom-center", role: "toolbar", "aria-label": "Perspectives" });
@@ -521,9 +533,11 @@
   // ---------- keep the chrome in sync with every rendered scene ----------
   // Open each diagram fitted without magnifying small graphs.
   let fittedKey = null;
-  F.setMaxFitScale(1);
+  if (A) F.setMaxFitScale(1);
   const fitDiagram = () => F.fit(true);
   root.addEventListener("archkeel:rendered", () => {
+    back?.setAttribute("aria-label", back.textContent);
+    if (!A) return;
     if (["file:", "http:", "https:"].includes(location.protocol))
       perspective = Object.hasOwn(PERSPECTIVES, query().get("perspective")) ? query().get("perspective") : null;
     applyPerspective();
@@ -549,6 +563,8 @@
   });
   addEventListener("beforeprint", closeDrawer);
   if (/^#atlas-(rule|finding)-/.test(location.hash)) revealFindings();
-  renderTagBar();
-  if (F.state().scene) applyPerspective();
+  if (A) {
+    renderTagBar();
+    if (F.state().scene) applyPerspective();
+  } else tagBar.remove();
 })();

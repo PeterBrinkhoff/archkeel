@@ -688,6 +688,9 @@ def test_atlas_fullscreen_uses_available_canvas_and_background_drag_pans(tmp_pat
     html = _atlas_page(_sample(tmp_path))
     playwright, browser, page = _browser_page(api, html, width=1440, height=800)
     try:
+        page.evaluate("Element.prototype.requestFullscreen = undefined")
+        page.locator(".flow-fullscreen").click()
+        api.expect(page.locator("#flow")).to_have_attribute("data-expanded", "fallback")
         canvas = page.locator(".flow-canvas")
         normal_height = canvas.bounding_box()["height"]
         page.set_viewport_size({"width": 1440, "height": 1000})

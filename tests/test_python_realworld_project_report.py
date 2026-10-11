@@ -325,14 +325,14 @@ def test_python_realworld_report_browses_deep_target_at_desktop_and_mobile(
                     assert "tags" in inspector
                     assert "app/models/domain/articles.py" in inspector
                     if view == "diagram":
-                        assert "SOURCE SITES" in inspector
+                        assert "Source sites" in inspector
                         assert "articles.py:13:4" in inspector
                         assert "tags: List[str]" in inspector
                     elif view == "target":
                         assert "docs/target.md" in inspector
                         assert "List[str]" in inspector
                     else:
-                        assert "SOURCE SITES" in inspector
+                        assert "Source sites" in inspector
                         assert "articles.py:13:4" in inspector
                     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
                     page.locator(".flow-canvas").scroll_into_view_if_needed()

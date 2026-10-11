@@ -264,7 +264,7 @@ def test_compass_report_opens_generated_detail_page_in_browser(tmp_path: Path) -
                                 "lib/ui/booking/view_models/booking_viewmodel.dart" in source_fact
                             )
                         else:
-                            assert "SOURCE SITES" in inspector
+                            assert "Source sites" in inspector
                             assert "booking_viewmodel.dart:51:2" in inspector
                             assert (
                                 "await _createUseCase.createFrom(itineraryConfig.value)"

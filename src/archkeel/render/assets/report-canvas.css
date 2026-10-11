@@ -28,25 +28,27 @@ html.ak-canvas[data-theme="dark"] {
   --ak-card-line: #333a44;
   --ak-shadow: 0 1px 2px rgba(0, 0, 0, .5), 0 10px 28px rgba(0, 0, 0, .45);
 }
-html.ak-canvas, html.ak-canvas body { overflow: hidden; height: 100%; }
-html.ak-canvas .report-header,
-html.ak-canvas .report-shell > :not(.flow-section) { display: none; }
 .ak-brand { white-space: nowrap; padding-right: 6px; font-size: 13px; }
 .ak-run-status { font-size: 11px; max-width: 180px; }
 html.ak-canvas .ak-scene-summary { display: none; }
 html.ak-canvas .ak-drawer .ak-scene-summary { display: block; }
 
-/* Canvas fills the viewport; the report stays underneath, untouched. */
+/* The same explorer is embedded in the report and expanded by its fullscreen control. */
 html.ak-canvas .flow {
-  position: fixed; inset: 0; z-index: 50; margin: 0; padding: 0; max-width: none;
+  position: relative; margin: 0; padding: 0; max-width: none;
+  height: max(720px, 85dvh); border: 1px solid var(--ak-line); border-radius: 14px;
+  isolation: isolate; container-type: inline-size;
   background-color: var(--ak-canvas); color: var(--ak-text);
   background-image: radial-gradient(var(--ak-dot) 1.1px, transparent 1.3px);
   background-size: 22px 22px;
   font-family: var(--ck-font-sans);
 }
+html.ak-canvas .flow[data-expanded] {
+  position: fixed; inset: 0; z-index: 1000; width: 100%; height: 100dvh;
+  margin: 0; padding: 0; border: 0; border-radius: 0;
+}
 html.ak-canvas #flow-heading,
 html.ak-canvas .flow-toolbar,
-html.ak-canvas .flow-fullscreen,
 html.ak-canvas .flow-view-group-label { display: none !important; }
 html.ak-canvas .flow-layout { position: absolute; inset: 0; display: block; margin: 0; }
 /* The canvas sits between the floating bars so fitted diagrams never hide under chrome. */
@@ -58,13 +60,18 @@ html.ak-canvas .flow[data-atlas] .flow-canvas {
 html.ak-canvas .flow-graph { border: 0 !important; background: transparent !important; border-radius: 0 !important; }
 html.ak-canvas .flow-map-column > .flow-explore { display: none; }
 html.ak-canvas .flow-map-column { overflow: hidden; }
+html.ak-canvas .flow[data-expanded] .flow-map-column { height: auto; }
+html.ak-canvas .flow-map-column:has(.ak-element-index:not([hidden])) { display: flex; flex-direction: column; }
+.ak-element-index { flex: none; max-height: 30%; overflow: auto; }
+html.ak-canvas .flow-map-column:has(.ak-element-index:not([hidden])) .flow-canvas { flex: 1; }
+html.ak-canvas .flow-alternative:not([hidden]) { height: 100%; }
 html.ak-canvas .flow-graph.space-pan,
 html.ak-canvas .flow-graph.space-pan * { cursor: grab !important; }
 
 /* Details panel, like an object panel docked right. */
 html.ak-canvas .flow[data-atlas] .flow-inspector {
   position: absolute; top: 68px; right: 12px; bottom: calc(68px + env(safe-area-inset-bottom, 0px));
-  width: 380px; max-height: none; z-index: 60;
+  width: 380px; height: auto; max-height: none; z-index: 60;
   background: var(--ak-panel); border: 1px solid var(--ak-line); border-radius: 14px;
   box-shadow: var(--ak-shadow); padding: 18px 20px;
 }
@@ -102,10 +109,14 @@ html.ak-canvas .ak-tag text { fill: #fff; font: 600 11px var(--ck-font-sans); }
   background: var(--ak-panel); border: 1px solid var(--ak-line); border-radius: var(--ak-radius);
   box-shadow: var(--ak-shadow); color: var(--ak-text); font: 13px var(--ck-font-sans);
 }
-.ak-top-left { top: 12px; left: 12px; max-width: calc(50vw - 200px); }
+.ak-top-left { top: 12px; left: 12px; max-width: calc(50cqw - 200px); }
 .ak-top-center { top: 12px; left: 50%; transform: translateX(-50%); }
 .ak-top-right { top: 12px; right: 12px; }
 .ak-bottom-left { bottom: calc(12px + env(safe-area-inset-bottom, 0px)); left: 12px; max-width: 24vw; }
+.ak-detail .ak-bottom-left { max-width: calc(100% - 280px); }
+.ak-detail-actions { display: flex; min-width: 0; overflow-x: auto; }
+.ak-bottom-left .flow-filters { position: static; }
+.ak-bottom-left .flow-filter-controls { max-width: 100%; }
 .ak-bottom-center { bottom: calc(12px + env(safe-area-inset-bottom, 0px)); left: 360px; right: 265px; overflow-x: auto; }
 .ak-bottom-right { bottom: calc(12px + env(safe-area-inset-bottom, 0px)); right: 12px; }
 .ak-rail { top: 68px; left: 12px; flex-direction: column; }
@@ -129,6 +140,8 @@ html.ak-canvas .ak-bar .flow-open-selected {
 .ak-bar svg.ak-icon { width: 17px; height: 17px; flex: none; }
 .ak-icon-only { padding: 0 !important; width: 34px; }
 .ak-rail button { width: 38px; height: 38px; padding: 0; }
+.ak-rail .flow-back { font-size: 0 !important; }
+.ak-rail .flow-back::before { content: "←"; font-size: 20px; }
 .ak-rail button[aria-expanded="true"] { background: var(--ak-accent-soft); color: var(--ak-accent); }
 
 html.ak-canvas .ak-bar .flow-views { display: flex; border: 0; margin: 0; padding: 0; }
@@ -137,15 +150,16 @@ html.ak-canvas .ak-bar .flow-view-group button { border-bottom: 0 !important; }
 html.ak-canvas .ak-bar .atlas-content-choice { display: flex; gap: 2px; }
 html.ak-canvas .ak-bar .flow-breadcrumb {
   display: flex; flex: 0 1 auto; order: 0; flex-wrap: nowrap; align-items: center; gap: 2px;
-  min-height: 0; margin: 0; overflow: hidden; white-space: nowrap;
+  min-height: 0; margin: 0; overflow-x: auto; white-space: nowrap;
   position: static !important; top: auto; left: auto; width: auto;
 }
 html.ak-canvas .ak-bar .flow-breadcrumb > *:not(button) { color: var(--ak-muted); }
 html.ak-canvas .ak-bar .flow-breadcrumb button { height: 28px; padding: 0 6px; font-weight: 600; color: var(--ak-text); }
 html.ak-canvas .ak-bar .flow-breadcrumb button:not(:last-child) { color: var(--ak-muted); font-weight: 500; }
+html.ak-canvas .ak-bar .flow-breadcrumb a { flex: none; padding: 0 4px; }
 html.ak-canvas .ak-bar .flow-zoom-controls { display: flex; align-items: center; gap: 2px; }
 html.ak-canvas .ak-bar .flow-zoom-value { min-width: 46px; text-align: center; font-variant-numeric: tabular-nums; color: var(--ak-muted); }
-html.ak-canvas .ak-bar .flow-zoom-100 { display: none; }
+html.ak-canvas .ak-bar .flow-zoom-controls .flow-zoom-100 { display: none; }
 .ak-logo { width: 22px; height: 22px; margin: 0 6px 0 4px; }
 .ak-search-btn { min-width: 220px !important; justify-content: space-between !important; color: var(--ak-muted) !important; background: var(--ak-hover) !important; }
 .ak-bar kbd, .ak-palette kbd {
@@ -174,7 +188,7 @@ html.ak-canvas .ak-bar details.flow-legend-panel[open] .flow-legend {
 
 /* Popovers, drawers, dialogs */
 .ak-pop {
-  position: fixed; z-index: 120; min-width: 260px; max-height: 60vh; overflow: auto; padding: 6px;
+  position: absolute; z-index: 120; min-width: 260px; max-height: 60vh; overflow: auto; padding: 6px;
   background: var(--ak-panel); color: var(--ak-text); border: 1px solid var(--ak-line);
   border-radius: 12px; box-shadow: var(--ak-shadow); font: 13px var(--ck-font-sans);
 }
@@ -186,6 +200,7 @@ html.ak-canvas .ak-bar details.flow-legend-panel[open] .flow-legend {
 .ak-pop button:hover, .ak-pop button:focus-visible { background: var(--ak-hover); outline: none; }
 .ak-pop button small { margin-left: auto; color: var(--ak-muted); }
 .ak-pop .ak-current { font-weight: 600; color: var(--ak-accent); }
+.ak-pop .flow-legend { display: flex; max-width: min(460px, 80vw); padding: 10px; }
 
 .ak-drawer {
   position: absolute; z-index: 65; top: 68px; left: 64px; bottom: calc(68px + env(safe-area-inset-bottom, 0px));
@@ -273,11 +288,14 @@ html.ak-canvas .ak-bar details.flow-legend-panel[open] .flow-legend {
 @media (prefers-reduced-motion: reduce) {
   html.ak-canvas .node, html.ak-canvas .edge, html.ak-canvas .node .card { transition: none; }
 }
-@media print {
-  html.ak-canvas, html.ak-canvas body { overflow: visible; height: auto; }
-  html.ak-canvas .report-header,
-  html.ak-canvas .report-shell > :not(.flow-section) { display: revert; }
-  html.ak-canvas .explorer-return { display: none !important; }
+@container (max-width: 1320px) {
+  .ak-top-left { right: 12px; max-width: none; }
+  .ak-top-center { top: 62px; left: 12px; transform: none; }
+  .ak-top-right { top: 62px; }
+  .ak-rail { top: 112px; }
+  html.ak-canvas .flow-map-column { top: 110px; }
+  html.ak-canvas .flow[data-atlas] .flow-inspector { top: 112px; }
+  .ak-drawer { top: 112px; }
 }
 @media (max-width: 900px) {
   /* Phone: two rows of chrome on top, details as a bottom sheet, no side rail. */
@@ -288,6 +306,9 @@ html.ak-canvas .ak-bar details.flow-legend-panel[open] .flow-legend {
   .ak-rail { top: 108px; left: auto; right: 12px; flex-direction: row; }
   .ak-rail button { width: 28px; height: 32px; }
   .ak-top-right .flow-details-toggle { font-size: 0 !important; gap: 0 !important; width: 34px; padding: 0 !important; }
+  .ak-top-right .flow-fullscreen { width: 34px; padding: 0 !important; font-size: 0 !important; }
+  .ak-top-right .flow-fullscreen::before { content: "⤢"; font-size: 22px; }
+  .flow[data-expanded] .flow-fullscreen::before { content: "⤡"; }
   .ak-search-btn { min-width: 0 !important; width: 34px; padding: 0 !important; background: transparent !important; }
   .ak-search-btn span { font-size: 0; }
   .ak-bottom-center { left: 12px; right: 166px; transform: none; max-width: none; }
@@ -297,10 +318,25 @@ html.ak-canvas .ak-bar details.flow-legend-panel[open] .flow-legend {
   html.ak-canvas .ak-bar .atlas-content-choice { overflow-x: auto; min-width: 0; }
   .ak-bottom-right .ak-icon-only:first-child { display: none; }
   html.ak-canvas .flow-map-column { inset: 156px 0 58px 0; }
-  html.ak-canvas .flow[data-details-open="true"] .flow-map-column { right: 0; bottom: calc(38vh + 70px); }
+  html.ak-canvas .flow[data-details-open="true"] .flow-map-column { right: 0; bottom: calc(38% + 70px); }
   html.ak-canvas .flow[data-atlas] .flow-inspector {
-    left: 12px; right: 12px; width: auto; top: auto; height: 38vh;
+    left: 12px; right: 12px; width: auto; top: auto; height: 38%;
     bottom: calc(62px + env(safe-area-inset-bottom, 0px));
   }
   .ak-drawer { left: 12px; top: 156px; width: auto; right: 12px; }
+  html.ak-canvas .ak-detail .ak-bottom-left { display: flex !important; max-width: calc(100% - 24px); bottom: 62px; }
+  .ak-detail .ak-bottom-left button { max-width: 130px; overflow: hidden; text-overflow: ellipsis; }
+  html.ak-canvas .ak-detail .flow-map-column { bottom: 108px; }
+  html.ak-canvas .ak-detail[data-details-open="true"] .flow-map-column { bottom: calc(38% + 116px); }
+  html.ak-canvas .ak-detail .flow-inspector { bottom: 108px; }
+}
+@media (min-width: 600px) and (max-width: 900px) and (max-height: 600px) {
+  .ak-top-right { top: 62px; left: auto; right: 12px; }
+  .ak-rail { top: 112px; left: 12px; right: auto; flex-direction: column; }
+  html.ak-canvas .flow .flow-map-column { inset: 110px 0 58px 60px; }
+  html.ak-canvas .flow[data-details-open="true"] .flow-map-column { right: 304px; bottom: 58px; }
+  html.ak-canvas .flow[data-atlas] .flow-inspector {
+    top: 112px; left: auto; right: 12px; bottom: 62px; width: 280px; height: auto;
+  }
+  html.ak-canvas .ak-detail .ak-bottom-left { bottom: 12px; max-width: calc(100% - 180px); }
 }

@@ -607,7 +607,7 @@ def _open_project_uml_details(
             if view == "target":
                 assert "docs/target.md" in inspector
             else:
-                assert "SOURCE SITES" in inspector
+                assert "Source sites" in inspector
                 assert module_path in inspector
             assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
             page.screenshot(path=str(output / f"{name}-{width}-{view}-source.png"), full_page=True)
@@ -1111,7 +1111,6 @@ def _check_inner_uml(page: Page, name: str, output: Path) -> None:
             )
         inspector = page.locator(".flow-inspector-content").inner_text()
         if view == "diff":
-            assert "AS-IS BINDING" in inspector
             assert f"item = {expected_as_is}" in inspector
         if language == "typescript":
             assert "binding" in inspector

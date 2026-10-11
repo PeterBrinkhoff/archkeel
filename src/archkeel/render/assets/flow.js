@@ -283,20 +283,20 @@
     if (document.fullscreenElement === root) {
       root.dataset.expanded = "native";
       fullscreenButton.textContent = "Restore";
+      fullscreenButton.setAttribute("aria-label", "Restore");
       expandStatus.hidden = true;
     } else if (root.dataset.expanded === "native") {
-      delete root.dataset.expanded;
-      fullscreenButton.textContent = "Fullscreen";
+      restoreExpansion();
     }
     sizeDiagram();
   }
 
   function restoreExpansion() {
-    if (root.dataset.expanded === "native") {
+    if (document.fullscreenElement === root) {
       document.exitFullscreen?.();
       return;
     }
-    if (root.dataset.expanded !== "fallback") return;
+    if (!root.dataset.expanded) return;
     delete root.dataset.expanded;
     sizeDiagram();
     root.removeAttribute("aria-modal");
@@ -307,6 +307,7 @@
     const focus = expansionRestore.focus;
     expansionRestore = null;
     fullscreenButton.textContent = "Fullscreen";
+    fullscreenButton.setAttribute("aria-label", "Fullscreen");
     expandStatus.hidden = true;
     if (focus?.isConnected) focus.focus({ preventScroll: true });
   }
@@ -819,7 +820,7 @@
     }
     query.set("view", viewMode);
     const presentation = new URLSearchParams(location.search);
-    for (const key of ["explorer", "perspective"]) if (presentation.has(key)) query.set(key, presentation.get(key));
+    if (presentation.has("perspective")) query.set("perspective", presentation.get("perspective"));
     const selected = atlasModule || (umlSelection?.type === "node" ? umlSelection.id : null);
     if (selected) query.set("selected", selected);
     if (ATLAS && atlasCell !== null) query.set("cell", String(atlasCell));
@@ -875,7 +876,7 @@
     root.dataset.view = viewMode;
     viewButtons.forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.flowView === viewMode)));
     flowHeading.textContent = "Requested scope unavailable";
-    alternative.innerHTML = `<div class="flow-scope-notice" role="status"><h3>${esc(routeNotice.message)}</h3><p>Requested ID: <code>${esc(routeNotice.requested)}</code></p><p>The requested URL is retained until you choose a recorded location.</p><button type="button">${SIDECAR && umlPath.length ? "Open recorded module" : "Open architecture map"}</button></div>`;
+    alternative.innerHTML = `<div class="flow-scope-notice" role="status"><h3>Requested scope unavailable</h3><p>${esc(routeNotice.message)}</p><p>Requested ID: <code>${esc(routeNotice.requested)}</code></p><p>The requested URL is retained until you choose a recorded location.</p><button type="button">${SIDECAR && umlPath.length ? "Open recorded module" : "Open architecture map"}</button></div>`;
     alternative.querySelector("button").onclick = () => {
       if (SIDECAR && !umlPath.length) { location.href = mainHref(); return; }
       routeNotice = null; render(); fit();
@@ -2841,7 +2842,14 @@
       restoreExpansion();
       return;
     }
-    const current = document.activeElement;
+    expansionRestore = {
+      focus: document.activeElement,
+      scrollX: window.scrollX,
+      scrollY: window.scrollY,
+      bodyOverflow: document.body.style.overflow,
+      inert: [...document.querySelectorAll("main > *")].filter((element) =>
+        !element.contains(root)).map((element) => [element, element.inert]),
+    };
     try {
       if (root.requestFullscreen) {
         await root.requestFullscreen();
@@ -2850,14 +2858,6 @@
     } catch {
       // A browser or embedding policy can deny the direct request.
     }
-    expansionRestore = {
-      focus: current,
-      scrollX: window.scrollX,
-      scrollY: window.scrollY,
-      bodyOverflow: document.body.style.overflow,
-      inert: [...document.querySelectorAll("main > *")].filter((element) =>
-        !element.contains(root)).map((element) => [element, element.inert]),
-    };
     expansionRestore.inert.forEach(([element]) => { element.inert = true; });
     document.body.style.overflow = "hidden";
     root.dataset.expanded = "fallback";
@@ -2865,12 +2865,15 @@
     root.setAttribute("aria-modal", "true");
     root.setAttribute("role", "dialog");
     fullscreenButton.textContent = "Restore";
+    fullscreenButton.setAttribute("aria-label", "Restore");
     expandStatus.textContent = "Expanded in this window";
     expandStatus.hidden = false;
     fullscreenButton.focus({ preventScroll: true });
   });
   document.addEventListener("fullscreenchange", updateFullscreenState);
   root.addEventListener("keydown", (event) => {
+    if (event.defaultPrevented || event.target.closest("dialog")
+      || event.key === "Escape" && root.querySelector(".ak-pop, .ak-drawer")) return;
     if (event.key === "Escape" && root.dataset.expanded === "native") {
       event.preventDefault();
       event.stopPropagation();
@@ -2909,6 +2912,7 @@
   // Seam for presentation controllers (report-canvas.js). No verdict logic crosses it.
   window.ArchkeelFlow = {
     root, svg, canvas, nodeLayer, edgeLayer, atlas: ATLAS, reportScene: REPORT_SCENE,
+    selectElement: (id) => selectArchitectureSubject("node", id),
     fit, zoomBy, zoomAt, emphasize: atlasEmphasize,
     setMaxFitScale: (value) => { maxFitScale = value; },
     openComponent: openAtlasComponent,

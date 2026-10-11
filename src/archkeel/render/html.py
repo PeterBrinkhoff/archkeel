@@ -634,7 +634,8 @@ def _flow_toolbar(*, atlas: bool = False) -> str:
           <button type="button" class="flow-fit flow-arrange flow-diagram-control"
                   title="Lay the cards out again">Arrange</button>
           <button type="button" class="flow-fit flow-open-selected" disabled>Open selected</button>
-          <button type="button" class="flow-fit flow-fullscreen">Fullscreen</button>
+          <button type="button" class="flow-fit flow-fullscreen"
+                  aria-label="Fullscreen">Fullscreen</button>
           <output class="flow-expand-status" role="status" aria-live="polite" hidden></output>
         </div>"""
 
@@ -805,11 +806,6 @@ def _atlas_content(
     )
     summary = report_summary(result)
     inventory_status = "complete" if symbols_complete else "partial"
-    explorer_link = (
-        "<a class='explorer-return' href='?explorer=1'>Open ArchQ Explorer</a>"
-        if not detail_page
-        else ""
-    )
     overview_href = (
         navigation.get("main_href") if isinstance(navigation, dict) else None
     ) or "architecture.report.html"
@@ -839,7 +835,6 @@ def _atlas_content(
       <button class="theme-toggle" type="button" aria-label="Switch to light theme">☀</button>
       </section>
       {status_header}
-      {explorer_link}
       {_atlas_section(data)}
       {_atlas_review_claims(observation, result.architecture_projection) if not detail_page else ""}
       <details class="atlas-source"><summary>Snapshot and audit</summary>

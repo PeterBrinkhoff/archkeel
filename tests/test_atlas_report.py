@@ -1842,6 +1842,7 @@ def test_module_and_classifier_defaults_show_only_direct_native_children(tmp_pat
         page.get_by_label("Element kind", exact=True).select_option("")
         _wait_for_layout(page)
         page.locator(".flow-filters > summary").click()
+        page.get_by_role("button", name="Legend", exact=True).click()
         page.locator('.flow-legend [data-relationship-kind="inherits"]').click()
         _wait_for_layout(page)
         assert (
@@ -1852,6 +1853,7 @@ def test_module_and_classifier_defaults_show_only_direct_native_children(tmp_pat
         assert page.locator(".flow-edges .hit").count() > 0
         page.locator('.flow-legend [data-relationship-kind=""]').click()
         _wait_for_layout(page)
+        page.keyboard.press("Escape")
         assert scene_ids() == direct_ids(module.id)
         for name in ("Client", "State"):
             classifier = next(
