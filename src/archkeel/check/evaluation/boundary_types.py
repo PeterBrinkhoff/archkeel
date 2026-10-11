@@ -142,12 +142,23 @@ class _Position:
     exact_nested_map_chain: bool = False
     native_iterable_annotation: str | None = None
     bound_alias: _BoundAliasBody | None = None
+    typed_mapping_union: _TypedMappingUnion | None = None
+    typed_union_checked: bool = False
 
 
 @dataclass(frozen=True, slots=True)
 class _BoundAliasBody:
     binding: BoundaryAliasBody
     metadata_origin: tuple[str, str]
+    import_bindings: tuple[tuple[str, str], ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class _TypedMappingUnion:
+    shape: str
+    alias_body: BoundaryAliasBody | None = None
+    key_alias_body: BoundaryAliasBody | None = None
+    source_origins: tuple[tuple[str, str], ...] = ()
     import_bindings: tuple[tuple[str, str], ...] = ()
 
 
@@ -834,7 +845,7 @@ def _boundary_type_verdict(
         type_shapes=type_shapes,
     )
     if wrapped is not None:
-        return replace(wrapped, bound_alias=None)
+        return replace(wrapped, bound_alias=None, typed_mapping_union=None)
     if _is_broad_boundary_type(annotation, module, imports_by_binding, classes_by_location):
         return _Position(violation=_BROAD_BOUNDARY_REASON)
     bare_type = _bare_type_verdict(
@@ -879,6 +890,8 @@ def _boundary_type_verdict(
             mapping_alternatives=verdict.mapping_alternatives,
             exact_nested_map_chain=verdict.exact_nested_map_chain,
             native_iterable_annotation=annotation if native_iterable else None,
+            typed_mapping_union=verdict.typed_mapping_union,
+            typed_union_checked=verdict.typed_union_checked,
         )
     return _named_type_verdict(
         annotation,
@@ -1168,8 +1181,26 @@ def _type_alias_verdict(
         and symbol.get("source_member_binding_static") is True
         else None
     )
+    typed = expanded.typed_mapping_union
+    if (
+        typed is not None
+        and typed.alias_body is None
+        and not aliases_seen
+        and not visited
+        and symbol.get("source_binding_unique") is True
+        and symbol.get("source_member_binding_static") is True
+    ):
+        typed = replace(
+            typed,
+            alias_body=BoundaryAliasBody(f"{resolved[0]}:{resolved[1]}", typed.shape),
+            source_origins=(resolved, *typed.source_origins),
+        )
+    else:
+        typed = None
     return _Position(
         bound_alias=proof,
+        typed_mapping_union=typed,
+        typed_union_checked=expanded.typed_union_checked,
         violation=expanded.violation,
         undecidable=expanded.undecidable,
         resolved=tuple(sorted({*reached, *expanded.resolved})),
@@ -1233,7 +1264,15 @@ def _imported_alias_verdict(
         or imported.get("source_member_binding_static") is not True
         or len(imported["reexport_chain"] or ()) > 1
     ):
-        return replace(alias, bound_alias=None)
+        return replace(alias, bound_alias=None, typed_mapping_union=None)
+    if imported is not None and alias.typed_mapping_union is not None:
+        typed = alias.typed_mapping_union
+        alias = replace(
+            alias,
+            typed_mapping_union=replace(
+                typed, import_bindings=(*typed.import_bindings, (module, annotation))
+            ),
+        )
     if imported is not None and alias.bound_alias is not None:
         proof = alias.bound_alias
         return replace(
@@ -1450,7 +1489,13 @@ def _annotation_shape_verdict(
             type_shapes=type_shapes,
         )
         return _mapping_union_verdict(
-            annotation, verdict, module, imports_by_binding, classes_by_location, type_shapes
+            annotation,
+            verdict,
+            module,
+            imports_by_binding,
+            classes_by_location,
+            type_shapes,
+            contract,
         )
     if enter_collections:
         entered = _collection_verdict(
@@ -1598,6 +1643,163 @@ def _mapping_union_arms(
     return [annotation]
 
 
+def _nullable_string_key(
+    shape: TypeShape, module: str, imports: BindingIndex, classes: BindingIndex
+) -> bool:
+    return (
+        isinstance(shape, TypeUnion)
+        and _proven_type_head(
+            shape.left, module, imports, classes, frozenset({("builtins", "str")})
+        )
+        is True
+        and isinstance(shape.right, TypeLiteral)
+        and shape.right.kind is LiteralKind.NONE
+    )
+
+
+def _typed_mapping_union_proof(
+    annotation: str,
+    verdict: _Position,
+    module: str,
+    imports: BindingIndex,
+    classes: BindingIndex,
+    type_shapes: TypeShapeIndex,
+) -> _TypedMappingUnion | None:
+    shape = type_shapes.get(annotation)
+    if shape is None:
+        return None
+    pending = [shape]
+    arms: list[str] = []
+    rendered: list[str] = []
+    identities: list[tuple[tuple[str, str], str, str]] = []
+    key_binding: BoundaryAliasBody | None = None
+    source_origins: tuple[tuple[str, str], ...] = ()
+    import_bindings: tuple[tuple[str, str], ...] = ()
+    while pending:
+        arm = pending.pop(0)
+        if isinstance(arm, TypeUnion):
+            pending[0:0] = [arm.left, arm.right]
+            continue
+        members = _union_parameters(arm.text, module, imports, type_shapes=type_shapes)
+        if members is not None:
+            if (
+                not isinstance(arm, TypeApplication)
+                or _proven_type_head(
+                    arm.head,
+                    module,
+                    imports,
+                    classes,
+                    frozenset({("typing", "Union"), ("typing", "Optional")}),
+                )
+                is not True
+            ):
+                return None
+            shapes = [type_shapes.get(member) for member in members]
+            if any(member is None for member in shapes):
+                return None
+            pending[0:0] = [member for member in shapes if member is not None]
+            continue
+        if not isinstance(arm, TypeApplication) or not isinstance(
+            _mapping_parameters(arm.text, module, imports, classes, type_shapes=type_shapes),
+            list,
+        ):
+            return None
+        key, value = arm.arguments
+        key_is_alias = False
+        value_name = next(
+            (
+                name
+                for name in ("str", "int", "float")
+                if _proven_type_head(
+                    value, module, imports, classes, frozenset({("builtins", name)})
+                )
+                is True
+            ),
+            None,
+        )
+        if value_name is None:
+            return None
+        if (
+            _proven_type_head(key, module, imports, classes, frozenset({("builtins", "str")}))
+            is True
+        ):
+            key_text = "str"
+        elif _nullable_string_key(key, module, imports, classes):
+            key_text = "str | None"
+        elif (
+            pair := _bound_alias_application(key, "tuple", 2, module, imports, classes)
+        ) is not None:
+            if any(
+                _proven_type_head(leaf, module, imports, classes, frozenset({("builtins", "int")}))
+                is not True
+                for leaf in pair
+            ):
+                return None
+            key_text = "tuple[int, int]"
+        elif isinstance(key, TypeName) and key_binding is None:
+            origin = resolve_named_type(key.name, module, imports, classes)
+            if not isinstance(origin, tuple):
+                return None
+            symbol = classes.get(origin)
+            imported = imports.get((module, key.name))
+            if (
+                not isinstance(symbol, dict)
+                or symbol.get("record_kind") != "type_alias"
+                or symbol.get("source_binding_unique") is not True
+                or symbol.get("source_member_binding_static") is not True
+                or (
+                    imported is not None
+                    and (
+                        not isinstance(imported, dict)
+                        or imported.get("source_binding_unique") is not True
+                        or imported.get("source_member_binding_static") is not True
+                        or len(imported["reexport_chain"] or ()) > 1
+                    )
+                )
+            ):
+                return None
+            alias = symbol.get("alias")
+            key_shape = type_shapes.get(alias) if isinstance(alias, str) else None
+            if key_shape is None or not _nullable_string_key(
+                key_shape, origin[0], imports, classes
+            ):
+                return None
+            key_is_alias = True
+            key_binding = BoundaryAliasBody(f"{origin[0]}:{origin[1]}", "str | None")
+            source_origins = (origin,)
+            import_bindings = ((module, key.name),) if imported is not None else ()
+            key_text = f"{origin[0]}.{origin[1]}"
+        else:
+            return None
+        head_origin = next(
+            origin
+            for origin in _PROVEN_MAPPINGS
+            if _proven_type_head(arm.head, module, imports, classes, frozenset({origin})) is True
+        )
+        identities.append((head_origin, "str | None" if key_is_alias else key_text, value_name))
+        arms.append(arm.text)
+        rendered.append(f"{arm.head.text}[{key_text}, {value.text}]")
+    mappings = verdict.mapping_occurrences
+    if (
+        len(arms) < 2
+        or len(set(identities)) != len(arms)
+        or verdict.undecidable is not None
+        or len(mappings) != len(arms)
+        or any(
+            occurrence != _MappingOccurrence(arm, 0)
+            for arm, occurrence in zip(arms, mappings, strict=True)
+        )
+        or verdict.violations != tuple(sorted((_BROAD_BOUNDARY_REASON, (), arm, 0) for arm in arms))
+    ):
+        return None
+    return _TypedMappingUnion(
+        " | ".join(rendered),
+        key_alias_body=key_binding,
+        source_origins=source_origins,
+        import_bindings=import_bindings,
+    )
+
+
 def _mapping_union_verdict(
     annotation: str,
     verdict: _Position,
@@ -1605,8 +1807,22 @@ def _mapping_union_verdict(
     imports: BindingIndex,
     classes: BindingIndex,
     type_shapes: TypeShapeIndex,
+    contract: ArchitectureContract,
 ) -> _Position:
     arms = _mapping_union_arms(annotation, module, imports, classes, type_shapes)
+    if contract.schema_version == "3.1.0":
+        native_compatible = (
+            annotation in _OPAQUE_NATIVE_REASONS
+            or _native_iterable_shape(annotation, module, imports, classes, type_shapes)
+            or arms is not None
+            and len(arms) == 1
+        )
+        verdict = replace(verdict, typed_union_checked=not native_compatible)
+        proof = _typed_mapping_union_proof(
+            annotation, verdict, module, imports, classes, type_shapes
+        )
+        if proof is not None:
+            return replace(verdict, typed_mapping_union=proof)
     mappings = verdict.mapping_occurrences
     if (
         arms is None
@@ -1648,6 +1864,7 @@ def _mapping_union_verdict(
             *verdict.mapping_alternatives,
             _MappingAlternatives(annotation, mappings),
         ),
+        typed_union_checked=verdict.typed_union_checked,
     )
 
 
@@ -3277,13 +3494,16 @@ def _root_broad_count(records: Sequence[RawRecord]) -> int:
 
 
 def _bound_alias_source_records(
-    proof: _BoundAliasBody,
+    proof: _BoundAliasBody | _TypedMappingUnion,
     source_symbols: Sequence[RawRecord],
     source_imports: Sequence[RawRecord],
 ) -> tuple[RawRecord, ...]:
-    origin: str = proof.binding.origin
-    module, _, name = origin.partition(":")
-    origins = {(module, name), proof.metadata_origin}
+    if isinstance(proof, _TypedMappingUnion):
+        origins = set(proof.source_origins)
+    else:
+        origin: str = proof.binding.origin
+        module, _, name = origin.partition(":")
+        origins = {(module, name), proof.metadata_origin}
     return (
         *(
             item
@@ -3340,6 +3560,36 @@ def _boundary_type_allowance_fact(
             continue
         alternative = False
         native_iterable = False
+        typed = verdict.typed_mapping_union
+        if typed is not None:
+            if (
+                allowance.alias_body != typed.alias_body
+                or allowance.key_alias_body != typed.key_alias_body
+                or allowance.field_path
+                or allowance.container_depth is not None
+                or allowance.mapping_depth is not None
+                or data.get("container_depth", 0) != 0
+                or data["reason"] != _BROAD_BOUNDARY_REASON
+                or sum(
+                    occurrence.annotation == data.get("nested_annotation")
+                    for occurrence in verdict.mapping_occurrences
+                )
+                != 1
+            ):
+                continue
+            return _boundary_type_allowance_fact_record(
+                rule,
+                facade_module,
+                record,
+                allowance,
+                True,
+                alternative=True,
+                source_records=_bound_alias_source_records(typed, source_symbols, source_imports),
+            )
+        if allowance.key_alias_body is not None or (
+            verdict.typed_union_checked and not verdict.mapping_alternatives
+        ):
+            continue
         if allowance.alias_body is not None:
             if not _bound_alias_allowance_matches(allowance, data, verdict):
                 continue
@@ -3623,8 +3873,8 @@ def _boundary_type_allowance_data(
     map_depth = allowance.mapping_depth
     depth_data: RecordData = {}
     if is_contained:
-        depth_data = {"container_depth": data["container_depth"]}
-        if allowance.alias_body is not None:
+        depth_data = {"container_depth": data.get("container_depth", 0)}
+        if allowance.alias_body is not None and not alternative:
             depth_data = {"observed_container_depth": data["container_depth"]}
             if allowance.container_depth is not None:
                 depth_data["container_depth"] = allowance.container_depth
@@ -3643,6 +3893,18 @@ def _boundary_type_allowance_data(
                 },
             }
             if allowance.alias_body is not None
+            else {}
+        ),
+        **(
+            {
+                "source": data["source"],
+                "module": data["module"],
+                "key_alias_body": {
+                    "origin": allowance.key_alias_body.origin,
+                    "shape": allowance.key_alias_body.shape,
+                },
+            }
+            if allowance.key_alias_body is not None
             else {}
         ),
         **({"mapping_depth": map_depth} if map_depth is not None else {}),
@@ -3703,6 +3965,11 @@ def _boundary_type_allowance_fact_record(
                 if allowance.alias_body is not None
                 else ()
             ),
+            *(
+                (allowance.key_alias_body.origin, allowance.key_alias_body.shape)
+                if allowance.key_alias_body is not None
+                else ()
+            ),
         ),
         evidence_class=EvidenceClass.FACT,
         area="type_architecture",
@@ -3711,7 +3978,8 @@ def _boundary_type_allowance_fact_record(
             f"{allowance.qualified_name} has an exact {allowance_scope}"
             "boundary type allowance"
             + (
-                f" for {data['nested_annotation']} at container depth {data['container_depth']}"
+                f" for {data['nested_annotation']} "
+                f"at container depth {data.get('container_depth', 0)}"
                 if is_contained
                 else ""
             )
@@ -3730,7 +3998,11 @@ def _boundary_type_allowance_fact_record(
         ),
         rule_ids=[rule.id],
         fact_ids=[*record["fact_ids"], *(item["id"] for item in source_records)],
-        provenance=list(rule.provenance) if opaque or allowance.alias_body is not None else None,
+        provenance=(
+            list(rule.provenance)
+            if opaque or allowance.alias_body is not None or allowance.key_alias_body is not None
+            else None
+        ),
         data=_boundary_type_allowance_data(allowance, data, is_contained, alternative, opaque),
     )
 
