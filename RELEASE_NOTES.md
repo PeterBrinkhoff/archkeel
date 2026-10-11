@@ -1,4 +1,4 @@
-# Archkeel 2.0.0 — Exact bound-alias permissions (unreleased)
+# Archkeel 2.0.0 — Exact bound-alias permissions
 
 - **Bind an alias permission to its source and complete body.** `alias_body`
   records the exact `module:Alias` origin and proven body. The supported family is
