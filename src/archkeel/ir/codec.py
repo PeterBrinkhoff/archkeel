@@ -821,13 +821,15 @@ def parse_contract(raw: object) -> ArchitectureContract:
         "contract",
     )
     if root["schema_version"] == "2.1.0":
-        version: Literal["2.1.0", "2.2.0", "2.3.0", "3.0.0"] = "2.1.0"
+        version: Literal["2.1.0", "2.2.0", "2.3.0", "3.0.0", "3.1.0"] = "2.1.0"
     elif root["schema_version"] == "2.2.0":
         version = "2.2.0"
     elif root["schema_version"] == "2.3.0":
         version = "2.3.0"
     elif root["schema_version"] == "3.0.0":
         version = "3.0.0"
+    elif root["schema_version"] == "3.1.0":
+        version = "3.1.0"
     else:
         raise ContractVersionError(str(root["schema_version"]))
     components_raw = root["components"]
@@ -941,18 +943,24 @@ def parse_contract(raw: object) -> ArchitectureContract:
     if "uml" in declarations and version == "2.1.0":
         raise ValueError("UML declarations require contract schema_version 2.2.0")
     uml = parse_target(declarations["uml"]) if "uml" in declarations else None
-    if version not in {"2.3.0", "3.0.0"}:
+    if version not in {"2.3.0", "3.0.0", "3.1.0"}:
         for raw in rules_raw:
             rule_data: dict[str, RawJson] = _object(raw, "rule")
             if rule_data.get("kind") == "layer_order":
                 raise ValueError("layer_order requires contract schema_version 2.3.0")
     rules = tuple(_parse_rule(value, f"rules[{index}]") for index, value in enumerate(rules_raw))
-    if version != "3.0.0" and any(
+    if version not in {"3.0.0", "3.1.0"} and any(
         isinstance(rule, BoundaryTypesRule)
         and any(item.alias_body is not None for item in rule.allowed_positions)
         for rule in rules
     ):
         raise ValueError("alias_body requires contract schema_version 3.0.0")
+    if version != "3.1.0" and any(
+        isinstance(rule, BoundaryTypesRule)
+        and any(item.key_alias_body is not None for item in rule.allowed_positions)
+        for rule in rules
+    ):
+        raise ValueError("key_alias_body requires contract schema_version 3.1.0")
     labels = {component.label for component in components}
     seen_labels: set[str] = set()
     for component_index, component in enumerate(components):
@@ -1031,17 +1039,23 @@ def parse_contract(raw: object) -> ArchitectureContract:
 
 def contract_bytes(contract: ArchitectureContract) -> bytes:
     """Encode a contract in Contract 2.0 key order so parse_contract returns the same value."""
-    if contract.schema_version not in {"2.3.0", "3.0.0"} and (
+    if contract.schema_version not in {"2.3.0", "3.0.0", "3.1.0"} and (
         any(component.layer is not None for component in contract.components)
         or any(isinstance(rule, LayerOrderRule) for rule in contract.rules)
     ):
         raise ValueError("layer and layer_order require contract schema_version 2.3.0")
-    if contract.schema_version != "3.0.0" and any(
+    if contract.schema_version not in {"3.0.0", "3.1.0"} and any(
         isinstance(rule, BoundaryTypesRule)
         and any(item.alias_body is not None for item in rule.allowed_positions)
         for rule in contract.rules
     ):
         raise ValueError("alias_body requires contract schema_version 3.0.0")
+    if contract.schema_version != "3.1.0" and any(
+        isinstance(rule, BoundaryTypesRule)
+        and any(item.key_alias_body is not None for item in rule.allowed_positions)
+        for rule in contract.rules
+    ):
+        raise ValueError("key_alias_body requires contract schema_version 3.1.0")
     fields = asdict(contract)
     # An absent permission must preserve existing amendment digests.
     for rule, encoded in zip(contract.rules, fields["rules"], strict=True):
@@ -1173,7 +1187,7 @@ def _component_names(
 
 
 def _parse_component(raw: RawJson, label: str, *, version: str) -> ContractComponent:
-    if "layer" in _object(raw, label) and version not in {"2.3.0", "3.0.0"}:
+    if "layer" in _object(raw, label) and version not in {"2.3.0", "3.0.0", "3.1.0"}:
         raise ValueError(f"{label}.layer requires contract schema_version 2.3.0")
     item, item_id, provenance = _contract_record(
         raw,
@@ -1685,7 +1699,7 @@ def _parse_boundary_types(raw: RawJson, label: str) -> BoundaryTypesRule:
         entry = _contract_fields(
             value,
             {"qualified_name", "position", "annotation"},
-            {"field_path", "container_depth", "mapping_depth", "alias_body"},
+            {"field_path", "container_depth", "mapping_depth", "alias_body", "key_alias_body"},
             entry_label,
         )
         qualified_name = _nonempty(entry["qualified_name"], f"{entry_label}.qualified_name")
@@ -1722,13 +1736,33 @@ def _parse_boundary_types(raw: RawJson, label: str) -> BoundaryTypesRule:
             )
             if field_path or mapping_depth is not None:
                 raise ValueError(f"{body_label} requires empty field_path and absent mapping_depth")
+        key_alias_body: BoundaryAliasBody | None = None
+        if "key_alias_body" in entry:
+            body_label = f"{entry_label}.key_alias_body"
+            body = _exact(entry["key_alias_body"], {"origin", "shape"}, body_label)
+            key_alias_body = BoundaryAliasBody(
+                _nonempty(body["origin"], f"{body_label}.origin"),
+                _nonempty(body["shape"], f"{body_label}.shape"),
+            )
+            if field_path or depth is not None or mapping_depth is not None:
+                raise ValueError(
+                    f"{body_label} requires empty field_path "
+                    "and absent container_depth/mapping_depth"
+                )
         if annotation == "dict":
             raise ValueError(f"{entry_label}.annotation cannot allow bare dict")
         if not field_path and annotation in _BARE_BROAD_ANNOTATIONS:
             raise ValueError(f"{entry_label}.annotation cannot allow bare {annotation} at the root")
         positions.append(
             BoundaryTypeAllowance(
-                qualified_name, position, field_path, annotation, depth, mapping_depth, alias_body
+                qualified_name,
+                position,
+                field_path,
+                annotation,
+                depth,
+                mapping_depth,
+                alias_body,
+                key_alias_body,
             )
         )
     if len(set(positions)) != len(positions):
@@ -2023,6 +2057,8 @@ def _rule_payload(rule: ArchitectureRule) -> dict[str, RawJson]:
         for item, encoded in zip(rule.allowed_positions, fields["allowed_positions"], strict=True):
             if item.alias_body is None:
                 del encoded["alias_body"]
+            if item.key_alias_body is None:
+                del encoded["key_alias_body"]
     return {key: value for key, value in _raw_object(fields).items() if value is not None}
 
 

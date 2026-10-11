@@ -504,6 +504,7 @@ class BoundaryTypeAllowance:
     container_depth: int | None = None
     mapping_depth: int | None = None
     alias_body: BoundaryAliasBody | None = None
+    key_alias_body: BoundaryAliasBody | None = None
 
     def __repr__(self) -> str:
         base = (
@@ -516,6 +517,8 @@ class BoundaryTypeAllowance:
             base += f", mapping_depth={self.mapping_depth!r}"
         if self.alias_body is not None:
             base += f", alias_body={self.alias_body!r}"
+        if self.key_alias_body is not None:
+            base += f", key_alias_body={self.key_alias_body!r}"
         return base + ")"
 
 
@@ -657,7 +660,7 @@ class ContractDeclarations:
 
 @dataclass(frozen=True, slots=True)
 class ArchitectureContract:
-    schema_version: Literal["2.1.0", "2.2.0", "2.3.0", "3.0.0"]
+    schema_version: Literal["2.1.0", "2.2.0", "2.3.0", "3.0.0", "3.1.0"]
     components: tuple[ContractComponent, ...]
     rules: tuple[ArchitectureRule, ...]
     schema: str | None = None
@@ -821,6 +824,15 @@ def _rule_references(
             )
             for item, allowance in enumerate(rule.allowed_positions)
             if allowance.alias_body is not None
+        ]
+        references += [
+            ModuleReference(
+                f"/rules/{index}/allowed_positions/{item}/key_alias_body/origin",
+                allowance.key_alias_body.origin,
+                False,
+            )
+            for item, allowance in enumerate(rule.allowed_positions)
+            if allowance.key_alias_body is not None
         ]
     if isinstance(rule, ForbiddenConstructRule):
         references += [

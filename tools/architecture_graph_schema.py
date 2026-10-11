@@ -312,6 +312,21 @@ def member_inventory_schema() -> dict[str, object]:
 
 def _update_contract_schema(path: Path) -> None:
     schema = json.loads(path.read_bytes())
+    if schema["properties"]["schema_version"] == {"const": "3.1.0"}:
+        selector = schema["$defs"]["boundaryTypes"]["properties"]["allowed_positions"]["items"]
+        selector["properties"]["key_alias_body"] = {
+            "type": "object",
+            "required": ["origin", "shape"],
+            "additionalProperties": False,
+            "properties": {
+                "origin": {"$ref": "#/$defs/nonEmpty"},
+                "shape": {"$ref": "#/$defs/nonEmpty"},
+            },
+        }
+        selector["dependentSchemas"]["key_alias_body"] = {
+            "properties": {"field_path": {"const": ""}},
+            "not": {"anyOf": [{"required": ["container_depth"]}, {"required": ["mapping_depth"]}]},
+        }
     schema["$defs"]["component"]["properties"]["layer"] = {
         "type": "string",
         "pattern": "\\S",

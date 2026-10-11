@@ -365,6 +365,9 @@ def _boundary_types_widenings(
                 entry.alias_body is not None,
                 entry.alias_body.origin if entry.alias_body is not None else "",
                 entry.alias_body.shape if entry.alias_body is not None else "",
+                entry.key_alias_body is not None,
+                entry.key_alias_body.origin if entry.key_alias_body is not None else "",
+                entry.key_alias_body.shape if entry.key_alias_body is not None else "",
             ),
         )
     ]
