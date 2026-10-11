@@ -1954,22 +1954,16 @@ def _mapping_union_verdict(
     expected.append((f"holding object {_BROAD_BOUNDARY_REASON}", (), "object", native_depths[0]))
     if tuple(sorted(expected)) != verdict.violations:
         return verdict
-    return _Position(
-        violation=verdict.violation,
-        undecidable=verdict.undecidable,
-        resolved=verdict.resolved,
-        named_origins=verdict.named_origins,
-        path=verdict.path,
-        nested_annotation=verdict.nested_annotation,
-        violations=verdict.violations,
-        mapping_occurrences=verdict.mapping_occurrences,
-        field_positions=verdict.field_positions,
-        field_declarations=verdict.field_declarations,
+    return replace(
+        verdict,
         mapping_alternatives=(
             *verdict.mapping_alternatives,
             _MappingAlternatives(annotation, mappings),
         ),
-        typed_union_checked=verdict.typed_union_checked,
+        exact_nested_map_chain=False,
+        native_iterable_annotation=None,
+        bound_alias=None,
+        typed_mapping_union=None,
     )
 
 
