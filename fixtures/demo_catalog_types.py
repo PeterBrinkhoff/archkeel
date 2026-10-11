@@ -1205,10 +1205,10 @@ _PUBLIC_API_INHERITED_UNKNOWN = Variant(
 
 _PUBLIC_API_ALIAS_MISSING = Variant(
     id="public-api-alias-missing",
-    section="class_b",
+    section="validation",
     item="public_api:class_alias_missing",
-    summary="Alias = Child retains UNKNOWN until its source binding and member are proven "
-    "(AD-92); the alias body cannot establish a missing Payload declaration.",
+    summary="Alias = Child has uncertain member binding; its own and inherited Payload "
+    "exposure remains UNKNOWN (AD-131).",
     files=_public_api_inherited_fields(declared=False, aliased=True),
     expected_violations=(),
     expected_codes=(),
@@ -1218,10 +1218,10 @@ _PUBLIC_API_ALIAS_MISSING = Variant(
 
 _PUBLIC_API_ALIAS_DECLARED = Variant(
     id="public-api-alias-declared",
-    section="class_b",
+    section="validation",
     item="public_api:class_alias_declared",
-    summary="Declaring Alias and Payload does not prove the alias source binding; "
-    "its public surface remains UNKNOWN (AD-92).",
+    summary="Declaring Alias and Payload cannot discharge an uncertain alias body; "
+    "its field exposure remains UNKNOWN (AD-131).",
     files=_public_api_inherited_fields(declared=True, aliased=True),
     expected_violations=(),
     expected_codes=(),

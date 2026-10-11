@@ -137,11 +137,14 @@ def test_field_allowance_rejects_inexact_declaration_or_selector(
         ("dict[str, Alias]", ["return.result"]),
     ],
 )
-def test_nullable_field_allowance_cannot_resolve_an_unproven_dto_alias(
+def test_nullable_field_allowance_requires_proven_dto_alias_body(
     tmp_path: Path, route: str, remaining: list[str]
 ) -> None:
     observed = _fixture(tmp_path, route=route)
     assert sorted(r.data.get("path") for r in trace_valid_violations(observed)) == remaining
+    [alias] = [r for r in observed.records("symbols") or () if r.title == "Alias"]
+    assert alias.data.get("source_binding_unique") is True
+    assert alias.data.get("source_member_binding_static") is False
     [unknown] = [
         r for r in observed.records("unknowns") or () if r.kind == "boundary_type_position"
     ]
@@ -213,8 +216,9 @@ def test_alias_field_allowance_cannot_pin_an_alias_expansion(
         schema_version=schema_version,
         returns="Envelope" if schema_version == "2.1.0" else "Envelope | None",
     )
-    [sibling] = trace_valid_violations(observed)
-    assert sibling.data.get("path") == "return.result.other_counts"
+    assert [r.data.get("path") for r in trace_valid_violations(observed)] == [
+        "return.result.other_counts",
+    ]
     [unknown] = [
         r for r in observed.records("unknowns") or () if r.kind == "boundary_type_position"
     ]
