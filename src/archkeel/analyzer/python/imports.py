@@ -31,6 +31,7 @@ from .source import (
     module_scope_bindings,
     native_owner_creation_static,
     package_for,
+    proven_annotation_carrier_candidates,
     proven_map_union_candidates,
     resolve_static_name,
     setter_local_references,
@@ -386,6 +387,9 @@ def resolve_reexports(
     }
     for name, module in modules.items():
         module._proven_map_union_expressions = frozenset(candidates[name])
+        carriers = proven_annotation_carrier_candidates(module, frozenset(modules))
+        module._proven_annotation_carriers = frozenset(carriers)
+        candidates[name] |= carriers
     escaped_bindings = {module.module: unproven_member_bindings(module) for module in parsed}
     escaped_bindings = _converge_member_escapes(
         imports, modules, stable_bindings, escaped_bindings, candidates
@@ -466,7 +470,7 @@ def _converge_member_escapes(
                 incoming_escapes=bindings,
                 unsafe_providers=unsafe_providers,
             )
-        protection_changed = _retain_map_union_protection(
+        protection_changed = _retain_type_reference_protection(
             modules, candidates, escaped_bindings, exposed_bindings, transferred_bindings
         )
         escaped = {module.module: unproven_member_bindings(module) for module in modules.values()}
@@ -499,7 +503,7 @@ def _converge_member_escapes(
     return escaped_bindings
 
 
-def _retain_map_union_protection(
+def _retain_type_reference_protection(
     modules: Mapping[str, ParsedModule],
     candidates: dict[str, dict[ast.expr, frozenset[tuple[str, str]]]],
     escaped_bindings: Mapping[str, AbstractSet[str]],
@@ -521,9 +525,10 @@ def _retain_map_union_protection(
             )
         }
         protection = frozenset(retained)
-        protection_changed |= protection != module._proven_map_union_expressions
+        protection_changed |= protection != frozenset(current_candidates)
         candidates[name] = retained
-        module._proven_map_union_expressions = protection
+        module._proven_map_union_expressions &= protection
+        module._proven_annotation_carriers &= protection
     return protection_changed
 
 
@@ -714,7 +719,23 @@ def _opaque_import_member_escapes(
     )
     if owner_exposure_only and framework:
         return escaped
-    if not owner_exposure_only and data["symbol"] is not None and not framework:
+    carrier = (
+        data["source_binding_unique"] is True
+        and data.get("origin_binding_unique") is True
+        and data["reexport_chain"] == [data["origin_definition"]]
+        and not data.get("reexport_candidate")
+        and not data.get("reexport_candidates")
+        and any(
+            isinstance(expression, ast.Subscript)
+            and resolve_static_name(module, expression.value) == data["origin_definition"]
+            and any(
+                isinstance(node, ast.Name) and node.id == data["binding"]
+                for node in ast.walk(expression.value)
+            )
+            for expression in module._proven_annotation_carriers
+        )
+    )
+    if not owner_exposure_only and data["symbol"] is not None and not (framework or carrier):
         escaped |= {data["binding"]}
     if data["symbol"] is None or owner_exposure_only:
         base_bindings = (
