@@ -1207,22 +1207,26 @@ _PUBLIC_API_ALIAS_MISSING = Variant(
     id="public-api-alias-missing",
     section="validation",
     item="public_api:class_alias_missing",
-    summary="Alias = Child exposes its own and inherited Payload even when Child is a "
-    "component facade (AD-131).",
+    summary="Alias = Child has uncertain member binding; its own and inherited Payload "
+    "exposure remains UNKNOWN (AD-131).",
     files=_public_api_inherited_fields(declared=False, aliased=True),
     expected_violations=(),
-    expected_codes=("api_surface.missing",),
+    expected_codes=(),
+    expected_unknowns=(("api_surface_limit", "shop.model.public_api:Alias"),),
+    expected_declared_rules="UNKNOWN",
 )
 
 _PUBLIC_API_ALIAS_DECLARED = Variant(
     id="public-api-alias-declared",
-    section="clean",
+    section="validation",
     item="public_api:class_alias_declared",
-    summary="Declaring Alias and Payload closes its fields; component.public alone cannot "
-    "do that (AD-131).",
+    summary="Declaring Alias and Payload cannot discharge an uncertain alias body; "
+    "its field exposure remains UNKNOWN (AD-131).",
     files=_public_api_inherited_fields(declared=True, aliased=True),
     expected_violations=(),
     expected_codes=(),
+    expected_unknowns=(("api_surface_limit", "shop.model.public_api:Alias"),),
+    expected_declared_rules="UNKNOWN",
 )
 
 VARIANTS: tuple[Variant, ...] = (
