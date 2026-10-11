@@ -23,9 +23,12 @@ from archkeel.ir.type_shapes import (
     UnresolvedType,
 )
 
+from .source import quoted_type_expression
+
 
 def collect_type_shapes(annotations: Iterable[str]) -> TypeShapeIndex:
     shapes: dict[str, TypeShape] = {}
+    quoted: dict[str, TypeShape] = {}
     for annotation in annotations:
         if annotation in shapes:
             continue
@@ -35,6 +38,21 @@ def collect_type_shapes(annotations: Iterable[str]) -> TypeShapeIndex:
             shapes[annotation] = UnresolvedType(annotation, valid_syntax=False)
             continue
         shapes[annotation] = _shape(expression, annotation, shapes)
+        for node in ast.walk(expression):
+            if not isinstance(node, ast.Constant) or not isinstance(node.value, str):
+                continue
+            decoded = quoted_type_expression(node)
+            if decoded is None:
+                continue
+            text: str = node.value
+            shape = _shape(decoded, text.strip(), quoted)
+            quoted[ast.unparse(node)] = shape
+            for spelling in _source_spellings(node, annotation):
+                quoted[spelling] = shape
+            if node is expression:
+                quoted[annotation] = shape
+    # Embedded Literal arguments stay literals; their index entries cannot erase type lookups.
+    shapes.update(quoted)
     return MappingProxyType(shapes)
 
 

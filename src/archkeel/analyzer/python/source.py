@@ -1771,6 +1771,24 @@ def add_evidence(evidence: dict[str, RawEvidence], module: ParsedModule, node: a
     )
 
 
+def quoted_type_expression(node: ast.expr) -> ast.expr | None:
+    """Decode one syntax-only string layer of names, None and unions."""
+    if not isinstance(node, ast.Constant) or not isinstance(node.value, str):
+        return None
+    text: str = node.value
+    try:
+        expression = ast.parse(text.strip(), mode="eval").body
+    except SyntaxError:
+        return None
+    if all(
+        isinstance(child, ast.Name | ast.Load | ast.BinOp | ast.BitOr)
+        or (isinstance(child, ast.Constant) and child.value is None)
+        for child in ast.walk(expression)
+    ):
+        return expression
+    return None
+
+
 def annotation_text(node: ast.AST | None) -> str | None:
     if node is None:
         return None
