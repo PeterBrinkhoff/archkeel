@@ -352,6 +352,95 @@ def stable_direct_module_bindings(module: ParsedModule) -> frozenset[str]:
     return cache[1]
 
 
+def static_overload_bindings(module: ParsedModule) -> frozenset[str]:
+    """Complete native overload groups eligible for import-origin proof."""
+    if (
+        module.binding_names is None
+        or any(
+            value
+            for node in module.all_nodes
+            for field, value in ast.iter_fields(node)
+            if field == "type_params"
+        )
+        or any(exposes_dynamic_namespace(module, node) for node in module.all_nodes)
+        or any(
+            exposes_dynamic_namespace(module, node, local_namespace=True)
+            for node in module.scope_nodes
+        )
+    ):
+        return frozenset()
+    groups: dict[str, list[tuple[int, FunctionNode]]] = {}
+    for index, statement in enumerate(module.tree.body):
+        if isinstance(statement, ast.FunctionDef | ast.AsyncFunctionDef):
+            group_sites: list[tuple[int, FunctionNode]] = groups.setdefault(statement.name, [])
+            group_sites.append((index, statement))
+    counts = Counter(module.scope_bound_names)
+    escaped = module.global_names | explicit_provider_escapes(module)
+    generic_names = {
+        name
+        for node, name in module_scope_bindings(module)
+        if isinstance(node, ast.Assign | ast.AnnAssign)
+        and isinstance(node.value, ast.Call)
+        and resolve_static_name(module, node.value.func)
+        in {
+            "typing.TypeVar",
+            "typing_extensions.TypeVar",
+            "typing.ParamSpec",
+            "typing_extensions.ParamSpec",
+            "typing.TypeVarTuple",
+            "typing_extensions.TypeVarTuple",
+        }
+    }
+    proven: set[str] = set()
+    for name, sites in groups.items():
+        if (
+            len(sites) < 3
+            or name in escaped
+            or counts[name] != len(sites)
+            or sites[-1][0] - sites[0][0] + 1 != len(sites)
+        ):
+            continue
+        group = [node for _, node in sites]
+        if _static_overload_group(module, group, generic_names):
+            proven.add(name)
+    return frozenset(proven)
+
+
+def _static_overload_group(
+    module: ParsedModule, group: Sequence[FunctionNode], generic_names: AbstractSet[str]
+) -> bool:
+    if (
+        group[-1].decorator_list
+        or any(type(node) is not type(group[-1]) for node in group)
+        or any(
+            isinstance(child, ast.Name) and child.id in generic_names
+            for node in group
+            for expression in _protected_type_expressions(list(ast.walk(node)))
+            for child in ast.walk(expression)
+        )
+    ):
+        return False
+    return all(
+        len(node.decorator_list) == 1
+        and not isinstance(node.decorator_list[0], ast.Call)
+        and is_proven_decorator(
+            module,
+            node.decorator_list[0],
+            node,
+            None,
+            frozenset({"typing.overload", "typing_extensions.overload"}),
+        )
+        and all(
+            isinstance(statement, ast.Pass)
+            or isinstance(statement, ast.Expr)
+            and isinstance(statement.value, ast.Constant)
+            and statement.value.value is Ellipsis
+            for statement in node.body
+        )
+        for node in group[:-1]
+    )
+
+
 def _stable_direct_module_bindings(module: ParsedModule) -> frozenset[str]:
     direct: dict[str, int] = {}
     for statement in module.tree.body:

@@ -6,14 +6,104 @@ from unittest.mock import patch
 
 import pytest
 from test_analyzer import _parsed_module
+from test_boundary_types_reexport_proofs import _OVERLOAD_GROUP
 
 from archkeel.analyzer.python import source
 from archkeel.analyzer.python.source import (
     AliasBinding,
     stable_direct_module_bindings,
+    static_overload_bindings,
     unique_direct_module_bindings,
     unproven_member_bindings,
 )
+
+
+def test_overload_origin_proof_keeps_bound_once_inventories_unchanged() -> None:
+    from archkeel.analyzer.python.imports import collect_imports, resolve_reexports
+
+    modules = [
+        _parsed_module(_OVERLOAD_GROUP, "sample.impl", rel_path="sample/impl.py"),
+        _parsed_module(
+            "from .impl import resolve_source_entity\n__all__ = ['resolve_source_entity']\n",
+            "sample.api",
+            rel_path="sample/api.py",
+        ),
+    ]
+    imports = collect_imports(modules, {m.module for m in modules}, {}, namespace="sample")
+    stable = {m.module: stable_direct_module_bindings(m) for m in modules}
+    unique = {m.module: unique_direct_module_bindings(m) for m in modules}
+    assert "resolve_source_entity" not in stable["sample.impl"] | unique["sample.impl"]
+    assert static_overload_bindings(modules[0]) == frozenset({"resolve_source_entity"})
+    assert not resolve_reexports(imports, {m.module: m.all_exports for m in modules}, modules)
+    imported = next(item for item in imports if item["data"]["source_module"] == "sample.api")
+    assert imported["data"]["origin_binding_unique"] is True
+    assert imported["data"]["origin_definition"] == "sample.impl.resolve_source_entity"
+    assert {m.module: stable_direct_module_bindings(m) for m in modules} == stable
+    assert {m.module: unique_direct_module_bindings(m) for m in modules} == unique
+
+
+@pytest.mark.parametrize(
+    "missing",
+    [
+        "origin_binding_unique",
+        "source_binding_unique",
+        "origin_definition",
+        "namespace_bound",
+        "definition_contexts",
+        "overload_signature",
+        "implementation",
+        "competing-import",
+        "unrelated-origin",
+        "ambiguous-publisher",
+        "parent",
+        "all-async-flags",
+    ],
+)
+def test_core_overload_route_needs_the_exact_complete_origin_proof(missing: str) -> None:
+    from archkeel.analyzer.python.imports import collect_imports, resolve_reexports
+    from archkeel.analyzer.python.symbols import collect_symbols
+    from archkeel.check.evaluation.boundary_types import _public_alias_route_has_unproven_hop
+
+    modules = [
+        _parsed_module(_OVERLOAD_GROUP, "sample.impl", rel_path="sample/impl.py"),
+        _parsed_module(
+            "from .impl import resolve_source_entity as constraints\n__all__ = ['constraints']\n",
+            "sample.api",
+            rel_path="sample/api.py",
+        ),
+    ]
+    imports = collect_imports(modules, {m.module for m in modules}, {}, namespace="sample")
+    resolve_reexports(imports, {m.module: m.all_exports for m in modules}, modules)
+    symbols, _, _ = collect_symbols(modules, {})
+    definitions = {("sample.impl", "resolve_source_entity"): symbols}
+    publisher = next(item for item in imports if item["data"]["source_module"] == "sample.api")
+    bindings = {("sample.api", "constraints"): [publisher]}
+    route = ("sample.api.constraints", "sample.impl.resolve_source_entity")
+    stable = {m.module: stable_direct_module_bindings(m) for m in modules}
+    assert not _public_alias_route_has_unproven_hop(
+        route, definitions, bindings, set(stable), stable, type_shapes={}
+    )
+
+    if missing in {"namespace_bound", "definition_contexts", "overload_signature", "parent"}:
+        symbols[0]["data"].pop(missing)
+    elif missing == "all-async-flags":
+        for item in symbols:
+            item["data"].pop("async")
+    elif missing == "implementation":
+        definitions["sample.impl", "resolve_source_entity"] = [
+            item for item in symbols if item["data"]["overload_signature"]
+        ]
+    elif missing == "competing-import":
+        bindings["sample.impl", "resolve_source_entity"] = [publisher]
+    elif missing == "unrelated-origin":
+        publisher["data"]["origin_definition"] = "sample.other.resolve_source_entity"
+    elif missing == "ambiguous-publisher":
+        bindings["sample.api", "constraints"].append(publisher)
+    else:
+        publisher["data"].pop(missing)
+    assert _public_alias_route_has_unproven_hop(
+        route, definitions, bindings, set(stable), stable, type_shapes={}
+    )
 
 
 def test_unique_proof_does_not_repeat_ast_walks() -> None:
