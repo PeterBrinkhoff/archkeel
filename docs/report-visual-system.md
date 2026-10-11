@@ -6,6 +6,14 @@ code alone; a confirmed violation remains FAIL alongside uncertainty.
 
 ## Render evidence
 
+ArchQ Explorer is embedded in the report. Fullscreen expands the same explorer;
+Restore returns to the report without losing the current view. Search (`Ctrl/⌘+K` or `/`) finds
+components, modules and rules. Hover traces dependencies; `Ctrl/⌘`+wheel zooms
+at the pointer. Health check opens findings and the import matrix. Snapshot provenance
+and the complete JSON link remain in the report and in Health check.
+Perspectives show recorded authorship, layer or evidence without changing verdicts.
+Share copies the current link or Mermaid, or downloads a standalone SVG.
+
 As-Is, Target and Diff use the shared [graph boundary](architecture/render-target.md).
 Target shows independent intent; Diff uses Core correspondences. Rendering must
 not infer ownership, endpoints, realization or PASS. Permissions are declarations,

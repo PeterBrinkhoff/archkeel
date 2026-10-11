@@ -624,7 +624,7 @@ def test_a_reached_dto_applies_its_own_class_scope_uncertainty(tmp_path: Path) -
     )
 
 
-def test_class_scope_uncertainty_does_not_hide_a_module_alias_body(tmp_path: Path) -> None:
+def test_class_scope_and_unproven_module_alias_remain_unknown(tmp_path: Path) -> None:
     _write_app(
         tmp_path,
         implementation=(
@@ -639,10 +639,18 @@ def test_class_scope_uncertainty_does_not_hide_a_module_alias_body(tmp_path: Pat
     result = _observe(tmp_path)
 
     assert result.observation is not None
-    assert len(trace_valid_violations(result.observation)) == 1
-    assert any(
-        item.kind == "boundary_type_position"
+    assert trace_valid_violations(result.observation) == ()
+    [unknown] = [
+        item
         for item in result.observation.records("unknowns") or ()
+        if item.kind == "boundary_type_position"
+    ]
+    assert unknown.data.get("position") == "value"
+    assert unknown.data.get("annotation") == "tuple[object, Payload]"
+    assert unknown.data.get("reason") == "ambiguous_binding"
+    assert not any(
+        item.kind == "boundary_type_allowance"
+        for item in result.observation.records("typing_signals") or ()
     )
 
 

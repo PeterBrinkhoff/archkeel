@@ -13,6 +13,77 @@ from archkeel.render.html import _flow_toolbar
 ASSET_DIR = Path(__file__).parents[1] / "src/archkeel/render/assets"
 
 
+def test_explorer_search_ranks_exact_prefix_token_and_substring_without_mutation():
+    api = pytest.importorskip("playwright.sync_api")
+    playwright, browser, page = _asset_page(api, ["report-scene.js"])
+    try:
+        result = page.evaluate("""() => {
+          const scene = window.ArchkeelReportScene;
+          const index = [
+            {kind:'module', id:'substring', label:'uncore', text:'uncore'},
+            {kind:'module', id:'token', label:'z', text:'sample/core.py'},
+            {kind:'component', id:'prefix', label:'core-service', text:'core-service'},
+            {kind:'rule', id:'exact-rule', label:'core', text:'core'},
+            {kind:'component', id:'exact-component', label:'core', text:'core'},
+          ];
+          const before = JSON.stringify(index);
+          return {ranked: scene.search(index, ' CORE ').map(row => row.id),
+            visible: scene.search(index, '', ['token']).map(row => row.id),
+            empty: scene.search(index, 'missing'),
+            limited: scene.search(index, 'core', [], 1).length,
+            unchanged: before === JSON.stringify(index)};
+        }""")
+        assert result == {
+            "ranked": ["exact-component", "exact-rule", "prefix", "token", "substring"],
+            "visible": ["token"],
+            "empty": [],
+            "limited": 1,
+            "unchanged": True,
+        }
+    finally:
+        browser.close()
+        playwright.stop()
+
+
+def test_explorer_exports_recorded_status_and_escapes_mermaid_labels():
+    api = pytest.importorskip("playwright.sync_api")
+    playwright, browser, page = _asset_page(api, ["report-scene.js"])
+    try:
+        result = page.evaluate("""() => {
+          const model = window.ArchkeelReportScene;
+          const scene = {nodes:[{id:'b', label:'end'},
+            {id:'a', label:'a"<b>&|', component:{status:'UNKNOWN'}}],
+            edges:[{id:'edge', source:'a', target:'b', label:'2 imports',
+              status:'FAIL', state:'violation'},
+              {id:'outside', source:'a', target:'missing'}]};
+          const before = JSON.stringify(scene);
+          const failed = model.sceneToMermaid(scene);
+          const unchanged = before === JSON.stringify(scene);
+          scene.edges[0].status = 'UNKNOWN'; scene.edges[0].state = 'undecided';
+          return {failed, unknown: model.sceneToMermaid(scene), unchanged,
+            undecided: model.perspectives.decision.value({component:{decided_by:'UNKNOWN'}}),
+            agent: model.perspectives.decision.value({component:{decided_by:'agent'}}),
+            evidence: model.perspectives.evidence.value({component:{status:'UNKNOWN'}}),
+            module: model.perspectives.evidence.value({})};
+        }""")
+        assert result["failed"].startswith(
+            'flowchart LR\n  n0["a#34;#60;b#62;#38;#124; · UNKNOWN"]'
+        )
+        assert 'n0 -->|"2 imports · FAIL · violation"| n1' in result["failed"]
+        assert "UNKNOWN · undecided" in result["unknown"]
+        assert "undefined" not in result["failed"]
+        assert result["unchanged"]
+        assert (result["undecided"], result["agent"], result["evidence"], result["module"]) == (
+            "Not recorded",
+            "Agent",
+            "UNKNOWN",
+            None,
+        )
+    finally:
+        browser.close()
+        playwright.stop()
+
+
 def _asset_page(api, assets):
     playwright, browser, page = _browser_page(api, "<!doctype html><html><body></body></html>")
     try:

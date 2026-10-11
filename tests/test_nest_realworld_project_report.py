@@ -342,7 +342,7 @@ def test_nest_realworld_report_browses_deep_target_at_desktop_and_mobile(
                         assert "docs/target.md" in inspector
                         assert "Promise<IArticlesRO>" in inspector
                     else:
-                        assert "SOURCE SITES" in inspector
+                        assert "Source sites" in inspector
                         assert "article.service.ts" in inspector
                         assert "Promise<IArticlesRO>" in inspector
                     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")

@@ -68,12 +68,6 @@ def _unknowns(result: ObservationResult) -> list[object]:
             "RefCategory.PRODUCT",
             "sample.app.types.AuthoringReferenceCategory",
         ),
-        (
-            "from sample.app.types import AuthoringReferenceCategory\n"
-            "Category = AuthoringReferenceCategory\n",
-            "Category.PRODUCT",
-            "sample.app.types.AuthoringReferenceCategory",
-        ),
     ],
 )
 def test_literal_resolves_exact_static_enum_member_through_signature(
@@ -107,6 +101,33 @@ def test_literal_resolves_exact_static_enum_member_through_signature(
         if item.data.get("qualified_name") == "sample.app.facade.run"
     ]
     assert expected_enum in run.data.get("facade_types", ())
+
+
+def test_assignment_alias_to_enum_requires_source_binding_proof(tmp_path: Path) -> None:
+    _write_app(
+        tmp_path,
+        {
+            "types": (
+                "from enum import Enum\n"
+                "class AuthoringReferenceCategory(str, Enum):\n"
+                "    PRODUCT = 'product'\n"
+            ),
+            "facade": (
+                "from pydantic import Field\n"
+                "from typing import Annotated, Literal\n"
+                "from sample.app.types import AuthoringReferenceCategory\n"
+                "Category = AuthoringReferenceCategory\n"
+                "def run(category: Annotated[Literal[Category.PRODUCT] | str, Field()]) -> str:\n"
+                "    return str(category)\n"
+            ),
+        },
+    )
+    result = _observe(tmp_path)
+    assert result.observation is not None
+    assert trace_valid_violations(result.observation) == ()
+    [unknown] = _unknowns(result)
+    assert unknown.data.get("position") == "category"
+    assert unknown.data.get("reason") == "dotted_name"
 
 
 @pytest.mark.parametrize(

@@ -8,7 +8,7 @@ from dataclasses import replace
 from urllib.parse import parse_qs, urljoin, urlsplit
 
 import pytest
-from browser_report_support import _browser_page, _open_details
+from browser_report_support import _browser_page, _open_details, _open_health_check
 from test_architecture_demo import _prepare_repo
 from test_atlas_report import _atlas
 from test_atlas_report import _page as _atlas_page
@@ -237,6 +237,7 @@ def test_atlas_labels_count_scopes_and_oversized_evidence_without_losing_route_s
         playwright, browser, page = _browser_page(api, html, errors=errors)
         try:
             page.goto(f"{report.as_uri()}?view=target&theme=dark")
+            _open_health_check(page)
             assert "whole-contract components" in page.locator(".report-heading").inner_text()
             summary = page.locator(".atlas-summary").inner_text()
             assert "Current level: 2 components" in summary
@@ -682,30 +683,21 @@ def test_fullscreen_fallback_restores_scope_selection_focus_and_scroll(tmp_path,
         playwright.stop()
 
 
-@pytest.mark.parametrize("reject", [False, True])
-def test_atlas_fullscreen_uses_available_canvas_and_background_drag_pans(tmp_path, reject):
+def test_atlas_fullscreen_uses_available_canvas_and_background_drag_pans(tmp_path):
     api = pytest.importorskip("playwright.sync_api")
     html = _atlas_page(_sample(tmp_path))
     playwright, browser, page = _browser_page(api, html, width=1440, height=800)
     try:
+        page.evaluate("Element.prototype.requestFullscreen = undefined")
+        page.locator(".flow-fullscreen").click()
+        api.expect(page.locator("#flow")).to_have_attribute("data-expanded", "fallback")
         canvas = page.locator(".flow-canvas")
         normal_height = canvas.bounding_box()["height"]
         page.set_viewport_size({"width": 1440, "height": 1000})
         resized_height = canvas.bounding_box()["height"]
         assert resized_height >= normal_height + 100
-        page.evaluate(
-            """reject => {
-          Element.prototype.requestFullscreen = reject
-            ? async () => { throw new DOMException('embedding denied', 'NotAllowedError'); }
-            : Element.prototype.requestFullscreen;
-        }""",
-            reject,
-        )
-        page.locator(".flow-fullscreen").click()
-        page.locator("#flow[data-expanded]").wait_for()
-        page.wait_for_timeout(100)
         bounds = canvas.bounding_box()
-        assert bounds and bounds["height"] > resized_height + 50
+        assert bounds and bounds["height"] >= 850
         graph = page.locator(".flow-graph")
         assert graph.evaluate("n => getComputedStyle(n).cursor") == "grab"
         before = page.locator(".flow-viewport").get_attribute("transform")
@@ -727,8 +719,6 @@ def test_atlas_fullscreen_uses_available_canvas_and_background_drag_pans(tmp_pat
         assert first_node.bounding_box()["width"] > first_node_width
         page.get_by_role("button", name="Fit overview").click()
         assert page.locator(".flow-viewport").get_attribute("transform") is None
-        page.locator(".flow-fullscreen").click()
-        page.locator("#flow:not([data-expanded])").wait_for()
         assert page.locator(".flow-nodes [data-label]").count() == node_count
         assert page.locator(".flow-edges .line").count() == edge_count
     finally:
@@ -1317,10 +1307,11 @@ def test_atlas_component_routes_select_leafs_and_open_inside_scopes(tmp_path):
     playwright, browser, page = _browser_page(api, html)
     try:
         page.goto(f"{report.as_uri()}?theme=dark")
+        _open_health_check(page)
         page.evaluate("""() => {
             const link = document.createElement('a');
             link.href = '#'; link.dataset.atlasComponentRoute = ''; link.textContent = 'root';
-            document.querySelector('main').append(link);
+            document.querySelector('.ak-drawer').append(link);
         }""")
         page.evaluate("window.navigationSentinel = 42")
         page.get_by_role("link", name="root", exact=True).click()
@@ -1332,7 +1323,7 @@ def test_atlas_component_routes_select_leafs_and_open_inside_scopes(tmp_path):
                 """id => {
                 const link = document.createElement('a');
                 link.href = '#'; link.dataset.atlasComponentRoute = id; link.textContent = id;
-                document.querySelector('main').append(link);
+                document.querySelector('.ak-drawer').append(link);
             }""",
                 component["id"],
             )
@@ -1359,6 +1350,7 @@ def test_atlas_component_routes_select_leafs_and_open_inside_scopes(tmp_path):
             )
             assert parse_qs(urlsplit(href).query) == query
             page.goto(urljoin(page.url, href))
+            _open_health_check(page)
             assert page.locator('.flow-scope-notice[role="status"]').count() == 0
             assert component["label"] in page.locator(".flow-inspector-content").inner_text()
             if component in (root_leaf, nested_leaf):

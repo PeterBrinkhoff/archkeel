@@ -14,10 +14,10 @@ Use it in your coding-agent harness or CI. Checks run locally and deterministica
 without an LLM. They complement tests of runtime behavior.
 
 <p>
-  <img src="docs/assets/archkeel-compass-target.png" alt="Compass Flutter Target: five components, responsibilities and thirteen declared dependencies" width="1000">
+  <img src="docs/assets/archkeel-compass-target.png" alt="ArchQ Explorer embedded in the report: Compass Flutter Target with components, responsibilities and declared dependencies" width="1000">
 </p>
 
-Compass Flutter: declared components, responsibilities and dependencies.
+ArchQ Explorer in the report: Compass Flutter's declared architecture.
 [Explore this Target](https://rapiddweller.github.io/archkeel/demos/uml-compass-project/architecture.report.html?content=components&view=target&theme=dark).
 
 Explore observed code, declared architecture and their differences in one offline report.
@@ -66,10 +66,10 @@ Validation diagnoses only absent responsibilities on components explicitly marke
 ## Review the evidence
 
 <p>
-  <img src="docs/assets/archkeel-python-module-target.png" alt="Python RealWorld Target: nested article, comment and tag modules with declared relationships and cross-scope counts" width="1000">
+  <img src="docs/assets/archkeel-python-module-target.png" alt="ArchQ Explorer in fullscreen: Python RealWorld Target with nested article, comment and tag modules" width="1000">
 </p>
 
-Python RealWorld: drill down from components to the article, comment and tag modules.
+Fullscreen Explorer: drill down to Python RealWorld's article, comment and tag modules.
 [Explore this Target](https://rapiddweller.github.io/archkeel/demos/uml-python-realworld-project/architecture.report.html?scope=Product%20and%20wire%20contracts%3Acontracts-publishing&content=modules&view=target&theme=dark).
 Target shows declared intent; cross-scope relationships remain counted separately.
 
@@ -91,8 +91,11 @@ archkeel report --input test-artifacts/architecture/architecture.json --only arc
 Use `--component` with an id or scope from the summary, and `--only violations` for findings.
 Saved queries do not rescan or change the repository. See [focused agent reports](docs/reference.md#focused-agent-reports).
 
-The explorer shows **As-Is** (observed code), **Target** (declared architecture),
+ArchQ Explorer shows **As-Is** (observed code), **Target** (declared architecture),
 and **Diff** (their differences). These are views of one snapshot, not two revisions.
+It opens inside the report. **Fullscreen** expands the same Explorer;
+**Restore** keeps your selection and zoom. Search (`Ctrl/⌘+K`), Health check,
+Objects and perspectives help navigate the recorded evidence.
 Folders help navigation; they do not establish ownership or runtime behavior.
 
 `PASS` means the required rules have complete evidence and no decided violation.

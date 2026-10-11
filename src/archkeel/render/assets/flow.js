@@ -180,6 +180,7 @@
     detailsToggle.setAttribute("aria-expanded", String(open));
     detailsToggle.setAttribute("aria-label", "Details " + (open ? "open" : "closed"));
     inspector.hidden = !open;
+    if (open) root.dispatchEvent(new CustomEvent("archkeel:inspect"));
   }
 
   function capturePointer(target, event) {
@@ -282,20 +283,32 @@
     if (document.fullscreenElement === root) {
       root.dataset.expanded = "native";
       fullscreenButton.textContent = "Restore";
+      fullscreenButton.setAttribute("aria-label", "Restore");
       expandStatus.hidden = true;
     } else if (root.dataset.expanded === "native") {
-      delete root.dataset.expanded;
-      fullscreenButton.textContent = "Fullscreen";
+      restoreExpansion();
     }
     sizeDiagram();
   }
 
+  function syncExpansionInert() {
+    if (root.dataset.expanded !== "fallback") return;
+    for (const element of document.querySelectorAll("main > *")) {
+      if (!element.contains(root) && !expansionRestore.inert.some(([saved]) => saved === element)) {
+        expansionRestore.inert.push([element, element.inert]);
+      }
+    }
+    for (const [element, inert] of expansionRestore.inert) {
+      element.inert = root.contains(element) ? inert : true;
+    }
+  }
+
   function restoreExpansion() {
-    if (root.dataset.expanded === "native") {
+    if (document.fullscreenElement === root) {
       document.exitFullscreen?.();
       return;
     }
-    if (root.dataset.expanded !== "fallback") return;
+    if (!root.dataset.expanded) return;
     delete root.dataset.expanded;
     sizeDiagram();
     root.removeAttribute("aria-modal");
@@ -306,6 +319,7 @@
     const focus = expansionRestore.focus;
     expansionRestore = null;
     fullscreenButton.textContent = "Fullscreen";
+    fullscreenButton.setAttribute("aria-label", "Fullscreen");
     expandStatus.hidden = true;
     if (focus?.isConnected) focus.focus({ preventScroll: true });
   }
@@ -517,6 +531,8 @@
       nodeLayer.appendChild(group);
       bindings.node(group, node);
     }
+    // Runs after the caller finished its synchronous decoration of this scene.
+    queueMicrotask(() => root.dispatchEvent(new CustomEvent("archkeel:rendered")));
     return routes;
   }
 
@@ -815,6 +831,8 @@
       if (ATLAS && atlasHasChoice(atlasLevel()) && atlasContent) query.set("content", atlasContent);
     }
     query.set("view", viewMode);
+    const presentation = new URLSearchParams(location.search);
+    if (presentation.has("perspective")) query.set("perspective", presentation.get("perspective"));
     const selected = atlasModule || (umlSelection?.type === "node" ? umlSelection.id : null);
     if (selected) query.set("selected", selected);
     if (ATLAS && atlasCell !== null) query.set("cell", String(atlasCell));
@@ -823,8 +841,10 @@
       ...(DATA.boundary_permissions?.applied || [])].some((row) => location.hash === `#${encodeURIComponent(row.id)}`)
       ? location.hash : "";
     const next = `${location.pathname}?${query}${permissionHash}`;
+    const currentQuery = new URLSearchParams(location.search);
+    currentQuery.sort(); query.sort();
     // Unchanged routes must keep existing finding anchors.
-    if (location.pathname + location.search + permissionHash !== next)
+    if (currentQuery.toString() !== query.toString())
       if (replace) history.replaceState(null, "", next);
       else history.pushState(null, "", next);
   }
@@ -868,7 +888,7 @@
     root.dataset.view = viewMode;
     viewButtons.forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.flowView === viewMode)));
     flowHeading.textContent = "Requested scope unavailable";
-    alternative.innerHTML = `<div class="flow-scope-notice" role="status"><h3>${esc(routeNotice.message)}</h3><p>Requested ID: <code>${esc(routeNotice.requested)}</code></p><p>The requested URL is retained until you choose a recorded location.</p><button type="button">${SIDECAR && umlPath.length ? "Open recorded module" : "Open architecture map"}</button></div>`;
+    alternative.innerHTML = `<div class="flow-scope-notice" role="status"><h3>Requested scope unavailable</h3><p>${esc(routeNotice.message)}</p><p>Requested ID: <code>${esc(routeNotice.requested)}</code></p><p>The requested URL is retained until you choose a recorded location.</p><button type="button">${SIDECAR && umlPath.length ? "Open recorded module" : "Open architecture map"}</button></div>`;
     alternative.querySelector("button").onclick = () => {
       if (SIDECAR && !umlPath.length) { location.href = mainHref(); return; }
       routeNotice = null; render(); fit();
@@ -1213,7 +1233,7 @@
     const focus = document.activeElement.closest("[data-uml-id]")?.dataset.umlId;
     const legendFocus = document.activeElement.closest(".flow-legend button")?.dataset.relationshipKind;
     root.dataset.view = viewMode;
-    flowHeading.textContent = "Architecture explorer";
+    flowHeading.textContent = "ArchQ Explorer";
     viewButtons.forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.flowView === viewMode)));
     canvas.hidden = false;
     alternative.hidden = true;
@@ -1429,6 +1449,8 @@
         });
         group.addEventListener("pointerleave", () => emphasize());
         group.addEventListener("pointerdown", (event) => {
+          if (spaceHeld || event.button === 1) return;
+          if (!event.isPrimary || event.button !== 0) return;
           event.stopPropagation();
           capturePointer(svg, event);
           dragState = { label: node.id, pointerType: event.pointerType, x: event.clientX, y: event.clientY,
@@ -1573,6 +1595,7 @@
     zoomValue.textContent = `${Math.round(transform.k * 100)}%`;
   }
 
+  let maxFitScale = 1.4;
   function fit(overview = false) {
     cancelPointerTap();
     if (layoutPending) {
@@ -1586,8 +1609,8 @@
     const minimumScale = ATLAS && overview ? 0
       : ATLAS ? 1 : focusLabel || memberPreviews || umlSelection?.type === "node" ? 1 : overview ? 0 : 0.85;
     const widthScale = canvas.clientWidth / (bounds.width + 48);
-    transform.k = renderedScene?.moduleOverview && !overview ? Math.max(1, Math.min(1.4, widthScale))
-      : Math.max(minimumScale, Math.min(1.4, widthScale, canvas.clientHeight / (bounds.height + 48)));
+    transform.k = renderedScene?.moduleOverview && !overview ? Math.max(1, Math.min(maxFitScale, widthScale))
+      : Math.max(minimumScale, Math.min(maxFitScale, widthScale, canvas.clientHeight / (bounds.height + 48)));
     panOffset = { x: 0, y: 0 };
     viewport.removeAttribute("transform");
     diagramOrigin = null;
@@ -1632,6 +1655,25 @@
     const minimumScale = ATLAS && renderedScene?.moduleOverview ? 0 : 0.1;
     transform.k = Math.min(2.4, Math.max(minimumScale, transform.k * factor));
     sizeDiagram();
+  }
+
+  // The content under the pointer stays under the pointer. Measured on the SVG box, so
+  // centering of narrow diagrams and the pan offset are already included.
+  function zoomAt(factor, clientX, clientY) {
+    const before = svg.getBoundingClientRect();
+    const x = (clientX - before.left) / transform.k, y = (clientY - before.top) / transform.k;
+    zoomBy(factor);
+    const after = svg.getBoundingClientRect();
+    const dx = after.left + x * transform.k - clientX, dy = after.top + y * transform.k - clientY;
+    const left = canvas.scrollLeft, top = canvas.scrollTop;
+    canvas.scrollLeft += dx;
+    canvas.scrollTop += dy;
+    // Narrow diagrams cannot scroll; the remainder moves the existing pan offset instead.
+    const restX = dx - (canvas.scrollLeft - left), restY = dy - (canvas.scrollTop - top);
+    if (Math.abs(restX) > 0.5 || Math.abs(restY) > 0.5) {
+      panOffset = { x: panOffset.x - restX / transform.k, y: panOffset.y - restY / transform.k };
+      viewport.setAttribute("transform", `translate(${panOffset.x} ${panOffset.y})`);
+    }
   }
 
   function architectureGraphContext() {
@@ -1886,19 +1928,29 @@
     if (id === null) {
       try { id = decodeURIComponent(location.hash.slice(1)); } catch { pendingAtlasFindingHash = null; return; }
     }
-    if (!id.startsWith("atlas-rule-") && !id.startsWith("atlas-finding-")) {
+    if (!id.startsWith("atlas-rule-") && !id.startsWith("atlas-finding-") && !id.startsWith("atlas-assessment-")) {
       pendingAtlasFindingHash = null;
       return;
     }
     const target = document.getElementById(id);
     if (!target) { pendingAtlasFindingHash = id; return; }
     pendingAtlasFindingHash = null;
+    if (inspector.contains(target)) setTargetDetails(true);
+    if (root.querySelector(".flow-explore")?.contains(target))
+      root.dispatchEvent(new CustomEvent("archkeel:findings"));
     for (let ancestor = target; ancestor; ancestor = ancestor.parentElement) {
       if (ancestor instanceof HTMLDetailsElement) ancestor.open = true;
     }
     requestAnimationFrame(() => target.scrollIntoView());
   }
   window.addEventListener("hashchange", () => openAtlasFindingHash());
+  root.addEventListener("click", (event) => {
+    const link = event.target.closest("a[href]");
+    if (!link || event.defaultPrevented || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+    const url = new URL(link.href, location.href);
+    if (url.pathname === location.pathname && url.search === location.search && url.hash === location.hash)
+      openAtlasFindingHash();
+  });
   function atlasComponentNavigation(id) {
     const component = id && REPORT_SCENE.atlasComponent(id);
     return component && ATLAS.components.some((item) => item.parent_id === id)
@@ -1975,7 +2027,7 @@
             `<li data-uncertainty-cause="${esc(action.cause)}" data-architect-actionable="${action.architect_actionable ?? "unknown"}"><strong>${esc(action.cause.replaceAll("_", " "))}</strong> · ${action.architect_actionable === true ? "Architect decision required" : action.architect_actionable === false ? "Evidence or analysis action required" : "Architect actionability not established"}: ${esc(action.next_action)}</li>`).join("")}</ul>`
             : "<p>Next action: inspect the recorded reason and affected scope. No cause was established for this uncertainty.</p>"}
           <p><a href="${esc(ATLAS.architecture_href)}">Complete evidence in architecture JSON</a></p>` : "";
-      return `<li><strong class="atlas-rule-status ${esc(item.status.toLowerCase())}">${esc(item.status)}</strong> · ${rule} (${esc(item.kind)}) · ${scope} · ${esc(item.reason)}`
+      return `<li id="atlas-assessment-${esc(item.id)}" tabindex="-1"><strong class="atlas-rule-status ${esc(item.status.toLowerCase())}">${esc(item.status)}</strong> · ${rule} (${esc(item.kind)}) · ${scope} · ${esc(item.reason)}`
         + `${item.count ? ` · ${REPORT_SCENE.countLabel(item.count, "recorded result")}` : ""}`
         + `${item.undecided ? ` · ${REPORT_SCENE.countLabel(item.undecided, "undecided result")}` : ""}`
         + `${uncertainEvidence}</li>`;
@@ -2482,6 +2534,30 @@
     }
   }
 
+  // Selection and hover share one rule: the focus, its neighbours and their edges stay lit.
+  function atlasEmphasize(preview = null) {
+    const scene = renderedScene;
+    if (!scene) return;
+    const focus = preview || (umlSelection?.type === "node" ? { type: "node", id: umlSelection.id } : null);
+    const nodes = new Set(), edges = new Set();
+    if (focus?.type === "node") {
+      nodes.add(focus.id);
+      for (const edge of scene.edges) if (edge.source === focus.id || edge.target === focus.id) {
+        edges.add(edge.id); nodes.add(edge.source); nodes.add(edge.target);
+      }
+    } else if (focus?.type === "edge") {
+      edges.add(focus.id); nodes.add(focus.source); nodes.add(focus.target);
+    }
+    nodeLayer.querySelectorAll("[data-uml-id]").forEach((node) => {
+      node.classList.toggle("dim", Boolean(focus && !nodes.has(node.dataset.umlId)));
+      node.classList.toggle("preview", Boolean(preview?.type === "node" && preview.id === node.dataset.umlId));
+    });
+    edgeLayer.querySelectorAll("[data-uml-id]").forEach((edge) => {
+      edge.classList.toggle("dim", Boolean(focus && !edges.has(edge.dataset.umlId)));
+      edge.classList.toggle("related", Boolean(preview && edges.has(edge.dataset.umlId)));
+    });
+  }
+
   function renderAtlasScene(level, content, scene, layout) {
     if (scene.moduleOverview) {
       scene.frames = layout.frames;
@@ -2558,6 +2634,12 @@
           if (event.key === "Enter") { event.preventDefault(); openArchitectureEntity(node.id); }
           if (event.key === " ") { event.preventDefault(); selectArchitectureSubject("node", node.id); }
         });
+        group.addEventListener("pointerenter", (event) => {
+          if (event.pointerType === "mouse") atlasEmphasize({ type: "node", id: node.id });
+        });
+        group.addEventListener("pointerleave", () => atlasEmphasize());
+        group.addEventListener("focus", () => atlasEmphasize({ type: "node", id: node.id }));
+        group.addEventListener("blur", () => atlasEmphasize());
       },
       edge(drawn, route) {
         drawn.line.style.strokeDasharray = route.edge.unused ? "6 4" : "none";
@@ -2574,12 +2656,12 @@
         };
         drawn.hit.addEventListener("click", choose);
         drawn.hit.addEventListener("keydown", (event) => { if (["Enter", " "].includes(event.key)) { event.preventDefault(); choose(); } });
+        const edgeFocus = { type: "edge", id: route.edge.id, source: route.edge.source, target: route.edge.target };
+        drawn.group.addEventListener("pointerenter", () => atlasEmphasize(edgeFocus));
+        drawn.group.addEventListener("pointerleave", () => atlasEmphasize());
       },
     }, scene.layoutRoutes);
-    const selected = umlSelection?.type === "node" ? umlSelection.id : null;
-    const neighbors = new Set(scene.edges.filter((edge) => edge.source === selected || edge.target === selected).flatMap((edge) => [edge.source, edge.target]));
-    nodeLayer.querySelectorAll("[data-uml-id]").forEach((node) => node.classList.toggle("dim", Boolean(selected && node.dataset.umlId !== selected && !neighbors.has(node.dataset.umlId))));
-    edgeLayer.querySelectorAll("[data-uml-id]").forEach((edge) => edge.classList.toggle("dim", Boolean(selected && edge.dataset.umlSource !== selected && edge.dataset.umlTarget !== selected)));
+    atlasEmphasize();
     legend.textContent = scene.moduleOverview ? viewMode === "target"
       ? "Target modules · authored relationships · Enter opens direct definitions"
       : "Observed modules · local directed relationships · Enter opens direct definitions"
@@ -2587,7 +2669,7 @@
         : viewMode === "diff" ? "Diff edges · red: undeclared · solid: permitted and used · dashed: allowed but unused"
           : "Directed dependencies · shared positions across views · counts are observed import sites";
     atlasExplore(level); atlasSheet(level);
-    if (pendingAtlasFindingHash) openAtlasFindingHash(pendingAtlasFindingHash);
+    if (pendingAtlasFindingHash || location.hash) openAtlasFindingHash(pendingAtlasFindingHash);
     updateOpenSelected(); sizeDiagram();
   }
 
@@ -2671,8 +2753,34 @@
   overviewButton.addEventListener("click", () => fit(true));
   zoomOutButton.addEventListener("click", () => zoomBy(1 / 1.2));
   zoomInButton.addEventListener("click", () => zoomBy(1.2));
+  let spaceHeld = false;
+  const editing = (target) => target.closest?.("input, textarea, select, [contenteditable='true']");
+  window.addEventListener("keydown", (event) => {
+    if (event.code !== "Space" || event.defaultPrevented || editing(event.target)
+      || event.target.closest?.("button, a, summary, [role='button']")
+      || !canvas.contains(event.target) && !canvas.matches(":hover")) return;
+    event.preventDefault();
+    spaceHeld = true;
+    svg.classList.add("space-pan");
+  });
+  window.addEventListener("keyup", (event) => {
+    if (event.code !== "Space") return;
+    spaceHeld = false;
+    svg.classList.remove("space-pan");
+  });
+  window.addEventListener("blur", () => {
+    spaceHeld = false;
+    svg.classList.remove("space-pan");
+  });
+  canvas.addEventListener("wheel", (event) => {
+    // Plain wheel and two-finger scroll keep panning natively; pinch arrives as a ctrlKey wheel.
+    if (!(event.ctrlKey || event.metaKey)) return;
+    event.preventDefault();
+    zoomAt(Math.exp(-event.deltaY * 0.0015), event.clientX, event.clientY);
+  }, { passive: false });
   svg.addEventListener("pointerdown", (event) => {
-    if (!event.isPrimary || event.button !== 0 || event.target.closest(".node, .hit")) return;
+    const panButton = event.button === 0 || event.button === 1;
+    if (!event.isPrimary || !panButton || (!spaceHeld && event.button === 0 && event.target.closest(".node, .hit"))) return;
     cancelPointerTap();
     capturePointer(svg, event);
     panState = { x: event.clientX, y: event.clientY, offset: { ...panOffset } };
@@ -2749,7 +2857,14 @@
       restoreExpansion();
       return;
     }
-    const current = document.activeElement;
+    expansionRestore = {
+      focus: document.activeElement,
+      scrollX: window.scrollX,
+      scrollY: window.scrollY,
+      bodyOverflow: document.body.style.overflow,
+      inert: [...document.querySelectorAll("main > *")].filter((element) =>
+        !element.contains(root)).map((element) => [element, element.inert]),
+    };
     try {
       if (root.requestFullscreen) {
         await root.requestFullscreen();
@@ -2758,27 +2873,22 @@
     } catch {
       // A browser or embedding policy can deny the direct request.
     }
-    expansionRestore = {
-      focus: current,
-      scrollX: window.scrollX,
-      scrollY: window.scrollY,
-      bodyOverflow: document.body.style.overflow,
-      inert: [...document.querySelectorAll("main > *")].filter((element) =>
-        !element.contains(root)).map((element) => [element, element.inert]),
-    };
-    expansionRestore.inert.forEach(([element]) => { element.inert = true; });
     document.body.style.overflow = "hidden";
     root.dataset.expanded = "fallback";
+    syncExpansionInert();
     sizeDiagram();
     root.setAttribute("aria-modal", "true");
     root.setAttribute("role", "dialog");
     fullscreenButton.textContent = "Restore";
+    fullscreenButton.setAttribute("aria-label", "Restore");
     expandStatus.textContent = "Expanded in this window";
     expandStatus.hidden = false;
     fullscreenButton.focus({ preventScroll: true });
   });
   document.addEventListener("fullscreenchange", updateFullscreenState);
   root.addEventListener("keydown", (event) => {
+    if (event.defaultPrevented || event.target.closest("dialog")
+      || event.key === "Escape" && root.querySelector(".ak-pop, .ak-drawer")) return;
     if (event.key === "Escape" && root.dataset.expanded === "native") {
       event.preventDefault();
       event.stopPropagation();
@@ -2814,6 +2924,28 @@
       routeReady = false; readRoute(); render(); fit(); routeReady = true; syncRoute(true);
     });
   }
+  // Seam for presentation controllers (report-canvas.js). No verdict logic crosses it.
+  window.ArchkeelFlow = {
+    root, svg, canvas, nodeLayer, edgeLayer, atlas: ATLAS, reportScene: REPORT_SCENE,
+    selectElement: (id) => selectArchitectureSubject("node", id),
+    fit, zoomBy, zoomAt, syncExpansionInert, emphasize: atlasEmphasize,
+    setMaxFitScale: (value) => { maxFitScale = value; },
+    openComponent: openAtlasComponent,
+    selectComponent: (id) => {
+      openAtlasComponent(REPORT_SCENE.atlasComponent(id).parent_id);
+      selectArchitectureSubject("node", id);
+    },
+    moduleHref: atlasDetailsHref,
+    openRule: (rule) => {
+      openAtlasComponent(rule.scope_id || null);
+      setTargetDetails(true);
+      const id = `atlas-assessment-${rule.id}`;
+      if (["file:", "http:", "https:"].includes(location.protocol)) location.hash = encodeURIComponent(id);
+      openAtlasFindingHash(id);
+    },
+    state: () => ({ viewMode, scope: umlPath.at(-1)?.id ?? null, scene: renderedScene, zoom: transform.k,
+      selection: umlSelection?.type === "node" ? umlSelection.id : null }),
+  };
   render();
   if (ATLAS) openAtlasFindingHash();
   if (!NAV) {

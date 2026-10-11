@@ -325,14 +325,14 @@ def test_python_realworld_report_browses_deep_target_at_desktop_and_mobile(
                     assert "tags" in inspector
                     assert "app/models/domain/articles.py" in inspector
                     if view == "diagram":
-                        assert "SOURCE SITES" in inspector
+                        assert "Source sites" in inspector
                         assert "articles.py:13:4" in inspector
                         assert "tags: List[str]" in inspector
                     elif view == "target":
                         assert "docs/target.md" in inspector
                         assert "List[str]" in inspector
                     else:
-                        assert "SOURCE SITES" in inspector
+                        assert "Source sites" in inspector
                         assert "articles.py:13:4" in inspector
                     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
                     page.locator(".flow-canvas").scroll_into_view_if_needed()
@@ -848,10 +848,12 @@ def test_python_realworld_module_overview_uses_actual_edges_and_keeps_isolated_r
                     assert len(actual_edges) == len(edges)
                     assert state["routeWarnings"] == 0
                     if view != "target":
+                        page.get_by_role("button", name="Health check", exact=True).click()
                         module_list = page.locator("details.atlas-module-list")
                         assert module_list.locator("summary").inner_text() == "Modules and UML · 72"
                         module_list.locator("summary").click()
                         assert module_list.locator("li").count() == 72
+                        page.get_by_role("button", name="Health check", exact=True).click()
                     degree = {module: 0 for module in expected_modules}
                     for source, target in actual_edges:
                         degree[source] += 1

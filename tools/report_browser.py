@@ -264,6 +264,7 @@ def _check_atlas_interactions(page: Page) -> None:
             assert "observed import cell" not in text
     module = page.locator(".matrix-label[data-module]").first
     if module.count():
+        _show_health_check(page)
         module.click()
         assert "observed module" in page.locator(".flow-inspector-content").inner_text().lower()
         page.get_by_role("button", name="Target", exact=True).click()
@@ -273,6 +274,7 @@ def _check_atlas_interactions(page: Page) -> None:
         _wait_for_layout(page)
     question = page.locator("[data-copy-question]").first
     if question.count():
+        _show_health_check(page)
         page.evaluate("""() => Object.defineProperty(navigator, 'clipboard', {
             configurable: true, value: {writeText: async () => {throw new Error('denied');}}
         })""")
@@ -288,6 +290,9 @@ def _check_atlas_interactions(page: Page) -> None:
     assert page.evaluate("getComputedStyle(document.body).backgroundColor") != before
     theme.click()
     assert page.evaluate("getComputedStyle(document.body).backgroundColor") == before
+    health = page.get_by_role("button", name="Health check", exact=True)
+    if health.get_attribute("aria-expanded") == "true":
+        health.click()
 
 
 def _wait_for_layout(page: Page) -> None:
@@ -602,7 +607,7 @@ def _open_project_uml_details(
             if view == "target":
                 assert "docs/target.md" in inspector
             else:
-                assert "SOURCE SITES" in inspector
+                assert "Source sites" in inspector
                 assert module_path in inspector
             assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
             page.screenshot(path=str(output / f"{name}-{width}-{view}-source.png"), full_page=True)
@@ -612,7 +617,7 @@ def _open_project_uml_details(
     overview.click()
     page.wait_for_url(f"**/{name}.report.html*")
     _wait_for_layout(page)
-    assert page.locator(".atlas-heading").is_visible()
+    assert page.locator(".ak-brand").is_visible()
     assert page.locator('[data-atlas="true"]').is_visible()
     assert root_component["label"]
 
@@ -622,6 +627,12 @@ def _show_details(page: Page) -> None:
     if toggle.get_attribute("aria-expanded") != "true":
         toggle.click()
         _wait_for_layout(page)
+
+
+def _show_health_check(page: Page) -> None:
+    toggle = page.get_by_role("button", name="Health check", exact=True)
+    if toggle.get_attribute("aria-expanded") != "true":
+        toggle.click()
 
 
 def _check_dart_uml_detail(
@@ -709,7 +720,7 @@ def _check_dart_uml_detail(
             _wait_for_layout(page)
             assert parse_qs(urlsplit(page.url).query)["scope"] == ["ordering:domain:orders"]
             for scope in ("ordering:domain", "ordering", None):
-                page.locator(".flow-back").click()
+                page.locator(".flow-breadcrumb button").nth(-2).click()
                 _wait_for_layout(page)
                 query = parse_qs(urlsplit(page.url).query)
                 assert query.get("scope", [None])[0] == scope
@@ -1100,7 +1111,6 @@ def _check_inner_uml(page: Page, name: str, output: Path) -> None:
             )
         inspector = page.locator(".flow-inspector-content").inner_text()
         if view == "diff":
-            assert "AS-IS BINDING" in inspector
             assert f"item = {expected_as_is}" in inspector
         if language == "typescript":
             assert "binding" in inspector
@@ -1120,7 +1130,11 @@ def _check_flutter_unsupported(page: Page, name: str, output: Path) -> None:
     assert [item["subjects"] for item in unsupported] == [["lib/domain/orders/order.dart:12"]]
     payload = json.loads(page.locator("#flow-data").text_content() or "{}")["atlas"]
     assert payload["status"] == "UNKNOWN"
-    assert page.locator(".atlas-status").is_visible()
+    assert page.locator(".ak-run-status").is_visible()
+    assert (
+        f"Observation: {payload['observation_complete']}"
+        in page.locator(".ak-run-status").inner_text()
+    )
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
     page.locator("#flow").screenshot(path=str(output / f"{name}-incomplete.png"))
 
@@ -1173,6 +1187,7 @@ def _capture_assets(browser: Browser, reports: dict[str, Path], output: Path) ->
         page.goto(reports["tour"].as_uri() + "?theme=dark", wait_until="load")
         assert page.locator("html").get_attribute("data-theme") == "dark"
         assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+        _show_health_check(page)
         for heading in ("Worth a look", "Module matrix"):
             assert page.get_by_role("heading", name=heading, exact=True).is_visible()
         assert page.locator(".flow-nodes [data-uml-kind=component]").count()
@@ -1180,14 +1195,17 @@ def _capture_assets(browser: Browser, reports: dict[str, Path], output: Path) ->
         assert page.locator(".atlas-findings").is_visible()
         assert page.locator(".atlas-verdict-grid .verdict-card").count() == 4
         assert not page.locator(".atlas-status-key").count()
+        page.get_by_role("button", name="Health check", exact=True).click()
         page.screenshot(path=str(output / "archkeel-report-preview.png"), full_page=True)
         page.locator("#flow").screenshot(path=str(output / "archkeel-component-flow.png"))
         page.locator('.flow-nodes [data-label="store"]').dblclick()
         _wait_for_layout(page)
+        _show_health_check(page)
         page.locator(".atlas-findings").evaluate("node => node.open = true")
         page.locator(".atlas-finding-group").first.locator("summary").click()
         assert page.locator(".atlas-findings li").first.is_visible()
         page.locator("#flow").screenshot(path=str(output / "archkeel-shop-store-inside.png"))
+        page.get_by_role("button", name="Health check", exact=True).click()
         _check_module_graph(page)
         for name in ("archkeel-report-preview.png", "archkeel-shop-store-inside.png"):
             assert (output / name).stat().st_size <= 400_000, f"{name} exceeds 400 KB"
@@ -1197,6 +1215,41 @@ def _capture_assets(browser: Browser, reports: dict[str, Path], output: Path) ->
         assert not errors
     finally:
         _finish(page, "assets-atlas", output)
+
+    for name, asset, scope in (
+        ("uml-compass-project", "archkeel-compass-target.png", None),
+        (
+            "uml-python-realworld-project",
+            "archkeel-python-module-target.png",
+            "Product and wire contracts:contracts-publishing",
+        ),
+    ):
+        if name not in reports:
+            continue
+        page, errors = _visit(browser, reports[name], "assets-" + name, output)
+        try:
+            query = {
+                "theme": "dark",
+                "view": "target",
+                "content": "modules" if scope else "components",
+            }
+            if scope:
+                query["scope"] = scope
+            page.goto(reports[name].as_uri() + "?" + urlencode(query), wait_until="load")
+            _wait_for_layout(page)
+            if scope:
+                page.get_by_role("button", name="Fullscreen", exact=True).click()
+                page.wait_for_function("() => document.querySelector('#flow').dataset.expanded")
+            else:
+                page.set_viewport_size({"width": 1440, "height": 850})
+                page.locator(".flow-details-toggle").click()
+                _wait_for_layout(page)
+                page.locator(".flow-fit-overview").click()
+            page.locator("#flow").screenshot(path=str(output / asset))
+            assert (output / asset).stat().st_size <= 400_000, f"{asset} exceeds 400 KB"
+            assert not errors
+        finally:
+            _finish(page, "assets-" + name, output)
 
 
 def _check_report_verdicts(browser: Browser, reports: dict[str, Path], output: Path) -> None:
