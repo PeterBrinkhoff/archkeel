@@ -2664,7 +2664,6 @@
     render(); fit();
   };
   resetFiltersButton.remove();
-  zoom100Button.setAttribute("aria-label", "Reset filters");
   zoom100Button.addEventListener("click", resetFlow);
   fitButton.addEventListener("click", () => { positions = Object.create(null); render(); fit(); });
   overviewButton.addEventListener("click", () => fit(true));

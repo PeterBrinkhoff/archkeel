@@ -132,7 +132,7 @@ def test_diff_shows_real_imports_with_original_findings_sites_and_filters(
             page.locator(".flow-filters > summary").click()
             _wait_for_layout(page)
             assert edges.count() == (not permitted)
-            page.locator("#flow").get_by_role("button", name="Reset filters", exact=True).click()
+            page.locator("#flow").get_by_role("button", name="Reset and fit", exact=True).click()
             _wait_for_layout(page)
             page.locator('.flow-legend [data-relationship-kind="imports"]').click()
             _wait_for_layout(page)
