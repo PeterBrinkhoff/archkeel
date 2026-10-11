@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://archkeel.dev/schema/source-facts/2.0.0",
-  "title": "ArchKeel source collection protocol 2.0.0",
+  "$id": "https://archkeel.dev/schema/source-facts/3.0.0",
+  "title": "ArchKeel source collection protocol 3.0.0",
   "description": "Structural wire contract. facts_validation additionally checks section payloads, scope, digests, unique identities, coverage and references. Architecture policy never crosses this port.",
   "$defs": {
     "Record": {
@@ -577,6 +577,29 @@
             "kind",
             "text",
             "valid_syntax"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "list"
+            },
+            "text": {
+              "type": "string"
+            },
+            "elements": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/TypeShape"
+              }
+            }
+          },
+          "required": [
+            "kind",
+            "text",
+            "elements"
           ],
           "additionalProperties": false
         }
@@ -1332,7 +1355,8 @@
         "protocol_version": {
           "enum": [
             "1.0.0",
-            "2.0.0"
+            "2.0.0",
+            "3.0.0"
           ]
         },
         "snapshot": {
@@ -1450,7 +1474,8 @@
         "protocol_version": {
           "enum": [
             "1.0.0",
-            "2.0.0"
+            "2.0.0",
+            "3.0.0"
           ]
         },
         "facts": {
@@ -1497,6 +1522,79 @@
                   }
                 }
               }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "protocol_version": {
+                "enum": [
+                  "1.0.0",
+                  "2.0.0"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "facts": {
+                "properties": {
+                  "type_shapes": {
+                    "items": {
+                      "properties": {
+                        "shape": {
+                          "$ref": "#/$defs/LegacyTypeShape"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "LegacyTypeShape": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/TypeShape"
+        },
+        {
+          "not": {
+            "properties": {
+              "kind": {
+                "const": "list"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          }
+        },
+        {
+          "properties": {
+            "owner": {
+              "$ref": "#/$defs/LegacyTypeShape"
+            },
+            "head": {
+              "$ref": "#/$defs/LegacyTypeShape"
+            },
+            "arguments": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/LegacyTypeShape"
+              }
+            },
+            "left": {
+              "$ref": "#/$defs/LegacyTypeShape"
+            },
+            "right": {
+              "$ref": "#/$defs/LegacyTypeShape"
+            },
+            "argument": {
+              "$ref": "#/$defs/LegacyTypeShape"
             }
           }
         }

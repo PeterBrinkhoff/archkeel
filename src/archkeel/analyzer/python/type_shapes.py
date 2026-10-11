@@ -13,6 +13,7 @@ from archkeel.ir.facts_codec import RawRecord
 from archkeel.ir.type_shapes import (
     LiteralKind,
     TypeApplication,
+    TypeList,
     TypeLiteral,
     TypeMember,
     TypeName,
@@ -71,6 +72,8 @@ def _shape(node: ast.expr, source: str, shapes: dict[str, TypeShape]) -> TypeSha
             tuple(_shape(argument, source, shapes) for argument in arguments),
             tuple_arguments=isinstance(node.slice, ast.Tuple),
         )
+    elif isinstance(node, ast.List):
+        shape = TypeList(text, tuple(_shape(element, source, shapes) for element in node.elts))
     elif isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
         shape = TypeUnion(
             text, _shape(node.left, source, shapes), _shape(node.right, source, shapes)

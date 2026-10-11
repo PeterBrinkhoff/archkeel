@@ -32,6 +32,7 @@ from .source import (
     native_owner_creation_static,
     package_for,
     proven_annotation_carrier_candidates,
+    proven_callable_candidates,
     proven_map_union_candidates,
     resolve_static_name,
     setter_local_references,
@@ -382,14 +383,7 @@ def resolve_reexports(
             )
         ):
             aliases[consumer.module][binding] = (provider, symbol)
-    candidates = {
-        name: proven_map_union_candidates(module, aliases[name]) for name, module in modules.items()
-    }
-    for name, module in modules.items():
-        module._proven_map_union_expressions = frozenset(candidates[name])
-        carriers = proven_annotation_carrier_candidates(module, frozenset(modules))
-        module._proven_annotation_carriers = frozenset(carriers)
-        candidates[name] |= carriers
+    candidates = _type_reference_candidates(imports, modules, aliases)
     escaped_bindings = {module.module: unproven_member_bindings(module) for module in parsed}
     escaped_bindings = _converge_member_escapes(
         imports, modules, stable_bindings, escaped_bindings, candidates
@@ -503,6 +497,108 @@ def _converge_member_escapes(
     return escaped_bindings
 
 
+def _type_reference_candidates(
+    imports: Sequence[RawRecord],
+    modules: dict[str, ParsedModule],
+    aliases: Mapping[str, dict[str, tuple[str, str]]],
+) -> dict[str, dict[ast.expr, frozenset[tuple[str, str]]]]:
+    callable_providers = _callable_providers(imports, modules)
+    candidates = {
+        name: {
+            **proven_map_union_candidates(module, aliases[name]),
+            **proven_callable_candidates(module, callable_providers[name]),
+        }
+        for name, module in modules.items()
+    }
+    for name, module in modules.items():
+        module._proven_map_union_expressions = frozenset(
+            expression for expression in candidates[name] if isinstance(expression, ast.BinOp)
+        )
+        carriers = proven_annotation_carrier_candidates(module, frozenset(modules))
+        module._proven_annotation_carriers = frozenset(carriers)
+        candidates[name] |= carriers
+    return candidates
+
+
+def _callable_providers(
+    imports: Sequence[RawRecord], modules: dict[str, ParsedModule]
+) -> dict[str, dict[str, frozenset[tuple[str, str]]]]:
+    bindings: dict[tuple[str, str], list[RecordData]] = {}
+    for item in imports:
+        data = item["data"]
+        binding_records: list[RecordData] = bindings.setdefault(
+            (data["source_module"], data["binding"]), []
+        )
+        binding_records.append(data)
+    providers: dict[str, dict[str, frozenset[tuple[str, str]]]] = {name: {} for name in modules}
+    for (source, binding), records in bindings.items():
+        module = modules.get(source)
+        if module is None or len(records) != 1 or module.bound_names.count(binding) != 1:
+            continue
+        data = records[0]
+        if not _callable_provider_binding(data):
+            continue
+        origin_value = data.get("origin_definition")
+        head = binding
+        source_providers: dict[str, frozenset[tuple[str, str]]] = providers[source]
+        dependencies: set[tuple[str, str]] = {(source, binding)}
+        if data["symbol"] is None:
+            origin_value = f"{data['target_module']}.Callable"
+            head = f"{binding}.Callable"
+            if data["target_module"] == "collections.abc" and binding == "collections":
+                continue
+        else:
+            route = data["reexport_chain"]
+            if (
+                data.get("origin_binding_unique") is not True
+                or not route
+                or route[0] != f"{data['target_module']}.{data['symbol']}"
+                or route[-1] != origin_value
+            ):
+                continue
+            for index, hop in enumerate(route[:-1]):
+                hop_text: str = hop
+                owner, _, name = hop_text.rpartition(".")
+                records_at_hop = bindings.get((owner, name), ())
+                if len(records_at_hop) != 1:
+                    break
+                peer = records_at_hop[0]
+                if (
+                    not _callable_provider_binding(peer)
+                    or peer.get("reexport") is not True
+                    or peer.get("origin_binding_unique") is not True
+                    or peer.get("origin_definition") != origin_value
+                    or peer["reexport_chain"] != route[index + 1 :]
+                ):
+                    break
+                dependencies.add((owner, name))
+            else:
+                source_providers[head] = frozenset(dependencies)
+            if head not in source_providers:
+                continue
+        if not isinstance(origin_value, str):
+            continue
+        origin: str = origin_value
+        if origin not in {"typing.Callable", "collections.abc.Callable"} or any(
+            origin == name or origin.startswith(name + ".") for name in modules
+        ):
+            source_providers.pop(head, None)
+            continue
+        source_providers[head] = frozenset(dependencies)
+    return providers
+
+
+def _callable_provider_binding(data: RecordData) -> bool:
+    return (
+        data.get("source_binding_unique") is True
+        and data.get("module_level_import") is True
+        and data.get("under_type_checking") is False
+        and (data.get("ordinary_module") is True or data.get("ordinary_module") is False)
+        and not data.get("reexport_candidate")
+        and not data.get("reexport_candidates")
+    )
+
+
 def _retain_type_reference_protection(
     modules: Mapping[str, ParsedModule],
     candidates: dict[str, dict[ast.expr, frozenset[tuple[str, str]]]],
@@ -529,6 +625,7 @@ def _retain_type_reference_protection(
         candidates[name] = retained
         module._proven_map_union_expressions &= protection
         module._proven_annotation_carriers &= protection
+        module._proven_callable_expressions &= protection
     return protection_changed
 
 
@@ -735,7 +832,11 @@ def _opaque_import_member_escapes(
             for expression in module._proven_annotation_carriers
         )
     )
-    if not owner_exposure_only and data["symbol"] is not None and not (framework or carrier):
+    if (
+        not owner_exposure_only
+        and data["symbol"] is not None
+        and not (framework or carrier or data["binding"] in module._proven_callable_providers)
+    ):
         escaped |= {data["binding"]}
     if data["symbol"] is None or owner_exposure_only:
         base_bindings = (

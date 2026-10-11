@@ -33,6 +33,12 @@ class TypeApplication:
 
 
 @dataclass(frozen=True)
+class TypeList:
+    text: str
+    elements: tuple[TypeShape, ...]
+
+
+@dataclass(frozen=True)
 class TypeUnion:
     text: str
     left: TypeShape
@@ -67,6 +73,13 @@ class UnresolvedType:
 
 
 TypeShape: TypeAlias = (
-    TypeName | TypeMember | TypeApplication | TypeUnion | TypeLiteral | TypeUnpack | UnresolvedType
+    TypeName
+    | TypeMember
+    | TypeApplication
+    | TypeList
+    | TypeUnion
+    | TypeLiteral
+    | TypeUnpack
+    | UnresolvedType
 )
 TypeShapeIndex: TypeAlias = Mapping[str, TypeShape]

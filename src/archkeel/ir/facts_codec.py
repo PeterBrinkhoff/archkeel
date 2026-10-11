@@ -76,6 +76,7 @@ from .state_codec import parse_state_data, state_data
 from .type_shapes import (
     LiteralKind,
     TypeApplication,
+    TypeList,
     TypeLiteral,
     TypeMember,
     TypeName,
@@ -162,7 +163,7 @@ def _relative(value: RawJson, label: str) -> str:
 
 
 def _version(value: RawJson) -> str:
-    if not isinstance(value, str) or value not in ("1.0.0", PROTOCOL_VERSION):
+    if not isinstance(value, str) or value not in ("1.0.0", "2.0.0", PROTOCOL_VERSION):
         raise ProtocolError("unsupported collection protocol version")
     return value
 
@@ -529,7 +530,7 @@ def _target_payload(target: ImportTarget) -> dict[str, RawJson]:
     }
 
 
-def _shape(value: RawJson) -> TypeShape:
+def _shape(value: RawJson, protocol_version: str) -> TypeShape:
     if not isinstance(value, dict):
         raise ProtocolError("type shape must be an object")
     kind = value.get("kind")
@@ -540,19 +541,35 @@ def _shape(value: RawJson) -> TypeShape:
     if kind == "member":
         _object(value, {"kind", "text", "owner", "member"}, "type member")
         return TypeMember(
-            text, _shape(value["owner"]), _string(value["member"], "type member.member")
+            text,
+            _shape(value["owner"], protocol_version),
+            _string(value["member"], "type member.member"),
         )
     if kind == "application":
         _object(value, {"kind", "text", "head", "arguments", "tuple_arguments"}, "type application")
         return TypeApplication(
             text,
-            _shape(value["head"]),
-            tuple(_shape(item) for item in _array(value["arguments"], "type arguments")),
+            _shape(value["head"], protocol_version),
+            tuple(
+                _shape(item, protocol_version)
+                for item in _array(value["arguments"], "type arguments")
+            ),
             _boolean(value["tuple_arguments"], "type tuple arguments"),
         )
     if kind == "union":
         _object(value, {"kind", "text", "left", "right"}, "type union")
-        return TypeUnion(text, _shape(value["left"]), _shape(value["right"]))
+        return TypeUnion(
+            text, _shape(value["left"], protocol_version), _shape(value["right"], protocol_version)
+        )
+    if kind == "list" and protocol_version == "3.0.0":
+        _object(value, {"kind", "text", "elements"}, "type list")
+        return TypeList(
+            text,
+            tuple(
+                _shape(item, protocol_version)
+                for item in _array(value["elements"], "type list elements")
+            ),
+        )
     if kind == "literal":
         _object(value, {"kind", "text", "literal_kind"}, "type literal")
         try:
@@ -562,7 +579,7 @@ def _shape(value: RawJson) -> TypeShape:
         return TypeLiteral(text, literal)
     if kind == "unpack":
         _object(value, {"kind", "text", "argument"}, "type unpack")
-        return TypeUnpack(text, _shape(value["argument"]))
+        return TypeUnpack(text, _shape(value["argument"], protocol_version))
     if kind == "unresolved":
         _object(value, {"kind", "text", "valid_syntax"}, "unresolved type")
         return UnresolvedType(text, _boolean(value["valid_syntax"], "type valid syntax"))
@@ -594,6 +611,12 @@ def _shape_payload(shape: TypeShape) -> dict[str, RawJson]:
             "kind": "union",
             "left": _shape_payload(shape.left),
             "right": _shape_payload(shape.right),
+        }
+    if isinstance(shape, TypeList):
+        return {
+            **base,
+            "kind": "list",
+            "elements": [_shape_payload(element) for element in shape.elements],
         }
     if isinstance(shape, TypeLiteral):
         return {**base, "kind": "literal", "literal_kind": shape.kind.value}
@@ -679,7 +702,7 @@ def _file_payload(entry: FileFact) -> dict[str, RawJson]:
 def _runtime_info(value: RawJson, protocol_version: str) -> RuntimeInfo:
     expected = (
         {"name", "version", "required", "requirement_state"}
-        if protocol_version == PROTOCOL_VERSION
+        if protocol_version in {"2.0.0", "3.0.0"}
         else {"name", "version", "required"}
     )
     if not isinstance(value, dict) or set(value) != expected:
@@ -730,7 +753,9 @@ def decode_response(payload: bytes) -> CollectionResponse:
         shapes: list[tuple[str, TypeShape]] = []
         for entry in _array(item["type_shapes"], "type shapes"):
             pair = _object(entry, {"expression", "shape"}, "type shape entry")
-            shapes.append((_string(pair["expression"], "type expression"), _shape(pair["shape"])))
+            shapes.append(
+                (_string(pair["expression"], "type expression"), _shape(pair["shape"], version))
+            )
         facts = SourceFacts(
             _profile(item["profile"]),
             AnalyzerInfo(
@@ -783,7 +808,7 @@ def encode_response(response: CollectionResponse) -> bytes:
                 "required": facts.runtime.required,
                 **(
                     {"requirement_state": facts.runtime.requirement_state}
-                    if response.protocol_version == PROTOCOL_VERSION
+                    if response.protocol_version in {"2.0.0", "3.0.0"}
                     else {}
                 ),
             },
