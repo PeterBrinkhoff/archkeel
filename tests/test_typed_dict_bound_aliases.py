@@ -12,6 +12,7 @@ import pytest
 from test_analyzer import _observe
 from test_boundary_type_bound_aliases import _cli, _facts, _fixture, _targets, _unknowns
 from test_boundary_types_contained_mapping import _commit_report_fixture
+from test_boundary_types_non_init_facades import _write_app
 
 from archkeel.ir.codec import (
     canonical_report_bytes,
@@ -19,12 +20,232 @@ from archkeel.ir.codec import (
     observation_payload,
     parse_observation,
 )
+from archkeel.ir.model import stable_id
+from archkeel.ir.trace import trace_valid_violations
 
 _CE_METADATA = (
     "from typing import TypedDict\n\n"
     "class ExportMetadata(TypedDict, total=False):\n"
     "    target_entity: str\n    selector: str\n    type: str\n"
 )
+
+
+def _public_typed_dict(root: Path, declaration: str, *, facade=False, expose_read=False):
+    module = "sample.app" if facade else "sample.app.api"
+    _write_app(
+        root,
+        public=[f"{module}:Values", *([f"{module}:read"] if expose_read else [])],
+        init="from .api import Values\n__all__ = ['Values']\n" if facade else "",
+        api=declaration + ("def read() -> Values: pass\n" if expose_read else ""),
+        implementation="",
+    )
+    (root / "archkeel.toml").write_text(
+        '[scan]\nroots = ["sample"]\nnamespace = "sample"\ncontract = "contract.json"\n'
+    )
+    provenance = root / "docs/architecture/sample.md"
+    provenance.parent.mkdir(parents=True)
+    provenance.write_text("Typed value fields form the public boundary.\n")
+
+
+@pytest.mark.parametrize("facade", [False, True], ids=["direct", "facade"])
+@pytest.mark.parametrize("total", ["", ", total=True", ", total=False"])
+@pytest.mark.parametrize(
+    "provider,base",
+    [
+        ("from typing import TypedDict", "TypedDict"),
+        ("from typing import TypedDict as TD", "TD"),
+        ("import typing as t", "t.TypedDict"),
+    ],
+)
+def test_proven_stdlib_typed_dict_boundary_checks_fields_without_dict_methods(
+    tmp_path: Path, facade, total, provider, base
+):
+    _public_typed_dict(
+        tmp_path,
+        f"{provider}\nclass Values({base}{total}):\n    host: str\n    port: int\n",
+        facade=facade,
+    )
+    observation = _observe(tmp_path).observation
+    assert observation is not None
+    assert observation.records("violations") == ()
+    assert _unknowns(observation) == ()
+    values = next(r for r in observation.records("symbols") if r.title == "Values")
+    assert values.data.get("source_member_binding_static") is True
+
+
+@pytest.mark.parametrize("facade", [False, True])
+@pytest.mark.parametrize("key", ["port", "_port"])
+@pytest.mark.parametrize(
+    "field,verdict", [("str", "PASS"), ("object", "FAIL"), ("Missing", "UNKNOWN")]
+)
+def test_ordinary_cli_typed_dict_preserves_field_verdict(
+    tmp_path: Path, facade, key, field, verdict
+):
+    _public_typed_dict(
+        tmp_path,
+        f"from typing import TypedDict\nclass Values(TypedDict):\n    {key}: {field}\n",
+        facade=facade,
+    )
+    _commit_report_fixture(tmp_path)
+    output = tmp_path / "architecture.json"
+    report = _cli(tmp_path, "report", output)
+    assert report.returncode == 0, (report.stdout, report.stderr)
+    observation = parse_observation(decode_canonical_model(json.loads(output.read_text())))
+    assert any(r.data.get("reason") == "inherited_surface" for r in _unknowns(observation)) is (
+        field == "Missing"
+    )
+    validate = _cli(tmp_path, "validate", output)
+    assert json.loads(validate.stdout)["declared_rules"] == verdict
+    if field == "object":
+        [finding] = trace_valid_violations(observation)
+        values = next(r for r in observation.records("symbols") if r.title == "Values")
+        [declaration] = values.data.get("attribute_declarations")
+        assert finding.id == stable_id(
+            "VIO", "APP-TYPES-NOT-DICT", values.id, key, declaration.get("definition_id")
+        )
+        assert (
+            finding.data.get("qualified_name")
+            == f"sample.app{'' if facade else '.api'}.Values.{key}"
+        )
+        assert set(declaration.get("evidence_ids")) <= set(finding.evidence_ids)
+        assert finding.fact_ids == (values.id,)
+
+
+@pytest.mark.parametrize("key", ["port", "_port"])
+@pytest.mark.parametrize("facade", [False, True])
+def test_deferred_unresolved_typed_dict_field_has_its_own_unknown_position(
+    tmp_path: Path, key, facade
+):
+    _public_typed_dict(
+        tmp_path,
+        "from __future__ import annotations\nfrom typing import TypedDict\n"
+        f"class Values(TypedDict):\n    {key}: Missing\n",
+        facade=facade,
+    )
+    observation = _observe(tmp_path).observation
+    assert observation is not None
+    [unknown] = _unknowns(observation)
+    assert (
+        unknown.data.get("qualified_name") == f"sample.app{'' if facade else '.api'}.Values.{key}"
+    )
+    assert unknown.data.get("position") == key
+
+
+def test_ordinary_class_private_field_policy_is_unchanged(tmp_path: Path):
+    _public_typed_dict(tmp_path, "class Values:\n    _port: object\n")
+    observation = _observe(tmp_path).observation
+    assert observation is not None
+    assert observation.records("violations") == ()
+    assert _unknowns(observation) == ()
+
+
+@pytest.mark.parametrize(
+    "declaration,attack",
+    [
+        ("class Values(TypedDict):\n    port: str\n", "Values.port = object\n"),
+        ("class Values(TypedDict):\n    port: str\n", "unknown(Values)\n"),
+        ("class Values(TypedDict):\n    port: str\n", "incoming-write"),
+        ("class Values(TypedDict):\n    port: str\n", "incoming-call"),
+        ("class Values(TypedDict):\n    port: str\n", "Values = unknown\n"),
+        ("class Values(TypedDict):\n    port: str\n    def method(self) -> str: pass\n", ""),
+        (
+            "class Values(TypedDict):\n    port: str\n"
+            "    @property\n    def method(self) -> str: pass\n",
+            "",
+        ),
+        ("class Values(TypedDict):\n    port: str = unknown()\n", ""),
+        ("class Values(TypedDict):\n    port: unknown()\n", ""),
+        ("class Values(TypedDict):\n    port: str = 1\n", ""),
+        (
+            "class Good(TypedDict):\n    port: str\nclass Values(TypedDict):\n    port: str = 1\n",
+            "",
+        ),
+        ("class Good(TypedDict):\n    port: str\nclass Values(TypedDict):\n    extra = 1\n", ""),
+        ("str = unknown\nclass Values(TypedDict):\n    port: str\n", ""),
+        ("TypedDict = unknown\nclass Values(TypedDict):\n    port: str\n", ""),
+        ("class Values(TypedDict):\n    port: str\n", "TypedDict = unknown\n"),
+        (
+            "import typing\ntyping.TypedDict = unknown\nclass Values(TypedDict):\n    port: str\n",
+            "",
+        ),
+        ("@unknown\nclass Values(TypedDict):\n    port: str\n", ""),
+        ("class Values(TypedDict, metaclass=unknown):\n    port: str\n", ""),
+        ("class Values(TypedDict, object):\n    port: str\n", ""),
+        ("if unknown:\n    class Values(TypedDict):\n        port: str\n", ""),
+        ("class Base(TypedDict):\n    port: str\nclass Values(Base): pass\n", ""),
+        (
+            "from typing_extensions import TypedDict\n"
+            "class Values(TypedDict, total=False):\n    port: str\n",
+            "",
+        ),
+        ("from typing_extensions import TypedDict\nclass Values(TypedDict):\n    port: str\n", ""),
+    ],
+)
+def test_unproven_typed_dict_member_surface_stays_unknown(tmp_path: Path, declaration, attack):
+    prefix = (
+        "" if declaration.startswith("from typing_extensions") else "from typing import TypedDict\n"
+    )
+    _public_typed_dict(tmp_path, prefix + declaration, expose_read=True)
+    if attack.startswith("incoming"):
+        (tmp_path / "sample/app/evil.py").write_text(
+            "from .api import Values\n"
+            + ("Values.port = object\n" if attack == "incoming-write" else "unknown(Values)\n")
+        )
+    else:
+        path = tmp_path / "sample/app/api.py"
+        path.write_text(path.read_text() + attack)
+    observation = _observe(tmp_path).observation
+    assert observation is not None and _unknowns(observation)
+
+
+@pytest.mark.parametrize("flag", [None, False])
+@pytest.mark.parametrize(
+    "proof",
+    ["typed_dict_header_static", "source_member_binding_static", "provider", "declarations"],
+)
+def test_old_typed_dict_source_facts_keep_inherited_method_unknown(tmp_path: Path, proof, flag):
+    from archkeel.check.observation import assemble_observation
+    from archkeel.ir.facts_codec import decode_response, encode_response
+    from archkeel.ir.protocol import CollectionResponse
+
+    _public_typed_dict(
+        tmp_path,
+        "from typing import TypedDict\nclass Values(TypedDict, total=False):\n    port: str\n",
+    )
+    raw = json.loads(encode_response(CollectionResponse(_collect(tmp_path))))
+    record = next(
+        r
+        for section in raw["facts"]["sections"]
+        for r in section["records"]
+        if (
+            r["data"].get("binding") == "TypedDict"
+            if proof == "provider"
+            else r["data"].get("qualified_name") == "sample.app.api.Values"
+        )
+    )
+    key = (
+        "source_member_binding_static"
+        if proof == "provider"
+        else "attribute_declarations"
+        if proof == "declarations"
+        else proof
+    )
+    record["data"].pop(key)
+    if proof == "declarations":
+        record["data"].pop("member_inventories")
+    if proof == "declarations" and flag is False:
+        record["data"][key] = []
+    elif flag is not None:
+        record["data"][key] = flag
+    facts = decode_response(json.dumps(raw).encode()).facts
+    observation = assemble_observation(
+        facts,
+        contract_root=tmp_path,
+        contract_path=tmp_path / "contract.json",
+        roots=("sample",),
+        namespace="sample",
+    )[0]
+    assert any(r.data.get("reason") == "inherited_surface" for r in _unknowns(observation))
 
 
 def _ce_fixture(root: Path, *, facade=False, selected=(0, 1, 2, 3), metadata=_CE_METADATA):

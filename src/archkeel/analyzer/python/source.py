@@ -964,10 +964,14 @@ def typed_dict_header_static(
         or node.name not in stable_direct_module_bindings(module)
         or node.decorator_list
         or len(node.bases) != 1
-        or len(node.keywords) != 1
-        or node.keywords[0].arg != "total"
-        or not isinstance(node.keywords[0].value, ast.Constant)
-        or not isinstance(node.keywords[0].value.value, bool)
+        or not (
+            not node.keywords
+            and resolve_static_name(module, node.bases[0]) == NATIVE_TYPED_DICT_BASE
+            or len(node.keywords) == 1
+            and node.keywords[0].arg == "total"
+            and isinstance(node.keywords[0].value, ast.Constant)
+            and isinstance(node.keywords[0].value.value, bool)
+        )
     ):
         return False
     base = node.bases[0]
@@ -1056,6 +1060,11 @@ def _class_creation_static(
     owner_exposure_only: bool,
     unsafe_providers: AbstractSet[str],
 ) -> bool:
+    if (
+        len(node.bases) == 1
+        and resolve_static_name(module, node.bases[0]) == NATIVE_TYPED_DICT_BASE
+    ):
+        return native_owner_creation_static(module, node, unsafe_providers)
     return (
         class_header_static(node)
         and not unproven_class_body(module, node)
@@ -1165,26 +1174,29 @@ def native_owner_creation_static(
         ):
             return False
         return _native_class_body_static(module, node)
-    if len(node.bases) == 1 and not node.decorator_list and not node.keywords:
-        base = node.bases[0]
-        return (
-            "typing" not in unsafe_providers
-            and _native_factory_binding_static(module, node, base, base, NATIVE_TYPED_DICT_BASE)
-            and all(
-                isinstance(child, ast.Pass)
-                or (
-                    isinstance(child, ast.Expr)
-                    and isinstance(child.value, ast.Constant)
-                    and isinstance(child.value.value, str)
-                )
-                or (
-                    isinstance(child, ast.AnnAssign)
-                    and isinstance(child.target, ast.Name)
-                    and child.value is None
-                    and _deferred_creation_annotation(module, child.annotation)
-                )
-                for child in node.body
+    if (
+        len(node.bases) == 1
+        and resolve_static_name(module, node.bases[0]) == NATIVE_TYPED_DICT_BASE
+    ):
+        return typed_dict_header_static(module, node, unsafe_providers) and all(
+            isinstance(child, ast.Pass)
+            or (
+                isinstance(child, ast.Expr)
+                and isinstance(child.value, ast.Constant)
+                and isinstance(child.value.value, str)
             )
+            or (
+                isinstance(child, ast.AnnAssign)
+                and isinstance(child.target, ast.Name)
+                and child.value is None
+                and (
+                    _deferred_creation_annotation(module, child.annotation)
+                    or _bare_builtin(
+                        module, child.annotation, {"str", "int", "float", "bool", "bytes", "object"}
+                    )
+                )
+            )
+            for child in node.body
         )
     return False
 
@@ -1200,6 +1212,21 @@ def _native_factory_binding_static(
         isinstance(target, ast.Name)
         and target.id in unique_direct_module_bindings(module)
         and is_proven_decorator(module, expression, owner, None, frozenset({origin}))
+    )
+
+
+def native_typed_dict_provider_static(
+    module: ParsedModule, binding: str, unsafe_providers: AbstractSet[str]
+) -> bool:
+    return any(
+        isinstance(owner, ast.ClassDef)
+        and len(owner.bases) == 1
+        and resolve_static_name(module, owner.bases[0]) == NATIVE_TYPED_DICT_BASE
+        and any(
+            isinstance(node, ast.Name) and node.id == binding for node in ast.walk(owner.bases[0])
+        )
+        and native_owner_creation_static(module, owner, unsafe_providers)
+        for owner in module.tree.body
     )
 
 
