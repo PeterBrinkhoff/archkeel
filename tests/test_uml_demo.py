@@ -20,14 +20,16 @@ _PYTHON_DEMO_ENTITY_KINDS = frozenset(get_args(EntityKind)) - {"mixin"}
 
 def _demo_report(output):
     main = output.with_suffix(".report.html")
-    payload = re.search(r'<script[^>]*id="flow-data"[^>]*>(.*?)</script>', main.read_text(), re.S)
+    payload = re.search(
+        r'<script[^>]*id="flow-data"[^>]*>(.*?)</script>', main.read_text(encoding="utf-8"), re.S
+    )
     assert payload
     atlas = json.loads(payload.group(1))["atlas"]
     component = next(item for item in atlas["components"] if item["label"] == "demo")
     assert component["id"]
     sidecar = main.with_name(atlas["detail_page"])
     payload = re.search(
-        r'<script[^>]*id="flow-data"[^>]*>(.*?)</script>', sidecar.read_text(), re.S
+        r'<script[^>]*id="flow-data"[^>]*>(.*?)</script>', sidecar.read_text(encoding="utf-8"), re.S
     )
     assert payload
     data = json.loads(payload.group(1))
