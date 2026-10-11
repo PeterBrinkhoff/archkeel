@@ -86,13 +86,24 @@ def test_native_reexported_assessment_requires_its_physical_public_owner(tmp_pat
             "decided_by": "architect",
         }
     ]
-    for public, expected in (([], "FAIL"), (["sample.store:RuleAssessment"], "PASS")):
+    for public, expected in (([], "FAIL"), (["sample.store:RuleAssessment"], "UNKNOWN")):
         contract["components"][1]["public"] = public
         path.write_text(json.dumps(contract))
-        result, _ = run_report(root, config=config, analyzer=observe, only_architecture=True)
+        result, architecture = run_report(
+            root, config=config, analyzer=observe, only_architecture=True
+        )
         (assessment,) = result.rule_assessments
         assert assessment.status == expected
         assert assessment.evaluation_proven
+        assert assessment.count == (0 if public else 2)
+        if public:
+            assert assessment.undecided == 2
+            observed = parse_observation(decode_canonical_model(json.loads(architecture)))
+            assert {
+                item.data.get("path")
+                for item in observed.records("unknowns") or ()
+                if item.kind == "boundary_type_position"
+            } == {"value.status", "return.status"}
 
 
 def test_public_rule_assessment_import_preserves_identity_constructor_and_fields():

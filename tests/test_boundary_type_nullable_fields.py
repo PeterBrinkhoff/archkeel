@@ -132,16 +132,25 @@ def test_field_allowance_rejects_inexact_declaration_or_selector(
 @pytest.mark.parametrize(
     ("route", "remaining"),
     [
-        ("Alias", ["return.result.other_counts"]),
-        ("list[Alias | None]", ["return.result.other_counts"]),
-        ("dict[str, Alias]", ["return.result", "return.result.other_counts"]),
+        ("Alias", []),
+        ("list[Alias | None]", []),
+        ("dict[str, Alias]", ["return.result"]),
     ],
 )
-def test_nullable_field_declaration_survives_dto_alias_and_container(
+def test_nullable_field_allowance_cannot_resolve_an_unproven_dto_alias(
     tmp_path: Path, route: str, remaining: list[str]
 ) -> None:
     observed = _fixture(tmp_path, route=route)
     assert sorted(r.data.get("path") for r in trace_valid_violations(observed)) == remaining
+    [unknown] = [
+        r for r in observed.records("unknowns") or () if r.kind == "boundary_type_position"
+    ]
+    assert unknown.data.get("path") == "return.result"
+    assert unknown.data.get("nested_annotation") == route
+    assert unknown.data.get("reason") == "other"
+    assert not any(
+        r.kind == "boundary_type_allowance" for r in observed.records("typing_signals") or ()
+    )
 
 
 @pytest.mark.parametrize("schema_version", ["2.1.0", "3.1.0", "3.2.0"])
@@ -204,7 +213,14 @@ def test_alias_field_allowance_cannot_pin_an_alias_expansion(
         schema_version=schema_version,
         returns="Envelope" if schema_version == "2.1.0" else "Envelope | None",
     )
-    assert len(trace_valid_violations(observed)) == 2
+    [sibling] = trace_valid_violations(observed)
+    assert sibling.data.get("path") == "return.result.other_counts"
+    [unknown] = [
+        r for r in observed.records("unknowns") or () if r.kind == "boundary_type_position"
+    ]
+    assert unknown.data.get("path") == "return.result.observed_counts"
+    assert unknown.data.get("nested_annotation") == "Counts"
+    assert unknown.data.get("reason") == "other"
     assert not any(
         r.kind == "boundary_type_allowance" for r in observed.records("typing_signals") or ()
     )

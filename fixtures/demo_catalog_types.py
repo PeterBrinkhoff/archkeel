@@ -1205,24 +1205,28 @@ _PUBLIC_API_INHERITED_UNKNOWN = Variant(
 
 _PUBLIC_API_ALIAS_MISSING = Variant(
     id="public-api-alias-missing",
-    section="validation",
+    section="class_b",
     item="public_api:class_alias_missing",
-    summary="Alias = Child exposes its own and inherited Payload even when Child is a "
-    "component facade (AD-131).",
+    summary="Alias = Child retains UNKNOWN until its source binding and member are proven "
+    "(AD-92); the alias body cannot establish a missing Payload declaration.",
     files=_public_api_inherited_fields(declared=False, aliased=True),
     expected_violations=(),
-    expected_codes=("api_surface.missing",),
+    expected_codes=(),
+    expected_unknowns=(("api_surface_limit", "shop.model.public_api:Alias"),),
+    expected_declared_rules="UNKNOWN",
 )
 
 _PUBLIC_API_ALIAS_DECLARED = Variant(
     id="public-api-alias-declared",
-    section="clean",
+    section="class_b",
     item="public_api:class_alias_declared",
-    summary="Declaring Alias and Payload closes its fields; component.public alone cannot "
-    "do that (AD-131).",
+    summary="Declaring Alias and Payload does not prove the alias source binding; "
+    "its public surface remains UNKNOWN (AD-92).",
     files=_public_api_inherited_fields(declared=True, aliased=True),
     expected_violations=(),
     expected_codes=(),
+    expected_unknowns=(("api_surface_limit", "shop.model.public_api:Alias"),),
+    expected_declared_rules="UNKNOWN",
 )
 
 VARIANTS: tuple[Variant, ...] = (
