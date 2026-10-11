@@ -2975,6 +2975,8 @@ def _declared_facade_positions(
     uncertain_reexport_origins: UncertainReexportOrigins | None = None,
     reexports: ReexportIndex | None = None,
     property_chains: frozenset[str] = frozenset(),
+    *,
+    include_fields: bool = False,
 ) -> DeclaredFacade | None:
     """The (module, qualified name, annotated positions) for one declared facade callable.
 
@@ -2992,6 +2994,7 @@ def _declared_facade_positions(
             uncertain_reexport_origins,
             reexports,
             property_chains,
+            include_fields=include_fields,
         )
     if data.get("qualified_name") in property_chains and not (
         data.get("source_final_method_binding") is True
@@ -3051,12 +3054,15 @@ def _declared_facade_inherited_positions(
     uncertain_reexport_origins: UncertainReexportOrigins | None,
     reexports: ReexportIndex | None,
     property_chains: frozenset[str],
+    *,
+    include_fields: bool = False,
 ) -> DeclaredFacade | None:
     base_roots = data["base_roots"] if "base_roots" in data else data["bases"]
     if not any(
         f"{data['qualified_name']}.{name}" in property_chains for name in data["class_members"]
     ) and not any(base not in _FRAMEWORK_BASES for base in base_roots):
-        return None
+        if not include_fields or not data.get("fields"):
+            return None
     module, name = data["module"], data["name"]
     entries: list[FacadeEntry] = []
     owner = contract.component_for(module)
@@ -3348,6 +3354,7 @@ def facade_signature_types(
             uncertain_reexport_origins,
             reexports,
             property_chains,
+            include_fields=True,
         )
         has_proven_facade = found is not None and any(not entry[3] for entry in found[4])
         names = (
@@ -3364,6 +3371,17 @@ def facade_signature_types(
             else []
         )
         if found is not None and item["kind"] == "class":
+            field_types, field_candidates = _declared_field_reach(
+                item,
+                imports,
+                contract,
+                exports_by_module,
+                imports_by_binding,
+                classes_by_location,
+                has_proven_facade,
+                type_shapes=type_shapes,
+            )
+            names = sorted(set(names) | set(field_types))
             if has_proven_facade:
                 inherited_types, _, _ = _inherited_facade_types(
                     item,
@@ -3387,6 +3405,7 @@ def facade_signature_types(
                 classes_by_location,
                 type_shapes=type_shapes,
             )
+            candidates = sorted(set(candidates) | set(field_candidates))
             if candidates:
                 raw_candidates = (
                     item["data"]["facade_type_candidates_by_publisher"]
@@ -3456,6 +3475,7 @@ def _scoped_facade_signature_types(
                 uncertain_reexport_origins,
                 reexports,
                 property_chains,
+                include_fields=True,
             )
             if found is None:
                 continue
@@ -3477,6 +3497,17 @@ def _scoped_facade_signature_types(
                 else []
             )
             if item["kind"] == "class":
+                field_types, field_candidates = _declared_field_reach(
+                    item,
+                    imports,
+                    contract,
+                    exports_by_module,
+                    imports_by_binding,
+                    classes_by_location,
+                    has_proven_facade,
+                    type_shapes=type_shapes,
+                )
+                names = sorted(set(names) | set(field_types))
                 if has_proven_facade:
                     inherited_types, _, _ = _inherited_facade_types(
                         item,
@@ -3500,6 +3531,7 @@ def _scoped_facade_signature_types(
                     classes_by_location,
                     type_shapes=type_shapes,
                 )
+                candidates = sorted(set(candidates) | set(field_candidates))
                 if candidates:
                     raw_candidates = (
                         item["data"]["facade_type_candidates_by_mount"]
@@ -3542,6 +3574,92 @@ def _scoped_facade_signature_types(
             }
         )
     return recorded
+
+
+def _declared_field_binding_static(data: RecordData, name: str) -> bool:
+    """Name reach requires one surviving field on a statically bound public class."""
+    declarations = data.get("attribute_declarations", ())
+    uncertainties: dict[str, object] = data.get("annotation_binding_uncertainties", {})
+    return (
+        data.get("source_binding_unique") is True
+        and data.get("source_member_binding_static") is True
+        and data.get("class_header_static") is True
+        and data.get("class_body_control_flow") is False
+        and sum(declaration["name"] == name for declaration in declarations) == 1
+        and name not in data.get("class_members", ())
+        and not uncertainties.get(name)
+    )
+
+
+def _declared_field_reach(
+    item: RawRecord,
+    imports: Sequence[RawRecord],
+    contract: ArchitectureContract,
+    exports: dict[str, frozenset[str]],
+    bindings: BindingIndex,
+    classes: BindingIndex,
+    published: bool,
+    *,
+    type_shapes: TypeShapeIndex,
+) -> tuple[list[str], list[str]]:
+    """A proven field exposes names, independently of proving their alias bodies."""
+    data = item["data"]
+    module = data["module"]
+    names: set[str] = set()
+    candidates: set[str] = set()
+    static_routes = {
+        f"{owner}.{name}"
+        for owner, name in bindings
+        if _alias_binding_static(bindings[(owner, name)])
+    }
+    for field in data.get("fields", ()):
+        annotation = field.get("annotation")
+        if not annotation:
+            continue
+        verdict = _boundary_type_verdict(
+            annotation,
+            module,
+            contract,
+            exports,
+            bindings,
+            classes,
+            enter_fields=False,
+            type_shapes=type_shapes,
+        )
+        shape = type_shapes.get(annotation)
+        origin = (
+            resolve_named_type(shape.name, module, bindings, classes)
+            if isinstance(shape, TypeName)
+            else None
+        )
+        reached: set[str] = {f"{origin[0]}.{origin[1]}"} if isinstance(origin, tuple) else set()
+        provider = classes.get(origin) if isinstance(origin, tuple) else None
+        route = bindings.get((module, shape.name)) if isinstance(shape, TypeName) else None
+        chain: list[str] = (route["reexport_chain"] or []) if isinstance(route, dict) else []
+        chain_static = all(entry in static_routes or entry in reached for entry in chain)
+        possible: set[str] = {f"{owner}.{name}" for owner, name in verdict.resolved}
+        if isinstance(shape, TypeName):
+            for imported in imports:
+                binding = imported["data"]
+                if binding["source_module"] == module and binding["binding"] == shape.name:
+                    possible.update(binding.get("reexport_candidates", ()))
+                    possible.update(binding.get("reexport_chain", ()))
+        certain = (
+            published
+            and _declared_field_binding_static(data, field["name"])
+            and isinstance(origin, tuple)
+            and isinstance(provider, dict)
+            and _alias_binding_static(provider)
+            and (route is None or _alias_binding_static(route))
+            and chain_static
+            and shape is not None
+            and _base_route_member_static(shape, module, bindings, classes)
+            and verdict.undecidable not in {"ambiguous_binding", "unresolved_name"}
+        )
+        if certain:
+            names.update(reached)
+        candidates.update(possible - (reached if certain else set()))
+    return sorted(names), sorted(candidates)
 
 
 def _resolved_position_types(

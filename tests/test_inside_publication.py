@@ -1638,3 +1638,91 @@ def test_inherited_reexport_retains_result_candidates_at_each_scope(
     assert [item.code for item in result.diagnostics if item.subject == noise] == (
         ["interface.unused", "interface.unused"] if expected is not None else []
     ), result.diagnostics
+
+
+@pytest.mark.parametrize("published_module", [False, True])
+@pytest.mark.parametrize(
+    "alias",
+    [
+        "from typing import Literal\nPayload = Literal['a', 'b']\n",
+        "from enum import Enum\nfrom typing import Literal\n"
+        "class Kind(Enum):\n    A = 'a'\n    B = 'b'\n"
+        "Payload = Literal[Kind.A, Kind.B]\n",
+    ],
+)
+def test_public_dto_field_reaches_alias_name_without_proving_body(
+    tmp_path: Path, published_module: bool, alias: str
+) -> None:
+    unused, facade_types, _, usage_unknown = _generic_facade_diagnostics(
+        tmp_path,
+        "from pydantic import BaseModel\nfrom .models import Payload\n"
+        "class Child(BaseModel):\n    kind: Payload\n",
+        extra_files={"sample/models.py": alias + "class Noise: pass\nclass Unrelated: pass\n"},
+    )
+    if published_module:
+        contract_path = tmp_path / "contract.json"
+        contract = json.loads(contract_path.read_text())
+        contract["components"][0]["public"][0] = "sample.api"
+        contract_path.write_text(json.dumps(contract))
+        result = _observe(tmp_path)
+        assert result.observation is not None
+        diagnostics = interface_diagnostics(parse_contract(contract), result.observation)
+        assert not any(d.subject == "sample.models:Payload" for d in diagnostics)
+    assert "sample.models:Payload" not in unused
+    assert "sample.models.Payload" in facade_types
+    assert not any(d.subject == "sample.models:Payload" for d in usage_unknown)
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        ("class Child:\n    kind: str\n", "interface.unused"),
+        ("class Child:\n    _kind: Payload\n", "interface.unused"),
+        ("class Private:\n    kind: Payload\nclass Child: pass\n", "interface.unused"),
+        ("class Child:\n    kind: Payload\n    kind = str\n", "interface.usage_unknown"),
+        ("class Child:\n    kind: Payload\n    del kind\n", "interface.usage_unknown"),
+        ("class Child:\n    kind: Payload\n    del (kind, other)\n", "interface.usage_unknown"),
+        (
+            "class Child:\n    kind: Payload\n    if True:\n        del kind\n",
+            "interface.usage_unknown",
+        ),
+        ("class Child:\n    kind: Payload\n    def kind(self): pass\n", "interface.usage_unknown"),
+        ("class Child:\n    kind: Payload\n    class kind: pass\n", "interface.usage_unknown"),
+        ("class Child:\n    kind: Payload\n    if True: kind = str\n", "interface.usage_unknown"),
+        ("class Child:\n    kind: Payload\nPayload = str\n", "interface.usage_unknown"),
+        (
+            "if True:\n    from .models import Payload\nclass Child:\n    kind: Payload\n",
+            "interface.usage_unknown",
+        ),
+    ],
+)
+def test_public_dto_field_requires_proven_field_binding(
+    tmp_path: Path, source: str, expected: str
+) -> None:
+    unused, _, _, unknown = _generic_facade_diagnostics(
+        tmp_path, "from .models import Payload\n" + source
+    )
+    assert ("sample.models:Payload" in unused) == (expected == "interface.unused")
+    assert any(d.subject == "sample.models:Payload" for d in unknown) == (
+        expected == "interface.usage_unknown"
+    )
+
+
+@pytest.mark.parametrize("conditional", [False, True])
+def test_public_dto_field_requires_proven_provider_route(tmp_path: Path, conditional: bool) -> None:
+    unused, facade_types, _, unknown = _generic_facade_diagnostics(
+        tmp_path,
+        "from .middle import Payload\nclass Child:\n    kind: Payload\n",
+        extra_packages=("sample.middle",),
+        extra_files={
+            "sample/middle.py": (
+                "if True:\n    from .models import Payload\n"
+                if conditional
+                else "from .models import Payload\n"
+            )
+            + "__all__ = ['Payload']\n"
+        },
+    )
+    assert "sample.models:Payload" not in unused
+    assert ("sample.models.Payload" in facade_types) is not conditional
+    assert any(d.subject == "sample.models:Payload" for d in unknown) is conditional
