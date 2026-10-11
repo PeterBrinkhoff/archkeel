@@ -829,6 +829,39 @@ def _property_operation(
     return None
 
 
+def setter_local_references(module: ParsedModule) -> frozenset[ast.AST]:
+    references: set[ast.AST] = set()
+    for owner in module.tree.body:
+        if not isinstance(owner, ast.ClassDef):
+            continue
+        bindings = property_bindings(module, owner)
+        for method, binding in bindings.items():
+            positional = (*method.args.posonlyargs, *method.args.args)
+            parameters = (*positional[1:], *method.args.kwonlyargs)
+            if binding["operation"] != "setter" or method.name not in {
+                argument.arg for argument in parameters
+            }:
+                continue
+            nodes = tuple(own_scope(method))
+            if any(
+                isinstance(node, ast.Global | ast.Nonlocal) and method.name in node.names
+                for node in nodes
+            ):
+                continue
+            nested = {
+                child
+                for node in nodes
+                if isinstance(node, ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp)
+                for child in ast.walk(node)
+            }
+            references.update(
+                node
+                for node in nodes
+                if isinstance(node, ast.Name) and node.id == method.name and node not in nested
+            )
+    return frozenset(references)
+
+
 def method_decorator_data(
     module: ParsedModule,
     node: ast.FunctionDef | ast.AsyncFunctionDef,
@@ -902,6 +935,7 @@ def explicit_provider_escapes(module: ParsedModule) -> frozenset[str]:
                 include_creation_uncertainty=False,
             ),
             member_surface=True,
+            local_references=setter_local_references(module),
         )
     )
 
@@ -1231,7 +1265,10 @@ def _contained_member_roots(
     # Native functions expose their defining namespace, including through a class's methods.
     namespace = frozenset(module.scope_bound_names)
     uncertain_bases = member_binding_closure(
-        nodes, module.incoming_member_escapes, member_surface=True
+        nodes,
+        module.incoming_member_escapes,
+        member_surface=True,
+        local_references=setter_local_references(module),
     )
     contained |= {
         (name, binding)
@@ -1317,7 +1354,11 @@ def _member_binding_roots(
     if member_surface:
         changed_members |= module.incoming_member_escapes if incoming is None else incoming
     changed_members = member_binding_closure(
-        nodes, changed_members, member_surface=member_surface, contained=contained
+        nodes,
+        changed_members,
+        member_surface=member_surface,
+        contained=contained,
+        local_references=setter_local_references(module) if member_surface else frozenset(),
     )
     changed_origins: set[str] = set()
     for node in nodes:
@@ -1342,6 +1383,7 @@ def member_binding_closure(
     *,
     member_surface: bool,
     contained: AbstractSet[tuple[str, str]] = frozenset(),
+    local_references: AbstractSet[ast.AST] = frozenset(),
 ) -> set[str]:
     changed_members = set(roots)
     aliases = {
@@ -1353,9 +1395,9 @@ def member_binding_closure(
             or (member_surface and isinstance(node.value, ast.Attribute))
         )
         for target in (node.targets if isinstance(node, ast.Assign) else (node.target,))
-        if isinstance(target, ast.Name)
+        if isinstance(target, ast.Name) and target not in local_references
         for value in ast.walk(node.value)
-        if isinstance(value, ast.Name)
+        if isinstance(value, ast.Name) and value not in local_references
     }
     while (
         additions := (
@@ -1435,6 +1477,7 @@ def _unproven_member_roots(
     protected = _protected_member_references(
         module, nodes, member_surface=member_surface, owner_exposure_only=owner_exposure_only
     )
+    local_references = setter_local_references(module) if member_surface else frozenset()
     properties = {
         method
         for owner in nodes
@@ -1487,7 +1530,7 @@ def _unproven_member_roots(
             continue
         while pending:
             target = pending.pop()
-            if isinstance(target, ast.Name):
+            if isinstance(target, ast.Name) and target not in local_references:
                 changed.add(target.id)
             elif isinstance(target, ast.Attribute):
                 pending.append(target.value)
@@ -1858,6 +1901,24 @@ def add_evidence(evidence: dict[str, RawEvidence], module: ParsedModule, node: a
     return record_evidence(
         evidence, module.rel_path, (line, end_line, column), _excerpt(module, node)
     )
+
+
+def quoted_type_expression(node: ast.expr) -> ast.expr | None:
+    """Decode one syntax-only string layer of names, None and unions."""
+    if not isinstance(node, ast.Constant) or not isinstance(node.value, str):
+        return None
+    text: str = node.value
+    try:
+        expression = ast.parse(text.strip(), mode="eval").body
+    except SyntaxError:
+        return None
+    if all(
+        isinstance(child, ast.Name | ast.Load | ast.BinOp | ast.BitOr)
+        or (isinstance(child, ast.Constant) and child.value is None)
+        for child in ast.walk(expression)
+    ):
+        return expression
+    return None
 
 
 def annotation_text(node: ast.AST | None) -> str | None:

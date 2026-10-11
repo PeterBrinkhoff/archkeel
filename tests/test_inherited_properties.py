@@ -271,3 +271,134 @@ def test_qualified_builtin_property_mutation_stays_unknown(tmp_path):
     assert report.declared_rules == "UNKNOWN"
     assert report.measurements.scalars.unknown_positions > 0
     assert trace_valid_violations(observation) == ()
+
+
+@pytest.mark.parametrize("surface", ["direct", "inherited", "reexport"])
+@pytest.mark.parametrize(
+    "body",
+    [
+        "self._value = value",
+        "copy = value\n        self._value = copy",
+        "consume(value)",
+        "value.flag = 1",
+    ],
+)
+def test_same_named_setter_parameter_keeps_effective_accessors(tmp_path, surface, body):
+    source = (
+        _property()
+        .replace("new_value", "value")
+        .replace("-> None: ...", "-> None:\n        " + body)
+    )
+    extra = None
+    if surface == "direct":
+        source = source.split("class Child(Base):")[0].replace("class Base:", "class Child:")
+    elif surface == "reexport":
+        extra = {"sample/base.py": source}
+        source = 'from .base import Child\n__all__ = ["Child"]\n'
+    result, report, observation = _validate(tmp_path, source, extra)
+    assert result.exit_code == 0
+    assert report.declared_rules == "PASS"
+    assert report.measurements.scalars.unknown_positions == 0
+    assert trace_valid_violations(observation) == ()
+    accessors = [r for r in observation.records("symbols") or () if r.data.get("property_binding")]
+    assert len(accessors) == 2
+    assert any(
+        any(p.get("name") == "value" for p in r.data.get("parameters", ()))
+        and r.data.get("property_binding").get("operation") == "setter"
+        for r in accessors
+    )
+
+
+@pytest.mark.parametrize("surface", ["direct", "inherited"])
+@pytest.mark.parametrize("accessor,position", [("getter", "return"), ("setter", "value")])
+def test_same_named_setter_keeps_broad_accessor_failure(tmp_path, surface, accessor, position):
+    source = (
+        _property(**{accessor: "object"})
+        .replace("new_value", "value")
+        .replace("-> None: ...", "-> None:\n        self._value = value")
+    )
+    if surface == "direct":
+        source = source.split("class Child(Base):")[0].replace("class Base:", "class Child:")
+    result, report, observation = _validate(tmp_path, source)
+    assert result.exit_code == 2
+    assert report.declared_rules == "FAIL"
+    assert report.measurements.scalars.unknown_positions == 0
+    assert any(
+        r.data.get("qualified_name") == "sample.api.Child.value"
+        and r.data.get("position") == position
+        and r.data.get("annotation") == "object"
+        for r in trace_valid_violations(observation)
+    )
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "def nested(): return value",
+        "def nested(arg=value): pass",
+        "@decorate(value)\n        def nested(): pass",
+        "callback = lambda: value",
+        "items = [value for value in incoming]",
+        "global value\n        self._value = value",
+        "nonlocal value\n        self._value = value",
+    ],
+)
+def test_setter_nested_and_outer_bindings_stay_conservative(tmp_path, body):
+    source = (
+        _property()
+        .replace("new_value", "value")
+        .replace("-> None: ...", "-> None:\n        " + body)
+    )
+    _, report, observation = _validate(tmp_path, source)
+    assert report.declared_rules == "UNKNOWN"
+    assert report.measurements.scalars.unknown_positions > 0
+    assert trace_valid_violations(observation) == ()
+
+
+@pytest.mark.parametrize(
+    "change", ["mutate(Base)", "Base.value = custom", "alias = Base\nmutate(alias)"]
+)
+def test_same_named_setter_preserves_real_owner_mutation(tmp_path, change):
+    source = (
+        _property()
+        .replace("new_value", "value")
+        .replace("-> None: ...", "-> None:\n        self._value = value")
+        .replace("class Child(Base):", change + "\nclass Child(Base):")
+    )
+    _, report, observation = _validate(tmp_path, source)
+    assert report.declared_rules == "UNKNOWN"
+    assert report.measurements.scalars.unknown_positions > 0
+    assert trace_valid_violations(observation) == ()
+
+
+def test_same_named_setter_default_is_an_outer_reference(tmp_path):
+    source = (
+        _property()
+        .replace("new_value: int", "value: int = expose(value)")
+        .replace("-> None: ...", "-> None:\n        self._value = value")
+    )
+    _, report, observation = _validate(tmp_path, source)
+    assert report.declared_rules == "UNKNOWN"
+    assert trace_valid_violations(observation) == ()
+
+
+def test_same_named_setter_preserves_native_keyword_and_counters(tmp_path):
+    source = (
+        "class Counter:\n"
+        "    def __init__(self) -> None:\n"
+        "        self._value = 7\n        self._reads = 0\n        self._writes = 0\n"
+        "    @property\n    def value(self) -> int:\n"
+        "        self._reads += 1\n        return self._value\n"
+        "    @value.setter\n    def value(self, value: int) -> None:\n"
+        "        self._writes += 1\n        self._value = value\n"
+    )
+    _, report, _ = _validate(tmp_path, source.replace("class Counter:", "class Child:"))
+    assert report.declared_rules == "PASS"
+    namespace = {}
+    exec(source, namespace)
+    counter = namespace["Counter"]()
+    assert counter.value == 7
+    counter.value = 8
+    namespace["Counter"].value.fset(counter, value=9)
+    assert counter.value == 9
+    assert (counter._reads, counter._writes) == (2, 2)

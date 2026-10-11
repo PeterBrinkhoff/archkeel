@@ -107,7 +107,7 @@ def test_large_module_opens_grouped_list_and_limits_diagram_to_thirty(tmp_path):
             .filter(box => box.width && box.height)
             .map(box => ({top: box.top, bottom: box.bottom}))""")
         assert max(box["top"] for box in controls) < min(box["bottom"] for box in controls)
-        assert toolbar.get_by_role("button", name="Reset filters", exact=True).count() == 1
+        assert toolbar.get_by_role("button", name="Reset and fit", exact=True).count() == 1
         assert toolbar.locator(".flow-reset-filters").count() == 0
         page.locator(".flow-use-summary").click()
         _wait_for_layout(page)
@@ -241,7 +241,7 @@ def test_uml_focus_keeps_direct_neighbors_and_restores_the_complete_scope(
         _wait_for_layout(page)
         assert focus.input_value() == base_id
         assert nodes.count() == len(neighbors) and edges.count() == connections
-        page.locator("#flow").get_by_role("button", name="Reset filters", exact=True).click()
+        page.locator("#flow").get_by_role("button", name="Reset and fit", exact=True).click()
         _wait_for_layout(page)
         assert (
             nodes.evaluate_all("nodes => nodes.map(node => node.dataset.umlId).sort()") == all_nodes
@@ -341,7 +341,7 @@ def test_relationship_filter_keeps_evidence_and_restores_scope_state(tmp_path, v
         page.get_by_role("button", name=view, exact=True).click()
         _wait_for_layout(page)
         assert edges.count() == 1 and edges.get_attribute("data-relationship-kind") == "inherits"
-        page.locator("#flow").get_by_role("button", name="Reset filters", exact=True).click()
+        page.locator("#flow").get_by_role("button", name="Reset and fit", exact=True).click()
         _wait_for_layout(page)
         assert (
             nodes.evaluate_all("nodes => nodes.map(node => node.dataset.umlId).sort()") == all_nodes
@@ -455,7 +455,7 @@ def test_element_kind_filter_retains_evidence_and_navigation(tmp_path, view):
         page.locator(".flow-filters > summary").click()
         assert nodes.count() == 1 and nodes.get_attribute("data-uml-kind") == "interface"
         assert page.locator(".flow-edges .hit").count() == 0
-        page.locator("#flow").get_by_role("button", name="Reset filters", exact=True).click()
+        page.locator("#flow").get_by_role("button", name="Reset and fit", exact=True).click()
         _wait_for_layout(page)
         assert kinds.input_value() == ""
         assert (

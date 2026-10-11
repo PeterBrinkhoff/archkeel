@@ -79,6 +79,8 @@ _EXEMPT_CLASS_KINDS: Final = frozenset({"enum", "pydantic_model"})
 # from the running interpreter rather than a list kept here, the way `resolve.py` and `calls.py`
 # already answer the same question, so one repository holds one answer to what a builtin is.
 _BUILTIN_NAMES: Final = frozenset(dir(builtins))
+# shortcut: quoted proof covers str/object; extend for another accepted builtin use case.
+_QUOTED_BUILTIN_TYPE_ORIGINS: Final = frozenset({("builtins", "str"), ("builtins", "object")})
 
 
 _BROAD_BOUNDARY_REASON: Final = "instead of a typed model"
@@ -799,6 +801,25 @@ def _typing_wrapper_verdict(
     return None
 
 
+def _quoted_builtin_type(
+    shape: TypeShape | None,
+    module: str,
+    imports: BindingIndex,
+    classes: BindingIndex,
+) -> bool:
+    if isinstance(shape, TypeName):
+        return (
+            _proven_type_head(shape, module, imports, classes, _QUOTED_BUILTIN_TYPE_ORIGINS) is True
+        )
+    if isinstance(shape, TypeLiteral):
+        return shape.kind is LiteralKind.NONE
+    if isinstance(shape, TypeUnion):
+        return _quoted_builtin_type(shape.left, module, imports, classes) and _quoted_builtin_type(
+            shape.right, module, imports, classes
+        )
+    return False
+
+
 def _boundary_type_verdict(
     annotation: str,
     module: str,
@@ -831,6 +852,26 @@ def _boundary_type_verdict(
         classes_by_location = scoped_classes
     if not annotation:
         return _Position(undecidable="missing_annotation")
+    if annotation.startswith(("'", '"')):
+        decoded = type_shapes.get(annotation)
+        if decoded is not None and _quoted_builtin_type(
+            decoded, module, imports_by_binding, classes_by_location
+        ):
+            return _boundary_type_verdict(
+                decoded.text,
+                module,
+                contract,
+                exports_by_module,
+                imports_by_binding,
+                classes_by_location,
+                type_shapes=type_shapes,
+                enter_collections=enter_collections,
+                visited=visited,
+                enter_fields=enter_fields,
+                _aliases_seen=_aliases_seen,
+                _require_static_constant=_require_static_constant,
+            )
+        return _Position(undecidable="forward_reference")
     wrapped = _typing_wrapper_verdict(
         annotation,
         module,
@@ -853,8 +894,6 @@ def _boundary_type_verdict(
     )
     if bare_type is not None:
         return bare_type
-    if annotation.startswith(("'", '"')):
-        return _Position(undecidable="forward_reference")
     if not annotation.isidentifier():
         verdict = _annotation_shape_verdict(
             annotation,

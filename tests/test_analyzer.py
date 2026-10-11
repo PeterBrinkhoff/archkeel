@@ -2185,12 +2185,9 @@ def test_boundary_types_quoted_and_malformed_union_stay_undecidable(tmp_path: Pa
         )
         is None
     )
-    assert (
-        _union_parameters(
-            "'str | int'", "sample.app.facade", {}, type_shapes=collect_type_shapes(["'str | int'"])
-        )
-        is None
-    )
+    assert _union_parameters(
+        "'str | int'", "sample.app.facade", {}, type_shapes=collect_type_shapes(["'str | int'"])
+    ) == ["str", "int"]
 
     contract = _boundary_types_contract(_component("app", public=["sample.app.facade:typed"]))
     (tmp_path / "contract.json").write_text(json.dumps(contract))
