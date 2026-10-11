@@ -112,6 +112,8 @@ def test_source_graph_keeps_classifiers_private_attributes_and_operations(observ
     assert by_name["sample.service.Port"].kind == "interface"
     assert owner.kind == "class"
     assert by_name["sample.service.Client._token"].visibility.kind == "private"
+    assert by_name["sample.service.Client._token"].modifiers == ()
+    assert by_name["sample.service.Client.count"].modifiers == ()
     assert by_name["sample.service.Client.__init__"].visibility.kind == "public"
     operation = by_name["sample.service.Client.run"]
     assert operation.kind == "method"
@@ -882,3 +884,10 @@ def test_conditional_caller_keeps_its_definition_site_and_context(
     assert caller.presence == "defined"
     assert caller.kind == "function"
     assert caller.definition_contexts
+
+
+def test_field_binding_certainty_does_not_change_uml_static_modifiers(tmp_path: Path) -> None:
+    graph = _graph(_source_observation(tmp_path, "class Dto:\n kind: str\n mode = 'test'\n"))
+    by_name = {entity.qualified_name: entity for entity in graph.entities}
+    assert by_name["sample.app.Dto.kind"].modifiers == ()
+    assert by_name["sample.app.Dto.mode"].modifiers == ("static",)
