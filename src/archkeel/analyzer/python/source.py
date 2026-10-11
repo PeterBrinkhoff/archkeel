@@ -279,6 +279,12 @@ class ParsedModule:
     _proven_annotation_carriers: frozenset[ast.expr] = field(
         default_factory=frozenset, init=False, repr=False
     )
+    _proven_callable_expressions: frozenset[ast.expr] = field(
+        default_factory=frozenset, init=False, repr=False
+    )
+    _proven_callable_providers: frozenset[str] = field(
+        default_factory=frozenset, init=False, repr=False
+    )
     all_nodes: tuple[ast.AST, ...] = field(init=False, repr=False)
     scope_nodes: tuple[ast.AST, ...] = field(init=False, repr=False)
     bound_names: tuple[str, ...] = field(init=False, repr=False)
@@ -449,6 +455,12 @@ def _stable_direct_module_bindings(module: ParsedModule) -> frozenset[str]:
     for statement in module.tree.body:
         if isinstance(statement, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
             direct[statement.name] = direct.get(statement.name, 0) + 1
+        elif (
+            sys.version_info >= (3, 12)
+            and isinstance(statement, ast.TypeAlias)
+            and not statement.type_params
+        ):
+            direct[statement.name.id] = direct.get(statement.name.id, 0) + 1
         elif isinstance(statement, ast.Import | ast.ImportFrom):
             for name in _import_bindings(statement):
                 direct[name] = direct.get(name, 0) + 1
@@ -1280,7 +1292,7 @@ def _contained_member_roots(
         (name, target.id)
         for node, name in module_scope_bindings(module)
         if (value := admitted_type_alias_value(module, node)) is not None
-        and value in module._proven_map_union_expressions
+        and value in module._proven_map_union_expressions | module._proven_callable_expressions
         for target in ast.walk(value)
         if isinstance(target, ast.Name) and isinstance(target.ctx, ast.Load)
     }
@@ -1451,6 +1463,7 @@ def _protected_member_references(
     type_expressions = _protected_type_expressions(nodes)
     protected = _type_reference_nodes(module, type_expressions) if member_surface else set()
     if member_surface:
+        protected |= _type_reference_nodes(module, list(module._proven_callable_expressions))
         protected |= {
             item
             for expression in module._proven_map_union_expressions
@@ -1572,11 +1585,11 @@ def _unproven_member_roots(
 def _type_reference_nodes(module: ParsedModule, expressions: Sequence[ast.expr]) -> set[ast.AST]:
     """Exclude declared type references, not executable operands of an unknown type shape."""
     protected: set[ast.AST] = set()
-    pending: list[ast.AST] = list(expressions)
+    pending: list[tuple[ast.AST, bool]] = [(expression, False) for expression in expressions]
     bound = frozenset(module.bound_names)
     stable = stable_direct_module_bindings(module) & unique_direct_module_bindings(module)
     while pending:
-        node = pending.pop()
+        node, callback_reference = pending.pop()
         if isinstance(node, ast.Name):
             protected |= {node}
         elif isinstance(node, ast.Attribute):
@@ -1586,27 +1599,30 @@ def _type_reference_nodes(module: ParsedModule, expressions: Sequence[ast.expr])
             if isinstance(root, ast.Name):
                 protected |= set(ast.walk(node))
         elif isinstance(node, ast.Subscript):
-            pending.append(node.value)
+            pending.append((node.value, callback_reference))
             root = node.value
             while isinstance(root, ast.Attribute):
                 root = root.value
             if (
                 (
-                    is_static_type_alias_value(module, node)
+                    node in module._proven_callable_expressions
                     or node in module._proven_annotation_carriers
+                    or is_static_type_alias_value(module, node)
                 )
                 and isinstance(root, ast.Name)
                 and (root.id not in bound or (root.id in module.aliases and root.id in stable))
             ):
-                pending.append(node.slice)
+                pending.append(
+                    (node.slice, callback_reference or node in module._proven_callable_expressions)
+                )
         elif isinstance(node, ast.Tuple | ast.List):
-            pending.extend(node.elts)
+            pending.extend((element, callback_reference) for element in node.elts)
         elif isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
-            if any(
+            if callback_reference or any(
                 isinstance(operand, ast.Constant) and operand.value is None
                 for operand in (node.left, node.right)
             ):
-                pending.extend((node.left, node.right))
+                pending.extend(((node.left, callback_reference), (node.right, callback_reference)))
     return protected
 
 
@@ -1616,6 +1632,8 @@ def is_static_type_alias_value(module: ParsedModule, node: ast.expr) -> bool:
     if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
         return True
     if isinstance(node, ast.Subscript):
+        if node in module._proven_callable_expressions:
+            return True
         head = resolve_static_name(module, node.value)
         return head in {
             "typing.Annotated",
@@ -1799,6 +1817,54 @@ def proven_annotation_carrier_candidates(
                 binding = module.aliases[root.id]
                 if binding.kind != "module" or binding.target != head:
                     candidates[node] = frozenset({(module.module, root.id)})
+    return candidates
+
+
+def proven_callable_candidates(
+    module: ParsedModule, providers: Mapping[str, frozenset[tuple[str, str]]]
+) -> dict[ast.expr, frozenset[tuple[str, str]]]:
+    callable_bindings: set[str] = set()
+    for provider_head in providers:
+        callable_head: str = provider_head
+        callable_bindings.add(callable_head.split(".", 1)[0])
+    module._proven_callable_providers = frozenset(callable_bindings)
+    expressions = list(_protected_type_expressions(module.all_nodes))
+    aliases: dict[ast.expr, str] = {}
+    for node, name in module_scope_bindings(module):
+        value = None
+        name_prefix: str = name[:1]
+        if isinstance(node, ast.Assign) and len(node.targets) == 1 and name_prefix.isupper():
+            value = node.value
+        elif isinstance(node, ast.AnnAssign):
+            value = admitted_type_alias_value(module, node)
+        elif sys.version_info >= (3, 12) and isinstance(node, ast.TypeAlias):
+            value = admitted_type_alias_value(module, node)
+        if value is not None:
+            expressions.append(value)
+            aliases[value] = name
+    candidates: dict[ast.expr, frozenset[tuple[str, str]]] = {}
+    pending = list(expressions)
+    while pending:
+        expression = pending.pop()
+        if isinstance(expression, ast.Subscript):
+            head = annotation_text(expression.value) or ""
+            if head in providers:
+                candidates[expression] = providers[head]
+                pending.append(expression.slice)
+            elif is_static_type_alias_value(module, expression):
+                pending.append(expression.slice)
+        elif isinstance(expression, ast.Tuple | ast.List):
+            pending.extend(expression.elts)
+        elif isinstance(expression, ast.BinOp) and isinstance(expression.op, ast.BitOr):
+            pending.extend((expression.left, expression.right))
+    module._proven_callable_expressions = frozenset(candidates)
+    for expression, dependencies in tuple(candidates.items()):
+        aliases_used: set[tuple[str, str]] = {
+            (module.module, name)
+            for value, name in aliases.items()
+            if expression in ast.walk(value)
+        }
+        candidates[expression] = dependencies | aliases_used
     return candidates
 
 

@@ -214,3 +214,17 @@ def test_decoded_source_spans_cannot_overwrite_an_unrelated_annotation() -> None
     assert shapes["e"] == TypeName("e", "e")
     assert shapes[""] == UnresolvedType("", valid_syntax=False)
     assert shapes["None"] == TypeLiteral("None", LiteralKind.NONE)
+
+
+def test_callable_argument_list_collects_its_children_and_source_spelling() -> None:
+    from archkeel.analyzer.python.type_shapes import collect_type_shapes
+
+    facts = collect_type_shapes(["Callable[( [str, (int | None)] ), bool]", "Callable[[], str]"])
+    assert "str" in facts
+    assert "int | None" in facts
+    assert "(int | None)" in facts
+    assert "[str, (int | None)]" in facts
+    assert "[]" in facts
+    arguments = facts["[str, (int | None)]"]
+    assert [element.text for element in arguments.elements] == ["str", "int | None"]
+    assert facts["[]"].elements == ()
