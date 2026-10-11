@@ -291,6 +291,18 @@
     sizeDiagram();
   }
 
+  function syncExpansionInert() {
+    if (root.dataset.expanded !== "fallback") return;
+    for (const element of document.querySelectorAll("main > *")) {
+      if (!element.contains(root) && !expansionRestore.inert.some(([saved]) => saved === element)) {
+        expansionRestore.inert.push([element, element.inert]);
+      }
+    }
+    for (const [element, inert] of expansionRestore.inert) {
+      element.inert = root.contains(element) ? inert : true;
+    }
+  }
+
   function restoreExpansion() {
     if (document.fullscreenElement === root) {
       document.exitFullscreen?.();
@@ -2744,7 +2756,10 @@
   let spaceHeld = false;
   const editing = (target) => target.closest?.("input, textarea, select, [contenteditable='true']");
   window.addEventListener("keydown", (event) => {
-    if (event.code !== "Space" || event.repeat || editing(event.target)) return;
+    if (event.code !== "Space" || event.defaultPrevented || editing(event.target)
+      || event.target.closest?.("button, a, summary, [role='button']")
+      || !canvas.contains(event.target) && !canvas.matches(":hover")) return;
+    event.preventDefault();
     spaceHeld = true;
     svg.classList.add("space-pan");
   });
@@ -2858,9 +2873,9 @@
     } catch {
       // A browser or embedding policy can deny the direct request.
     }
-    expansionRestore.inert.forEach(([element]) => { element.inert = true; });
     document.body.style.overflow = "hidden";
     root.dataset.expanded = "fallback";
+    syncExpansionInert();
     sizeDiagram();
     root.setAttribute("aria-modal", "true");
     root.setAttribute("role", "dialog");
@@ -2913,7 +2928,7 @@
   window.ArchkeelFlow = {
     root, svg, canvas, nodeLayer, edgeLayer, atlas: ATLAS, reportScene: REPORT_SCENE,
     selectElement: (id) => selectArchitectureSubject("node", id),
-    fit, zoomBy, zoomAt, emphasize: atlasEmphasize,
+    fit, zoomBy, zoomAt, syncExpansionInert, emphasize: atlasEmphasize,
     setMaxFitScale: (value) => { maxFitScale = value; },
     openComponent: openAtlasComponent,
     selectComponent: (id) => {

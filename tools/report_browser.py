@@ -1216,6 +1216,41 @@ def _capture_assets(browser: Browser, reports: dict[str, Path], output: Path) ->
     finally:
         _finish(page, "assets-atlas", output)
 
+    for name, asset, scope in (
+        ("uml-compass-project", "archkeel-compass-target.png", None),
+        (
+            "uml-python-realworld-project",
+            "archkeel-python-module-target.png",
+            "Product and wire contracts:contracts-publishing",
+        ),
+    ):
+        if name not in reports:
+            continue
+        page, errors = _visit(browser, reports[name], "assets-" + name, output)
+        try:
+            query = {
+                "theme": "dark",
+                "view": "target",
+                "content": "modules" if scope else "components",
+            }
+            if scope:
+                query["scope"] = scope
+            page.goto(reports[name].as_uri() + "?" + urlencode(query), wait_until="load")
+            _wait_for_layout(page)
+            if scope:
+                page.get_by_role("button", name="Fullscreen", exact=True).click()
+                page.wait_for_function("() => document.querySelector('#flow').dataset.expanded")
+            else:
+                page.set_viewport_size({"width": 1440, "height": 850})
+                page.locator(".flow-details-toggle").click()
+                _wait_for_layout(page)
+                page.locator(".flow-fit-overview").click()
+            page.locator("#flow").screenshot(path=str(output / asset))
+            assert (output / asset).stat().st_size <= 400_000, f"{asset} exceeds 400 KB"
+            assert not errors
+        finally:
+            _finish(page, "assets-" + name, output)
+
 
 def _check_report_verdicts(browser: Browser, reports: dict[str, Path], output: Path) -> None:
     for name in ("open", "tour", "mixed", "clean"):

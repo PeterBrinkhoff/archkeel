@@ -296,6 +296,7 @@
     });
   }
   function renderTagBar() {
+    const focusKey = tagBar.contains(document.activeElement) ? document.activeElement.dataset.focusKey : null;
     const active = PERSPECTIVES[perspective];
     const choices = [["", "None"], ...Object.entries(PERSPECTIVES).map(([key, item]) => [key, item.label])];
     const counts = new Map();
@@ -305,17 +306,18 @@
     }
     tagBar.replaceChildren(...[
       h("span", { class: "ak-tagbar-label" }, "Perspective"),
-      ...choices.map(([key, label]) => h("button", { "aria-pressed": String((perspective || "") === key),
+      ...choices.map(([key, label]) => h("button", { "data-focus-key": `perspective:${key}`, "aria-pressed": String((perspective || "") === key),
         onclick: () => { perspective = key || null; pinnedTag = null; setParam("perspective", perspective); applyPerspective(); } }, label)),
       active ? h("span", { class: "ak-sep" }) : null,
       ...(active ? [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([value, count]) =>
-        h("button", { class: "ak-chip", style: `--chip:${colorOf(perspective, value)}`, "aria-pressed": String(pinnedTag === value),
+        h("button", { class: "ak-chip", "data-focus-key": `tag:${value}`, style: `--chip:${colorOf(perspective, value)}`, "aria-pressed": String(pinnedTag === value),
           title: `Highlight ${value}`,
           onpointerenter: () => highlightTag(value), onpointerleave: () => highlightTag(pinnedTag),
           onclick: () => { pinnedTag = pinnedTag === value ? null : value; highlightTag(pinnedTag); renderTagBar(); } },
           h("i"), value, h("b", {}, String(count)))) : []),
       active && !counts.size ? h("span", { class: "ak-tagbar-label" }, "No tagged objects on this diagram") : null,
     ].filter(Boolean));
+    if (focusKey) [...tagBar.querySelectorAll("button")].find((button) => button.dataset.focusKey === focusKey)?.focus({ preventScroll: true });
   }
   function cyclePerspective() {
     const keys = [null, ...Object.keys(PERSPECTIVES)];
@@ -340,6 +342,7 @@
       overviewEvidence = [];
     }
     drawer?.remove(); drawer = null; drawerName = null;
+    F.syncExpansionInert();
     rail.querySelectorAll("button").forEach((button) => button.setAttribute("aria-expanded", "false"));
     if (restoreFocus) trigger?.focus();
   }
@@ -350,6 +353,7 @@
     drawerName = name;
     drawer = h("aside", { class: "ak-drawer", "aria-label": name }, build());
     root.append(drawer);
+    F.syncExpansionInert();
     rail.querySelector(`[data-drawer="${name}"]`)?.setAttribute("aria-expanded", "true");
   }
   function overviewDrawer() {

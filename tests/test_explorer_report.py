@@ -220,6 +220,40 @@ def test_zoom_stays_under_pointer_and_middle_drag_pans(explorer):
     assert page.locator(".flow-viewport").get_attribute("transform") != before
 
 
+def test_perspective_and_tag_activation_keep_keyboard_focus(explorer):
+    page, _ = explorer
+    perspective = page.get_by_role("button", name="Decided by", exact=True)
+    perspective.focus()
+    perspective.press("Enter")
+    assert perspective.evaluate("e => e === document.activeElement")
+    tag = page.locator(".ak-chip").first
+    tag.focus()
+    tag.press("Enter")
+    assert tag.evaluate("e => e === document.activeElement")
+    assert tag.get_attribute("aria-pressed") == "true"
+
+
+def test_space_pan_does_not_scroll_an_overflowing_detail_diagram(explorer):
+    page, index = explorer
+    page.set_viewport_size({"width": 844, "height": 390})
+    module = page.evaluate("ArchkeelFlow.atlas.modules.find(m => m.name === 'sample.core').id")
+    page.goto(index.with_name("architecture.detail.html").as_uri() + f"?module={module}")
+    _wait_for_layout(page)
+    page.get_by_role("button", name="Fullscreen", exact=True).click()
+    zoom = page.get_by_role("button", name="Zoom in", exact=True)
+    for _ in range(12):
+        zoom.click()
+    canvas = page.locator(".flow-canvas")
+    assert canvas.evaluate("e => e.scrollHeight > e.clientHeight")
+    canvas.focus()
+    canvas.evaluate("e => e.scrollTop = 0")
+    page.keyboard.press("Space", delay=300)
+    assert canvas.evaluate("e => e.scrollTop") == 0
+    before = page.evaluate("ArchkeelFlow.state().zoom")
+    page.get_by_role("button", name="Zoom out", exact=True).press("Space")
+    assert page.evaluate("ArchkeelFlow.state().zoom") < before
+
+
 def test_perspective_pin_clears_on_untagged_modules_and_invalid_urls(explorer):
     page, index = explorer
     page.get_by_role("button", name="Decided by", exact=True).click()
@@ -319,6 +353,29 @@ def test_fullscreen_is_the_same_explorer_and_restores_report(explorer, native):
     assert page.evaluate("ArchkeelFlow.state().zoom") == before["state"]["zoom"]
     assert page.evaluate("scrollY") == before["scroll"]
     assert page.locator(".report-heading").is_visible()
+
+
+@pytest.mark.parametrize("health_open", [False, True])
+def test_fallback_fullscreen_keeps_moved_audit_interactive(explorer, health_open):
+    page, _ = explorer
+    health = page.get_by_role("button", name="Health check", exact=True)
+    if health_open:
+        health.click()
+    page.evaluate("Element.prototype.requestFullscreen = undefined")
+    page.get_by_role("button", name="Fullscreen", exact=True).click()
+    if health_open:
+        health.click()
+    assert page.locator(".report-shell > .atlas-source").evaluate("e => e.inert")
+    health.click()
+    audit = page.locator(".ak-drawer .atlas-source")
+    assert not audit.evaluate("e => e.inert")
+    audit.locator("summary").click()
+    assert audit.get_by_role(
+        "link", name="Complete architecture JSON and recorded evidence"
+    ).is_visible()
+    page.get_by_role("button", name="Restore", exact=True).click()
+    health.click()
+    assert not page.locator(".report-shell > .atlas-source").evaluate("e => e.inert")
 
 
 def test_print_retains_the_document_evidence(explorer):

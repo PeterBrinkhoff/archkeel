@@ -1,7 +1,17 @@
-# ArchKeel 2.0.0 — Exact permissions and retained uncertainty
+# ArchKeel 2.0.0 — ArchQ Explorer and exact permissions
 
 Architecture checks for coding agents.
 
+- **ArchQ Explorer replaces the previous report navigation.** The report opens
+  with the new Explorer embedded. Fullscreen expands the same view; Restore
+  preserves selection and zoom. Offline module and member pages share its controls.
+- **Find and explore recorded evidence.** Search components, modules and rules;
+  browse sortable Objects, inspect Health check, or highlight authorship, layer
+  and evidence perspectives. Pointer zoom, keyboard shortcuts and SVG, Mermaid
+  and link export support review. As-Is, Target and Diff retain the same recorded
+  verdicts, UNKNOWNs and source links. No new runtime dependency is required.
+  See the [report guide](docs/report-visual-system.md) and
+  [Explorer work](https://github.com/rapiddweller/archkeel/issues/467).
 - **Exact native boundary permissions.** Opt-in contract schemas **3.0–3.3**
   add source-and-body-bound alias permissions, heterogeneous typed-map unions
   with exact key-alias proof, directly written literal map arms, and explicit
@@ -26,7 +36,7 @@ Architecture checks for coding agents.
   signatures; property setters retain their own local binding scope. Safe
   annotation carriers and nullable DTO paths preserve supported alias and field
   proof. Unsupported or ambiguous forms retain UNKNOWN.
-- **Review the exact permission.** Atlas distinguishes declared and applied
+- **Review the exact permission.** ArchQ Explorer distinguishes declared and applied
   permissions and links evidence to members. Reset and fit controls are labelled
   consistently; rejected offline routes retain the complete URL until explicit
   recovery.
