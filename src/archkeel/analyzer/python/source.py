@@ -276,6 +276,9 @@ class ParsedModule:
     _proven_map_union_expressions: frozenset[ast.expr] = field(
         default_factory=frozenset, init=False, repr=False
     )
+    _proven_annotation_carriers: frozenset[ast.expr] = field(
+        default_factory=frozenset, init=False, repr=False
+    )
     all_nodes: tuple[ast.AST, ...] = field(init=False, repr=False)
     scope_nodes: tuple[ast.AST, ...] = field(init=False, repr=False)
     bound_names: tuple[str, ...] = field(init=False, repr=False)
@@ -1561,7 +1564,10 @@ def _type_reference_nodes(module: ParsedModule, expressions: Sequence[ast.expr])
             while isinstance(root, ast.Attribute):
                 root = root.value
             if (
-                is_static_type_alias_value(module, node)
+                (
+                    is_static_type_alias_value(module, node)
+                    or node in module._proven_annotation_carriers
+                )
                 and isinstance(root, ast.Name)
                 and (root.id not in bound or (root.id in module.aliases and root.id in stable))
             ):
@@ -1720,6 +1726,52 @@ def proven_map_union_candidates(
             break
         else:
             candidates[expression] = frozenset(dependencies)
+    return candidates
+
+
+def proven_annotation_carrier_candidates(
+    module: ParsedModule, scanned_modules: AbstractSet[str]
+) -> dict[ast.expr, frozenset[tuple[str, str]]]:
+    stable = stable_direct_module_bindings(module) & unique_direct_module_bindings(module)
+    annotations = [
+        node.annotation
+        for node in module.all_nodes
+        if isinstance(node, ast.arg | ast.AnnAssign) and node.annotation is not None
+    ] + [
+        node.returns
+        for node in module.all_nodes
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and node.returns is not None
+    ]
+    candidates: dict[ast.expr, frozenset[tuple[str, str]]] = {}
+    for annotation in annotations:
+        for node in ast.walk(annotation):
+            if not isinstance(node, ast.Subscript):
+                continue
+            head: str = resolve_static_name(module, node.value)
+            if head not in {
+                "collections.abc.Mapping",
+                "collections.abc.Sequence",
+                "typing.Mapping",
+                "typing.Sequence",
+            }:
+                continue
+            provider: str = head.rpartition(".")[0]
+            if head == provider + ".Mapping":
+                if not isinstance(node.slice, ast.Tuple) or len(node.slice.elts) != 2:
+                    continue
+            elif isinstance(node.slice, ast.Tuple):
+                continue
+            if head in scanned_modules or any(
+                provider == name or provider.startswith(name + ".") for name in scanned_modules
+            ):
+                continue
+            root = node.value
+            while isinstance(root, ast.Attribute):
+                root = root.value
+            if isinstance(root, ast.Name) and root.id in module.aliases and root.id in stable:
+                binding = module.aliases[root.id]
+                if binding.kind != "module" or binding.target != head:
+                    candidates[node] = frozenset({(module.module, root.id)})
     return candidates
 
 
