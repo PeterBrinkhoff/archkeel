@@ -505,6 +505,7 @@ class BoundaryTypeAllowance:
     mapping_depth: int | None = None
     alias_body: BoundaryAliasBody | None = None
     key_alias_body: BoundaryAliasBody | None = None
+    literal_mapping_arm: str | None = None
 
     def __repr__(self) -> str:
         base = (
@@ -519,6 +520,8 @@ class BoundaryTypeAllowance:
             base += f", alias_body={self.alias_body!r}"
         if self.key_alias_body is not None:
             base += f", key_alias_body={self.key_alias_body!r}"
+        if self.literal_mapping_arm is not None:
+            base += f", literal_mapping_arm={self.literal_mapping_arm!r}"
         return base + ")"
 
 
@@ -660,7 +663,7 @@ class ContractDeclarations:
 
 @dataclass(frozen=True, slots=True)
 class ArchitectureContract:
-    schema_version: Literal["2.1.0", "2.2.0", "2.3.0", "3.0.0", "3.1.0"]
+    schema_version: Literal["2.1.0", "2.2.0", "2.3.0", "3.0.0", "3.1.0", "3.2.0"]
     components: tuple[ContractComponent, ...]
     rules: tuple[ArchitectureRule, ...]
     schema: str | None = None

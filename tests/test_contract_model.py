@@ -349,13 +349,22 @@ def _maximal_contract(version: str = "3.0.0") -> dict[str, object]:
             "alias_body": {"origin": "shop.app.orders:Page", "shape": "tuple[Opaque]"},
         }
     )
-    if version == "3.1.0":
+    if version in {"3.1.0", "3.2.0"}:
         boundary["allowed_positions"].append(
             {
                 "qualified_name": "shop.app.orders.group",
                 "position": "return",
                 "annotation": "dict[MaskKey, int] | dict[str, float]",
                 "key_alias_body": {"origin": "shop.app.orders:MaskKey", "shape": "str | None"},
+            }
+        )
+    if version == "3.2.0":
+        boundary["allowed_positions"].append(
+            {
+                "qualified_name": "shop.app.orders.rows",
+                "position": "return",
+                "annotation": "list[dict[str, str]] | None",
+                "literal_mapping_arm": "list[dict[str, str]]",
             }
         )
     declarations["uml"] = asdict(
@@ -649,13 +658,13 @@ def test_the_maximal_contract_fills_every_field() -> None:
     """The completeness test below only sees a field this contract fills."""
     documents = [
         json.loads(contract_bytes(parse_contract(_maximal_contract(version))))
-        for version in ("3.0.0", "3.1.0")
+        for version in ("3.0.0", "3.1.0", "3.2.0")
     ]
 
     assert _unfilled(ArchitectureContract, documents, "contract") == []
 
 
-@pytest.mark.parametrize("version", ("3.0.0", "3.1.0"))
+@pytest.mark.parametrize("version", ("3.0.0", "3.1.0", "3.2.0"))
 def test_module_references_point_at_the_names_they_list(version: str) -> None:
     contract = parse_contract(_maximal_contract(version))
     document = json.loads(contract_bytes(contract))
@@ -667,7 +676,7 @@ def test_module_references_point_at_the_names_they_list(version: str) -> None:
         assert node == item.value, item.pointer
 
 
-@pytest.mark.parametrize("version", ("3.0.0", "3.1.0"))
+@pytest.mark.parametrize("version", ("3.0.0", "3.1.0", "3.2.0"))
 def test_every_contract_string_is_a_module_reference_or_an_opaque_value(version: str) -> None:
     """AD-105: a rename is sound only if `module_references` lists every module-naming field."""
     contract = parse_contract(_maximal_contract(version))
@@ -677,14 +686,16 @@ def test_every_contract_string_is_a_module_reference_or_an_opaque_value(version:
 
     opaque = _NON_REFERENCE_STRINGS | (
         {"/rules/boundary_types/allowed_positions/*/key_alias_body/shape"}
-        if version == "3.1.0"
+        if version in {"3.1.0", "3.2.0"}
         else set()
     )
     assert listed.isdisjoint(opaque)
+    if version == "3.2.0":
+        opaque |= {"/rules/boundary_types/allowed_positions/*/literal_mapping_arm"}
     assert strings == listed | opaque
 
 
-@pytest.mark.parametrize("version", ("3.0.0", "3.1.0"))
+@pytest.mark.parametrize("version", ("3.0.0", "3.1.0", "3.2.0"))
 def test_validate_holds_the_namespace_to_the_fields_it_held_before(version: str) -> None:
     """A command, path step, shim, allowance, layout or construct source is renamed, not held."""
     contract = parse_contract(_maximal_contract(version))
@@ -706,12 +717,12 @@ def test_validate_holds_the_namespace_to_the_fields_it_held_before(version: str)
         "/declarations/compat/*/target",
     } | (
         {"/rules/boundary_types/allowed_positions/*/key_alias_body/origin"}
-        if version == "3.1.0"
+        if version in {"3.1.0", "3.2.0"}
         else set()
     )
 
 
-@pytest.mark.parametrize("version", ("3.0.0", "3.1.0"))
+@pytest.mark.parametrize("version", ("3.0.0", "3.1.0", "3.2.0"))
 def test_maximal_contract_matches_its_version_schema(version: str) -> None:
     raw = json.loads(contract_bytes(parse_contract(_maximal_contract(version))))
     schema = json.loads(
@@ -730,7 +741,7 @@ def test_maximal_contract_key_binding_requires_3_1() -> None:
     assert list(Draft202012Validator(schema).iter_errors(raw))
 
 
-@pytest.mark.parametrize("version", ("3.0.0", "3.1.0"))
+@pytest.mark.parametrize("version", ("3.0.0", "3.1.0", "3.2.0"))
 def test_boundary_module_references_preserve_grouped_order(version: str) -> None:
     contract = parse_contract(_maximal_contract(version))
     pointers = [
