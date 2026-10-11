@@ -119,13 +119,13 @@ def _document(*, repository: str, kind: str, title: str, content: str) -> bytes:
 </head>
 <body>
   <header class="report-header">
-    <img class="report-logo report-logo-dark" src="{dark_logo}" alt="Archkeel">
-    <img class="report-logo report-logo-light" src="{light_logo}" alt="Archkeel">
+    <img class="report-logo report-logo-dark" src="{dark_logo}" alt="ArchKeel">
+    <img class="report-logo report-logo-light" src="{light_logo}" alt="ArchKeel">
     <span class="report-kind">{_text(kind)}</span>
   </header>
   <main class="report-shell">
     {content}
-    <footer class="report-footer">Archkeel · deterministic architecture evidence</footer>
+    <footer class="report-footer">ArchKeel · deterministic architecture evidence</footer>
   </main>
 </body>
 </html>
@@ -163,7 +163,7 @@ def _review_evidence(item: Record, observation: Observation) -> str:
         if rule.id in item.rule_ids
     )
     packet = (
-        f"Archkeel · {item.evidence_class} · {item.kind}\nFinding: {item.id}\n{item.title}\n"
+        f"ArchKeel · {item.evidence_class} · {item.kind}\nFinding: {item.id}\n{item.title}\n"
         f"Subjects: {', '.join(item.subjects)}\nRules: {', '.join(item.rule_ids)}\n"
         f"Evidence IDs: {', '.join(item.evidence_ids)}\nFacts: {', '.join(item.fact_ids)}\n"
         f"Git head: {observation.source.git_head}\nDirty: {observation.source.dirty}\n"
@@ -1408,7 +1408,7 @@ def render_html(
     return _document(
         repository=repository,
         kind="Architecture evidence report",
-        title="Archkeel report",
+        title="ArchKeel report",
         content=content,
     )
 
@@ -1547,7 +1547,7 @@ def render_check_html(result: RunResult, *, repository: str, result_href: str) -
     return _document(
         repository=repository,
         kind="Architecture check report",
-        title="Archkeel check",
+        title="ArchKeel check",
         content=content,
     )
 

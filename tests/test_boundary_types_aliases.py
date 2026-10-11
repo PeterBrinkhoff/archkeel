@@ -478,6 +478,8 @@ def test_alias_preserves_nested_violation_and_unknown_coordinates() -> None:
             ("sample", "RequestAlias"): {
                 "record_kind": "type_alias",
                 "alias": "Request",
+                "source_binding_unique": True,
+                "source_member_binding_static": True,
             },
             ("sample", "Request"): {
                 "record_kind": "class",
@@ -527,6 +529,8 @@ def test_annotated_alias_cycle_is_unknown_and_wrapper_does_not_hide_violation() 
         {
             (module, "Alias"): {
                 "record_kind": "type_alias",
+                "source_binding_unique": True,
+                "source_member_binding_static": True,
                 "module": module,
                 "name": "Alias",
                 "alias": "Annotated[Alias, object()]",
@@ -549,6 +553,8 @@ def test_annotated_alias_cycle_is_unknown_and_wrapper_does_not_hide_violation() 
         {
             (module, "Alias"): {
                 "record_kind": "type_alias",
+                "source_binding_unique": True,
+                "source_member_binding_static": True,
                 "module": module,
                 "name": "Alias",
                 "alias": "Annotated[dict | Missing, object()]",
@@ -565,3 +571,32 @@ def test_annotated_alias_cycle_is_unknown_and_wrapper_does_not_hide_violation() 
         type_shapes=_shape_facts("Alias", wrapped_union),
     )
     assert violation.violation is not None and "instead of a typed model" in violation.violation
+
+
+@pytest.mark.parametrize("flag", ["source_binding_unique", "source_member_binding_static"])
+@pytest.mark.parametrize("value", [None, False])
+def test_alias_body_requires_positive_binding_evidence(flag: str, value: bool | None) -> None:
+    aliases = BindingIndex()
+    facts = {
+        "record_kind": "type_alias",
+        "alias": "object",
+        "source_binding_unique": True,
+        "source_member_binding_static": True,
+    }
+    if value is None:
+        facts.pop(flag)
+    else:
+        facts[flag] = value
+    aliases[("sample", "Alias")] = facts
+    verdict = _boundary_type_verdict(
+        "Alias",
+        "sample",
+        None,
+        {},
+        BindingIndex(),
+        aliases,
+        type_shapes=_shape_facts("Alias", aliases),
+    )
+    assert verdict.undecidable == "other"
+    assert verdict.violation is None
+    assert verdict.named_origins == (("sample", "Alias"),)

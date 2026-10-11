@@ -58,11 +58,13 @@ needs no Node runtime. Runtime mismatch, malformed replies and incomplete eviden
 cannot certify a scan. Legacy observations remain readable only under supported
 schemas; missing required sections fail closed.
 
-SourceFacts 2.0.0 and ArchitectureIR 2.0.0 persist `runtime.requirement_state`; Core
-observation 0.74.0 emits it. Delta 2.0.0 and command-result 6.0.0 carry the new runtime
-shape. New readers accept SourceFacts 1.0.0 and supported legacy observations/deltas
-without this field. Old strict consumers require an upgrade; pin collectors, CLI and
-schemas together. A new Core request names protocol 2.0.0; collectors must support it.
+SourceFacts 3.0.0 adds neutral list type syntax for explicit callback arguments.
+Readers retain byte-compatible 1.0.0/2.0.0 packets; those versions reject the new
+list vocabulary, including nested shapes. Runtime `requirement_state` remains
+required from SourceFacts 2.0.0 onward. ArchitectureIR/Delta stay 2.0.0;
+command-result stays 7.0.0. New requests name protocol 3.0.0; pin collectors,
+Core and strict schemas together. See [AD-223](architecture/decisions/ad-223-explicit-callable-boundaries.md).
+
 
 ## Results
 
@@ -84,7 +86,7 @@ expectations are n/a. Filtering and baseline display do not change canonical fac
 Exit 0 is not architecture approval. Exit 2 carries diagnostics with `kind`,
 `subject`, `unknown_claim` and `remedy`; inspected evidence may remain available.
 JSON null means unavailable/inapplicable; an empty list means measured empty.
-Pin CLI and [command schema](../schema/command-result.schema.json) together.
+Pin CLI and [command schema](../schema/command-result-7.0.schema.json) together.
 Ignore unknown result properties; required fields and enum meanings remain strict.
 Schema shape validation proves neither authenticity nor conformance.
 `report`/`check --output` also write `.report.html`/`.check.html` companions.
@@ -118,10 +120,17 @@ it also works with live reports and `--component`. Full JSON includes the select
 and `false`. `--only violations` queries full finding rows directly. Assignment findings
 name candidate `owners` (or `none`) and `remedy`. Observed imports never establish permission.
 
+Full JSON also includes `recorded_unknowns`: complete original UNKNOWN records,
+including IDs, references and nested data. This inventory stays global with
+`--component`; grouped projection uncertainty remains separate. `[]` means
+inspected empty, `null` means unavailable. Full output uses schema 2.0.0;
+compact stays 1.0.0 without this field. The published legacy schemas stay unchanged.
+
 Saved queries read recorded evidence without rescanning, verifying current files
 or writing artifacts. `--input` cannot combine with `--root`, `--config`,
 `--baseline` or `--output`. Unknown/ambiguous selectors exit 2.
-See the [projection schema](../schema/architecture-command.schema.json).
+See the [full schema](../schema/architecture-command-2.0.schema.json) and
+[legacy schema](../schema/architecture-command.schema.json).
 
 ## Narrowing a report
 

@@ -167,6 +167,7 @@ def command_schema() -> dict[str, object]:
     schema = _schema(
         ArchitectureCommandEnvelope, "architecture-command", "Focused architecture command"
     )
+    schema["$id"] = "urn:archkeel:architecture-command:2.0.0"
     schema["$comment"] = (
         "Default fields may be omitted. Selector names starting with dot or colon (or empty) "
         "are relative to selector_prefix, falling back to namespace. Public/planned group "
@@ -221,6 +222,17 @@ def command_schema() -> dict[str, object]:
     envelope_required = definitions_envelope["required"]
     if not isinstance(envelope_properties, dict) or not isinstance(envelope_required, list):
         raise TypeError("generated command schema has invalid envelope fields")
+    envelope_properties["schema_version"] = {"const": "2.0.0"}
+    envelope_properties["report_filter"] = {
+        "allOf": [
+            envelope_properties["report_filter"],
+            {
+                "type": "object",
+                "properties": {"full_architecture": {"const": True}},
+                "required": ["full_architecture"],
+            },
+        ]
+    }
     envelope_properties["filtered_violation_count"] = {
         "anyOf": [{"type": "integer", "minimum": 0}, {"type": "null"}]
     }
@@ -234,10 +246,24 @@ def command_schema() -> dict[str, object]:
             {"type": "null"},
         ]
     }
+    envelope_properties["recorded_unknowns"] = {
+        "anyOf": [
+            {
+                "type": "array",
+                "items": {
+                    "allOf": [
+                        {"$ref": "urn:archkeel:architecture-ir:common:1.2.0#/$defs/record"},
+                        {"properties": {"evidence_class": {"const": "UNKNOWN"}}},
+                    ]
+                },
+            },
+            {"type": "null"},
+        ]
+    }
     envelope_required[:] = [name for name in envelope_required if name != "filtered_violations"]
     envelope_required.extend(
         name
-        for name in ("filtered_violation_count", "violation_details_included")
+        for name in ("filtered_violation_count", "violation_details_included", "recorded_unknowns")
         if name not in envelope_required
     )
     definitions_envelope["allOf"] = [
@@ -293,7 +319,12 @@ def command_schema() -> dict[str, object]:
                 ],
             },
             "else": {
-                "not": {"required": ["filtered_violations"]},
+                "not": {
+                    "anyOf": [
+                        {"required": ["filtered_violations"]},
+                        {"required": ["recorded_unknowns"]},
+                    ]
+                },
                 "properties": {"violation_details_included": {"const": False}},
             },
         }
@@ -312,7 +343,11 @@ def member_inventory_schema() -> dict[str, object]:
 
 def _update_contract_schema(path: Path) -> None:
     schema = json.loads(path.read_bytes())
-    if schema["properties"]["schema_version"] in ({"const": "3.1.0"}, {"const": "3.2.0"}):
+    if schema["properties"]["schema_version"] in (
+        {"const": "3.1.0"},
+        {"const": "3.2.0"},
+        {"const": "3.3.0"},
+    ):
         selector = schema["$defs"]["boundaryTypes"]["properties"]["allowed_positions"]["items"]
         selector["properties"]["key_alias_body"] = {
             "type": "object",
@@ -327,7 +362,7 @@ def _update_contract_schema(path: Path) -> None:
             "properties": {"field_path": {"const": ""}},
             "not": {"anyOf": [{"required": ["container_depth"]}, {"required": ["mapping_depth"]}]},
         }
-    if schema["properties"]["schema_version"] == {"const": "3.2.0"}:
+    if schema["properties"]["schema_version"] in ({"const": "3.2.0"}, {"const": "3.3.0"}):
         selector = schema["$defs"]["boundaryTypes"]["properties"]["allowed_positions"]["items"]
         selector["properties"]["literal_mapping_arm"] = {"$ref": "#/$defs/nonEmpty"}
         selector["dependentSchemas"]["literal_mapping_arm"] = {
@@ -338,6 +373,37 @@ def _update_contract_schema(path: Path) -> None:
                     for name in ("container_depth", "mapping_depth", "alias_body", "key_alias_body")
                 ]
             },
+        }
+    if schema["properties"]["schema_version"] == {"const": "3.3.0"}:
+        selector = schema["$defs"]["boundaryTypes"]["properties"]["allowed_positions"]["items"]
+        selector["properties"]["native_mapping"] = {"const": True}
+        selector["properties"]["annotation"] = {"$ref": "#/$defs/nonEmpty"}
+        selector["allOf"] = [
+            {
+                "if": {"required": ["native_mapping"]},
+                "else": {"properties": {"annotation": {"not": {"const": "dict"}}}},
+            }
+        ]
+        selector["dependentSchemas"]["native_mapping"] = {
+            "properties": {"annotation": {"enum": ["dict", "dict | None", "list[dict]"]}},
+            "not": {
+                "anyOf": [
+                    {"required": [name]}
+                    for name in (
+                        "container_depth",
+                        "mapping_depth",
+                        "alias_body",
+                        "key_alias_body",
+                        "literal_mapping_arm",
+                    )
+                ]
+            },
+        }
+        selector["dependentSchemas"]["literal_mapping_arm"]["not"] = {
+            "anyOf": [
+                {"required": [name]}
+                for name in ("mapping_depth", "alias_body", "key_alias_body", "native_mapping")
+            ]
         }
     schema["$defs"]["component"]["properties"]["layer"] = {
         "type": "string",
