@@ -325,6 +325,34 @@ def _class_symbol_data(
     }
 
 
+def _annotation_name_lookups(
+    module: ParsedModule, annotation: ast.expr, *, deferred: bool
+) -> dict[str, bool]:
+    """Collect referenced names and whether any occurrence needs deferred lookup."""
+    names: dict[str, bool] = {}
+    pending = [(annotation, deferred, True)]
+    while pending:
+        expression, lookup_deferred, decode_quoted = pending.pop()
+        if isinstance(expression, ast.Name):
+            names[expression.id] = names.get(expression.id, False) or lookup_deferred
+        decoded = quoted_type_expression(expression) if decode_quoted else None
+        if decoded is not None:
+            pending.append((decoded, True, True))
+        elif isinstance(expression, ast.Subscript) and _resolve_static_name(
+            module, expression.value
+        ) in {"typing.Literal", "typing_extensions.Literal"}:
+            # Literal values still bind names; string values are not quoted types.
+            pending.append((expression.value, lookup_deferred, decode_quoted))
+            pending.append((expression.slice, lookup_deferred, False))
+        else:
+            pending.extend(
+                (child, lookup_deferred, decode_quoted)
+                for child in ast.iter_child_nodes(expression)
+                if isinstance(child, ast.expr)
+            )
+    return names
+
+
 def _annotation_binding_uncertainties(
     module: ParsedModule,
     node: ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef,
@@ -369,27 +397,7 @@ def _annotation_binding_uncertainties(
     for position, annotation, statement in annotations:
         if annotation is None:
             continue
-        names: dict[str, bool] = {}
-        pending = [(annotation, deferred, True)]
-        while pending:
-            expression, lookup_deferred, decode_quoted = pending.pop()
-            if isinstance(expression, ast.Name):
-                names[expression.id] = names.get(expression.id, False) or lookup_deferred
-            decoded = quoted_type_expression(expression) if decode_quoted else None
-            if decoded is not None:
-                pending.append((decoded, True, True))
-            elif isinstance(expression, ast.Subscript) and _resolve_static_name(
-                module, expression.value
-            ) in {"typing.Literal", "typing_extensions.Literal"}:
-                # Literal values still bind names; string values are not quoted types.
-                pending.append((expression.value, lookup_deferred, decode_quoted))
-                pending.append((expression.slice, lookup_deferred, False))
-            else:
-                pending.extend(
-                    (child, lookup_deferred, decode_quoted)
-                    for child in ast.iter_child_nodes(expression)
-                    if isinstance(child, ast.expr)
-                )
+        names = _annotation_name_lookups(module, annotation, deferred=deferred)
         shadowed = sorted(
             name
             for name in names
