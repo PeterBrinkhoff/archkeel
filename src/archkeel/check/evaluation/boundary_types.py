@@ -1904,13 +1904,16 @@ def _mapping_union_verdict(
 ) -> _Position:
     arms = _mapping_union_arms(annotation, module, imports, classes, type_shapes)
     if contract is not None and contract.schema_version == "3.1.0":
-        native_compatible = (
+        ordinary_compatible = (
             annotation in _OPAQUE_NATIVE_REASONS
             or _native_iterable_shape(annotation, module, imports, classes, type_shapes)
             or arms is not None
             and len(arms) == 1
+            or _ordinary_nullable_mapping(
+                annotation, verdict, module, imports, classes, type_shapes
+            )
         )
-        verdict = replace(verdict, typed_union_checked=not native_compatible)
+        verdict = replace(verdict, typed_union_checked=not ordinary_compatible)
         proof = _typed_mapping_union_proof(
             annotation,
             verdict,
@@ -1968,6 +1971,36 @@ def _mapping_union_verdict(
         ),
         typed_union_checked=verdict.typed_union_checked,
     )
+
+
+def _ordinary_nullable_mapping(
+    annotation: str,
+    verdict: _Position,
+    module: str,
+    imports: BindingIndex,
+    classes: BindingIndex,
+    type_shapes: TypeShapeIndex,
+) -> bool:
+    members = _union_parameters(annotation, module, imports, type_shapes=type_shapes)
+    if members is None or len(members) != 2 or "None" not in members or members[0] == members[1]:
+        return False
+    shape = type_shapes.get(annotation)
+    if (
+        isinstance(shape, TypeApplication)
+        and _proven_type_head(
+            shape.head,
+            module,
+            imports,
+            classes,
+            frozenset({("typing", "Union"), ("typing", "Optional")}),
+        )
+        is not True
+    ):
+        return False
+    mapping = members[1] if members[0] == "None" else members[0]
+    return isinstance(
+        _mapping_parameters(mapping, module, imports, classes, type_shapes=type_shapes), list
+    ) and _typed_union_verdict_matches([mapping], verdict)
 
 
 def _relocate_mapping_alternatives(

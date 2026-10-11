@@ -1037,3 +1037,98 @@ def test_existing_nullable_native_map_allowance_survives_contract_upgrade(
     assert removed[0].data.get("reason") == expected_reason
     assert after_findings == tuple(item for item in before_findings if item not in removed)
     assert after.observation.records("unknowns") == before.observation.records("unknowns")
+
+
+@pytest.mark.parametrize("facade", [False, True], ids=["direct", "facade"])
+@pytest.mark.parametrize(
+    "mapping",
+    [
+        "dict[str, int]",
+        "dict[str, float]",
+        "dict[int, str]",
+        "dict[str, str]",
+        "dict[str, object]",
+        "dict[SexKey, int]",
+    ],
+)
+@pytest.mark.parametrize(
+    "nullable,prefix",
+    [
+        ("{mapping} | None", ""),
+        ("None | {mapping}", ""),
+        ("Optional[{mapping}]", "from typing import Optional\n"),
+        ("Union[{mapping}, None]", "from typing import Union\n"),
+    ],
+)
+def test_ordinary_nullable_map_upgrade_preserves_exact_records(
+    tmp_path: Path, facade: bool, mapping: str, nullable: str, prefix: str
+) -> None:
+    annotation = nullable.format(mapping=mapping)
+    _typed_union_fixture(
+        tmp_path,
+        facade=facade,
+        annotation=annotation,
+        prefix=prefix,
+        schema_version="3.0.0",
+        change={"key_alias_body": None},
+    )
+    before = _observe(tmp_path)
+    assert before.observation is not None and before.diagnostics == ()
+    assert len(_facts(before.observation)) == 1
+    assert all(
+        item.data.get("reason") != "instead of a typed model"
+        for item in _targets(before.observation)
+    )
+    inputs = {path: path.read_bytes() for path in tmp_path.rglob("*") if path.is_file()}
+    contract_path = tmp_path / "contract.json"
+    contract = json.loads(contract_path.read_text())
+    contract["schema_version"] = "3.1.0"
+    contract_path.write_text(json.dumps(contract))
+    assert [path for path, content in inputs.items() if path.read_bytes() != content] == [
+        contract_path
+    ]
+    after = _observe(tmp_path)
+    assert after.observation is not None and after.diagnostics == ()
+    assert _facts(after.observation) == _facts(before.observation)
+    assert trace_valid_violations(after.observation) == trace_valid_violations(before.observation)
+    assert after.observation.records("unknowns") == before.observation.records("unknowns")
+
+
+@pytest.mark.parametrize("facade", [False, True], ids=["direct", "facade"])
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        {"annotation": "dict[str, int] | dict[str, int] | None"},
+        {"annotation": "dict[str, int] | int | None"},
+        {"annotation": "dict[str, int] | Missing | None"},
+        {"annotation": "dict[str, int] | object | None"},
+        {"prefix": "class dict: pass\n"},
+        {
+            "prefix": "from typing import Optional\nOptional = object\n",
+            "annotation": "Optional[dict[str, int]]",
+        },
+        {
+            "prefix": "from typing import Union\nUnion = object\n",
+            "annotation": "Union[dict[str, int], None]",
+        },
+        {
+            "annotation": "dict[str, int] | dict[SexKey, int] | None",
+            "change": {"key_alias_body": None},
+        },
+        {"change": {"alias_body": _GROUP_BINDING}},
+        {"change": {"key_alias_body": _KEY_BINDING}},
+    ],
+)
+def test_ordinary_nullable_map_cannot_bypass_union_or_binding_proof(
+    tmp_path: Path, facade: bool, mutation
+) -> None:
+    change = {"annotation": "dict[str, int] | None", "facade": facade, **mutation}
+    _typed_union_fixture(tmp_path, **change)
+    after = _observe(tmp_path)
+    assert after.observation is not None and after.diagnostics == ()
+    assert _facts(after.observation) == []
+    _typed_union_fixture(tmp_path, allowed=False, **change)
+    before = _observe(tmp_path)
+    assert before.observation is not None and before.diagnostics == ()
+    assert trace_valid_violations(after.observation) == trace_valid_violations(before.observation)
+    assert after.observation.records("unknowns") == before.observation.records("unknowns")
