@@ -117,3 +117,100 @@ def test_parenthesized_collection_argument_keeps_its_union_fact(annotation: str)
     )
     assert verdict.undecidable is None
     assert verdict.violation is None
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_quoted_lookup_is_order_independent_without_rewriting_literal_nodes(reverse: bool) -> None:
+    from archkeel.analyzer.python.type_shapes import collect_type_shapes
+    from archkeel.ir.type_shapes import (
+        LiteralKind,
+        TypeApplication,
+        TypeLiteral,
+        TypeName,
+        TypeUnion,
+    )
+
+    annotations = ['"str | None"', 'list["str"]', 'Literal["str", "str | None"]']
+    if reverse:
+        annotations.reverse()
+    shapes = collect_type_shapes(annotations)
+    assert shapes['"str"'] == TypeName("str", "str")
+    assert isinstance(shapes['"str | None"'], TypeUnion)
+    assert shapes["str"] == TypeName("str", "str")
+    assert shapes["None"] == TypeLiteral("None", LiteralKind.NONE)
+    literal = shapes['Literal["str", "str | None"]']
+    assert isinstance(literal, TypeApplication)
+    assert literal.arguments == (
+        TypeLiteral("'str'", LiteralKind.STRING),
+        TypeLiteral("'str | None'", LiteralKind.STRING),
+    )
+
+
+def test_quoted_type_shapes_roundtrip_through_existing_source_codec() -> None:
+    import json
+    from dataclasses import replace
+
+    from test_collection_protocol import _response
+
+    from archkeel.analyzer.python.type_shapes import collect_type_shapes
+    from archkeel.ir.facts_codec import decode_response, encode_response
+
+    original = decode_response(json.dumps(_response()).encode())
+    assert original.facts is not None
+    shapes = collect_type_shapes(['"str | None"', 'list["str"]', 'Literal["str"]'])
+    response = replace(original, facts=replace(original.facts, type_shapes=tuple(shapes.items())))
+    assert decode_response(encode_response(response)) == response
+
+
+@pytest.mark.parametrize(
+    ("annotation", "violation", "undecidable"),
+    [
+        ('"str | None"', None, None),
+        ('"None"', None, None),
+        ("int", None, None),
+        ('"int"', None, "forward_reference"),
+        ('"str | int"', None, "forward_reference"),
+        ('"object | int"', None, "forward_reference"),
+        ('"str | len"', None, "forward_reference"),
+        ('"object"', "instead of a typed model", None),
+        ('"object | Missing"', None, "forward_reference"),
+        ('"len"', None, "forward_reference"),
+        ('"  str | None  "', None, None),
+        ('"\\"str\\""', None, "forward_reference"),
+    ],
+)
+def test_quoted_core_uses_collected_facts_without_parsing(
+    monkeypatch: pytest.MonkeyPatch, annotation: str, violation: str | None, undecidable: str | None
+) -> None:
+    import ast
+
+    from archkeel.analyzer.python.type_shapes import collect_type_shapes
+    from archkeel.ir.model import ArchitectureContract
+
+    shapes = collect_type_shapes([annotation])
+
+    def forbidden_parse(*args: object, **kwargs: object) -> None:
+        raise AssertionError("Core must use the supplied type facts")
+
+    monkeypatch.setattr(ast, "parse", forbidden_parse)
+    verdict = violations._boundary_type_verdict(
+        annotation,
+        "sample",
+        ArchitectureContract(schema_version="2.1.0", components=(), rules=()),
+        {},
+        violations.BindingIndex(),
+        violations.BindingIndex(),
+        type_shapes=shapes,
+    )
+    assert verdict.violation == violation
+    assert verdict.undecidable == undecidable
+
+
+def test_decoded_source_spans_cannot_overwrite_an_unrelated_annotation() -> None:
+    from archkeel.analyzer.python.type_shapes import collect_type_shapes
+    from archkeel.ir.type_shapes import LiteralKind, TypeLiteral, TypeName, UnresolvedType
+
+    shapes = collect_type_shapes(["e", "", '"str  |   None"', '"str       |      None"'])
+    assert shapes["e"] == TypeName("e", "e")
+    assert shapes[""] == UnresolvedType("", valid_syntax=False)
+    assert shapes["None"] == TypeLiteral("None", LiteralKind.NONE)

@@ -152,6 +152,188 @@ def test_binding_index_preserves_every_binding_form(declaration: str) -> None:
     assert source.binding_may_exist_before(module, module.tree.body, None, "property")
 
 
+_MAP_UNION = "dict[str, float] | dict[tuple[int, int], float] | dict[SexKey, float]"
+
+
+def _map_union_project(
+    *,
+    local: bool = False,
+    extra: str = "",
+    provider_extra: str = "",
+    annotation: str = _MAP_UNION,
+    body: str = _MAP_UNION,
+    prefix: str = "",
+    other_importer: str = "",
+    provider_source: str = "SexKey = str | None\n",
+    importer_source: str = "from .types import SexKey\n",
+):
+    from archkeel.analyzer.python.imports import collect_imports, resolve_reexports
+    from archkeel.analyzer.python.symbols import collect_symbols
+
+    modules = [
+        _parsed_module(
+            provider_source + provider_extra, "sample.types", rel_path="sample/types.py"
+        ),
+        _parsed_module(
+            ("SexKey = str | None\n" if local else importer_source)
+            + prefix
+            + f"GroupMask = {body}\n"
+            + f"class Session:\n    def prepare(self) -> {annotation}: pass\n"
+            + extra,
+            "sample.impl",
+            rel_path="sample/impl.py",
+        ),
+    ]
+    if other_importer:
+        modules.append(_parsed_module(other_importer, "sample.other", rel_path="sample/other.py"))
+    evidence = {}
+    imports = collect_imports(
+        modules, {module.module for module in modules}, evidence, namespace="sample"
+    )
+    resolve_reexports(imports, {module.module: module.all_exports for module in modules}, modules)
+    symbols, _, _ = collect_symbols(modules, evidence)
+    return modules, imports, symbols
+
+
+@pytest.mark.parametrize("local", [False, True])
+@pytest.mark.parametrize("named", [False, True])
+def test_map_union_proves_both_annotation_and_admitted_assignment(local: bool, named: bool) -> None:
+    modules, imports, symbols = _map_union_project(
+        local=local, annotation="GroupMask" if named else _MAP_UNION
+    )
+    for module in modules:
+        assert "SexKey" not in unproven_member_bindings(module)
+    keys = [item for item in symbols if item["data"].get("name") == "SexKey"]
+    assert keys and all(item["data"].get("source_member_binding_static") is True for item in keys)
+    key_imports = [item for item in imports if item["data"]["binding"] == "SexKey"]
+    assert all(
+        item["data"].get("source_member_binding_static") is True
+        and item["data"].get("origin_member_binding_static") is True
+        for item in key_imports
+    )
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"extra": "unknown(SexKey)\n"},
+        {"extra": "SexKey.__args__ = ()\n"},
+        {"extra": "unknown(GroupMask)\n"},
+        {"provider_extra": "unknown(SexKey)\n"},
+        {"extra": "from . import types\ntypes.SexKey = object\n"},
+        {"other_importer": "from .types import SexKey\nunknown(SexKey)\n"},
+    ],
+)
+def test_map_union_cannot_absolve_a_separate_escape(change) -> None:
+    modules, imports, symbols = _map_union_project(**change)
+    assert "SexKey" in unproven_member_bindings(modules[0])
+    assert "SexKey" in unproven_member_bindings(modules[1])
+    assert all(
+        item["data"].get("source_member_binding_static") is False
+        for item in symbols
+        if item["data"].get("name") == "SexKey"
+    )
+    assert all(
+        item["data"].get("source_member_binding_static") is False
+        for item in imports
+        if item["data"]["binding"] == "SexKey"
+    )
+
+
+@pytest.mark.parametrize(
+    "annotation",
+    [
+        "dict[SexKey, float] | Missing",
+        "Missing | dict[SexKey, float]",
+        "dict[str, int] | dict[SexKey, float] | Missing",
+        "dict[SexKey, float] | factory()",
+        "factory()[SexKey] | dict[str, float]",
+        "Unknown[SexKey] | dict[str, float]",
+        "dict[SexKey, Custom] | dict[str, float]",
+        "dict[Custom, float] | dict[SexKey, float]",
+        "dict[SexKey, float] | Custom",
+        "Custom | dict[SexKey, float]",
+    ],
+)
+def test_unsafe_union_operand_or_argument_keeps_alias_escaped(annotation: str) -> None:
+    prefix = (
+        "class Meta(type):\n"
+        "    def __or__(self, other): return other\n"
+        "    def __ror__(self, other): return other\n"
+        "    def __eq__(self, other): return True\n"
+        "class Custom(metaclass=Meta): pass\n"
+    )
+    modules, imports, _ = _map_union_project(annotation=annotation, body=annotation, prefix=prefix)
+    assert "SexKey" in unproven_member_bindings(modules[0])
+    assert "SexKey" in unproven_member_bindings(modules[1])
+    assert all(
+        item["data"].get("source_member_binding_static") is False
+        for item in imports
+        if item["data"]["binding"] == "SexKey"
+    )
+
+
+def test_fresh_map_union_snapshot_does_not_inherit_an_old_proof() -> None:
+    safe, _, _ = _map_union_project()
+    unsafe, _, _ = _map_union_project(provider_extra="unknown(SexKey)\n")
+    assert safe[1].path == unsafe[1].path
+    assert "SexKey" not in unproven_member_bindings(safe[1])
+    assert "SexKey" in unproven_member_bindings(unsafe[1])
+    assert "SexKey" not in unproven_member_bindings(safe[1])
+
+
+def test_rerunning_import_origins_replaces_the_map_union_proof() -> None:
+    from archkeel.analyzer.python.imports import resolve_reexports
+
+    modules, imports, _ = _map_union_project()
+    assert "SexKey" not in unproven_member_bindings(modules[1])
+    imported = next(item for item in imports if item["data"]["binding"] == "SexKey")
+    imported["data"]["target_module"] = "sample.missing"
+    modules[1].aliases["SexKey"] = AliasBinding("sample.missing.SexKey", "symbol", "SexKey")
+    resolve_reexports(imports, {module.module: module.all_exports for module in modules}, modules)
+    assert "SexKey" in unproven_member_bindings(modules[1])
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"provider_source": "class str: pass\nSexKey = str | None\n"},
+        {"provider_source": "SexKey = None | str\n"},
+        {"provider_source": "Key = str | None\nSexKey = Key\n"},
+        {"provider_source": "SexKey = str | None\nSexKey = str | None\n"},
+        {"provider_source": "if flag:\n    SexKey = str | None\n"},
+        {"provider_source": "from opaque import *\nSexKey = str | None\n"},
+        {"provider_source": "SexKey = str | None\nunknown(globals())\n"},
+        {"provider_source": "from .provider import SexKey\n"},
+        {"importer_source": "from .missing import SexKey\n"},
+        {"importer_source": "if flag:\n    from .types import SexKey\n"},
+        {"importer_source": "from .types import SexKey\nfrom .types import SexKey\n"},
+        {"importer_source": "from .types import *\n"},
+        {
+            "importer_source": (
+                "from typing import TYPE_CHECKING\n"
+                "if TYPE_CHECKING:\n    from .types import SexKey\n"
+            )
+        },
+    ],
+)
+def test_map_union_requires_an_intrinsic_direct_provider(change) -> None:
+    modules, imports, _ = _map_union_project(**change)
+    assert not modules[1]._proven_map_union_expressions
+    assert "SexKey" in unproven_member_bindings(modules[1])
+    assert all(
+        item["data"].get("source_member_binding_static") is False
+        for item in imports
+        if item["data"]["binding"] == "SexKey"
+    )
+
+
+def test_local_map_union_protection_revokes_without_an_import_edge() -> None:
+    modules, _, _ = _map_union_project(local=True, extra="unknown(SexKey)\n")
+    assert not modules[1]._proven_map_union_expressions
+    assert "SexKey" in unproven_member_bindings(modules[1])
+
+
 def test_setter_local_parameter_does_not_hide_real_outer_escape() -> None:
     module = _parsed_module(
         "class value: pass\nclass Counter:\n"

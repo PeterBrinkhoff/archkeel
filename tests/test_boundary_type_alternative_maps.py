@@ -313,3 +313,102 @@ def test_alternative_maps_survive_ordinary_cli_reports_with_stable_facts(
         _native_audit(output.with_suffix(".report.html").read_text(), observation, output.name)
         observations.append((facts, observation.records("unknowns"), control))
     assert observations[0] == observations[1]
+
+
+@pytest.mark.parametrize("facade", [False, True], ids=["direct", "facade"])
+@pytest.mark.parametrize(
+    ("annotation", "body", "local_key"),
+    [
+        (
+            "GroupMask",
+            "dict[str, float] | dict[tuple[int, int], float] | dict[SexKey, float]",
+            False,
+        ),
+        (
+            "GroupMask",
+            "dict[str, float] | dict[tuple[int, int], float] | dict[SexKey, float]",
+            True,
+        ),
+        ("dict[str, float] | dict[tuple[int, int], float] | dict[str | None, float]", "", False),
+        (
+            "GroupMask",
+            "dict[str, float] | dict[tuple[int, int], float] | dict[str | None, float]",
+            False,
+        ),
+        ("dict[str, float] | dict[str, int]", "", False),
+        ("dict[str, str] | dict[tuple[int, int], int]", "", False),
+    ],
+)
+def test_complete_typed_map_union_binds_only_present_direct_aliases(
+    tmp_path: Path, facade: bool, annotation: str, body: str, local_key: bool
+) -> None:
+    from test_boundary_type_bound_aliases import _facts, _targets, _typed_union_fixture
+
+    arguments = {"facade": facade, "annotation": annotation, "local_key": local_key}
+    _typed_union_fixture(tmp_path, **arguments, **({"body": body} if body else {}), allowed=False)
+    before = _observe(tmp_path)
+    assert before.observation is not None and before.diagnostics == ()
+    _typed_union_fixture(tmp_path, **arguments, **({"body": body} if body else {}))
+    after = _observe(tmp_path)
+    assert after.observation is not None and after.diagnostics == ()
+    assert _targets(after.observation) == []
+    facts = _facts(after.observation)
+    assert (
+        len(facts)
+        == len(_targets(before.observation))
+        == (3 if "tuple[" in (body or annotation) and "float" in (body or annotation) else 2)
+    )
+    assert after.observation.records("unknowns") == before.observation.records("unknowns")
+    assert trace_valid_violations(after.observation) == tuple(
+        item
+        for item in trace_valid_violations(before.observation)
+        if item not in _targets(before.observation)
+    )
+    selector = json.loads((tmp_path / "contract.json").read_text())["rules"][0][
+        "allowed_positions"
+    ][0]
+    for fact in facts:
+        assert fact.data.get("observed_container_depth") == 0
+        assert fact.data.get("container_depth") is None
+        assert fact.data.get("accepted_opacity") is None
+        for binding in ("alias_body", "key_alias_body"):
+            pair = fact.data.get(binding)
+            assert (dict(pair.entries) if pair else None) == selector.get(binding)
+    repeated = _observe(tmp_path)
+    assert repeated.observation is not None and _facts(repeated.observation) == facts
+
+
+@pytest.mark.parametrize("schema_version", ["2.1.0", "2.2.0", "2.3.0", "3.0.0"])
+def test_fully_expanded_typed_map_union_requires_31(tmp_path: Path, schema_version: str) -> None:
+    from test_boundary_type_bound_aliases import _facts, _typed_union_fixture
+
+    _typed_union_fixture(
+        tmp_path, annotation="dict[str, float] | dict[str, int]", schema_version=schema_version
+    )
+    result = _observe(tmp_path)
+    assert result.observation is not None
+    assert _facts(result.observation) == []
+    assert trace_valid_violations(result.observation)
+
+
+@pytest.mark.parametrize(
+    "annotation",
+    [
+        "dict[str, float] | dict[str, float]",
+        "dict[str, int] | dict[str, int]",
+        "dict[str, float] | dict[str, float] | Missing",
+    ],
+)
+def test_duplicate_expanded_maps_cannot_fall_through_to_direct_permission(
+    tmp_path: Path, annotation: str
+) -> None:
+    from test_boundary_type_bound_aliases import _facts, _typed_union_fixture
+
+    _typed_union_fixture(tmp_path, annotation=annotation)
+    after = _observe(tmp_path)
+    assert after.observation is not None and _facts(after.observation) == []
+    _typed_union_fixture(tmp_path, annotation=annotation, allowed=False)
+    before = _observe(tmp_path)
+    assert before.observation is not None
+    assert trace_valid_violations(after.observation) == trace_valid_violations(before.observation)
+    assert after.observation.records("unknowns") == before.observation.records("unknowns")

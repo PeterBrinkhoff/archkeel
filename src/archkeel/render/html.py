@@ -595,7 +595,6 @@ def _flow_toolbar(*, atlas: bool = False) -> str:
         if atlas
         else ""
     )
-    zoom_label = "100%" if atlas else "Reset"
     return f"""        <div class="flow-toolbar" hidden>{content_choice}
           <details class="flow-filters">
           <summary>Filters</summary><div class="flow-filter-controls">
@@ -627,7 +626,7 @@ def _flow_toolbar(*, atlas: bool = False) -> str:
                aria-label="Diagram zoom">
             <button type="button" class="flow-fit flow-zoom-out" aria-label="Zoom out">−</button>
             <button type="button" class="flow-fit flow-zoom-100"
-                    aria-label="Set zoom to 100%">{zoom_label}</button>
+                    aria-label="Reset and fit">Reset and fit</button>
             <output class="flow-zoom-value" aria-live="polite">100%</output>
             <button type="button" class="flow-fit flow-zoom-in" aria-label="Zoom in">+</button>
             <button type="button" class="flow-fit flow-fit-overview">Fit overview</button>

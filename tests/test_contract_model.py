@@ -249,8 +249,8 @@ def test_root_boundary_allowance_cannot_name_a_bare_broad_type(annotation: str) 
 _PROVENANCE = ["docs/architecture/shop.md"]
 
 
-def _maximal_contract() -> dict[str, object]:
-    """The shop contract with every rule kind and every optional field of every entry filled."""
+def _maximal_contract(version: str = "3.0.0") -> dict[str, object]:
+    """The shop contract fills every field available to its version."""
     raw = json.loads((ROOT / "fixtures/F-architecture/architecture-contract.json").read_text())
     app = next(item for item in raw["components"] if item["id"] == "COMP-APP")
     app["exact_modules"] = ["shop.app.orders"]
@@ -338,7 +338,7 @@ def _maximal_contract() -> dict[str, object]:
             "responsibility": "Keep order orchestration in the app layer.",
         }
     ]
-    raw["schema_version"] = "3.0.0"
+    raw["schema_version"] = version
     boundary = next(rule for rule in raw["rules"] if rule["kind"] == "boundary_types")
     boundary["allowed_positions"].append(
         {
@@ -349,6 +349,15 @@ def _maximal_contract() -> dict[str, object]:
             "alias_body": {"origin": "shop.app.orders:Page", "shape": "tuple[Opaque]"},
         }
     )
+    if version == "3.1.0":
+        boundary["allowed_positions"].append(
+            {
+                "qualified_name": "shop.app.orders.group",
+                "position": "return",
+                "annotation": "dict[MaskKey, int] | dict[str, float]",
+                "key_alias_body": {"origin": "shop.app.orders:MaskKey", "shape": "str | None"},
+            }
+        )
     declarations["uml"] = asdict(
         TargetDefinition(
             entities=(
@@ -638,13 +647,17 @@ _NON_REFERENCE_STRINGS = frozenset(
 
 def test_the_maximal_contract_fills_every_field() -> None:
     """The completeness test below only sees a field this contract fills."""
-    document = json.loads(contract_bytes(parse_contract(_maximal_contract())))
+    documents = [
+        json.loads(contract_bytes(parse_contract(_maximal_contract(version))))
+        for version in ("3.0.0", "3.1.0")
+    ]
 
-    assert _unfilled(ArchitectureContract, [document], "contract") == []
+    assert _unfilled(ArchitectureContract, documents, "contract") == []
 
 
-def test_module_references_point_at_the_names_they_list() -> None:
-    contract = parse_contract(_maximal_contract())
+@pytest.mark.parametrize("version", ("3.0.0", "3.1.0"))
+def test_module_references_point_at_the_names_they_list(version: str) -> None:
+    contract = parse_contract(_maximal_contract(version))
     document = json.loads(contract_bytes(contract))
 
     for item in module_references(contract):
@@ -654,20 +667,27 @@ def test_module_references_point_at_the_names_they_list() -> None:
         assert node == item.value, item.pointer
 
 
-def test_every_contract_string_is_a_module_reference_or_an_opaque_value() -> None:
+@pytest.mark.parametrize("version", ("3.0.0", "3.1.0"))
+def test_every_contract_string_is_a_module_reference_or_an_opaque_value(version: str) -> None:
     """AD-105: a rename is sound only if `module_references` lists every module-naming field."""
-    contract = parse_contract(_maximal_contract())
+    contract = parse_contract(_maximal_contract(version))
     document = json.loads(contract_bytes(contract))
     listed = {_shape(document, item.pointer) for item in module_references(contract)}
     strings = {_shape(document, pointer) for pointer in _string_pointers(document)}
 
-    assert listed.isdisjoint(_NON_REFERENCE_STRINGS)
-    assert strings == listed | _NON_REFERENCE_STRINGS
+    opaque = _NON_REFERENCE_STRINGS | (
+        {"/rules/boundary_types/allowed_positions/*/key_alias_body/shape"}
+        if version == "3.1.0"
+        else set()
+    )
+    assert listed.isdisjoint(opaque)
+    assert strings == listed | opaque
 
 
-def test_validate_holds_the_namespace_to_the_fields_it_held_before() -> None:
+@pytest.mark.parametrize("version", ("3.0.0", "3.1.0"))
+def test_validate_holds_the_namespace_to_the_fields_it_held_before(version: str) -> None:
     """A command, path step, shim, allowance, layout or construct source is renamed, not held."""
-    contract = parse_contract(_maximal_contract())
+    contract = parse_contract(_maximal_contract(version))
     document = json.loads(contract_bytes(contract))
     references = module_references(contract)
 
@@ -684,4 +704,46 @@ def test_validate_holds_the_namespace_to_the_fields_it_held_before() -> None:
         "/declarations/paths/*/steps/*",
         "/declarations/compat/*/module",
         "/declarations/compat/*/target",
-    }
+    } | (
+        {"/rules/boundary_types/allowed_positions/*/key_alias_body/origin"}
+        if version == "3.1.0"
+        else set()
+    )
+
+
+@pytest.mark.parametrize("version", ("3.0.0", "3.1.0"))
+def test_maximal_contract_matches_its_version_schema(version: str) -> None:
+    raw = json.loads(contract_bytes(parse_contract(_maximal_contract(version))))
+    schema = json.loads(
+        (ROOT / f"schema/architecture-contract-{version[:3]}.schema.json").read_bytes()
+    )
+    assert not list(Draft202012Validator(schema).iter_errors(raw))
+    assert parse_contract(json.loads(contract_bytes(parse_contract(raw)))) == parse_contract(raw)
+
+
+def test_maximal_contract_key_binding_requires_3_1() -> None:
+    raw = json.loads(contract_bytes(parse_contract(_maximal_contract("3.1.0"))))
+    raw["schema_version"] = "3.0.0"
+    with pytest.raises(ValueError, match="key_alias_body"):
+        parse_contract(raw)
+    schema = json.loads((ROOT / "schema/architecture-contract-3.0.schema.json").read_bytes())
+    assert list(Draft202012Validator(schema).iter_errors(raw))
+
+
+@pytest.mark.parametrize("version", ("3.0.0", "3.1.0"))
+def test_boundary_module_references_preserve_grouped_order(version: str) -> None:
+    contract = parse_contract(_maximal_contract(version))
+    pointers = [
+        item.pointer
+        for item in module_references(contract)
+        if "/allowed_positions/" in item.pointer
+    ]
+    groups = [
+        0
+        if pointer.endswith("/qualified_name")
+        else 1
+        if pointer.endswith("/alias_body/origin")
+        else 2
+        for pointer in pointers
+    ]
+    assert groups == sorted(groups)

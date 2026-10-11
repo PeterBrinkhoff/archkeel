@@ -64,10 +64,12 @@ def _document(version="3.0.0", **selector):
     }
 
 
-def _validator():
-    schema = json.loads((ROOT / "schema/architecture-contract-3.0.schema.json").read_bytes())
+def _validator(version="3.0.0"):
+    schema = json.loads(
+        (ROOT / f"schema/architecture-contract-{version[:3]}.schema.json").read_bytes()
+    )
     Draft202012Validator.check_schema(schema)
-    assert schema["$id"] == "urn:archkeel:architecture-contract:3.0.0"
+    assert schema["$id"] == f"urn:archkeel:architecture-contract:{version}"
     return Draft202012Validator(schema)
 
 
@@ -164,14 +166,15 @@ def test_alias_binding_duplicate_identity_includes_both_strings():
         parse_contract(raw)
 
 
-def test_contract_3_inherits_layer_and_uml_capabilities_without_default_change():
+@pytest.mark.parametrize("version", ["3.0.0", "3.1.0"])
+def test_contract_3_inherits_layer_and_uml_capabilities_without_default_change(version):
     raw = _maximal_contract()
-    raw["schema_version"] = "3.0.0"
+    raw["schema_version"] = version
     contract = parse_contract(raw)
     assert any(item.layer for item in contract.components)
     assert any(item.kind == "layer_order" for item in contract.rules)
     assert contract.declarations.uml is not None
-    assert _validator().is_valid(json.loads(contract_bytes(contract)))
+    assert _validator(version).is_valid(json.loads(contract_bytes(contract)))
     assert parse_contract(json.loads(contract_bytes(contract))) == contract
     assert CONTRACT_SCHEMA_VERSION == "2.1.0"
 
@@ -326,7 +329,12 @@ def test_explicit_origin_rename_comparison_preserves_shape_change_as_widening():
 
 
 @pytest.mark.parametrize(
-    "name", ["architecture-contract.schema.json", "architecture-contract-3.0.schema.json"]
+    "name",
+    [
+        "architecture-contract.schema.json",
+        "architecture-contract-3.0.schema.json",
+        "architecture-contract-3.1.schema.json",
+    ],
 )
 def test_schema_refresh_preserves_version_vocabulary_and_repairs_owned_fragments(name, tmp_path):
     from tools.architecture_graph_schema import _update_contract_schema
@@ -351,7 +359,12 @@ def test_schema_refresh_preserves_version_vocabulary_and_repairs_owned_fragments
 
 
 @pytest.mark.parametrize(
-    "name", ["architecture-contract.schema.json", "architecture-contract-3.0.schema.json"]
+    "name",
+    [
+        "architecture-contract.schema.json",
+        "architecture-contract-3.0.schema.json",
+        "architecture-contract-3.1.schema.json",
+    ],
 )
 def test_schema_refresh_retains_target_owned_root_constraints(name, tmp_path):
     from tools.architecture_graph_schema import _update_contract_schema
@@ -380,7 +393,9 @@ def test_schema_refresh_cli_updates_explicit_targets_and_keeps_single_target(rep
     targets = []
     names = ["architecture-contract.schema.json"]
     if repeated:
-        names.append("architecture-contract-3.0.schema.json")
+        names.extend(
+            ["architecture-contract-3.0.schema.json", "architecture-contract-3.1.schema.json"]
+        )
     for name in names:
         target = tmp_path / name
         original = (ROOT / "schema" / name).read_bytes()
@@ -405,3 +420,174 @@ def test_schema_refresh_cli_updates_explicit_targets_and_keeps_single_target(rep
     assert result.returncode == 0, result.stderr
     for target, original in targets:
         assert target.read_bytes() == original
+
+
+KEY_BODY = {"origin": "sample.app.profile:SexKey", "shape": "str | None"}
+
+
+@pytest.mark.parametrize("root_body", [None, BODY])
+def test_key_alias_body_contract31_roundtrip(root_body):
+    from archkeel.ir.model import BoundaryAliasBody
+
+    raw = _document(
+        "3.1.0", key_alias_body=KEY_BODY, **({"alias_body": root_body} if root_body else {})
+    )
+    contract = parse_contract(raw)
+    selector = contract.rules[0].allowed_positions[0]
+    assert selector.key_alias_body == BoundaryAliasBody(**KEY_BODY)
+    with pytest.raises(FrozenInstanceError):
+        selector.key_alias_body.origin = "changed"
+    encoded = json.loads(contract_bytes(contract))
+    assert _validator("3.1.0").is_valid(encoded)
+    assert parse_contract(encoded) == contract
+    assert _rule_payload(contract.rules[0])["allowed_positions"][0]["key_alias_body"] == KEY_BODY
+    declaration = project_rule_declaration(contract.rules[0])
+    assert declaration["data"]["allowed_positions"][0]["key_alias_body"] == KEY_BODY
+    observed = raw_observation()
+    observed["declarations"] = [declaration]
+    parsed = parse_observation(decode_canonical_model(encode_canonical_model(observed)))
+    assert (
+        observation_payload(parsed)["declarations"][0]["data"]["allowed_positions"][0][
+            "key_alias_body"
+        ]
+        == KEY_BODY
+    )
+    opaque = {"origin": "  sample.app.profile:SexKey  ", "shape": " str | None\n"}
+    roundtrip = parse_contract(_document("3.1.0", key_alias_body=opaque))
+    assert (
+        json.loads(contract_bytes(roundtrip))["rules"][0]["allowed_positions"][0]["key_alias_body"]
+        == opaque
+    )
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        None,
+        [],
+        "body",
+        {},
+        {"origin": "x"},
+        {"shape": "x"},
+        {**KEY_BODY, "extra": True},
+        {**KEY_BODY, "origin": ""},
+        {**KEY_BODY, "origin": "  "},
+        {**KEY_BODY, "shape": ""},
+        {**KEY_BODY, "shape": "\n"},
+        {**KEY_BODY, "origin": 1},
+        {**KEY_BODY, "shape": False},
+        {**KEY_BODY, "origin": None},
+        {**KEY_BODY, "shape": []},
+    ],
+)
+def test_key_alias_body_rejects_malformed_pairs(body):
+    raw = _document("3.1.0", key_alias_body=body)
+    assert not _validator("3.1.0").is_valid(raw)
+    with pytest.raises(ValueError):
+        parse_contract(raw)
+
+
+@pytest.mark.parametrize(
+    "coordinates",
+    [
+        {"field_path": "payload"},
+        {"mapping_depth": 1},
+        {"container_depth": 1},
+        {"container_depth": 0},
+        {"container_depth": None},
+    ],
+)
+def test_key_alias_body_requires_empty_path_and_absent_depth(coordinates):
+    raw = _document("3.1.0", key_alias_body=KEY_BODY, **coordinates)
+    assert not _validator("3.1.0").is_valid(raw)
+    with pytest.raises(ValueError):
+        parse_contract(raw)
+
+
+@pytest.mark.parametrize("version", ["2.1.0", "2.2.0", "2.3.0", "3.0.0"])
+def test_key_alias_body_rejects_old_versions(version, tmp_path):
+    raw = _document(version, key_alias_body=KEY_BODY)
+    schema_name = (
+        "architecture-contract-3.0.schema.json"
+        if version == "3.0.0"
+        else "architecture-contract.schema.json"
+    )
+    assert not Draft202012Validator(
+        json.loads((ROOT / "schema" / schema_name).read_bytes())
+    ).is_valid(raw)
+    with pytest.raises(ValueError, match="key_alias_body.*3.1.0"):
+        parse_contract(raw)
+    path = tmp_path / "contract.json"
+    path.write_text(json.dumps(raw))
+    with pytest.raises(ValueError, match="key_alias_body.*3.1.0"):
+        load_contract(path)
+    bound = parse_contract(_document("3.1.0", key_alias_body=KEY_BODY))
+    with pytest.raises(ValueError, match="key_alias_body.*3.1.0"):
+        contract_bytes(replace(bound, schema_version=version))
+
+
+@pytest.mark.parametrize("field", ["origin", "shape"])
+def test_key_alias_body_identity_and_amendment(field):
+    before = parse_contract(_document("3.1.0", key_alias_body=KEY_BODY))
+    after = parse_contract(_document("3.1.0", key_alias_body={**KEY_BODY, field: "changed"}))
+    assert len(contract_widenings(before, after)) == 1
+    amendment = Amendment(contract_digest(before), contract_digest(after), "who", "why")
+    assert verify_amendment(
+        amendment, before_digest=contract_digest(before), after_digest=contract_digest(after)
+    )
+    assert not verify_amendment(
+        amendment, before_digest=contract_digest(before), after_digest=contract_digest(before)
+    )
+    raw = _document("3.1.0", key_alias_body=KEY_BODY)
+    positions = raw["rules"][0]["allowed_positions"]
+    positions += [
+        {**positions[0], "key_alias_body": {**KEY_BODY, field: "changed"}},
+        {key: value for key, value in positions[0].items() if key != "key_alias_body"},
+    ]
+    assert len(parse_contract(raw).rules[0].allowed_positions) == 3
+    assert _validator("3.1.0").is_valid(raw)
+    positions.append({**positions[0], "key_alias_body": dict(reversed(list(KEY_BODY.items())))})
+    assert not _validator("3.1.0").is_valid(raw)
+    with pytest.raises(ValueError, match="unique entries"):
+        parse_contract(raw)
+
+
+def test_key_alias_body_widening_sort_and_origin_rename():
+    from archkeel.ir.renames import renamed_contract
+
+    body = {**BODY, "shape": "dict[SexKey, str] | dict[str, int]"}
+    before = parse_contract(
+        _document("3.1.0", alias_body=body, key_alias_body=KEY_BODY, field_path="")
+    )
+    pointer = "/rules/0/allowed_positions/0/key_alias_body/origin"
+    references = [item for item in module_references(before) if item.pointer == pointer]
+    assert len(references) == 1 and references[0].value == KEY_BODY["origin"]
+    assert not references[0].held
+    renamed = renamed_contract(before, {"sample.app.profile": "moved.profile"})
+    selector = renamed.rules[0].allowed_positions[0]
+    assert selector.key_alias_body.origin == "moved.profile:SexKey"
+    assert selector.key_alias_body.shape == KEY_BODY["shape"]
+    assert selector.alias_body == before.rules[0].allowed_positions[0].alias_body
+    changed = parse_contract(
+        _document(
+            "3.1.0",
+            alias_body={**body, "shape": body["shape"].replace("SexKey", "moved.profile.SexKey")},
+            key_alias_body={**KEY_BODY, "origin": "moved.profile:SexKey"},
+        )
+    )
+    assert len(contract_widenings(renamed, changed)) == 1
+    raw = _document("3.1.0")
+    first = raw["rules"][0]["allowed_positions"][0]
+    raw["rules"][0]["allowed_positions"] = [
+        {**first, "key_alias_body": {"origin": origin, "shape": shape}}
+        for origin, shape in [("b", "a"), ("a", "b"), ("a", "a")]
+    ] + [first]
+    empty = replace(before, rules=(replace(before.rules[0], allowed_positions=()),))
+    after = parse_contract(raw)
+    changes = contract_widenings(empty, after)
+    raw["rules"][0]["allowed_positions"].reverse()
+    assert contract_widenings(empty, parse_contract(raw)) == changes
+    assert "key_alias_body" not in changes[0]
+    assert "origin='a', shape='a'" in changes[1]
+    assert "origin='a', shape='b'" in changes[2]
+    assert "origin='b', shape='a'" in changes[3]

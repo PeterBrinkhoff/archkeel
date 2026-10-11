@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import ast
 import importlib.util
+from collections import Counter
 from collections.abc import Mapping, Sequence
 from collections.abc import Set as AbstractSet
 
@@ -24,11 +25,13 @@ from .source import (
     add_evidence,
     class_namespace_static,
     explicit_provider_escapes,
+    intrinsic_nullable_aliases,
     location,
     member_binding_closure,
     module_scope_bindings,
     native_owner_creation_static,
     package_for,
+    proven_map_union_candidates,
     resolve_static_name,
     setter_local_references,
     stable_direct_module_bindings,
@@ -333,10 +336,55 @@ def resolve_reexports(
     stable_bindings: dict[str, frozenset[str]] = {
         module.module: stable_direct_module_bindings(module) for module in parsed
     }
-    escaped_bindings = {module.module: unproven_member_bindings(module) for module in parsed}
     uncertain_origins = resolve_import_origins(imports, exports_by_module, stable_bindings)
     modules = {module.module: module for module in parsed}
-    escaped_bindings = _converge_member_escapes(imports, modules, stable_bindings, escaped_bindings)
+    module_counts = Counter(module.module for module in parsed)
+    providers = {
+        name: intrinsic_nullable_aliases(module)
+        for name, module in modules.items()
+        if module_counts[name] == 1
+    }
+    aliases = {
+        name: {binding: (name, binding) for binding in providers.get(name, ())} for name in modules
+    }
+    for item in imports:
+        data = item["data"]
+        consumer = modules.get(data["source_module"])
+        provider = data["target_module"]
+        symbol = data["symbol"]
+        binding = data["binding"]
+        origin = f"{provider}.{symbol}"
+        entry = consumer.aliases.get(binding) if consumer is not None else None
+        if (
+            consumer is not None
+            and module_counts[consumer.module] == 1
+            and symbol in providers.get(provider, ())
+            and data.get("source_binding_unique") is True
+            and data.get("origin_binding_unique") is True
+            and data["origin_definition"] == origin
+            and data["reexport_chain"] == [origin]
+            and not data.get("reexport_candidate")
+            and not data.get("reexport_candidates")
+            and not data["under_type_checking"]
+            and consumer.bound_names.count(binding) == 1
+            and entry is not None
+            and entry.target == origin
+            and any(
+                isinstance(node, ast.ImportFrom)
+                and any((alias.asname or alias.name) == binding for alias in node.names)
+                for node in consumer.tree.body
+            )
+        ):
+            aliases[consumer.module][binding] = (provider, symbol)
+    candidates = {
+        name: proven_map_union_candidates(module, aliases[name]) for name, module in modules.items()
+    }
+    for name, module in modules.items():
+        module._proven_map_union_expressions = frozenset(candidates[name])
+    escaped_bindings = {module.module: unproven_member_bindings(module) for module in parsed}
+    escaped_bindings = _converge_member_escapes(
+        imports, modules, stable_bindings, escaped_bindings, candidates
+    )
     for item in imports:
         data = item["data"]
         source = data["source_module"]
@@ -352,12 +400,9 @@ def resolve_reexports(
     return uncertain_origins
 
 
-def _converge_member_escapes(
-    imports: Sequence[RawRecord],
+def _initial_member_exposures(
     modules: dict[str, ParsedModule],
-    stable_bindings: dict[str, frozenset[str]],
-    escaped_bindings: dict[str, frozenset[str]],
-) -> dict[str, frozenset[str]]:
+) -> tuple[dict[str, set[str]], dict[str, set[str]]]:
     exposed_bindings, transferred_bindings = (
         {
             module.module: set(
@@ -373,6 +418,17 @@ def _converge_member_escapes(
         }
         for include_creation in (True, False)
     )
+    return exposed_bindings, transferred_bindings
+
+
+def _converge_member_escapes(
+    imports: Sequence[RawRecord],
+    modules: dict[str, ParsedModule],
+    stable_bindings: dict[str, frozenset[str]],
+    escaped_bindings: dict[str, frozenset[str]],
+    candidates: dict[str, dict[ast.expr, frozenset[tuple[str, str]]]],
+) -> dict[str, frozenset[str]]:
+    exposed_bindings, transferred_bindings = _initial_member_exposures(modules)
     namespace_bindings = {
         name: set(stable_bindings[name]) | {binding for _, binding in module_scope_bindings(module)}
         for name, module in modules.items()
@@ -405,6 +461,9 @@ def _converge_member_escapes(
                 incoming_escapes=bindings,
                 unsafe_providers=unsafe_providers,
             )
+        protection_changed = _retain_map_union_protection(
+            modules, candidates, escaped_bindings, exposed_bindings, transferred_bindings
+        )
         escaped = {module.module: unproven_member_bindings(module) for module in modules.values()}
         exposed, transferred = (
             {
@@ -423,7 +482,8 @@ def _converge_member_escapes(
             )
         )
         if (
-            escaped == escaped_bindings
+            not protection_changed
+            and escaped == escaped_bindings
             and exposed == exposed_before
             and transferred == transferred_before
         ):
@@ -432,6 +492,34 @@ def _converge_member_escapes(
         exposed_bindings = {name: set(values) for name, values in exposed.items()}
         transferred_bindings = {name: set(values) for name, values in transferred.items()}
     return escaped_bindings
+
+
+def _retain_map_union_protection(
+    modules: Mapping[str, ParsedModule],
+    candidates: dict[str, dict[ast.expr, frozenset[tuple[str, str]]]],
+    escaped_bindings: Mapping[str, AbstractSet[str]],
+    exposed_bindings: Mapping[str, AbstractSet[str]],
+    transferred_bindings: Mapping[str, AbstractSet[str]],
+) -> bool:
+    protection_changed = False
+    for name, module in modules.items():
+        current_candidates = candidates[name]
+        retained = {
+            expression: dependencies
+            for expression, dependencies in current_candidates.items()
+            if not any(
+                binding in escaped_bindings[provider]
+                or binding in exposed_bindings[provider]
+                or binding in transferred_bindings[provider]
+                or binding in modules[provider].incoming_member_escapes
+                for provider, binding in dependencies
+            )
+        }
+        protection = frozenset(retained)
+        protection_changed |= protection != module._proven_map_union_expressions
+        candidates[name] = retained
+        module._proven_map_union_expressions = protection
+    return protection_changed
 
 
 def _saturate_unknown_owner_namespaces(

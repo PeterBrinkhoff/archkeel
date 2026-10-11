@@ -23,6 +23,7 @@ from .source import (
     DefinitionContexts,
     ParsedModule,
     add_evidence,
+    admitted_type_alias_value,
     annotation_text,
     class_definition_expressions,
     class_header_static,
@@ -30,12 +31,12 @@ from .source import (
     decorator_names,
     definition_id,
     definition_sites,
-    is_static_type_alias_value,
     location,
     module_scope_bindings,
     native_owner_creation_static,
     own_scope,
     property_bindings,
+    quoted_type_expression,
     stable_direct_module_bindings,
     typed_dict_header_static,
     unproven_class_body,
@@ -324,6 +325,34 @@ def _class_symbol_data(
     }
 
 
+def _annotation_name_lookups(
+    module: ParsedModule, annotation: ast.expr, *, deferred: bool
+) -> dict[str, bool]:
+    """Collect referenced names and whether any occurrence needs deferred lookup."""
+    names: dict[str, bool] = {}
+    pending = [(annotation, deferred, True)]
+    while pending:
+        expression, lookup_deferred, decode_quoted = pending.pop()
+        if isinstance(expression, ast.Name):
+            names[expression.id] = names.get(expression.id, False) or lookup_deferred
+        decoded = quoted_type_expression(expression) if decode_quoted else None
+        if decoded is not None:
+            pending.append((decoded, True, True))
+        elif isinstance(expression, ast.Subscript) and _resolve_static_name(
+            module, expression.value
+        ) in {"typing.Literal", "typing_extensions.Literal"}:
+            # Literal values still bind names; string values are not quoted types.
+            pending.append((expression.value, lookup_deferred, decode_quoted))
+            pending.append((expression.slice, lookup_deferred, False))
+        else:
+            pending.extend(
+                (child, lookup_deferred, decode_quoted)
+                for child in ast.iter_child_nodes(expression)
+                if isinstance(child, ast.expr)
+            )
+    return names
+
+
 def _annotation_binding_uncertainties(
     module: ParsedModule,
     node: ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef,
@@ -368,7 +397,7 @@ def _annotation_binding_uncertainties(
     for position, annotation, statement in annotations:
         if annotation is None:
             continue
-        names = {child.id for child in ast.walk(annotation) if isinstance(child, ast.Name)}
+        names = _annotation_name_lookups(module, annotation, deferred=deferred)
         shadowed = sorted(
             name
             for name in names
@@ -377,7 +406,7 @@ def _annotation_binding_uncertainties(
                 scope is not None
                 and (
                     _binding_may_exist_before(
-                        module, scope.body, None if deferred else statement, name
+                        module, scope.body, None if names[name] else statement, name
                     )
                     or (
                         isinstance(statement, ast.AnnAssign)
@@ -899,44 +928,14 @@ def _module_assignment_symbols(
             continue
         seen.add(event)
         direct_names = _direct_assignment_names(module, node)
-        if (
-            isinstance(node, ast.AnnAssign)
-            and node in module.tree.body
-            and isinstance(node.target, ast.Name)
-            and isinstance(node.value, ast.expr)
-            and _resolve_static_name(module, node.annotation) == "typing.TypeAlias"
-        ):
+        if (alias_value := admitted_type_alias_value(module, node)) is not None:
             symbols.append(
                 _assignment_symbol(
-                    module,
-                    node,
-                    name,
-                    "type_alias",
-                    evidence,
-                    alias=annotation_text(node.value),
+                    module, node, name, "type_alias", evidence, alias=annotation_text(alias_value)
                 )
             )
         elif symbol := _pep695_alias_symbol(module, node, name, evidence):
             symbols.append(symbol)
-        elif (
-            isinstance(node, ast.Assign)
-            and node in module.tree.body
-            and len(node.targets) == 1
-            and isinstance(node.targets[0], ast.Name)
-            and name == node.targets[0].id
-            and name[:1].isupper()
-            and is_static_type_alias_value(module, node.value)
-        ):
-            symbols.append(
-                _assignment_symbol(
-                    module,
-                    node,
-                    name,
-                    "type_alias",
-                    evidence,
-                    alias=annotation_text(node.value),
-                )
-            )
         elif (
             name in direct_names
             and isinstance(node, ast.Assign | ast.AnnAssign)
