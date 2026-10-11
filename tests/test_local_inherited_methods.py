@@ -2132,8 +2132,8 @@ def test_scanned_native_provider_is_not_a_native_creation_proof(
     [
         (False, "class Owner(TypedDict):\n    value: 'int'\n", True),
         (True, "class Owner(TypedDict):\n    value: list[int]\n", True),
-        (False, "class Owner(TypedDict):\n    value: int\n", False),
-        (True, "class Owner(TypedDict, total=False):\n    value: int\n", False),
+        (False, "class Owner(TypedDict):\n    value: int\n", True),
+        (True, "class Owner(TypedDict, total=False):\n    value: int\n", True),
         (True, "class Owner(TypedDict):\n    value: int = 1\n", False),
         (True, "class Owner(TypedDict):\n    def helper(self): pass\n", False),
     ],

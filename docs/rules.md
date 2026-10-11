@@ -97,6 +97,10 @@ wrappers, ambiguous bindings or extra occurrences grant nothing.
 A proven standard `TypedDict` metadata header with literal `total=True` or
 `total=False` also qualifies; dynamic or ambiguous headers fail closed.
 Header proof never establishes field closure.
+Direct stdlib `typing.TypedDict` supports default `total` too. With proven
+factory creation and member binding, `boundary_types` checks declared value
+fields without treating inherited dict operations as declared methods. Mutation,
+namespace escape and incomplete source proof retain UNKNOWN.
 `origin` follows proven module renames for comparison; the byte-exact opaque
 `shape` never does. Changing an embedded metadata name needs an explicit
 binding amendment. Old contract versions reject this opt-in field; absent

@@ -735,7 +735,22 @@ def _opaque_import_member_escapes(
             for expression in module._proven_annotation_carriers
         )
     )
-    if not owner_exposure_only and data["symbol"] is not None and not (framework or carrier):
+    native_typed_dict = any(
+        isinstance(owner, ast.ClassDef)
+        and len(owner.bases) == 1
+        and resolve_static_name(module, owner.bases[0]) == NATIVE_TYPED_DICT_BASE
+        and any(
+            isinstance(node, ast.Name) and node.id == data["binding"]
+            for node in ast.walk(owner.bases[0])
+        )
+        and native_owner_creation_static(module, owner, unsafe_providers)
+        for owner in module.tree.body
+    )
+    if (
+        not owner_exposure_only
+        and data["symbol"] is not None
+        and not (framework or carrier or native_typed_dict)
+    ):
         escaped |= {data["binding"]}
     if data["symbol"] is None or owner_exposure_only:
         base_bindings = (
@@ -750,7 +765,12 @@ def _opaque_import_member_escapes(
         )
         for owner in module.all_nodes:
             if not isinstance(owner, ast.ClassDef) or (
-                owner_exposure_only
+                (
+                    owner_exposure_only
+                    or native_typed_dict
+                    and len(owner.bases) == 1
+                    and resolve_static_name(module, owner.bases[0]) == NATIVE_TYPED_DICT_BASE
+                )
                 and native_owner_creation_static(module, owner, unsafe_providers)
             ):
                 continue
