@@ -106,6 +106,81 @@ def test_core_overload_route_needs_the_exact_complete_origin_proof(missing: str)
     )
 
 
+def _callable_proof_modules(extra: str = "", provider: str | None = None):
+    from archkeel.analyzer.python.imports import collect_imports, resolve_reexports
+
+    consumer = _parsed_module(
+        "from typing import Callable\nclass Payload: value: str\n"
+        "Lookup = Callable[[Payload], Payload]\n"
+        "def lookup(value: Lookup) -> bool: return True\n" + extra,
+        "sample.api",
+        rel_path="sample/api.py",
+    )
+    modules = [consumer]
+    if provider is not None:
+        modules.append(_parsed_module(provider, "typing", rel_path="typing.py"))
+    imports = collect_imports(
+        modules, {module.module for module in modules}, {}, namespace="sample"
+    )
+    stable = stable_direct_module_bindings(consumer)
+    unique = unique_direct_module_bindings(consumer)
+    resolve_reexports(imports, {module.module: module.all_exports for module in modules}, modules)
+    assert stable_direct_module_bindings(consumer) == stable
+    assert unique_direct_module_bindings(consumer) == unique
+    return modules, imports
+
+
+@pytest.mark.parametrize(
+    ("extra", "syntax_proven"),
+    [
+        ("", True),
+        ("mutate(Lookup)\n", False),
+        ("Payload.attr = 1\n", True),
+        ("mutate(Callable)\n", False),
+        ("other = Unknown[Payload]\n", True),
+        ("other = Callable[[factory(Payload)], int]\n", False),
+        ("def other(value=Payload): pass\n", True),
+        ("@decorate(Payload)\ndef other(): pass\n", False),
+        ("setattr(Payload, 'value', str)\n", True),
+        ("expose(globals())\n", False),
+        ("if condition: Callable = other\n", False),
+        ("Callable = other\n", False),
+        ("from unknown import *\n", False),
+    ],
+)
+def test_callable_syntax_proof_and_payload_member_safety_are_separate(
+    extra: str,
+    syntax_proven: bool,
+) -> None:
+    from archkeel.analyzer.python.source import unproven_member_bindings
+
+    modules, imports = _callable_proof_modules(extra)
+    assert bool(modules[0]._proven_callable_expressions) is syntax_proven
+    assert imports[0]["data"]["source_member_binding_static"] is syntax_proven
+    assert ("Payload" in unproven_member_bindings(modules[0])) is bool(extra)
+
+
+@pytest.mark.parametrize("provider", ["def Callable(): pass\n", "class Callable: pass\n"])
+def test_locally_scanned_stdlib_spelling_does_not_prove_callable(provider: str) -> None:
+    modules, imports = _callable_proof_modules(provider=provider)
+    assert not modules[0]._proven_callable_expressions
+    assert imports[0]["data"]["source_member_binding_static"] is False
+
+
+def test_callable_protection_replaces_snapshot_and_rechecks_incoming_escape() -> None:
+    from archkeel.analyzer.python.imports import resolve_reexports
+
+    modules, imports = _callable_proof_modules()
+    original = modules[0]._proven_callable_expressions
+    assert original
+    modules[0].incoming_member_escapes.add("Lookup")
+    resolve_reexports(imports, {module.module: module.all_exports for module in modules}, modules)
+    assert not modules[0]._proven_callable_expressions
+    fresh, _imports = _callable_proof_modules()
+    assert fresh[0]._proven_callable_expressions
+    assert original.isdisjoint(fresh[0]._proven_callable_expressions)
+
+
 def test_unique_proof_does_not_repeat_ast_walks() -> None:
     with patch.object(ast, "iter_fields", wraps=ast.iter_fields) as visits:
         module = _parsed_module("class Api: pass\nclass Other: pass\n")
@@ -459,3 +534,40 @@ def test_setter_scope_is_shared_by_member_proof_modes(owner_exposure, creation):
     assert "Counter" in unproven_member_bindings(
         module, owner_exposure_only=owner_exposure, include_creation_uncertainty=creation
     )
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+@pytest.mark.parametrize("escape", ["", "mutate(Payload)\n"])
+def test_callable_source_proof_is_order_independent_and_keeps_safe_sibling(
+    reverse: bool,
+    escape: str,
+) -> None:
+    from archkeel.analyzer.python.imports import collect_imports, resolve_reexports
+
+    provider = _parsed_module(
+        "from typing import Callable\nclass Payload: value: str\n"
+        "class Safe: value: str\nLookup = Callable[[Payload], Payload]\n"
+        "Other = Callable[[Safe], Safe]\n" + escape,
+        "sample.impl",
+    )
+    consumer = _parsed_module("from .impl import Lookup, Other\n", "sample.api")
+    modules = [provider, consumer]
+    if reverse:
+        modules.reverse()
+    imports = collect_imports(modules, {m.module for m in modules}, {}, namespace="sample")
+    resolve_reexports(imports, {m.module: m.all_exports for m in modules}, modules)
+    bindings = {
+        r["data"]["binding"]: r["data"]
+        for r in imports
+        if r["data"]["source_module"] == "sample.api"
+    }
+    assert bindings["Other"]["source_member_binding_static"] is True
+    assert bindings["Lookup"]["source_member_binding_static"] is True
+    import ast
+
+    from archkeel.analyzer.python.source import unproven_member_bindings
+
+    protected = {ast.unparse(node) for node in provider._proven_callable_expressions}
+    assert "Callable[[Safe], Safe]" in protected
+    assert "Callable[[Payload], Payload]" in protected
+    assert ("Payload" in unproven_member_bindings(provider)) is bool(escape)

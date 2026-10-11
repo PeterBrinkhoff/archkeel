@@ -32,6 +32,7 @@ from archkeel.ir.source_records import is_public_method_name as _is_public_metho
 from archkeel.ir.type_shapes import (
     LiteralKind,
     TypeApplication,
+    TypeList,
     TypeLiteral,
     TypeMember,
     TypeName,
@@ -132,6 +133,9 @@ class _Position:
 
     violation: str | None = None
     undecidable: str | None = None
+    unknown_context: str | None = None
+    referenced_members_static: bool = True
+    contains_callable: bool = False
     resolved: tuple[tuple[str, str], ...] = ()
     named_origins: tuple[tuple[str, str], ...] = ()
     path: tuple[str, ...] = ()
@@ -547,6 +551,7 @@ class BindingIndex(dict[tuple[str, str], RecordData | _AmbiguousBinding]):
         self.owner_facade_type_states: dict[tuple[str, str, str], bool] = {}
         self.ownership_contracts: tuple[ArchitectureContract, ...] = ()
         self.module_bindings: BindingIndex | None = None
+        self.source_modules: frozenset[str] = frozenset()
 
 
 def _has_star_import(module: str, imports_by_binding: BindingIndex) -> bool:
@@ -659,6 +664,7 @@ def boundary_type_indexes(
         )
         for data in (item["data"] for item in imports)
     )
+    imports_by_binding.source_modules = frozenset(exports_by_module or {})
     uncertain_origins = uncertain_reexport_origins or {}
     for item in imports:
         data = item["data"]
@@ -926,6 +932,9 @@ def _boundary_type_verdict(
         return _Position(
             violation=verdict.violation,
             undecidable=verdict.undecidable,
+            unknown_context=verdict.unknown_context,
+            referenced_members_static=verdict.referenced_members_static,
+            contains_callable=verdict.contains_callable,
             resolved=verdict.resolved,
             named_origins=verdict.named_origins,
             path=verdict.path,
@@ -940,7 +949,7 @@ def _boundary_type_verdict(
             typed_mapping_union=verdict.typed_mapping_union,
             typed_union_checked=verdict.typed_union_checked,
         )
-    return _named_type_verdict(
+    verdict = _named_type_verdict(
         annotation,
         module,
         contract,
@@ -953,6 +962,10 @@ def _boundary_type_verdict(
         aliases_seen=_aliases_seen,
         require_static_constant=_require_static_constant,
         type_shapes=type_shapes,
+    )
+
+    return _named_reference_position(
+        annotation, module, verdict, imports_by_binding, classes_by_location, type_shapes
     )
 
 
@@ -1208,6 +1221,22 @@ def _alias_binding_static(binding: RecordData | _AmbiguousBinding) -> bool:
     )
 
 
+def _alias_mapping_occurrences(
+    occurrences: tuple[_MappingOccurrence, ...],
+) -> tuple[_MappingOccurrence, ...]:
+    return tuple(
+        _MappingOccurrence(
+            occurrence.annotation,
+            occurrence.depth,
+            occurrence.path,
+            alias_free=False,
+            opaque_value_depth=occurrence.opaque_value_depth,
+            syntax_route=occurrence.syntax_route,
+        )
+        for occurrence in occurrences
+    )
+
+
 def _type_alias_verdict(
     symbol: RecordData | _AmbiguousBinding | None,
     resolved: tuple[str, str],
@@ -1268,6 +1297,9 @@ def _type_alias_verdict(
         typed_union_checked=expanded.typed_union_checked,
         violation=expanded.violation,
         undecidable=expanded.undecidable,
+        unknown_context=expanded.unknown_context,
+        referenced_members_static=expanded.referenced_members_static,
+        contains_callable=expanded.contains_callable,
         resolved=tuple(sorted({*reached, *expanded.resolved})),
         named_origins=tuple(sorted({*reached, *expanded.named_origins})),
         path=expanded.path,
@@ -1275,17 +1307,7 @@ def _type_alias_verdict(
         violations=expanded.violations,
         field_positions=expanded.field_positions,
         field_declarations=expanded.field_declarations,
-        mapping_occurrences=tuple(
-            _MappingOccurrence(
-                occurrence.annotation,
-                occurrence.depth,
-                occurrence.path,
-                alias_free=False,
-                opaque_value_depth=occurrence.opaque_value_depth,
-                syntax_route=occurrence.syntax_route,
-            )
-            for occurrence in expanded.mapping_occurrences
-        ),
+        mapping_occurrences=_alias_mapping_occurrences(expanded.mapping_occurrences),
     )
 
 
@@ -1486,6 +1508,9 @@ def _owned_type_verdict(
         return _Position(
             violation=fields.violation,
             undecidable=fields.undecidable,
+            unknown_context=fields.unknown_context,
+            referenced_members_static=fields.referenced_members_static,
+            contains_callable=fields.contains_callable,
             resolved=reached,
             named_origins=(resolved,),
             path=fields.path,
@@ -1505,6 +1530,247 @@ def _owned_type_verdict(
     )
 
 
+def _callable_import_static(data: RecordData | _AmbiguousBinding | None) -> bool:
+    return (
+        isinstance(data, dict)
+        and data.get("source_binding_unique") is True
+        and data.get("source_member_binding_static") is True
+        and data.get("module_level_import") is True
+        and (data.get("ordinary_module") is True or data.get("ordinary_module") is False)
+        and data.get("under_type_checking") is False
+        and not data.get("reexport_candidate")
+        and not data.get("reexport_candidates")
+    )
+
+
+def _callable_head_proven(
+    head: TypeShape, module: str, imports: BindingIndex, classes: BindingIndex
+) -> bool:
+    if isinstance(head, TypeName):
+        binding, member = head.name, None
+    elif isinstance(head, TypeMember) and isinstance(head.owner, TypeName):
+        binding, member = head.owner.name, head.member
+    else:
+        return False
+    key = (module, binding)
+    imported = imports.get(key)
+    if (
+        _has_star_import(module, imports)
+        or _binding_is_ambiguous(key, imports, classes)
+        or not _callable_import_static(imported)
+        or not isinstance(imported, dict)
+    ):
+        return False
+    origins = {("typing", "Callable"), ("collections.abc", "Callable")}
+    if member is not None:
+        target, symbol = imported["target_module"], imported["symbol"]
+        if symbol is not None or (target == "collections.abc" and binding == "collections"):
+            return False
+        origin_module, origin_name = target, member
+    else:
+        origin_value = imported.get("origin_definition")
+        if not isinstance(origin_value, str) or imported.get("origin_binding_unique") is not True:
+            return False
+        origin: str = origin_value
+        origin_module, _, origin_name = origin.rpartition(".")
+        chain = imported.get("reexport_chain", ())
+        if (
+            not chain
+            or chain[-1] != origin
+            or chain[0] != f"{imported['target_module']}.{imported['symbol']}"
+        ):
+            return False
+        for index, alias in enumerate(chain[:-1]):
+            alias_text: str = alias
+            hop_module, _, hop_name = alias_text.rpartition(".")
+            hop_key = (hop_module, hop_name)
+            hop = imports.get(hop_key)
+            if (
+                _binding_is_ambiguous(hop_key, imports, classes)
+                or not _callable_import_static(hop)
+                or not isinstance(hop, dict)
+                or hop.get("reexport") is not True
+                or hop.get("origin_binding_unique") is not True
+                or hop.get("origin_definition") != origin
+                or list(hop.get("reexport_chain", ())) != chain[index + 1 :]
+            ):
+                return False
+    provider_module: str = origin_module
+    return (origin_module, origin_name) in origins and not any(
+        origin_module == local or provider_module.startswith(f"{local}.")
+        for local in imports.source_modules
+    )
+
+
+def _named_reference_position(
+    annotation: str,
+    module: str,
+    verdict: _Position,
+    imports: BindingIndex,
+    classes: BindingIndex,
+    shapes: TypeShapeIndex,
+) -> _Position:
+    root = shapes.get(annotation)
+    binding = (
+        root.name
+        if isinstance(root, TypeName)
+        else root.owner.name
+        if isinstance(root, TypeMember) and isinstance(root.owner, TypeName)
+        else None
+    )
+    source = imports.get((module, binding)) if binding is not None else None
+    static = verdict.referenced_members_static
+    for origin in verdict.named_origins:
+        symbol = classes.get(origin)
+        static &= (
+            isinstance(symbol, dict)
+            and symbol.get("source_binding_unique") is True
+            and symbol.get("source_member_binding_static") is True
+        )
+    if source is not None:
+        static &= (
+            _callable_import_static(source)
+            and isinstance(source, dict)
+            and source.get("origin_binding_unique") is True
+            and source.get("origin_member_binding_static") is not False
+        )
+        if isinstance(source, dict):
+            for hop in source.get("reexport_chain", ()):
+                hop_text: str = hop
+                owner, _, name = hop_text.rpartition(".")
+                peer = imports.get((owner, name))
+                if peer is None and (owner, name) in verdict.named_origins:
+                    continue
+                if owner in imports.source_modules:
+                    static &= (
+                        _callable_import_static(peer)
+                        and isinstance(peer, dict)
+                        and peer.get("origin_binding_unique") is True
+                    )
+    late_unknown = verdict.contains_callable and not static and verdict.undecidable is None
+    return replace(
+        verdict,
+        referenced_members_static=static,
+        undecidable="other" if late_unknown else verdict.undecidable,
+        unknown_context=f"Callable reference {annotation}"
+        if late_unknown
+        else verdict.unknown_context,
+    )
+
+
+def _callable_leaf_position(route: str, annotation: str, verdict: _Position) -> _Position:
+    findings = verdict.violations or (
+        ((verdict.violation, verdict.path, verdict.nested_annotation or annotation, 0),)
+        if verdict.violation is not None
+        else ()
+    )
+    prefixed = tuple(
+        (f"Callable {route}: {reason}", path, nested, depth)
+        for reason, path, nested, depth in findings
+    )
+    return replace(
+        verdict,
+        violation=prefixed[0][0] if prefixed else None,
+        violations=prefixed,
+        unknown_context=(
+            f"Callable {route}: {verdict.unknown_context or annotation}"
+            if verdict.undecidable is not None
+            else None
+        ),
+        mapping_occurrences=(),
+        field_positions=(),
+        field_declarations=(),
+        mapping_alternatives=(),
+        exact_nested_map_chain=False,
+        native_iterable_annotation=None,
+        bound_alias=None,
+        typed_mapping_union=None,
+        typed_union_checked=False,
+    )
+
+
+def _callable_signature_verdict(
+    shape: TypeApplication,
+    module: str,
+    contract: ArchitectureContract,
+    exports: dict[str, frozenset[str]],
+    imports: BindingIndex,
+    classes: BindingIndex,
+    visited: frozenset[tuple[str, str]],
+    enter_fields: bool,
+    aliases_seen: frozenset[tuple[str, str]],
+    type_shapes: TypeShapeIndex,
+) -> _Position:
+    if len(shape.arguments) != 2 or not isinstance(shape.arguments[0], TypeList):
+        return _Position(undecidable="generic")
+    parameters = [
+        (f"argument[{index}]", element) for index, element in enumerate(shape.arguments[0].elements)
+    ]
+    parameters.append(("result", shape.arguments[1]))
+    decided = []
+    for route, parameter in parameters:
+        verdict = (
+            _Position()
+            if isinstance(parameter, TypeLiteral) and parameter.kind is LiteralKind.NONE
+            else _boundary_type_verdict(
+                parameter.text,
+                module,
+                contract,
+                exports,
+                imports,
+                classes,
+                visited=visited,
+                enter_fields=enter_fields,
+                _aliases_seen=aliases_seen,
+                type_shapes=type_shapes,
+            )
+        )
+        if not verdict.referenced_members_static:
+            verdict = replace(verdict, undecidable=verdict.undecidable or "other")
+        decided.append((parameter.text, _callable_leaf_position(route, parameter.text, verdict)))
+    return replace(_combine_position_verdicts(decided), contains_callable=True)
+
+
+def _union_annotation_verdict(
+    annotation: str,
+    parameters: list[str],
+    module: str,
+    contract: ArchitectureContract,
+    exports: dict[str, frozenset[str]],
+    imports: BindingIndex,
+    classes: BindingIndex,
+    visited: frozenset[tuple[str, str]],
+    enter_fields: bool,
+    aliases_seen: frozenset[tuple[str, str]],
+    type_shapes: TypeShapeIndex,
+) -> _Position:
+    verdict = _combined_annotation_verdict(
+        parameters,
+        module,
+        contract,
+        exports,
+        imports,
+        classes,
+        visited=visited,
+        enter_fields=enter_fields,
+        _aliases_seen=aliases_seen,
+        type_shapes=type_shapes,
+    )
+    verdict = _literal_union_verdict(annotation, verdict, module, imports, classes, type_shapes)
+    return _mapping_union_verdict(
+        annotation,
+        verdict,
+        module,
+        imports,
+        classes,
+        type_shapes,
+        contract,
+        exports,
+        visited,
+        aliases_seen,
+    )
+
+
 def _annotation_shape_verdict(
     annotation: str,
     module: str,
@@ -1519,7 +1785,22 @@ def _annotation_shape_verdict(
     enter_fields: bool,
     _aliases_seen: frozenset[tuple[str, str]],
 ) -> _Position:
-    """Resolve standard unions and collections recursively; leave other shapes UNKNOWN."""
+    shape = type_shapes.get(annotation)
+    if isinstance(shape, TypeApplication) and _callable_head_proven(
+        shape.head, module, imports_by_binding, classes_by_location
+    ):
+        return _callable_signature_verdict(
+            shape,
+            module,
+            contract,
+            exports_by_module,
+            imports_by_binding,
+            classes_by_location,
+            visited,
+            enter_fields,
+            _aliases_seen,
+            type_shapes,
+        )
     mapping = _mapping_parameters(
         annotation, module, imports_by_binding, classes_by_location, type_shapes=type_shapes
     )
@@ -1541,32 +1822,18 @@ def _annotation_shape_verdict(
         )
     union = _union_parameters(annotation, module, imports_by_binding, type_shapes=type_shapes)
     if union is not None:
-        verdict = _combined_annotation_verdict(
+        return _union_annotation_verdict(
+            annotation,
             union,
             module,
             contract,
             exports_by_module,
             imports_by_binding,
             classes_by_location,
-            visited=visited,
-            enter_fields=enter_fields,
-            _aliases_seen=_aliases_seen,
-            type_shapes=type_shapes,
-        )
-        verdict = _literal_union_verdict(
-            annotation, verdict, module, imports_by_binding, classes_by_location, type_shapes
-        )
-        return _mapping_union_verdict(
-            annotation,
-            verdict,
-            module,
-            imports_by_binding,
-            classes_by_location,
-            type_shapes,
-            contract,
-            exports_by_module,
             visited,
+            enter_fields,
             _aliases_seen,
+            type_shapes,
         )
     if enter_collections:
         entered = _collection_verdict(
@@ -2233,6 +2500,9 @@ def _mapping_container_verdict(
     return _Position(
         violation=_BROAD_BOUNDARY_REASON,
         undecidable=contents.undecidable,
+        unknown_context=contents.unknown_context,
+        referenced_members_static=contents.referenced_members_static,
+        contains_callable=contents.contains_callable,
         resolved=contents.resolved,
         path=contents.path,
         nested_annotation=contents.nested_annotation,
@@ -2386,9 +2656,9 @@ def _declared_field_verdict(
     return _combine_position_verdicts(field_verdicts)
 
 
-def _field_position_verdict(
+def _field_violations(
     field_name: str, field_annotation: str, verdict: _Position
-) -> _Position:
+) -> list[tuple[str, tuple[str, ...], str | None, int]]:
     violations: list[tuple[str, tuple[str, ...], str | None, int]] = []
     if verdict.violations:
         violations.extend(
@@ -2409,6 +2679,13 @@ def _field_position_verdict(
                 0,
             )
         )
+    return violations
+
+
+def _field_position_verdict(
+    field_name: str, field_annotation: str, verdict: _Position
+) -> _Position:
+    violations = _field_violations(field_name, field_annotation, verdict)
     mapping_occurrences = tuple(
         _MappingOccurrence(
             occurrence.annotation,
@@ -2452,6 +2729,9 @@ def _field_position_verdict(
     return _Position(
         violation=verdict.violation,
         undecidable=verdict.undecidable,
+        unknown_context=verdict.unknown_context,
+        referenced_members_static=verdict.referenced_members_static,
+        contains_callable=verdict.contains_callable,
         resolved=verdict.resolved,
         path=(field_name, *verdict.path),
         nested_annotation=verdict.nested_annotation or field_annotation,
@@ -2511,6 +2791,9 @@ def _collection_verdict(
     return _Position(
         violation=verdict.violation,
         undecidable=verdict.undecidable,
+        unknown_context=verdict.unknown_context,
+        referenced_members_static=verdict.referenced_members_static,
+        contains_callable=verdict.contains_callable,
         resolved=verdict.resolved,
         path=verdict.path,
         nested_annotation=verdict.nested_annotation,
@@ -2627,41 +2910,31 @@ def _combine_position_verdicts(decided: list[tuple[str, _Position]]) -> _Positio
         group for _parameter, verdict in decided for group in verdict.mapping_alternatives
     )
     origins = tuple(sorted({origin for _, child in decided for origin in child.named_origins}))
-    for _parameter, verdict in decided:
-        if verdict.undecidable is not None:
-            return _Position(
-                violation=violations[0][0] if violations else None,
-                undecidable=verdict.undecidable,
-                resolved=reached,
-                named_origins=origins,
-                path=verdict.path,
-                nested_annotation=verdict.nested_annotation,
-                violations=violations,
-                mapping_occurrences=mapping_occurrences,
-                field_positions=field_positions,
-                field_declarations=field_declarations,
-                mapping_alternatives=mapping_alternatives,
-            )
-    if violations:
-        reason, path, nested_annotation, _ = violations[0]
-        return _Position(
-            violation=reason,
-            resolved=reached,
-            path=path,
-            nested_annotation=nested_annotation,
-            violations=violations,
-            mapping_occurrences=mapping_occurrences,
-            field_positions=field_positions,
-            field_declarations=field_declarations,
-            mapping_alternatives=mapping_alternatives,
-        )
-    return _Position(
+    combined = _Position(
+        referenced_members_static=all(verdict.referenced_members_static for _, verdict in decided),
+        contains_callable=any(verdict.contains_callable for _, verdict in decided),
         resolved=reached,
+        violations=violations,
         mapping_occurrences=mapping_occurrences,
         field_positions=field_positions,
         field_declarations=field_declarations,
         mapping_alternatives=mapping_alternatives,
     )
+    for _parameter, verdict in decided:
+        if verdict.undecidable is not None:
+            return replace(
+                combined,
+                violation=violations[0][0] if violations else None,
+                undecidable=verdict.undecidable,
+                unknown_context=verdict.unknown_context,
+                named_origins=origins,
+                path=verdict.path,
+                nested_annotation=verdict.nested_annotation,
+            )
+    if violations:
+        reason, path, nested_annotation, _ = violations[0]
+        return replace(combined, violation=reason, path=path, nested_annotation=nested_annotation)
+    return combined
 
 
 def _ambiguous_method_group(methods: Sequence[RawRecord]) -> bool:
@@ -2702,6 +2975,8 @@ def _declared_facade_positions(
     uncertain_reexport_origins: UncertainReexportOrigins | None = None,
     reexports: ReexportIndex | None = None,
     property_chains: frozenset[str] = frozenset(),
+    *,
+    include_fields: bool = False,
 ) -> DeclaredFacade | None:
     """The (module, qualified name, annotated positions) for one declared facade callable.
 
@@ -2719,6 +2994,7 @@ def _declared_facade_positions(
             uncertain_reexport_origins,
             reexports,
             property_chains,
+            include_fields=include_fields,
         )
     if data.get("qualified_name") in property_chains and not (
         data.get("source_final_method_binding") is True
@@ -2778,12 +3054,15 @@ def _declared_facade_inherited_positions(
     uncertain_reexport_origins: UncertainReexportOrigins | None,
     reexports: ReexportIndex | None,
     property_chains: frozenset[str],
+    *,
+    include_fields: bool = False,
 ) -> DeclaredFacade | None:
     base_roots = data["base_roots"] if "base_roots" in data else data["bases"]
     if not any(
         f"{data['qualified_name']}.{name}" in property_chains for name in data["class_members"]
     ) and not any(base not in _FRAMEWORK_BASES for base in base_roots):
-        return None
+        if not include_fields or not data.get("fields"):
+            return None
     module, name = data["module"], data["name"]
     entries: list[FacadeEntry] = []
     owner = contract.component_for(module)
@@ -3075,6 +3354,7 @@ def facade_signature_types(
             uncertain_reexport_origins,
             reexports,
             property_chains,
+            include_fields=True,
         )
         has_proven_facade = found is not None and any(not entry[3] for entry in found[4])
         names = (
@@ -3091,6 +3371,17 @@ def facade_signature_types(
             else []
         )
         if found is not None and item["kind"] == "class":
+            field_types, field_candidates = _declared_field_reach(
+                item,
+                imports,
+                contract,
+                exports_by_module,
+                imports_by_binding,
+                classes_by_location,
+                has_proven_facade,
+                type_shapes=type_shapes,
+            )
+            names = sorted(set(names) | set(field_types))
             if has_proven_facade:
                 inherited_types, _, _ = _inherited_facade_types(
                     item,
@@ -3114,6 +3405,7 @@ def facade_signature_types(
                 classes_by_location,
                 type_shapes=type_shapes,
             )
+            candidates = sorted(set(candidates) | set(field_candidates))
             if candidates:
                 raw_candidates = (
                     item["data"]["facade_type_candidates_by_publisher"]
@@ -3183,6 +3475,7 @@ def _scoped_facade_signature_types(
                 uncertain_reexport_origins,
                 reexports,
                 property_chains,
+                include_fields=True,
             )
             if found is None:
                 continue
@@ -3204,6 +3497,17 @@ def _scoped_facade_signature_types(
                 else []
             )
             if item["kind"] == "class":
+                field_types, field_candidates = _declared_field_reach(
+                    item,
+                    imports,
+                    contract,
+                    exports_by_module,
+                    imports_by_binding,
+                    classes_by_location,
+                    has_proven_facade,
+                    type_shapes=type_shapes,
+                )
+                names = sorted(set(names) | set(field_types))
                 if has_proven_facade:
                     inherited_types, _, _ = _inherited_facade_types(
                         item,
@@ -3227,6 +3531,7 @@ def _scoped_facade_signature_types(
                     classes_by_location,
                     type_shapes=type_shapes,
                 )
+                candidates = sorted(set(candidates) | set(field_candidates))
                 if candidates:
                     raw_candidates = (
                         item["data"]["facade_type_candidates_by_mount"]
@@ -3269,6 +3574,92 @@ def _scoped_facade_signature_types(
             }
         )
     return recorded
+
+
+def _declared_field_binding_static(data: RecordData, name: str) -> bool:
+    """Name reach requires one surviving field on a statically bound public class."""
+    declarations = data.get("attribute_declarations", ())
+    uncertainties: dict[str, object] = data.get("annotation_binding_uncertainties", {})
+    return (
+        data.get("source_binding_unique") is True
+        and data.get("source_member_binding_static") is True
+        and data.get("class_header_static") is True
+        and data.get("class_body_control_flow") is False
+        and sum(declaration["name"] == name for declaration in declarations) == 1
+        and name not in data.get("class_members", ())
+        and not uncertainties.get(name)
+    )
+
+
+def _declared_field_reach(
+    item: RawRecord,
+    imports: Sequence[RawRecord],
+    contract: ArchitectureContract,
+    exports: dict[str, frozenset[str]],
+    bindings: BindingIndex,
+    classes: BindingIndex,
+    published: bool,
+    *,
+    type_shapes: TypeShapeIndex,
+) -> tuple[list[str], list[str]]:
+    """A proven field exposes names, independently of proving their alias bodies."""
+    data = item["data"]
+    module = data["module"]
+    names: set[str] = set()
+    candidates: set[str] = set()
+    static_routes = {
+        f"{owner}.{name}"
+        for owner, name in bindings
+        if _alias_binding_static(bindings[(owner, name)])
+    }
+    for field in data.get("fields", ()):
+        annotation = field.get("annotation")
+        if not annotation:
+            continue
+        verdict = _boundary_type_verdict(
+            annotation,
+            module,
+            contract,
+            exports,
+            bindings,
+            classes,
+            enter_fields=False,
+            type_shapes=type_shapes,
+        )
+        shape = type_shapes.get(annotation)
+        origin = (
+            resolve_named_type(shape.name, module, bindings, classes)
+            if isinstance(shape, TypeName)
+            else None
+        )
+        reached: set[str] = {f"{origin[0]}.{origin[1]}"} if isinstance(origin, tuple) else set()
+        provider = classes.get(origin) if isinstance(origin, tuple) else None
+        route = bindings.get((module, shape.name)) if isinstance(shape, TypeName) else None
+        chain: list[str] = (route["reexport_chain"] or []) if isinstance(route, dict) else []
+        chain_static = all(entry in static_routes or entry in reached for entry in chain)
+        possible: set[str] = {f"{owner}.{name}" for owner, name in verdict.resolved}
+        if isinstance(shape, TypeName):
+            for imported in imports:
+                binding = imported["data"]
+                if binding["source_module"] == module and binding["binding"] == shape.name:
+                    possible.update(binding.get("reexport_candidates", ()))
+                    possible.update(binding.get("reexport_chain", ()))
+        certain = (
+            published
+            and _declared_field_binding_static(data, field["name"])
+            and isinstance(origin, tuple)
+            and isinstance(provider, dict)
+            and _alias_binding_static(provider)
+            and (route is None or _alias_binding_static(route))
+            and chain_static
+            and shape is not None
+            and _base_route_member_static(shape, module, bindings, classes)
+            and verdict.undecidable not in {"ambiguous_binding", "unresolved_name"}
+        )
+        if certain:
+            names.update(reached)
+        candidates.update(possible - (reached if certain else set()))
+    return sorted(names), sorted(candidates)
 
 
 def _resolved_position_types(
@@ -3390,15 +3781,37 @@ def _effective_method_surface(
 ) -> _MethodSurface | None:
     data = item["data"]
     qualified_name = data["qualified_name"]
+    typed_dict = (
+        not visited
+        and data.get("typed_dict_header_static") is True
+        and data["base_roots"] == ["typing.TypedDict"]
+        and len(data["bases"]) == 1
+        and not methods_by_parent.get(qualified_name)
+        and isinstance(data.get("attribute_declarations"), list)
+        and all(
+            any(
+                declaration["name"] == field["name"]
+                and declaration["annotation"] == field["annotation"]
+                for declaration in data["attribute_declarations"]
+            )
+            for field in data["fields"]
+        )
+    )
     if (
         qualified_name in visited
         or data["class_body_control_flow"]
-        or data.get("class_header_static") is not True
+        or not (data.get("class_header_static") is True or typed_dict)
         or data.get("source_binding_unique") is not True
         or data.get("source_member_binding_static") is not True
         or not _member_origin_static(qualified_name, incoming_imports)
     ):
         return None
+    if typed_dict:
+        root = type_shapes.get(data["bases"][0])
+        if root is None or not _base_route_member_static(root, data["module"], imports, classes):
+            return None
+        # TypedDict publishes value fields; dict operations are not its declared callable API.
+        return {}
     base, reason = _public_api_base(
         item,
         symbols,
@@ -3462,6 +3875,28 @@ def _inherited_facade_types(
     property_chains = _property_chains(methods_by_parent.get(item["data"]["qualified_name"], ()))
     names: set[str] = set()
     positions: list[tuple[str, str, str, str, _Position]] = []
+    data = item["data"]
+    if data.get("typed_dict_header_static") is True and data["base_roots"] == ["typing.TypedDict"]:
+        for declaration in data["attribute_declarations"]:
+            verdict = _boundary_type_verdict(
+                declaration["annotation"],
+                data["module"],
+                contract,
+                exports_by_module,
+                imports_by_binding,
+                classes_by_location,
+                type_shapes=type_shapes,
+            )
+            positions.append(
+                (
+                    declaration["name"],
+                    declaration["definition_id"],
+                    declaration["name"],
+                    declaration["annotation"],
+                    verdict,
+                )
+            )
+            names.update(f"{module}.{name}" for module, name in verdict.resolved)
     for name, members in surface.items():
         if not _is_public_method_name(name):
             continue
@@ -3484,6 +3919,22 @@ def _inherited_facade_types(
             names.update(method_names)
             positions.extend(method_positions)
     return sorted(names), positions, True
+
+
+def _surface_position_origin(
+    owner: RawRecord, identity: str, symbols_by_id: dict[str, RawRecord]
+) -> RawRecord:
+    if identity in symbols_by_id:
+        return symbols_by_id[identity]
+    declaration = next(
+        declaration
+        for declaration in owner["data"]["attribute_declarations"]
+        if declaration["definition_id"] == identity
+    )
+    return {
+        **owner,
+        "evidence_ids": sorted(set(owner["evidence_ids"]) | set(declaration["evidence_ids"])),
+    }
 
 
 def _declared_chain_positions(
@@ -4658,7 +5109,7 @@ def _boundary_types_violations(
                         annotation,
                         verdict,
                         identity_suffix=method_id,
-                        origin_symbol=symbols_by_id[method_id],
+                        origin_symbol=_surface_position_origin(item, method_id, symbols_by_id),
                         resolved_types=tuple(
                             f"{module}:{name}" for module, name in verdict.resolved
                         ),
@@ -4764,7 +5215,7 @@ def _boundary_type_violation_records(
                 ),
                 rule_ids=[rule.id],
                 fact_ids=[item["id"], origin_symbol["id"]]
-                if origin_symbol is not None
+                if origin_symbol is not None and origin_symbol["id"] != item["id"]
                 else [item["id"]],
                 data={
                     "source": rule.source,
@@ -4789,6 +5240,7 @@ def _boundary_type_position_record(
     detail: RecordData,
     *,
     origin_symbol: RawRecord | None = None,
+    unknown_context: str | None = None,
 ) -> RawRecord:
     module = detail["module"]
     qualified_name = detail["qualified_name"]
@@ -4802,6 +5254,7 @@ def _boundary_type_position_record(
         "effective binding UNKNOWN"
         if detail.get("signature_scope") == "declared"
         else f"{qualified_name} {position}: {reason}{location}"
+        + (f"; {unknown_context}" if unknown_context else "")
     )
     return classified(
         item_id=stable_id(
@@ -4823,7 +5276,7 @@ def _boundary_type_position_record(
         ),
         rule_ids=[rule.id],
         fact_ids=[symbol["id"], origin_symbol["id"]]
-        if origin_symbol is not None
+        if origin_symbol is not None and origin_symbol["id"] != symbol["id"]
         else [symbol["id"]],
         data=detail,
     )
@@ -5234,9 +5687,10 @@ def _boundary_rule_positions(
             type_shapes=type_shapes,
         )
         seen += len(positions)
-        undecidable_positions.extend(details)
+        undecidable_positions.extend(detail for detail, _context in details)
         positions_out.extend(
-            _boundary_type_position_record(rule, item, detail) for detail in details
+            _boundary_type_position_record(rule, item, detail, unknown_context=context)
+            for detail, context in details
         )
         if item["kind"] == "class":
             seen += len(inherited_positions)
@@ -5260,7 +5714,8 @@ def _boundary_rule_positions(
                 }
                 if not complete or ambiguous_facade:
                     detail["signature_scope"] = "declared"
-                method_data = symbols_by_id[method_id]["data"]
+                origin = _surface_position_origin(item, method_id, symbols_by_id)
+                method_data = origin["data"]
                 uncertainties = (
                     method_data["annotation_binding_uncertainties"]
                     if "annotation_binding_uncertainties" in method_data
@@ -5272,7 +5727,11 @@ def _boundary_rule_positions(
                 undecidable_positions.append(detail)
                 positions_out.append(
                     _boundary_type_position_record(
-                        rule, item, detail, origin_symbol=symbols_by_id[method_id]
+                        rule,
+                        item,
+                        detail,
+                        origin_symbol=origin,
+                        unknown_context=verdict.unknown_context,
                     )
                 )
         selected = _selected_facade(module, qualified_name, resolution_module)
@@ -5312,10 +5771,10 @@ def _undecidable_declared_positions(
     annotation_scope: str | None = None,
     *,
     type_shapes: TypeShapeIndex,
-) -> list[dict[str, object]]:
+) -> list[tuple[dict[str, object], str | None]]:
     if binding_uncertainties is None:
         binding_uncertainties = {}
-    details: list[dict[str, object]] = []
+    details: list[tuple[dict[str, object], str | None]] = []
     for position, annotation in positions:
         verdict = (
             _Position(undecidable="inherited_surface")
@@ -5350,7 +5809,7 @@ def _undecidable_declared_positions(
         if verdict.path:
             detail["path"] = ".".join((position, *verdict.path))
             detail["nested_annotation"] = verdict.nested_annotation or annotation
-        details.append(detail)
+        details.append((detail, verdict.unknown_context))
     return details
 
 

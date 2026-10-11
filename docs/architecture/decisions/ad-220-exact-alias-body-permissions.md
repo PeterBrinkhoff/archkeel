@@ -11,6 +11,13 @@ Proven standard `TypedDict` metadata with literal `total=True` or `total=False`
 also qualifies; dynamic or ambiguous headers fail closed. Header identity
 does not establish field closure.
 
+For [#412](https://github.com/rapiddweller/archkeel/issues/412), direct stdlib
+`typing.TypedDict` also supports default `total`. Proven factory creation and
+member binding discharge inherited dict methods from `boundary_types`; declared
+value fields remain checked. Eager unshadowed scalar builtins and deferred field
+annotations qualify. Mutation, namespace escape, methods, custom bases and
+insufficient saved facts retain UNKNOWN. `typing_extensions` is unchanged.
+
 Reuse immutable type shapes, existing codecs and selector coordinates.
 Target displays declarations; Actual displays applied facts; Diff separates
 both. Only a unique exact valid pair can lend rationale. Malformed saved data
@@ -25,8 +32,9 @@ explicit binding amendment.
 
 This extension requires package 2.0 and opt-in contract 3.0. Legacy contract
 vocabulary, defaults and absent-binding bytes stay unchanged. The collector adds
-optional source-only `typed_dict_header_static` proof; existing header/native-owner
-flags and member inventories stay unchanged. Proven records and collector
+optional source-only `typed_dict_header_static` proof. The stdlib field-only case
+reuses `source_member_binding_static` and native-owner creation proof; exhaustive
+method inventories stay partial. Proven records and collector
 `code_digest` change; SourceFacts, observation and command envelopes keep their
 versions. CE contracts stay untouched.
 [Proof](../../../tests/test_boundary_type_bound_aliases.py).

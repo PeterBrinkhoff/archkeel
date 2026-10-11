@@ -2948,10 +2948,15 @@ def test_only_one_function_resolves_an_annotations_named_type() -> None:
     AD-69 records drift between boundary and facade annotation readers over `list[Type]`.
     `_named_type_verdict` remains their shared resolver. `_direct_generic_candidate_types` has
     a separate, narrower lookup because its inputs are proven bare base and argument names,
-    not signature annotations to expand recursively.
+    not signature annotations to expand recursively. `_declared_field_reach` likewise proves
+    only the exact field name; expanding its alias body would assert a different claim.
     """
     callers = _top_level_callers(_boundary_types_source_ast(), "resolve_named_type")
-    assert callers == {"_named_type_verdict", "_direct_generic_candidate_types"}, (
+    assert callers == {
+        "_named_type_verdict",
+        "_direct_generic_candidate_types",
+        "_declared_field_reach",
+    }, (
         f"resolve_named_type is called directly from {sorted(callers)}: annotation walkers "
         "must share `_named_type_verdict`; `_direct_generic_candidate_types` is the separate "
         "bare-name identity lookup for a proven generic base and concrete arguments."

@@ -40,7 +40,7 @@ def test_collection_request_rejects_architecture_policy(field: str) -> None:
         decode_request(json.dumps(payload).encode())
 
 
-def test_new_request_is_labeled_v2() -> None:
+def test_new_request_is_labeled_v3() -> None:
     from archkeel.ir.facts_codec import decode_request, encode_request
     from archkeel.ir.protocol import CollectionRequest, PythonSettings, SnapshotInput, SourceScope
 
@@ -50,11 +50,11 @@ def test_new_request_is_labeled_v2() -> None:
         PythonSettings(),
     )
     payload = json.loads(encode_request(request))
-    assert payload["protocol_version"] == "2.0.0"
-    assert decode_request(json.dumps(payload).encode()).protocol_version == "2.0.0"
+    assert payload["protocol_version"] == "3.0.0"
+    assert decode_request(json.dumps(payload).encode()).protocol_version == "3.0.0"
 
 
-@pytest.mark.parametrize("version", ["0.0.0", "3.0.0", None, True])
+@pytest.mark.parametrize("version", ["0.0.0", "4.0.0", None, True])
 def test_collection_request_rejects_incompatible_version(version: object) -> None:
     from archkeel.ir.facts_codec import ProtocolError, decode_request
 
@@ -202,7 +202,7 @@ def test_legacy_response_defaults_runtime_state_and_roundtrips_as_legacy() -> No
     assert "requirement_state" not in encoded["facts"]["runtime"]
 
 
-def test_current_response_requires_runtime_state_and_is_labeled_v2(tmp_path) -> None:
+def test_current_response_requires_runtime_state_and_is_labeled_v3(tmp_path) -> None:
     from pathlib import Path
 
     import jsonschema
@@ -213,13 +213,13 @@ def test_current_response_requires_runtime_state_and_is_labeled_v2(tmp_path) -> 
 
     encoded = encode_response(CollectionResponse(_facts(tmp_path)))
     payload = json.loads(encoded)
-    assert payload["protocol_version"] == "2.0.0"
+    assert payload["protocol_version"] == "3.0.0"
     assert "requirement_state" in payload["facts"]["runtime"]
     schema = json.loads(
         (Path(__file__).parents[1] / "schema/source-facts.schema.json").read_bytes()
     )
     jsonschema.Draft202012Validator(schema).validate(payload)
-    assert decode_response(encoded).protocol_version == "2.0.0"
+    assert decode_response(encoded).protocol_version == "3.0.0"
 
     legacy_runtime_schema = json.loads(
         (
@@ -246,12 +246,12 @@ def test_encoders_reject_unsupported_versions(tmp_path) -> None:
         SnapshotInput("/source-project", "a" * 40, False),
         SourceScope(("src",), "project"),
         PythonSettings(),
-        "3.0.0",
+        "4.0.0",
     )
     with pytest.raises(ProtocolError, match="version"):
         encode_request(request)
     with pytest.raises(ProtocolError, match="version"):
-        encode_response(CollectionResponse(_facts(tmp_path), "3.0.0"))
+        encode_response(CollectionResponse(_facts(tmp_path), "4.0.0"))
 
 
 def test_legacy_encoder_rejects_nondefault_runtime_state(tmp_path) -> None:
@@ -414,3 +414,138 @@ def test_published_wire_schema_accepts_real_collector_payload(tmp_path) -> None:
     )
     payload = json.loads(encode_response(CollectionResponse(_facts(tmp_path))))
     Draft202012Validator(schema).validate(payload)
+
+
+@pytest.mark.parametrize("version", ["1.0.0", "2.0.0"])
+def test_frozen_legacy_shape_vocabulary_roundtrips_without_wire_changes(version: str) -> None:
+    from pathlib import Path
+
+    import jsonschema
+
+    from archkeel.ir.facts_codec import decode_response, encode_response
+
+    root = Path(__file__).parent / "fixtures/collection-protocol"
+    payload = (root / f"source-facts-{version}.json").read_bytes()
+    assert encode_response(decode_response(payload)) == payload
+    schema = json.loads((root / "legacy-type-shapes.schema.json").read_bytes())
+    for item in json.loads(payload)["facts"]["type_shapes"]:
+        jsonschema.Draft202012Validator(schema).validate(item["shape"])
+
+
+def _list_shape() -> dict:
+    return {
+        "kind": "list",
+        "text": "[str]",
+        "elements": [{"kind": "name", "text": "str", "name": "str"}],
+    }
+
+
+def test_new_list_shape_roundtrips_with_the_current_protocol_and_schema() -> None:
+    from pathlib import Path
+
+    import jsonschema
+
+    from archkeel.ir.facts_codec import decode_response, encode_response
+
+    raw = _response()
+    raw["protocol_version"] = "3.0.0"
+    raw["facts"]["runtime"]["requirement_state"] = "declared"
+    raw["facts"]["type_shapes"] = [{"expression": "[str]", "shape": _list_shape()}]
+    encoded = encode_response(decode_response(json.dumps(raw).encode()))
+    assert json.loads(encoded) == raw
+    schema = json.loads(
+        (Path(__file__).parents[1] / "schema/source-facts.schema.json").read_bytes()
+    )
+    jsonschema.Draft202012Validator(schema).validate(raw)
+
+
+@pytest.mark.parametrize("version", ["1.0.0", "2.0.0"])
+@pytest.mark.parametrize(
+    "nesting", ["root", "owner", "head", "argument", "left", "right", "unpack"]
+)
+def test_legacy_protocol_rejects_new_list_at_every_shape_nesting(
+    version: str, nesting: str
+) -> None:
+    from pathlib import Path
+
+    import jsonschema
+
+    from archkeel.ir.facts_codec import ProtocolError, decode_response
+
+    shape = _list_shape()
+    name = {"kind": "name", "text": "str", "name": "str"}
+    if nesting == "owner":
+        shape = {"kind": "member", "text": "value.member", "owner": shape, "member": "member"}
+    elif nesting in {"head", "argument"}:
+        shape = {
+            "kind": "application",
+            "text": "Container[value]",
+            "head": shape if nesting == "head" else name,
+            "arguments": [shape if nesting == "argument" else name],
+            "tuple_arguments": False,
+        }
+    elif nesting in {"left", "right"}:
+        shape = {
+            "kind": "union",
+            "text": "value | str",
+            "left": shape if nesting == "left" else name,
+            "right": shape if nesting == "right" else name,
+        }
+    elif nesting == "unpack":
+        shape = {"kind": "unpack", "text": "*value", "argument": shape}
+    raw = _response()
+    raw["protocol_version"] = version
+    if version == "2.0.0":
+        raw["facts"]["runtime"]["requirement_state"] = "declared"
+    raw["facts"]["type_shapes"] = [{"expression": "value", "shape": shape}]
+    with pytest.raises(ProtocolError, match="shape"):
+        decode_response(json.dumps(raw).encode())
+    schema = json.loads(
+        (Path(__file__).parents[1] / "schema/source-facts.schema.json").read_bytes()
+    )
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.Draft202012Validator(schema).validate(raw)
+
+
+@pytest.mark.parametrize("version", ["1.0.0", "2.0.0"])
+def test_encoder_cannot_label_list_shapes_as_legacy(version: str) -> None:
+    from archkeel.ir.facts_codec import ProtocolError, decode_response, encode_response
+    from archkeel.ir.protocol import CollectionResponse
+
+    raw = _response()
+    raw["protocol_version"] = "3.0.0"
+    raw["facts"]["runtime"]["requirement_state"] = "declared"
+    raw["facts"]["type_shapes"] = [{"expression": "[str]", "shape": _list_shape()}]
+    facts = decode_response(json.dumps(raw).encode()).facts
+    with pytest.raises(ProtocolError, match="shape"):
+        encode_response(CollectionResponse(facts, protocol_version=version))
+
+
+@pytest.mark.parametrize("invalid", ["missing", "extra", "wrong_type", "bad_child"])
+def test_list_shape_rejects_malformed_fields_in_codec_and_schema(invalid: str) -> None:
+    from pathlib import Path
+
+    import jsonschema
+
+    from archkeel.ir.facts_codec import ProtocolError, decode_response
+
+    shape = _list_shape()
+    if invalid == "missing":
+        del shape["elements"]
+    elif invalid == "extra":
+        shape["arguments"] = []
+    elif invalid == "wrong_type":
+        shape["elements"] = "str"
+    else:
+        shape["elements"] = [{"kind": "name", "text": "str", "name": "str", "extra": 1}]
+    raw = _response()
+    raw["protocol_version"] = "3.0.0"
+    raw["facts"]["runtime"]["requirement_state"] = "declared"
+    raw["facts"]["type_shapes"] = [{"expression": "[str]", "shape": shape}]
+    with pytest.raises(ProtocolError):
+        decode_response(json.dumps(raw).encode())
+    schema = json.loads(
+        (Path(__file__).parents[1] / "schema/source-facts.schema.json").read_bytes()
+    )
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.Draft202012Validator(schema).validate(raw)
