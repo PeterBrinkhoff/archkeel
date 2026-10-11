@@ -1897,13 +1897,13 @@ def _mapping_union_verdict(
     imports: BindingIndex,
     classes: BindingIndex,
     type_shapes: TypeShapeIndex,
-    contract: ArchitectureContract,
+    contract: ArchitectureContract | None,
     exports_by_module: dict[str, frozenset[str]],
     visited: frozenset[tuple[str, str]],
     aliases_seen: frozenset[tuple[str, str]],
 ) -> _Position:
     arms = _mapping_union_arms(annotation, module, imports, classes, type_shapes)
-    if contract.schema_version == "3.1.0":
+    if contract is not None and contract.schema_version == "3.1.0":
         native_compatible = (
             annotation in _OPAQUE_NATIVE_REASONS
             or _native_iterable_shape(annotation, module, imports, classes, type_shapes)
