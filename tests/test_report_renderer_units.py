@@ -84,6 +84,32 @@ def test_explorer_exports_recorded_status_and_escapes_mermaid_labels():
         playwright.stop()
 
 
+def test_mermaid_exports_native_uml_assessments_and_relationship_evidence():
+    api = pytest.importorskip("playwright.sync_api")
+    playwright, browser, page = _asset_page(api, ["report-scene.js"])
+    try:
+        result = page.evaluate("""() => {
+          const scene = {nodes:[{id:'base', label:'Base'},
+            {id:'child', label:'Child', assessments:[{status:'UNKNOWN'},
+              {status:'FAIL'}, {status:'PASS'}, {status:'UNKNOWN'}]}],
+            edges:[{id:'inherits', source:'child', target:'base',
+              relationshipKind:'inherits', resolution:'partial',
+              assessments:[{status:'UNKNOWN'}, {status:'FAIL'}],
+              findings:[{status:'PASS'}], state:'violation'}]};
+          const before = JSON.stringify(scene);
+          const diagram = window.ArchkeelReportScene.sceneToMermaid(scene);
+          return {diagram, unchanged: before === JSON.stringify(scene)};
+        }""")
+        assert result == {
+            "diagram": 'flowchart LR\n  n0["Base"]\n  n1["Child · UNKNOWN · FAIL · PASS"]\n'
+            '  n1 -->|"inherits · partial · UNKNOWN · FAIL · PASS · violation"| n0',
+            "unchanged": True,
+        }
+    finally:
+        browser.close()
+        playwright.stop()
+
+
 def _asset_page(api, assets):
     playwright, browser, page = _browser_page(api, "<!doctype html><html><body></body></html>")
     try:
