@@ -9,6 +9,7 @@ from pathlib import PurePosixPath
 
 from archkeel.ir.architecture_graph import ArchitectureGraph, ArchitectureReport, Coverage, Entity
 from archkeel.ir.architecture_projection import ArchitectureProjection
+from archkeel.ir.codec import decode_json, value_bytes
 from archkeel.ir.decisions import rule_assessment_applies_to_component, rule_uncertainty_evidence
 from archkeel.ir.model import (
     Evidence,
@@ -18,6 +19,7 @@ from archkeel.ir.model import (
     RunResult,
     module_in_ownership,
     stable_id,
+    text_value,
 )
 from archkeel.ir.module_explore import ModuleExploreLevel, ModuleStatistic, module_exploration
 
@@ -694,7 +696,7 @@ def _declared_permissions(
         for index, position in enumerate(positions):
             if not isinstance(position, RecordData):
                 continue
-            selector = dict(position.entries)
+            selector = {key: decode_json(value_bytes(value)) for key, value in position.entries}
             selector.setdefault("field_path", "")
             name = selector.get("qualified_name")
             source = rule.data.get("source")
@@ -746,6 +748,19 @@ def _declared_permissions(
     return declared
 
 
+def _valid_alias_body(selector: dict[str, object]) -> bool:
+    if "alias_body" not in selector:
+        return True
+    binding = selector["alias_body"]
+    if not isinstance(binding, dict) or set(binding) != {"origin", "shape"}:
+        return False
+    for key in ("origin", "shape"):
+        value: str = text_value(binding[key])
+        if not value.strip():
+            return False
+    return True
+
+
 def boundary_permissions_payload(
     model: Observation, report: ArchitectureReport, projection: ArchitectureProjection
 ) -> dict[str, object]:
@@ -760,22 +775,25 @@ def boundary_permissions_payload(
         "annotation",
         "container_depth",
         "mapping_depth",
+        "alias_body",
     )
 
     for fact in model.records("typing_signals") or ():
         if fact.kind != "boundary_type_allowance" or fact.evidence_class != EvidenceClass.FACT:
             continue
-        selector = {
-            key: value
+        selector: dict[str, object] = {
+            key: decode_json(value_bytes(value))
             for key, value in fact.data.entries
-            if key in (*coordinates, "nested_annotation", "accepted_opacity")
-            and isinstance(value, (str, int, bool, type(None)))
+            if key
+            in (*coordinates, "nested_annotation", "accepted_opacity", "observed_container_depth")
         }
         selector.setdefault("field_path", "")
         candidates = [
             row
             for row in declared
             if row["rule_id"] in fact.rule_ids
+            and _valid_alias_body(row)
+            and _valid_alias_body(selector)
             and all(
                 (key in row) == (key in selector) and row.get(key) == selector.get(key)
                 for key in coordinates

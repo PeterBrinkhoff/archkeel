@@ -108,6 +108,7 @@ _PROOF_FLAGS = frozenset(
         "source_member_binding_static",
         "origin_member_binding_static",
         "class_header_static",
+        "typed_dict_header_static",
         "class_body_control_flow",
         "signature_decorators_proven",
         "source_final_method_binding",

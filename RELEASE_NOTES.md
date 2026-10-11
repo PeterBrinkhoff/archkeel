@@ -1,3 +1,31 @@
+# Archkeel 2.0.0 — Exact bound-alias permissions (unreleased)
+
+- **Bind an alias permission to its source and complete body.** `alias_body`
+  records the exact `module:Alias` origin and proven body. The supported family is
+  `tuple[tuple[str, list[object]] | tuple[str, list[object], Metadata], list[dict[str, object]]]`,
+  with a uniquely proven, declared `Metadata` class. An exact callable, position
+  and root annotation with empty `field_path` permits only the one map at depth 2;
+  a separate `container_depth: 3` selector permits its three syntactic `object`
+  leaves. Changed bodies, ambiguous bindings and unsupported forms grant nothing.
+  Proven standard `TypedDict` metadata with literal `total=True/False` also qualifies;
+  its optional source proof changes evidence and collector digest, with unchanged wire envelopes.
+  See [#438](https://github.com/rapiddweller/archkeel/issues/438) and
+  [boundary rules](docs/rules.md#interfaces-and-types).
+- **Explicit contract upgrade.** Present `alias_body` requires contract schema
+  **3.0.0**. Supported **2.1.0–2.3.0** contracts remain readable with unchanged
+  schemas and absent-binding serialization; existing contracts and defaults are
+  not rewritten. Old 1.x readers reject the new 3.0 contract. Package versioning
+  stays independent of the unchanged result and collector protocols.
+- **Inspect exact permissions in reports.** Atlas distinguishes declared and
+  applied boundary permissions and links their evidence to members. Rejected
+  offline routes retain the complete URL until explicit recovery. See
+  [#445](https://github.com/rapiddweller/archkeel/issues/445) and
+  [#447](https://github.com/rapiddweller/archkeel/issues/447).
+
+Accepted native values remain opaque. Metadata field findings, unrelated findings
+and UNKNOWNs remain. This bounded proof establishes neither serialization nor
+materialization nor type closure, and does not add general alias support.
+
 # Archkeel 1.1.2 — Bind native allowances to exact signatures
 
 - **Nested map allowances stay bound to the root annotation.** An `Annotated`

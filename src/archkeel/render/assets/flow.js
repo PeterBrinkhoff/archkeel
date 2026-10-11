@@ -1007,13 +1007,19 @@
         if (declarationRoute?.scope_id) declarationQuery.set("scope", declarationRoute.scope_id);
         if (declarationRoute?.entity_id) declarationQuery.set("selected", declarationRoute.entity_id);
         const declarationHref = `${ATLAS?.detail_page || location.pathname}?${declarationQuery}#${encodeURIComponent(row.declaration_id || "")}`;
-        const keys = ["qualified_name", "position", "field_path", "annotation", "container_depth", "mapping_depth"];
+        const keys = ["qualified_name", "position", "field_path", "annotation", "container_depth", "mapping_depth", ...(applied ? ["observed_container_depth"] : [])];
+        const binding = selector.alias_body;
+        const bindingRows = !Object.hasOwn(selector, "alias_body") ? []
+          : binding && typeof binding === "object" && !Array.isArray(binding) && Object.keys(binding).length
+            ? Object.entries(binding).map(([key, value]) => [`alias_body.${key}`, value])
+            : [["alias_body", binding]];
+        const selectorRows = [...keys.filter((key) => Object.hasOwn(selector, key)).map((key) => [key, selector[key]]), ...bindingRows];
         const ownerLinks = !row.routes?.length ? (row.component_ids || []).map((id) => {
           const query = new URLSearchParams({component: id, origin: "declared", view: "target"});
           return `<a href="${esc(`${ATLAS?.detail_page || location.pathname}?${query}`)}">Declared owning component</a>`;
         }).join(" · ") : "";
         return `<details data-boundary-permission="${esc(row.id)}" id="${esc(row.id)}"${location.hash === `#${encodeURIComponent(row.id)}` ? " open" : ""}><summary>${esc(selector.qualified_name || row.title || "Selector unavailable")} · ${esc(selector.position || "Position unavailable")}</summary>
-          <dl class="kv">${keys.filter((key) => Object.hasOwn(selector, key)).map((key) => `<dt>${esc(key)}</dt><dd><code>${esc(selector[key])}</code></dd>`).join("")}</dl>
+          <dl class="kv">${selectorRows.map(([key, value]) => `<dt>${esc(key === "observed_container_depth" ? "Observed container depth" : key)}</dt><dd><code>${esc(typeof value === "string" ? value : JSON.stringify(value))}</code></dd>`).join("")}</dl>
           <p>${esc(row.rationale || "Rationale unavailable")} · Decided by ${esc(row.decided_by || "Unavailable")}</p>
           ${applied && selector.accepted_opacity === true ? "<p>Accepted opacity; type closure remains unproven.</p>" : ""}
           <p>Recorded ID <code>${esc(row.id)}</code></p>

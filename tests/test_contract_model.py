@@ -338,7 +338,17 @@ def _maximal_contract() -> dict[str, object]:
             "responsibility": "Keep order orchestration in the app layer.",
         }
     ]
-    raw["schema_version"] = "2.3.0"
+    raw["schema_version"] = "3.0.0"
+    boundary = next(rule for rule in raw["rules"] if rule["kind"] == "boundary_types")
+    boundary["allowed_positions"].append(
+        {
+            "qualified_name": "shop.app.orders.run",
+            "position": "return",
+            "annotation": "Page",
+            "container_depth": 3,
+            "alias_body": {"origin": "shop.app.orders:Page", "shape": "tuple[Opaque]"},
+        }
+    )
     declarations["uml"] = asdict(
         TargetDefinition(
             entities=(
@@ -480,9 +490,9 @@ def _string_pointers(node: object, pointer: str = "") -> Iterator[str]:
             yield from _string_pointers(item, f"{pointer}/{key}")
 
 
-# Every string field that names no module or symbol: an id, label, kind, enum value, prose, a
-# path or a component label. A new string field must join this set or `module_references`.
-_NAMES_NO_MODULE = frozenset(
+# Non-reference strings include opaque annotations/expressions, IDs, prose and paths.
+# A new string field must join this set or `module_references`.
+_NON_REFERENCE_STRINGS = frozenset(
     {
         "/declarations/uml/schema_version",
         *(
@@ -585,6 +595,7 @@ _NAMES_NO_MODULE = frozenset(
         "/rules/boundary_types/allowed_positions/*/position",
         "/rules/boundary_types/allowed_positions/*/field_path",
         "/rules/boundary_types/allowed_positions/*/annotation",
+        "/rules/boundary_types/allowed_positions/*/alias_body/shape",
         *(
             f"/declarations/{field}"
             for field in (
@@ -643,15 +654,15 @@ def test_module_references_point_at_the_names_they_list() -> None:
         assert node == item.value, item.pointer
 
 
-def test_every_contract_string_is_a_module_reference_or_names_no_module() -> None:
+def test_every_contract_string_is_a_module_reference_or_an_opaque_value() -> None:
     """AD-105: a rename is sound only if `module_references` lists every module-naming field."""
     contract = parse_contract(_maximal_contract())
     document = json.loads(contract_bytes(contract))
     listed = {_shape(document, item.pointer) for item in module_references(contract)}
     strings = {_shape(document, pointer) for pointer in _string_pointers(document)}
 
-    assert listed.isdisjoint(_NAMES_NO_MODULE)
-    assert strings == listed | _NAMES_NO_MODULE
+    assert listed.isdisjoint(_NON_REFERENCE_STRINGS)
+    assert strings == listed | _NON_REFERENCE_STRINGS
 
 
 def test_validate_holds_the_namespace_to_the_fields_it_held_before() -> None:
@@ -668,6 +679,7 @@ def test_validate_holds_the_namespace_to_the_fields_it_held_before() -> None:
         "/rules/root_layout/root",
         "/rules/root_layout/allowed_children/*",
         "/rules/boundary_types/allowed_positions/*/qualified_name",
+        "/rules/boundary_types/allowed_positions/*/alias_body/origin",
         "/declarations/public_commands/*/command",
         "/declarations/paths/*/steps/*",
         "/declarations/compat/*/module",

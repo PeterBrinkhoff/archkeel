@@ -37,6 +37,7 @@ from .source import (
     own_scope,
     property_bindings,
     stable_direct_module_bindings,
+    typed_dict_header_static,
     unproven_class_body,
     unproven_member_bindings,
 )
@@ -1039,7 +1040,10 @@ def _default_constructor_body(node: ast.ClassDef) -> bool:
 
 
 def collect_symbols(
-    modules: Sequence[ParsedModule], evidence: dict[str, RawEvidence]
+    modules: Sequence[ParsedModule],
+    evidence: dict[str, RawEvidence],
+    *,
+    unsafe_typed_dict_providers: frozenset[str] = frozenset(),
 ) -> tuple[list[RawRecord], dict[str, ast.AST], dict[ast.AST, ParsedModule]]:
     symbols: list[RawRecord] = []
     nodes: dict[str, ast.AST] = {}
@@ -1060,6 +1064,10 @@ def collect_symbols(
             symbol = _definition_symbol(
                 module, node, qualname, parent, parent_node, evidence, bound, contexts
             )
+            if isinstance(node, ast.ClassDef) and typed_dict_header_static(
+                module, node, unsafe_typed_dict_providers
+            ):
+                symbol["data"]["typed_dict_header_static"] = True
             symbols.append(symbol)
             if not contexts:
                 nodes[qualname] = node

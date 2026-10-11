@@ -362,6 +362,9 @@ def _boundary_types_widenings(
                 entry.annotation,
                 entry.container_depth or 0,
                 entry.mapping_depth or 0,
+                entry.alias_body is not None,
+                entry.alias_body.origin if entry.alias_body is not None else "",
+                entry.alias_body.shape if entry.alias_body is not None else "",
             ),
         )
     ]

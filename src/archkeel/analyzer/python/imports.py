@@ -23,6 +23,7 @@ from .source import (
     ParsedModule,
     add_evidence,
     class_namespace_static,
+    explicit_provider_escapes,
     location,
     member_binding_closure,
     module_scope_bindings,
@@ -450,6 +451,49 @@ def _saturate_unknown_owner_namespaces(
             modules[name].incoming_member_escapes |= bindings
             exposed_bindings[name] |= bindings
             transferred_bindings[name] |= bindings
+
+
+def typed_dict_unsafe_providers(
+    imports: Sequence[RawRecord], parsed: Sequence[ParsedModule]
+) -> frozenset[str]:
+    modules = {module.module: module for module in parsed}
+    explicit_escapes = {name: explicit_provider_escapes(module) for name, module in modules.items()}
+    # Other typing objects do not prove a mutation of the named header factory.
+    provider_imports = [
+        item
+        for item in imports
+        if item["data"]["target_module"] in {"typing", "typing_extensions"}
+        and item["data"]["symbol"] in {None, "*"}
+        or any(
+            origin
+            in {"typing", "typing_extensions", "typing.TypedDict", "typing_extensions.TypedDict"}
+            for origin in (
+                item["data"]["origin_definition"],
+                *(
+                    item["data"]["reexport_candidates"]
+                    if "reexport_candidates" in item["data"]
+                    else ()
+                ),
+            )
+        )
+    ]
+    origins = _escaped_import_origins(
+        provider_imports,
+        modules,
+        explicit_escapes,
+        {name: stable_direct_module_bindings(module) for name, module in modules.items()},
+        explicit_escapes,
+    )
+    return frozenset(
+        provider
+        for provider in ("typing", "typing_extensions")
+        if provider in modules
+        or any(in_scope(origin, provider) for origin in origins)
+        or any(
+            item["data"]["symbol"] == "*" and item["data"]["target_module"] == provider
+            for item in imports
+        )
+    )
 
 
 def _unsafe_native_creation_providers(
