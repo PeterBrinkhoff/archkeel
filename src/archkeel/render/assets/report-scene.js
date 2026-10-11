@@ -548,11 +548,17 @@
     const escape = (value) => String(value ?? "").replace(/[&#"<>|\[\]{}\\\r\n]/g,
       (char) => `#${char.codePointAt(0)};`);
     return ["flowchart LR",
-      ...nodes.map((node) => `  ${ids.get(node.id)}["${escape([node.label, node.component?.status].filter(Boolean).join(" · "))}"]`),
+      ...nodes.map((node) => {
+        const statuses = [...new Set([node.component?.status,
+          ...(node.assessments || []).map((item) => item.status)])];
+        return `  ${ids.get(node.id)}["${escape([node.label, ...statuses].filter(Boolean).join(" · "))}"]`;
+      }),
       ...[...scene.edges].sort((a, b) => compare(a.id, b.id))
         .filter((edge) => ids.has(edge.source) && ids.has(edge.target))
         .map((edge) => {
-          const label = escape([...new Set([edge.label, edge.status, edge.state])].filter(Boolean).join(" · "));
+          const label = escape([...new Set([edge.label, edge.relationshipKind, edge.resolution,
+            edge.status, ...(edge.assessments || []).map((item) => item.status),
+            ...(edge.findings || []).map((item) => item.status), edge.state])].filter(Boolean).join(" · "));
           return `  ${ids.get(edge.source)} -->${label ? `|"${label}"|` : ""} ${ids.get(edge.target)}`;
         }),
     ].join("\n");
