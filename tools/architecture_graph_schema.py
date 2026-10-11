@@ -312,7 +312,7 @@ def member_inventory_schema() -> dict[str, object]:
 
 def _update_contract_schema(path: Path) -> None:
     schema = json.loads(path.read_bytes())
-    if schema["properties"]["schema_version"] == {"const": "3.1.0"}:
+    if schema["properties"]["schema_version"] in ({"const": "3.1.0"}, {"const": "3.2.0"}):
         selector = schema["$defs"]["boundaryTypes"]["properties"]["allowed_positions"]["items"]
         selector["properties"]["key_alias_body"] = {
             "type": "object",
@@ -326,6 +326,18 @@ def _update_contract_schema(path: Path) -> None:
         selector["dependentSchemas"]["key_alias_body"] = {
             "properties": {"field_path": {"const": ""}},
             "not": {"anyOf": [{"required": ["container_depth"]}, {"required": ["mapping_depth"]}]},
+        }
+    if schema["properties"]["schema_version"] == {"const": "3.2.0"}:
+        selector = schema["$defs"]["boundaryTypes"]["properties"]["allowed_positions"]["items"]
+        selector["properties"]["literal_mapping_arm"] = {"$ref": "#/$defs/nonEmpty"}
+        selector["dependentSchemas"]["literal_mapping_arm"] = {
+            "properties": {"field_path": {"const": ""}},
+            "not": {
+                "anyOf": [
+                    {"required": [name]}
+                    for name in ("container_depth", "mapping_depth", "alias_body", "key_alias_body")
+                ]
+            },
         }
     schema["$defs"]["component"]["properties"]["layer"] = {
         "type": "string",

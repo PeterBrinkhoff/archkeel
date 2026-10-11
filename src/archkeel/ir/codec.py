@@ -821,7 +821,7 @@ def parse_contract(raw: object) -> ArchitectureContract:
         "contract",
     )
     if root["schema_version"] == "2.1.0":
-        version: Literal["2.1.0", "2.2.0", "2.3.0", "3.0.0", "3.1.0"] = "2.1.0"
+        version: Literal["2.1.0", "2.2.0", "2.3.0", "3.0.0", "3.1.0", "3.2.0"] = "2.1.0"
     elif root["schema_version"] == "2.2.0":
         version = "2.2.0"
     elif root["schema_version"] == "2.3.0":
@@ -830,6 +830,8 @@ def parse_contract(raw: object) -> ArchitectureContract:
         version = "3.0.0"
     elif root["schema_version"] == "3.1.0":
         version = "3.1.0"
+    elif root["schema_version"] == "3.2.0":
+        version = "3.2.0"
     else:
         raise ContractVersionError(str(root["schema_version"]))
     components_raw = root["components"]
@@ -943,24 +945,30 @@ def parse_contract(raw: object) -> ArchitectureContract:
     if "uml" in declarations and version == "2.1.0":
         raise ValueError("UML declarations require contract schema_version 2.2.0")
     uml = parse_target(declarations["uml"]) if "uml" in declarations else None
-    if version not in {"2.3.0", "3.0.0", "3.1.0"}:
+    if version not in {"2.3.0", "3.0.0", "3.1.0", "3.2.0"}:
         for raw in rules_raw:
             rule_data: dict[str, RawJson] = _object(raw, "rule")
             if rule_data.get("kind") == "layer_order":
                 raise ValueError("layer_order requires contract schema_version 2.3.0")
     rules = tuple(_parse_rule(value, f"rules[{index}]") for index, value in enumerate(rules_raw))
-    if version not in {"3.0.0", "3.1.0"} and any(
+    if version not in {"3.0.0", "3.1.0", "3.2.0"} and any(
         isinstance(rule, BoundaryTypesRule)
         and any(item.alias_body is not None for item in rule.allowed_positions)
         for rule in rules
     ):
         raise ValueError("alias_body requires contract schema_version 3.0.0")
-    if version != "3.1.0" and any(
+    if version not in {"3.1.0", "3.2.0"} and any(
         isinstance(rule, BoundaryTypesRule)
         and any(item.key_alias_body is not None for item in rule.allowed_positions)
         for rule in rules
     ):
         raise ValueError("key_alias_body requires contract schema_version 3.1.0")
+    if version != "3.2.0" and any(
+        isinstance(rule, BoundaryTypesRule)
+        and any(item.literal_mapping_arm is not None for item in rule.allowed_positions)
+        for rule in rules
+    ):
+        raise ValueError("literal_mapping_arm requires contract schema_version 3.2.0")
     labels = {component.label for component in components}
     seen_labels: set[str] = set()
     for component_index, component in enumerate(components):
@@ -1039,23 +1047,29 @@ def parse_contract(raw: object) -> ArchitectureContract:
 
 def contract_bytes(contract: ArchitectureContract) -> bytes:
     """Encode a contract in Contract 2.0 key order so parse_contract returns the same value."""
-    if contract.schema_version not in {"2.3.0", "3.0.0", "3.1.0"} and (
+    if contract.schema_version not in {"2.3.0", "3.0.0", "3.1.0", "3.2.0"} and (
         any(component.layer is not None for component in contract.components)
         or any(isinstance(rule, LayerOrderRule) for rule in contract.rules)
     ):
         raise ValueError("layer and layer_order require contract schema_version 2.3.0")
-    if contract.schema_version not in {"3.0.0", "3.1.0"} and any(
+    if contract.schema_version not in {"3.0.0", "3.1.0", "3.2.0"} and any(
         isinstance(rule, BoundaryTypesRule)
         and any(item.alias_body is not None for item in rule.allowed_positions)
         for rule in contract.rules
     ):
         raise ValueError("alias_body requires contract schema_version 3.0.0")
-    if contract.schema_version != "3.1.0" and any(
+    if contract.schema_version not in {"3.1.0", "3.2.0"} and any(
         isinstance(rule, BoundaryTypesRule)
         and any(item.key_alias_body is not None for item in rule.allowed_positions)
         for rule in contract.rules
     ):
         raise ValueError("key_alias_body requires contract schema_version 3.1.0")
+    if contract.schema_version != "3.2.0" and any(
+        isinstance(rule, BoundaryTypesRule)
+        and any(item.literal_mapping_arm is not None for item in rule.allowed_positions)
+        for rule in contract.rules
+    ):
+        raise ValueError("literal_mapping_arm requires contract schema_version 3.2.0")
     fields = asdict(contract)
     # An absent permission must preserve existing amendment digests.
     for rule, encoded in zip(contract.rules, fields["rules"], strict=True):
@@ -1187,7 +1201,7 @@ def _component_names(
 
 
 def _parse_component(raw: RawJson, label: str, *, version: str) -> ContractComponent:
-    if "layer" in _object(raw, label) and version not in {"2.3.0", "3.0.0", "3.1.0"}:
+    if "layer" in _object(raw, label) and version not in {"2.3.0", "3.0.0", "3.1.0", "3.2.0"}:
         raise ValueError(f"{label}.layer requires contract schema_version 2.3.0")
     item, item_id, provenance = _contract_record(
         raw,
@@ -1685,7 +1699,14 @@ def _parse_boundary_type_allowance(value: RawJson, label: str) -> BoundaryTypeAl
     entry = _contract_fields(
         value,
         {"qualified_name", "position", "annotation"},
-        {"field_path", "container_depth", "mapping_depth", "alias_body", "key_alias_body"},
+        {
+            "field_path",
+            "container_depth",
+            "mapping_depth",
+            "alias_body",
+            "key_alias_body",
+            "literal_mapping_arm",
+        },
         label,
     )
     qualified_name = _nonempty(entry["qualified_name"], f"{label}.qualified_name")
@@ -1734,6 +1755,7 @@ def _parse_boundary_type_allowance(value: RawJson, label: str) -> BoundaryTypeAl
             raise ValueError(
                 f"{body_label} requires empty field_path and absent container_depth/mapping_depth"
             )
+    literal_mapping_arm = _parse_literal_mapping_arm(entry, field_path, label)
     if annotation == "dict":
         raise ValueError(f"{label}.annotation cannot allow bare dict")
     if not field_path and annotation in _BARE_BROAD_ANNOTATIONS:
@@ -1747,7 +1769,26 @@ def _parse_boundary_type_allowance(value: RawJson, label: str) -> BoundaryTypeAl
         mapping_depth,
         alias_body,
         key_alias_body,
+        literal_mapping_arm,
     )
+
+
+def _parse_literal_mapping_arm(
+    entry: dict[str, RawJson],
+    field_path: str,
+    label: str,
+) -> str | None:
+    if "literal_mapping_arm" not in entry:
+        return None
+    arm = _nonempty(entry["literal_mapping_arm"], f"{label}.literal_mapping_arm")
+    if field_path or any(
+        name in entry
+        for name in ("container_depth", "mapping_depth", "alias_body", "key_alias_body")
+    ):
+        raise ValueError(
+            f"{label}.literal_mapping_arm requires empty field_path and no other selectors"
+        )
+    return arm
 
 
 def _parse_boundary_types(raw: RawJson, label: str) -> BoundaryTypesRule:
@@ -2061,6 +2102,8 @@ def _rule_payload(rule: ArchitectureRule) -> dict[str, RawJson]:
                 del encoded["alias_body"]
             if item.key_alias_body is None:
                 del encoded["key_alias_body"]
+            if item.literal_mapping_arm is None:
+                del encoded["literal_mapping_arm"]
     return {key: value for key, value in _raw_object(fields).items() if value is not None}
 
 

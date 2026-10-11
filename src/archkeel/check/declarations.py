@@ -252,6 +252,11 @@ def project_rule_declaration(rule: ArchitectureRule) -> RawRecord:
                                 else {}
                             ),
                             **(
+                                {"literal_mapping_arm": item.literal_mapping_arm}
+                                if item.literal_mapping_arm is not None
+                                else {}
+                            ),
+                            **(
                                 {"mapping_depth": item.mapping_depth}
                                 if item.mapping_depth is not None
                                 else {}

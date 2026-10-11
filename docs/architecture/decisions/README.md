@@ -228,3 +228,4 @@ For current behavior, use the [contract](../../../architecture-contract.json), s
 | AD-219 | [Shared boundary permission presentation](ad-219-atlas-boundary-permissions.md) |
 | AD-220 | [Exact alias body permissions](ad-220-exact-alias-body-permissions.md) |
 | AD-221 | [Exact key alias unions](ad-221-exact-key-alias-unions.md) |
+| AD-222 | [Literal mapping arms](ad-222-literal-mapping-arms.md) |

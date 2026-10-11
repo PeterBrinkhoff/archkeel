@@ -114,6 +114,14 @@ native/unknown arms, unsupported keys/values and stale or malformed bindings
 fail closed. Target shows declarations; Actual/Diff retain applied source
 proof. A grant certifies no runtime homogeneity, copy behavior or type closure.
 See [AD-221](architecture/decisions/ad-221-exact-key-alias-unions.md).
+Contract **3.2.0** adds `literal_mapping_arm` for one exact directly written
+outer arm, with the full annotation and empty `field_path`. It selects a proven
+builtin `dict[str, V]` root header, or immediate `list[dict[str, str]]` /
+`list[dict[str, object]]` map. Root requires exactly one root map; all value
+findings and UNKNOWNs remain. Duplicate or aliased contributors, wrappers,
+fields and missing proof grant nothing. Do not combine it with depth or alias
+selectors. Absent fields preserve 3.1 behavior. See
+[AD-222](architecture/decisions/ad-222-literal-mapping-arms.md).
 See [boundary examples](../tests/test_boundary_types_facades.py) before choosing
 selectors. Aliases, inheritance, re-exports and unsupported forms require proof.
 
