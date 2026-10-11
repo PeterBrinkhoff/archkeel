@@ -1008,11 +1008,13 @@
         if (declarationRoute?.entity_id) declarationQuery.set("selected", declarationRoute.entity_id);
         const declarationHref = `${ATLAS?.detail_page || location.pathname}?${declarationQuery}#${encodeURIComponent(row.declaration_id || "")}`;
         const keys = ["qualified_name", "position", "field_path", "annotation", "container_depth", "mapping_depth", ...(applied ? ["observed_container_depth"] : [])];
-        const binding = selector.alias_body;
-        const bindingRows = !Object.hasOwn(selector, "alias_body") ? []
-          : binding && typeof binding === "object" && !Array.isArray(binding) && Object.keys(binding).length
-            ? Object.entries(binding).map(([key, value]) => [`alias_body.${key}`, value])
-            : [["alias_body", binding]];
+        const bindingRows = ["alias_body", "key_alias_body"].flatMap((name) => {
+          const binding = selector[name];
+          return !Object.hasOwn(selector, name) ? []
+            : binding && typeof binding === "object" && !Array.isArray(binding) && Object.keys(binding).length
+              ? Object.entries(binding).map(([key, value]) => [`${name}.${key}`, value])
+              : [[name, binding]];
+        });
         const selectorRows = [...keys.filter((key) => Object.hasOwn(selector, key)).map((key) => [key, selector[key]]), ...bindingRows];
         const ownerLinks = !row.routes?.length ? (row.component_ids || []).map((id) => {
           const query = new URLSearchParams({component: id, origin: "declared", view: "target"});

@@ -3584,6 +3584,7 @@ def _boundary_type_allowance_fact(
                 allowance,
                 True,
                 alternative=True,
+                typed_union=True,
                 source_records=_bound_alias_source_records(typed, source_symbols, source_imports),
             )
         if allowance.key_alias_body is not None or (
@@ -3869,6 +3870,8 @@ def _boundary_type_allowance_data(
     is_contained: bool,
     alternative: bool,
     opaque: bool,
+    *,
+    typed_union: bool = False,
 ) -> RecordData:
     map_depth = allowance.mapping_depth
     depth_data: RecordData = {}
@@ -3878,6 +3881,8 @@ def _boundary_type_allowance_data(
             depth_data = {"observed_container_depth": data["container_depth"]}
             if allowance.container_depth is not None:
                 depth_data["container_depth"] = allowance.container_depth
+        if typed_union:
+            depth_data = {"observed_container_depth": data.get("container_depth", 0)}
     return {
         "qualified_name": allowance.qualified_name,
         "position": allowance.position,
@@ -3935,6 +3940,7 @@ def _boundary_type_allowance_fact_record(
     *,
     alternative: bool = False,
     native_iterable: bool = False,
+    typed_union: bool = False,
     source_records: Sequence[RawRecord] = (),
 ) -> RawRecord:
     data = record["data"]
@@ -4003,7 +4009,9 @@ def _boundary_type_allowance_fact_record(
             if opaque or allowance.alias_body is not None or allowance.key_alias_body is not None
             else None
         ),
-        data=_boundary_type_allowance_data(allowance, data, is_contained, alternative, opaque),
+        data=_boundary_type_allowance_data(
+            allowance, data, is_contained, alternative, opaque, typed_union=typed_union
+        ),
     )
 
 

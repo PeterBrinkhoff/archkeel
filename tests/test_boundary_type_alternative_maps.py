@@ -368,7 +368,8 @@ def test_complete_typed_map_union_binds_only_present_direct_aliases(
         "allowed_positions"
     ][0]
     for fact in facts:
-        assert fact.data.get("container_depth") == 0
+        assert fact.data.get("observed_container_depth") == 0
+        assert fact.data.get("container_depth") is None
         assert fact.data.get("accepted_opacity") is None
         for binding in ("alias_body", "key_alias_body"):
             pair = fact.data.get(binding)

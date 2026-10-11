@@ -688,7 +688,8 @@ def test_partial_inline_typed_union_proves_all_three_maps(tmp_path: Path, facade
     for fact in facts:
         pair = fact.data.get("key_alias_body")
         assert isinstance(pair, RecordData) and dict(pair.entries) == _KEY_BINDING
-        assert fact.data.get("container_depth") == 0
+        assert fact.data.get("observed_container_depth") == 0
+        assert fact.data.get("container_depth") is None
         assert fact.data.get("accepted_opacity") is None
         assert fact.data.get("alias_body") is None
         assert fact.provenance == ("docs/architecture/sample.md",)

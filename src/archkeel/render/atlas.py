@@ -748,10 +748,10 @@ def _declared_permissions(
     return declared
 
 
-def _valid_alias_body(selector: dict[str, object]) -> bool:
-    if "alias_body" not in selector:
+def _valid_alias_body(selector: dict[str, object], name: str) -> bool:
+    if name not in selector:
         return True
-    binding = selector["alias_body"]
+    binding = selector[name]
     if not isinstance(binding, dict) or set(binding) != {"origin", "shape"}:
         return False
     for key in ("origin", "shape"):
@@ -776,6 +776,7 @@ def boundary_permissions_payload(
         "container_depth",
         "mapping_depth",
         "alias_body",
+        "key_alias_body",
     )
 
     for fact in model.records("typing_signals") or ():
@@ -792,8 +793,11 @@ def boundary_permissions_payload(
             row
             for row in declared
             if row["rule_id"] in fact.rule_ids
-            and _valid_alias_body(row)
-            and _valid_alias_body(selector)
+            and all(
+                _valid_alias_body(item, name)
+                for item in (row, selector)
+                for name in ("alias_body", "key_alias_body")
+            )
             and all(
                 (key in row) == (key in selector) and row.get(key) == selector.get(key)
                 for key in coordinates
