@@ -443,3 +443,20 @@ def test_import_proof_metadata_schema(
     if not accepted:
         assert len(errors) == 1
         assert field in errors[0].absolute_path
+
+
+@pytest.mark.parametrize("version", ["3.0.0", "3.1.0"])
+def test_contract_schema_key_alias_version_gate(version):
+    from test_boundary_alias_contract import BODY, KEY_BODY, _document
+
+    raw = _document(version, alias_body=BODY)
+    validator = Draft202012Validator(_schema(f"architecture-contract-{version[:3]}.schema.json"))
+    assert validator.is_valid(raw)
+    parse_contract(raw)
+    raw["rules"][0]["allowed_positions"][0]["key_alias_body"] = KEY_BODY
+    assert validator.is_valid(raw) == (version == "3.1.0")
+    if version == "3.1.0":
+        parse_contract(raw)
+    else:
+        with pytest.raises(ValueError, match="key_alias_body.*3.1.0"):
+            parse_contract(raw)

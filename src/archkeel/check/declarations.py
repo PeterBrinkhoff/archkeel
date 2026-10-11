@@ -266,6 +266,16 @@ def project_rule_declaration(rule: ArchitectureRule) -> RawRecord:
                                 if item.alias_body is not None
                                 else {}
                             ),
+                            **(
+                                {
+                                    "key_alias_body": {
+                                        "origin": item.key_alias_body.origin,
+                                        "shape": item.key_alias_body.shape,
+                                    }
+                                }
+                                if item.key_alias_body is not None
+                                else {}
+                            ),
                         }
                         for item in rule.allowed_positions
                     ]
