@@ -796,6 +796,52 @@ def method_decorator_data(
     }
 
 
+def explicit_provider_escapes(module: ParsedModule) -> frozenset[str]:
+    # Header identity does not assert future owner-namespace or member immutability.
+    return frozenset(
+        member_binding_closure(
+            module.all_nodes,
+            _unproven_member_roots(
+                module,
+                module.all_nodes,
+                member_surface=True,
+                owner_exposure_only=True,
+                unsafe_providers=frozenset(),
+                include_creation_uncertainty=False,
+            ),
+            member_surface=True,
+        )
+    )
+
+
+def typed_dict_header_static(
+    module: ParsedModule, node: ast.ClassDef, unsafe_providers: AbstractSet[str]
+) -> bool:
+    if (
+        node not in module.tree.body
+        or node.name not in unique_direct_module_bindings(module)
+        or node.name not in stable_direct_module_bindings(module)
+        or node.decorator_list
+        or len(node.bases) != 1
+        or len(node.keywords) != 1
+        or node.keywords[0].arg != "total"
+        or not isinstance(node.keywords[0].value, ast.Constant)
+        or not isinstance(node.keywords[0].value.value, bool)
+    ):
+        return False
+    base = node.bases[0]
+    root = base.value if isinstance(base, ast.Attribute) else base
+    origin: str = resolve_static_name(module, base)
+    return (
+        isinstance(root, ast.Name)
+        and root.id in unique_direct_module_bindings(module)
+        and origin in {"typing.TypedDict", "typing_extensions.TypedDict"}
+        and origin.rpartition(".")[0] not in unsafe_providers
+        and root.id not in explicit_provider_escapes(module)
+        and is_proven_decorator(module, base, node, None, frozenset({origin}))
+    )
+
+
 def class_header_static(node: ast.ClassDef) -> bool:
     return not node.decorator_list and not node.keywords
 

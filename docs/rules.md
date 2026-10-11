@@ -83,6 +83,22 @@ callable, position, complete annotation, empty `field_path` and
 wrappers, other collections and additional union arms do not qualify. The fact
 retains accepted opacity; iteration structure does not establish type closure.
 See [AD-218](architecture/decisions/ad-218-native-iterable-elements-use-proven-signatures.md).
+Contract 3.0 adds an optional `alias_body` pair: nonempty `origin` and `shape`.
+It binds one direct, uniquely resolved nongeneric alias of the exact family
+`tuple[tuple[str, list[object]] | tuple[str, list[object], module.Metadata], list[dict[str, object]]]`.
+Keep the literal alias annotation, empty `field_path` and no `mapping_depth`.
+No `container_depth` permits its unique map at depth 2; a separate depth-3
+selector accepts its THREE syntactic native leaves, before deduplication.
+Metadata fields remain independently checked. Changed origin/body, chains,
+wrappers, ambiguous bindings or extra occurrences grant nothing.
+A proven standard `TypedDict` metadata header with literal `total=True` or
+`total=False` also qualifies; dynamic or ambiguous headers fail closed.
+Header proof never establishes field closure.
+`origin` follows proven module renames for comparison; the byte-exact opaque
+`shape` never does. Changing an embedded metadata name needs an explicit
+binding amendment. Old contract versions reject this opt-in field; absent
+bindings preserve their existing behavior. See
+[AD-220](architecture/decisions/ad-220-exact-alias-body-permissions.md).
 See [boundary examples](../tests/test_boundary_types_facades.py) before choosing
 selectors. Aliases, inheritance, re-exports and unsupported forms require proof.
 

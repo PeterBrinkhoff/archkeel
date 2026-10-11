@@ -676,10 +676,16 @@
     const modules = origin === "declared" ? NAV.target_module_ids : NAV.module_ids;
     let entity = graph?.entities.find((item) => item.id === id);
     while (entity && !["component", "package"].includes(entity.kind)) {
+      if (path.some((entry) => entry.id === entity.id)) return [];
       path.unshift({ id: entity.id, origin });
       if (entity.kind === "module") return modules.includes(entity.id)
         && (!moduleId || moduleId === entity.id) ? path : [];
       entity = graph.entities.find((item) => item.id === entity.parent_id);
+    }
+    if (entity?.kind === "component" && origin === "declared"
+        && (!moduleId || moduleId === entity.id)) {
+      path.unshift({ id: entity.id, origin });
+      return path;
     }
     return [];
   }
@@ -737,15 +743,17 @@
         && (origin === "declared" || viewMode === "target");
       const module = requestedModule || componentModules[0];
       const requestedScope = query.get("scope");
+      const declaredScope = componentScope && requestedScope
+        ? lexicalRoute(requestedScope, requestedComponent, "declared") : [];
       if (requestedComponent && !REPORT_SCENE.componentRoute(requestedComponent).length && requestedComponent !== "unassigned") {
         routeNotice = { field: "component", requested: requestedComponent, message: "Requested component is not recorded in this snapshot." };
-      } else if (componentScope && requestedScope && requestedScope !== requestedComponent) {
+      } else if (componentScope && requestedScope && !declaredScope.length) {
         routeNotice = { field: "scope", requested: requestedScope, message: "Requested scope is not recorded inside this component." };
       } else if (!componentScope && requestedComponent && module && !componentModules.includes(module)) {
         routeNotice = { field: "module", requested: module, message: "Requested module is not recorded inside this component." };
       }
       umlPath = routeNotice ? [] : componentScope
-        ? [{ id: requestedComponent, origin: "declared" }]
+        ? declaredScope.length ? declaredScope : [{ id: requestedComponent, origin: "declared" }]
         : lexicalRoute(requestedScope || module, module, origin);
       if (!umlPath.length) {
         if (!routeNotice) {
@@ -791,7 +799,7 @@
     document.querySelectorAll("[data-atlas-component-route]").forEach((link) => {
       link.href = atlasComponentHref(link.dataset.atlasComponentRoute || null);
     });
-    if (!NAV || !routeReady || !["file:", "http:", "https:"].includes(location.protocol)) return;
+    if (!NAV || !routeReady || routeNotice || !["file:", "http:", "https:"].includes(location.protocol)) return;
     const query = new URLSearchParams();
     if (SIDECAR) {
       if (umlPath[0]) query.set(REPORT_SCENE.componentRoute(umlPath[0].id).length ? "component" : "module", umlPath[0].id);
@@ -811,9 +819,12 @@
     if (selected) query.set("selected", selected);
     if (ATLAS && atlasCell !== null) query.set("cell", String(atlasCell));
     query.set("theme", document.documentElement.dataset.theme);
-    if (routeNotice) query.set(routeNotice.field, routeNotice.requested);
-    const next = `${location.pathname}?${query}`;
-    if (location.pathname + location.search !== next)
+    const permissionHash = [...(DATA.boundary_permissions?.declared || []),
+      ...(DATA.boundary_permissions?.applied || [])].some((row) => location.hash === `#${encodeURIComponent(row.id)}`)
+      ? location.hash : "";
+    const next = `${location.pathname}?${query}${permissionHash}`;
+    // Unchanged routes must keep existing finding anchors.
+    if (location.pathname + location.search + permissionHash !== next)
       if (replace) history.replaceState(null, "", next);
       else history.pushState(null, "", next);
   }
@@ -963,6 +974,71 @@
     backButton.textContent = "Back to " + entries.at(-2)?.label;
   }
 
+  function boundaryPermissionMarkup(scope = null, related = new Set(), edge = false) {
+    const permissions = DATA.boundary_permissions;
+    if (!permissions || edge) return "";
+    const touches = (row) => scope === null || row.entity_ids?.some((id) => related.has(id))
+      || row.component_ids?.includes(scope) || row.routes?.some((route) => route.module_id === scope);
+    const inScope = (row) => touches(row) || viewMode === "diff" && (row.data
+      ? (permissions.declared || []).some((entry) => entry.id === row.declaration_id && touches(entry))
+      : (permissions.applied || []).some((entry) => entry.declaration_id === row.id && touches(entry)));
+    const routeLink = (route) => {
+      const query = new URLSearchParams({component: route.component_id || "unassigned",
+        view: viewMode, origin: route.origin, theme: document.documentElement.dataset.theme});
+      if (route.module_id) query.set("module", route.module_id);
+      if (route.scope_id) query.set("scope", route.scope_id);
+      query.set("selected", route.entity_id);
+      if (ATLAS) {
+        query.set("return_view", viewMode);
+        if (atlasLevel().parent_id) query.set("return_scope", atlasLevel().parent_id);
+      }
+      return `<a href="${esc(`${ATLAS?.detail_page || location.pathname}?${query}`)}">${esc(route.label)}</a>`;
+    };
+    const entries = (rows, title, applied) => {
+      const selected = rows.filter(inScope);
+      if (!selected.length) return "";
+      const markup = (row) => {
+        const selector = applied ? row.data || {} : row;
+        const declaration = applied && (permissions.declared || []).find((item) => item.id === row.declaration_id);
+        const declarationRoute = declaration?.routes?.[0];
+        const declarationOwner = declarationRoute?.component_id || declaration?.component_ids?.[0];
+        const declarationQuery = new URLSearchParams({component: declarationOwner || "unassigned", origin: "declared", view: "target"});
+        if (declarationRoute?.module_id) declarationQuery.set("module", declarationRoute.module_id);
+        if (declarationRoute?.scope_id) declarationQuery.set("scope", declarationRoute.scope_id);
+        if (declarationRoute?.entity_id) declarationQuery.set("selected", declarationRoute.entity_id);
+        const declarationHref = `${ATLAS?.detail_page || location.pathname}?${declarationQuery}#${encodeURIComponent(row.declaration_id || "")}`;
+        const keys = ["qualified_name", "position", "field_path", "annotation", "container_depth", "mapping_depth", ...(applied ? ["observed_container_depth"] : [])];
+        const binding = selector.alias_body;
+        const bindingRows = !Object.hasOwn(selector, "alias_body") ? []
+          : binding && typeof binding === "object" && !Array.isArray(binding) && Object.keys(binding).length
+            ? Object.entries(binding).map(([key, value]) => [`alias_body.${key}`, value])
+            : [["alias_body", binding]];
+        const selectorRows = [...keys.filter((key) => Object.hasOwn(selector, key)).map((key) => [key, selector[key]]), ...bindingRows];
+        const ownerLinks = !row.routes?.length ? (row.component_ids || []).map((id) => {
+          const query = new URLSearchParams({component: id, origin: "declared", view: "target"});
+          return `<a href="${esc(`${ATLAS?.detail_page || location.pathname}?${query}`)}">Declared owning component</a>`;
+        }).join(" · ") : "";
+        return `<details data-boundary-permission="${esc(row.id)}" id="${esc(row.id)}"${location.hash === `#${encodeURIComponent(row.id)}` ? " open" : ""}><summary>${esc(selector.qualified_name || row.title || "Selector unavailable")} · ${esc(selector.position || "Position unavailable")}</summary>
+          <dl class="kv">${selectorRows.map(([key, value]) => `<dt>${esc(key === "observed_container_depth" ? "Observed container depth" : key)}</dt><dd><code>${esc(typeof value === "string" ? value : JSON.stringify(value))}</code></dd>`).join("")}</dl>
+          <p>${esc(row.rationale || "Rationale unavailable")} · Decided by ${esc(row.decided_by || "Unavailable")}</p>
+          ${applied && selector.accepted_opacity === true ? "<p>Accepted opacity; type closure remains unproven.</p>" : ""}
+          <p>Recorded ID <code>${esc(row.id)}</code></p>
+          ${applied ? `<p>${esc(row.title || "Recorded applied permission")}</p><p>Declaration: ${row.declaration_id ? declarationOwner ? `<a href="${esc(declarationHref)}">${esc(row.declaration_id)}</a>` : `<code>${esc(row.declaration_id)}</code> · Navigation unavailable` : "Unavailable or ambiguous"}</p>` : `<p>Rule <code>${esc(row.rule_id)}</code> · Contract scope <code>${esc(row.contract_scope_id ?? "root")}</code> · Source <code>${esc(row.source ?? "Unavailable")}</code></p>`}
+          ${["rule_ids", "fact_ids", "evidence_ids", "provenance"].map((key) => `<p>${esc(key)}: ${(row[key] || []).map(esc).join(" · ") || "Not recorded"}</p>`).join("")}
+          <p>${(row.locations || []).map((item) => esc(`${item.file || "Location unavailable"}${item.line != null ? `:${item.line}` : ""} · ${item.id}`)).join("<br>") || "Source evidence location unavailable"}</p>
+          <p>${(row.routes || []).map(routeLink).join(" · ")}${ownerLinks || ""}</p>
+          ${!row.routes?.length && !row.component_ids?.length ? "<p>Navigation unavailable or ambiguous; retained in root audit.</p>" : ""}
+          <p><a href="${esc(ATLAS?.architecture_href || NAV?.architecture_href || "architecture.json")}">Complete audit JSON</a></p>
+        </details>`;
+      };
+      const mapped = selected.filter((row) => row.entity_ids?.length || row.component_ids?.length);
+      const unmapped = selected.filter((row) => !row.entity_ids?.length && !row.component_ids?.length);
+      return `<section class="boundary-permissions"><h3>${title}</h3>${mapped.map(markup).join("")}${unmapped.length ? `<h4>Unmapped boundary permission audit</h4>${unmapped.map(markup).join("")}` : ""}</section>`;
+    };
+    return (viewMode !== "diagram" ? entries(permissions.declared || [], "Declared boundary permissions", false) : "")
+      + (viewMode !== "target" ? entries(permissions.applied || [], "Applied boundary permissions", true) : "");
+  }
+
   function architectureInspector(context, scene) {
     const { graph } = context;
     const node = umlSelection?.type === "node"
@@ -1066,6 +1142,7 @@
       ${entity?.initializer != null ? `<h3>Static assignment site</h3><p><code>${esc(REPORT_SCENE.member(entity))}</code></p><p>Source value assigned at this site. This does not identify a live object or its current value.</p>` : ""}
       ${node?.observedCounterpart?.kind === "binding" ? `<h3>As-Is binding</h3><p><code>${esc(REPORT_SCENE.member(node.observedCounterpart))}</code></p><p>Observed source fact linked by a unique Core correspondence. It does not identify a live object or its current value.</p>` : ""}
       ${decisionGaps.length ? `<h3>Open dependency decisions</h3><p>These observed component imports have no declared dependency decision. This is not a Core UNKNOWN verdict.</p><ul>${decisionGaps.map((gap) => `<li>${esc(REPORT_SCENE.label(REPORT_SCENE.entity(gap.source_id, DATA.target), DATA.target))} → ${esc(REPORT_SCENE.label(REPORT_SCENE.entity(gap.target_id, DATA.target), DATA.target))}</li>`).join("")}</ul>` : ""}
+      ${boundaryPermissionMarkup(scope, related, Boolean(edge))}
       ${externalScopes.length ? `<h3>External dependency permissions</h3><ul>${externalScopes.map((rule) => `<li><strong>${esc(rule.dependency)}</strong> · <code>${esc(rule.id)}</code><p>Allowed prefixes: ${entries(rule.allowed_sources)}<br>Exact modules: ${entries(rule.exact_sources)}</p><p>${esc(rule.rationale)}</p><p>Decided by ${esc(rule.decided_by)} · ${rule.provenance.map(esc).join(" · ")}</p></li>`).join("")}</ul>` : ""}
       ${boundary ? `<h3>Component intent</h3><dl class="kv">
         <dt>Component role</dt><dd>${esc(boundary.role)}</dd>
@@ -2127,7 +2204,7 @@
         <h3>Owner</h3><p>${esc(owner?.label || "UNKNOWN")} · ${esc(assignment?.ownership_reason || "No assignment receipt")}</p>
         ${owner ? list("Responsibility", owner.responsibilities) + list("Not responsible for", owner.not_responsible_for) : list("Candidate owners", assignment?.candidate_ids || [])}
         <h3>Imported by</h3>${grouped("in")}<h3>Imports</h3>${grouped("out")}
-        <p>Does this fit the responsibility?</p>`;
+        <p>Does this fit the responsibility?</p>${boundaryPermissionMarkup(module.id, new Set([module.id]))}`;
       return;
     }
     if (viewMode === "target") {
@@ -2136,6 +2213,7 @@
         inspectorContent.innerHTML = `<div class="kicker">Declared module</div><h2>${esc(module.name)}</h2>
           <p>${link(atlasDetailsHref(module, level), "Open UML and source evidence")}</p><p><code>${esc(module.path || "File path not declared")}</code></p>
           <p>${REPORT_SCENE.countLabel(module.declarations, "direct declared definition")}</p>${list("Responsibility", module.responsibilities)}${list("Provenance", module.provenance)}
+          ${boundaryPermissionMarkup(module.id, new Set([module.id]))}
           ${list("Authored module relationships", scene.edges.filter((edge) => edge.source === module.id || edge.target === module.id)
             .map((edge) => `${edge.id} · ${edge.relationshipKind}: ${edge.source} → ${edge.target} · ${edge.declaration.evidence_ids.join(", ")}`))}`;
         return;
@@ -2144,7 +2222,7 @@
     if (!component) {
       inspectorContent.innerHTML = `<div class="kicker">Fact sheet${viewMode === "target" ? " · Declared intent" : ""}</div><h2>${esc(ATLAS.repository)}</h2>
         <p>${viewMode === "target" ? "Select a component or declared module." : "Select a component, module, import cell or question."}</p>
-        ${inventory}
+        ${inventory}${boundaryPermissionMarkup()}
         ${viewMode === "target" ? "" : `${atlasRuleAssessmentMarkup(level)}${atlasEvidenceMarkup()}`}
         <p>${link(ATLAS.architecture_href, "Complete audit JSON")}</p>`;
       return;
@@ -2152,7 +2230,7 @@
     const componentLevel = ATLAS.levels.find((item) => item.parent_id === component.id);
     const moduleCount = componentLevel ? REPORT_SCENE.atlasModules(componentLevel, viewMode).length : 0;
     inspectorContent.innerHTML = `<div class="kicker">Component fact sheet · ${viewMode === "target" ? "Declared intent" : "Core facts"}</div>
-      <h2>${esc(component.label)}</h2><p><button type="button" class="flow-fit" data-browse-component>${moduleCount ? `Browse ${REPORT_SCENE.countLabel(moduleCount, "module")}` : `Browse ${esc(component.label)}`}</button></p>${component.layer ? `<p>Declared layer: ${esc(component.layer)}</p>` : ""}${list("Responsibility", component.responsibilities)}
+      ${boundaryPermissionMarkup(component.id)}<h2>${esc(component.label)}</h2><p><button type="button" class="flow-fit" data-browse-component>${moduleCount ? `Browse ${REPORT_SCENE.countLabel(moduleCount, "module")}` : `Browse ${esc(component.label)}`}</button></p>${component.layer ? `<p>Declared layer: ${esc(component.layer)}</p>` : ""}${list("Responsibility", component.responsibilities)}
       ${list("Not responsible for", component.not_responsible_for)}${list("Provides", component.public)}
       ${list("Planned interface", component.planned)}<h3>Requires · declared permission, not an obligation</h3>
       <ul class="plain">${component.requires.map((edge) => `<li><strong>${esc(REPORT_SCENE.atlasComponent(edge.target_id)?.label || edge.target_id)}</strong>

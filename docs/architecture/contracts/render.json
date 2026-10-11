@@ -45,7 +45,8 @@
         "archkeel.render.atlas"
       ],
       "public": [
-        "archkeel.render.atlas:atlas_payload"
+        "archkeel.render.atlas:atlas_payload",
+        "archkeel.render.atlas:boundary_permissions_payload"
       ],
       "responsibilities": [
         "Build the compact Atlas payload from authenticated Core report, projection and result values."
@@ -56,7 +57,8 @@
       "provenance": [
         "docs/architecture/decisions/ad-179-reports-render-one-graph-boundary.md",
         "docs/architecture/render-target.md",
-        "docs/architecture/decisions/ad-213-renderer-responsibility-boundaries.md"
+        "docs/architecture/decisions/ad-213-renderer-responsibility-boundaries.md",
+        "docs/architecture/decisions/ad-219-atlas-boundary-permissions.md"
       ],
       "decided_by": "agent",
       "requires": [],

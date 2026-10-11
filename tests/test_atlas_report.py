@@ -22,7 +22,12 @@ from archkeel.check.report import run_report
 from archkeel.cli import main
 from archkeel.cli.observe import observe
 from archkeel.ir.baseline import select_violations
-from archkeel.ir.codec import canonical_report_bytes, decode_canonical_model, parse_observation
+from archkeel.ir.codec import (
+    canonical_report_bytes,
+    decode_canonical_model,
+    parse_observation,
+    value_bytes,
+)
 from archkeel.ir.decisions import rule_assessments
 from archkeel.ir.model import ReportFilter, RunResult
 from archkeel.ir.report_graph import architecture_report
@@ -1059,6 +1064,27 @@ def test_target_content_is_independent_of_observed_evidence(tmp_path):
         }
     ]
     (repository / config.contract).write_text(json.dumps(contract_value))
+    contract_value["components"][1]["public"] = ["sample.peer:control"]
+    peer_source = repository / "sample/peer.py"
+    peer_source.write_text(peer_source.read_text() + "\ndef control() -> int: return 1\n")
+    contract_value["rules"].append(
+        {
+            "id": "PURE-BOUNDARY",
+            "kind": "boundary_types",
+            "source": "sample.peer",
+            "rationale": "Native result stays an explicit target decision.",
+            "provenance": ["docs/target.md"],
+            "decided_by": "architect",
+            "allowed_positions": [
+                {
+                    "qualified_name": "sample.peer.unused",
+                    "position": "return",
+                    "annotation": "object",
+                }
+            ],
+        }
+    )
+    (repository / config.contract).write_text(json.dumps(contract_value))
     contract = (repository / config.contract).read_bytes()
 
     def report():
@@ -1078,6 +1104,17 @@ def test_target_content_is_independent_of_observed_evidence(tmp_path):
     observations.append(report())
     assert (repository / config.contract).read_bytes() == contract
     assert [result.declared_rules for result, _ in observations] == ["PASS", "FAIL", "UNKNOWN"]
+    permission_rows = [
+        json.loads(
+            re.search(
+                r'<script id="flow-data" type="application/json">(.*?)</script>', html, re.S
+            ).group(1)
+        )["boundary_permissions"]["declared"]
+        for _, html in observations
+    ]
+    assert permission_rows[0] == permission_rows[1] == permission_rows[2]
+    assert permission_rows[0]
+    assert permission_rows[0][0]["entity_ids"] == ["peer-module"]
     atlases = [_atlas(html) for _, html in observations]
     root_levels = [
         next(level for level in atlas["levels"] if level["parent_id"] is None) for atlas in atlases
@@ -1868,6 +1905,7 @@ def test_unknown_detail_links_keep_deeper_claimed_modules_and_distinct_names(
     native = json.loads(payload.group(1))
     native.pop("initial_view")
     native.pop("navigation")
+    native.pop("boundary_permissions")
     scoped = parse_report(native)
     scoped.validate()
     original = architecture_report(model).observed
@@ -1959,6 +1997,140 @@ def _route_pages(tmp_path, *, local_imports=False, package_empty=False):
     ).items():
         (tmp_path / name).write_bytes(content)
     return index, architecture_report(model).observed
+
+
+def _cli_route_pages(tmp_path):
+    _sample(
+        tmp_path,
+        uml=True,
+        extra_files={
+            "sample/core.py": "class Client:\n    def run(self):\n        return 1\n",
+            "sample/peer.py": "class Peer:\n    def other(self):\n        return 2\n",
+        },
+    )
+    root = tmp_path / "repo"
+    (root / "archkeel.toml").write_text(
+        '[scan]\nroots=["sample"]\nnamespace="sample"\ncontract="contract.json"\n'
+    )
+    output = tmp_path / "architecture.json"
+    assert main(["report", "--root", str(root), "--output", str(output), "--json"]) == 0
+    detail = output.with_suffix(".detail.html")
+    data = json.loads(
+        re.search(r'<script id="flow-data"[^>]*>(.*?)</script>', detail.read_text(), re.S)[1]
+    )
+    ids = {
+        item["qualified_name"]: item["id"]
+        for item in data["observed"]["entities"]
+        if item["kind"] in ("module", "class", "method")
+    }
+    return output.with_suffix(".report.html"), detail, ids
+
+
+@pytest.mark.parametrize(
+    ("document", "query", "recovery"),
+    [
+        ("detail", "component=peer&module={core}", "notice"),
+        ("detail", "component=missing&module={core}", "notice"),
+        ("detail", "component=core&module=missing", "notice"),
+        ("detail", "module=missing", "notice"),
+        ("detail", "component=core&module={core}&scope={peer_class}", "notice"),
+        ("detail", "component=core&module={core}&scope={peer_method}", "back"),
+        ("detail", "component=core&origin=declared&scope=peer", "notice"),
+        ("detail", "component=core&module=core-module&origin=declared&scope=peer-module", "notice"),
+        ("detail", "component=unassigned&module={core}&return_scope=core", "notice"),
+        ("atlas", "scope=missing&component=core&module={core}", "notice"),
+        ("atlas", "scope=missing&component=core&module={core}", "breadcrumb"),
+        ("detail", "component=%70eer&component=core&module={core}&module=missing", "notice"),
+    ],
+)
+def test_rejected_offline_routes_retain_complete_url_until_explicit_recovery(
+    tmp_path, document, query, recovery
+):
+    api = pytest.importorskip("playwright.sync_api")
+    index, detail, ids = _cli_route_pages(tmp_path)
+    query = query.format(
+        core=ids["sample.core"],
+        peer_class=ids["sample.peer.Peer"],
+        peer_method=ids["sample.peer.Peer.other"],
+    )
+    requested = (detail if document == "detail" else index).as_uri()
+    requested += "?" + query + "&view=diagram&theme=dark&extra=a%2Fb+z&extra=two#retained%2Fhash"
+    errors = []
+    playwright, browser, page = _browser_page(api, index.read_text(), errors=errors)
+    try:
+        page.goto(requested)
+        assert page.locator("#flow-heading").inner_text() == "Requested scope unavailable"
+        assert page.locator(".flow-canvas").is_hidden()
+        assert page.url == requested
+        page.reload()
+        assert page.locator("#flow-heading").inner_text() == "Requested scope unavailable"
+        assert page.url == requested
+        history_length = page.evaluate("history.length")
+        for lens in ("Target", "Diff", "As-Is"):
+            page.get_by_role("button", name=lens, exact=True).click()
+            assert page.locator("#flow-heading").inner_text() == "Requested scope unavailable"
+            assert page.url == requested
+        page.get_by_role("button", name="Switch to light theme", exact=True).click()
+        page.locator(".flow-details-toggle").click()
+        page.locator(".flow-details-toggle").click()
+        assert page.url == requested
+        assert page.evaluate("history.length") == history_length
+        if recovery == "breadcrumb":
+            page.locator(".flow-breadcrumb button").first.click()
+        elif recovery == "back":
+            page.locator(".flow-back").click()
+        else:
+            page.locator(".flow-alternative button").click()
+        page.wait_for_function(
+            "document.querySelector('#flow-heading').textContent !== 'Requested scope unavailable'"
+        )
+        recovered = page.url
+        assert recovered != requested and "theme=light" in recovered
+        assert not urlsplit(recovered).fragment
+        page.reload()
+        assert page.locator("#flow-heading").inner_text() != "Requested scope unavailable"
+        assert page.url == recovered
+        page.go_back()
+        assert page.locator("#flow-heading").inner_text() == "Requested scope unavailable"
+        assert page.url == requested
+        assert page.locator("html").get_attribute("data-theme") == "dark"
+        page.go_forward()
+        assert page.locator("#flow-heading").inner_text() != "Requested scope unavailable"
+        assert page.url == recovered
+        assert not errors
+    finally:
+        browser.close()
+        playwright.stop()
+
+
+def test_cli_offline_valid_routes_still_normalize_and_reload(tmp_path):
+    api = pytest.importorskip("playwright.sync_api")
+    index, detail, ids = _cli_route_pages(tmp_path)
+    queries = [
+        "component=core&module=" + ids["sample.core"],
+        "component=core&module=" + ids["sample.core"] + "&scope=" + ids["sample.core.Client"],
+        "component=core&module=" + ids["sample.core"] + "&scope=" + ids["sample.core.Client.run"],
+        "component=core&module=core-module&origin=declared",
+        "component=unassigned&module=" + ids["sample.unowned"] + "&return_scope=",
+    ]
+    errors = []
+    playwright, browser, page = _browser_page(api, index.read_text(), errors=errors)
+    try:
+        for query in queries:
+            page.goto(
+                detail.as_uri() + "?" + query + "&view=diagram&theme=light&extra=discard#discard"
+            )
+            assert page.locator("#flow-heading").inner_text() != "Requested scope unavailable"
+            assert "extra=" not in page.url and not urlsplit(page.url).fragment
+            normalized = page.url
+            page.reload()
+            assert page.locator("#flow-heading").inner_text() != "Requested scope unavailable"
+            assert page.url == normalized
+            assert page.locator("html").get_attribute("data-theme") == "light"
+        assert not errors
+    finally:
+        browser.close()
+        playwright.stop()
 
 
 def test_offline_atlas_and_uml_share_shell_empty_scope_and_url_theme(tmp_path):
@@ -2399,6 +2571,845 @@ def test_module_graph_keeps_native_fail_evidence_and_count_without_permission_in
             for identity in [native["reference_ids"][index]]
         )
         assert "cell=0" in page.url
+        assert not errors
+    finally:
+        browser.close()
+        playwright.stop()
+
+
+def _boundary_permission_report(tmp_path):
+    from test_boundary_type_native_iterables import _fixture
+    from test_boundary_types_contained_mapping import _commit_report_fixture
+
+    _fixture(tmp_path, facade=True)
+    from test_analyzer import _component
+
+    implementation = tmp_path / "sample/app/impl.py"
+    implementation.write_text(
+        implementation.read_text()
+        + "\nclass BaseLiteralGenerator:\n    def generate(self) -> Iterable[object]: return []\n"
+    )
+    facade = tmp_path / "sample/app/__init__.py"
+    facade.write_text(
+        facade.read_text()
+        + "\nfrom .impl import BaseLiteralGenerator\n__all__.append('BaseLiteralGenerator')\n"
+    )
+    (tmp_path / "sample/other.py").write_text("def unrelated() -> None: pass\n")
+    contract = json.loads((tmp_path / "contract.json").read_text())
+    contract["components"].append(_component("other", public=["sample.other:unrelated"]))
+    contract["components"][0]["public"].append("sample.app:BaseLiteralGenerator")
+    contract["rules"][0]["allowed_positions"].append(
+        {
+            "qualified_name": "sample.app.BaseLiteralGenerator.generate",
+            "position": "return",
+            "annotation": "Iterable[object]",
+            "container_depth": 1,
+        }
+    )
+    contract["rules"][0]["allowed_positions"].append(
+        {
+            "qualified_name": "sample.app.unused",
+            "position": "return",
+            "annotation": "object",
+        }
+    )
+    contract["schema_version"] = "2.2.0"
+    contract["declarations"] = {
+        "uml": {
+            "schema_version": "1.0.0",
+            "entities": [
+                {
+                    "id": "literal-class",
+                    "kind": "class",
+                    "qualified_name": "sample.app.BaseLiteralGenerator",
+                    "parent_id": "COMP-APP",
+                    "language": "python",
+                    "presence": "planned",
+                    "responsibilities": ["Generate literal values."],
+                    "provenance": ["docs/architecture/sample.md"],
+                },
+                {
+                    "id": "literal-generate",
+                    "kind": "method",
+                    "qualified_name": "sample.app.BaseLiteralGenerator.generate",
+                    "parent_id": "literal-class",
+                    "language": "python",
+                    "presence": "planned",
+                    "responsibilities": ["Generate literal values."],
+                    "provenance": ["docs/architecture/sample.md"],
+                },
+            ],
+        }
+    }
+    (tmp_path / "contract.json").write_text(json.dumps(contract))
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "fixture"\nversion = "0.0.0"\nrequires-python = ">=3.11"\n'
+    )
+    _commit_report_fixture(tmp_path)
+    output = tmp_path / "out/architecture.json"
+    assert main(["report", "--root", str(tmp_path), "--output", str(output), "--json"]) == 0
+    return output
+
+
+def _flow_payload(path):
+    match = re.search(
+        r'<script id="flow-data" type="application/json">(.*?)</script>', path.read_text(), re.S
+    )
+    assert match
+    return json.loads(match.group(1))
+
+
+def test_boundary_permissions_shared_saved_cli_payload(tmp_path):
+    output = _boundary_permission_report(tmp_path)
+    overview = _flow_payload(output.with_suffix(".report.html"))
+    detail = _flow_payload(output.with_suffix(".detail.html"))
+    permissions = overview["boundary_permissions"]
+    assert permissions == detail["boundary_permissions"]
+    declarations = permissions["declared"]
+    applied = permissions["applied"]
+    unused = next(row for row in declarations if row["qualified_name"] == "sample.app.unused")
+    assert unused["rationale"] and unused["provenance"]
+    assert unused["component_ids"] and not unused["entity_ids"]
+    assert not any(row["data"]["qualified_name"] == "sample.app.unused" for row in applied)
+    opaque = next(row for row in applied if row["data"]["qualified_name"] == "sample.app.read")
+    assert opaque["data"]["accepted_opacity"] is True
+    assert opaque["declaration_id"]
+    assert opaque["entity_ids"] and opaque["locations"]
+    assert opaque["id"] not in {row["id"] for row in overview["atlas"]["findings"]}
+    assert opaque["id"] not in {row["id"] for row in detail["findings"]}
+
+
+@pytest.mark.parametrize("callable_name", ["read", "BaseLiteralGenerator.generate"])
+def test_boundary_permissions_offline_lenses_and_member_routes(tmp_path, callable_name):
+    api = pytest.importorskip("playwright.sync_api")
+    output = _boundary_permission_report(tmp_path)
+    index = output.with_suffix(".report.html")
+    errors = []
+    playwright, browser, page = _browser_page(api, index.read_text(), errors=errors)
+    try:
+        page.goto(index.as_uri())
+        _open_details(page)
+        assert (
+            "applied boundary permissions" in page.locator(".flow-inspector").inner_text().lower()
+        )
+        page.locator('.flow-nodes [data-uml-id="COMP-OTHER"]').click()
+        assert "boundary permissions" not in page.locator(".flow-inspector").inner_text().lower()
+        page.goto(index.as_uri())
+        page.get_by_role("button", name="Target", exact=True).click()
+        _open_details(page)
+        inspector = page.locator(".flow-inspector")
+        assert "declared boundary permissions" in inspector.inner_text().lower()
+        assert "sample.app.unused" in inspector.inner_text()
+        assert "Accepted opacity" not in inspector.inner_text()
+        page.get_by_role("button", name="As-Is", exact=True).click()
+        _open_details(page)
+        inspector.locator("[data-boundary-permission]").filter(
+            has_text=f"sample.app.{callable_name}"
+        ).locator("summary").click()
+        inspector.locator("[data-boundary-permission]").filter(
+            has_text=f"sample.app.{callable_name}"
+        ).get_by_role("link", name=f"sample.app.impl.{callable_name}", exact=True).click()
+        page.wait_for_url("**/*.detail.html?*")
+        _open_details(page)
+        assert "applied boundary permissions" in inspector.inner_text().lower()
+        inspector.locator("[data-boundary-permission]").filter(
+            has_text=f"sample.app.{callable_name}"
+        ).locator("summary").click()
+        assert "Accepted opacity; type closure remains unproven." in inspector.inner_text()
+        fact_entry = inspector.locator("[data-boundary-permission]").filter(
+            has_text=f"sample.app.{callable_name}"
+        )
+        declaration_id = next(
+            row["declaration_id"]
+            for row in _flow_payload(index)["boundary_permissions"]["applied"]
+            if row["data"]["qualified_name"] == f"sample.app.{callable_name}"
+        )
+        fact_entry.get_by_role("link", name=declaration_id, exact=True).click()
+        page.wait_for_url(lambda url: "view=target" in str(url))
+        _open_details(page)
+        assert (
+            inspector.locator(f'[data-boundary-permission="{declaration_id}"]').get_attribute(
+                "open"
+            )
+            is not None
+        )
+        assert "applied boundary permissions" not in inspector.inner_text().lower()
+        history = page.evaluate("({url: location.href, length: history.length})")
+        page.locator(".flow-arrange").click()
+        assert page.evaluate("({url: location.href, length: history.length})") == history
+        page.go_back()
+        page.reload()
+        _open_details(page)
+        assert f"sample.app.{callable_name}" in inspector.inner_text()
+        page.go_back()
+        assert page.url.startswith(index.as_uri())
+        page.get_by_role("button", name="Diff", exact=True).click()
+        _open_details(page)
+        assert "declared boundary permissions" in inspector.inner_text().lower()
+        assert "applied boundary permissions" in inspector.inner_text().lower()
+        assert not errors
+    finally:
+        browser.close()
+        playwright.stop()
+
+
+def test_boundary_permissions_nested_same_labels_keep_exact_contract_scope(tmp_path):
+    from test_target_graph import _nested_repository
+
+    from archkeel.render.atlas import boundary_permissions_payload
+
+    root, config = _nested_repository(tmp_path)
+    for path in (config.contract, "inside.json", "leaf.json"):
+        raw = json.loads((root / path).read_text())
+        raw["components"][0]["label"] = "core"
+        raw["rules"].append(
+            {
+                "id": "NATIVE",
+                "kind": "boundary_types",
+                "source": "sample.core",
+                "rationale": "Accept this exact result.",
+                "provenance": ["docs/target.md"],
+                "decided_by": "architect",
+                "allowed_positions": [
+                    {
+                        "qualified_name": "sample.core.Service.run",
+                        "position": "return",
+                        "annotation": "object",
+                    }
+                ],
+            }
+        )
+        (root / path).write_text(json.dumps(raw))
+    result, encoded = run_report(root, config=config, analyzer=observe)
+    assert encoded is not None and result.architecture_projection is not None
+    assert all(item.kind == "rule_without_subjects" for item in result.diagnostics)
+    model = parse_observation(decode_canonical_model(json.loads(encoded)))
+    payload = boundary_permissions_payload(
+        model, architecture_report(model), result.architecture_projection
+    )
+    rows = payload["declared"]
+    assert len(rows) == 3
+    assert len({row["id"] for row in rows}) == 3
+    for row in rows:
+        expected = [
+            component.id
+            for component in result.architecture_projection.components
+            if component.parent_id == row["contract_scope_id"]
+            and component.namespace == "sample.core"
+        ]
+        assert row["component_ids"] == expected
+        assert len(expected) == 1
+
+
+def test_boundary_permission_unmapped_ambiguous_and_optional_metadata(tmp_path):
+    from archkeel.ir.model import RecordData
+    from archkeel.render.atlas import boundary_permissions_payload
+
+    output = _boundary_permission_report(tmp_path)
+    model = parse_observation(decode_canonical_model(json.loads(output.read_bytes())))
+    projection = _result(model).architecture_projection
+    fact = next(
+        row for row in model.records("typing_signals") if row.kind == "boundary_type_allowance"
+    )
+    changed = replace(
+        fact,
+        subjects=(),
+        fact_ids=(),
+        evidence_ids=(),
+        title="</script><img src=x onerror=alert(1)>",
+        data=RecordData(
+            tuple(
+                {
+                    **dict(fact.data.entries),
+                    "unrelated_metadata": RecordData((("nested", "ignored"),)),
+                    "annotation": "<script>alert(1)</script>",
+                }.items()
+            )
+        ),
+    )
+    model = replace(
+        model,
+        sections=tuple(
+            replace(section, records=(changed,)) if section.name == "typing_signals" else section
+            for section in model.sections
+        ),
+    )
+    payload = boundary_permissions_payload(model, architecture_report(model), projection)
+    row = payload["applied"][0]
+    assert row["routes"] == row["component_ids"] == row["entity_ids"] == row["locations"] == []
+    assert row["declaration_id"] is None
+    assert "unrelated_metadata" not in row["data"]
+    json.dumps(payload)
+    duplicated = replace(
+        projection, permission_rules=(*projection.permission_rules, *projection.permission_rules)
+    )
+    original = parse_observation(decode_canonical_model(json.loads(output.read_bytes())))
+    duplicate_rows = boundary_permissions_payload(
+        original, architecture_report(original), duplicated
+    )["applied"]
+    assert all(row["declaration_id"] is None for row in duplicate_rows)
+
+
+def test_boundary_permissions_offline_security_audit_and_old_payload(tmp_path):
+    api = pytest.importorskip("playwright.sync_api")
+    output = _boundary_permission_report(tmp_path)
+    html = output.with_suffix(".report.html").read_text()
+    data = _flow_payload(output.with_suffix(".report.html"))
+    malicious = "</script><img src=x onerror=alert(1)>"
+    row = data["boundary_permissions"]["applied"][0]
+    row.update(
+        entity_ids=[],
+        component_ids=[],
+        routes=[],
+        locations=[],
+        declaration_id=None,
+        title=malicious,
+        provenance=["javascript:alert(1)", malicious],
+    )
+    row["data"].update(qualified_name=malicious, annotation=malicious)
+    encoded = json.dumps(data).replace("<", "\\u003c")
+    match = re.search(r'<script id="flow-data" type="application/json">(.*?)</script>', html, re.S)
+    edited = html[: match.start(1)] + encoded + html[match.end(1) :]
+    errors = []
+    playwright, browser, page = _browser_page(api, edited, errors=errors)
+    try:
+        _open_details(page)
+        inspector = page.locator(".flow-inspector")
+        assert "unmapped boundary permission audit" in inspector.inner_text().lower()
+        entry = inspector.locator("[data-boundary-permission]").filter(has_text=malicious)
+        entry.locator("summary").click()
+        assert malicious in entry.inner_text()
+        assert not inspector.locator("img, script, [onerror], a[href^='javascript:']").count()
+        page.locator('.flow-nodes [data-uml-id="COMP-OTHER"]').click()
+        assert "unmapped boundary permission audit" not in inspector.inner_text().lower()
+        data.pop("boundary_permissions")
+        old = (
+            html[: match.start(1)] + json.dumps(data).replace("<", "\\u003c") + html[match.end(1) :]
+        )
+        page.set_content(old)
+        _open_details(page)
+        assert "boundary permissions" not in inspector.inner_text().lower()
+        assert not errors
+    finally:
+        browser.close()
+        playwright.stop()
+
+
+def test_boundary_permissions_target_member_without_module_route(tmp_path):
+    api = pytest.importorskip("playwright.sync_api")
+    output = _boundary_permission_report(tmp_path)
+    index = output.with_suffix(".report.html")
+    errors = []
+    playwright, browser, page = _browser_page(api, index.read_text(), errors=errors)
+    try:
+        page.goto(index.as_uri())
+        page.get_by_role("button", name="Target", exact=True).click()
+        _open_details(page)
+        entry = page.locator("[data-boundary-permission]").filter(
+            has_text="sample.app.BaseLiteralGenerator.generate"
+        )
+        entry.locator("summary").click()
+        entry.get_by_role(
+            "link", name="sample.app.BaseLiteralGenerator.generate", exact=True
+        ).click()
+        page.wait_for_url("**/*.detail.html?*")
+        _open_details(page)
+        assert "Requested scope" not in page.locator(".flow-inspector").inner_text()
+        assert (
+            "sample.app.BaseLiteralGenerator.generate"
+            in page.locator(".flow-inspector").inner_text()
+        )
+        assert "selected=literal-generate" in page.url
+        page.reload()
+        _open_details(page)
+        assert (
+            "sample.app.BaseLiteralGenerator.generate"
+            in page.locator(".flow-inspector").inner_text()
+        )
+        page.go_back()
+        assert page.url.startswith(index.as_uri())
+        for component, scope in (("COMP-OTHER", "literal-class"), ("COMP-APP", "absent-member")):
+            page.goto(
+                output.with_suffix(".detail.html").as_uri()
+                + f"?component={component}&origin=declared&scope={scope}&view=target"
+            )
+            _open_details(page)
+            assert (
+                "No content is inferred for the rejected scope."
+                in page.locator(".flow-inspector").inner_text()
+            )
+        assert not errors
+    finally:
+        browser.close()
+        playwright.stop()
+
+
+def test_boundary_permission_declared_exact_module_owner_without_application(tmp_path):
+    root = _prepare_repo(
+        tmp_path,
+        {
+            "pyproject.toml": '[project]\nrequires-python = ">=3.11"\n',
+            "sample/api.py": "def read() -> int: return 1\n",
+            "archkeel.toml": (
+                '[scan]\nroots = ["sample"]\nnamespace = "sample"\ncontract = "contract.json"\n'
+            ),
+            "docs/target.md": "Explicit native result decision.\n",
+            "contract.json": json.dumps(
+                {
+                    "schema_version": "2.2.0",
+                    "components": [
+                        {
+                            "id": "API",
+                            "label": "api",
+                            "role": "component",
+                            "packages": [],
+                            "exact_modules": ["sample.api"],
+                            "responsibilities": ["Own the API."],
+                            "forbidden_responsibilities": [],
+                            "provenance": ["docs/target.md"],
+                            "public": ["sample.api:read"],
+                        }
+                    ],
+                    "rules": [
+                        {
+                            "id": "NATIVE",
+                            "kind": "boundary_types",
+                            "source": "sample.api",
+                            "rationale": "Accept the planned native result.",
+                            "decided_by": "architect",
+                            "provenance": ["docs/target.md"],
+                            "allowed_positions": [
+                                {
+                                    "qualified_name": "sample.api.native",
+                                    "position": "return",
+                                    "annotation": "object",
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ),
+        },
+    )
+    output = root / "out/architecture.json"
+    assert main(["report", "--root", str(root), "--output", str(output), "--json"]) == 0
+    permissions = _flow_payload(output.with_suffix(".report.html"))["boundary_permissions"]
+    assert permissions["applied"] == []
+    assert permissions["declared"][0]["component_ids"] == ["API"]
+    assert permissions["declared"][0]["entity_ids"] == []
+
+
+def test_boundary_permission_field_default_keeps_optional_depth_distinct(tmp_path):
+    from archkeel.ir.model import RecordData
+    from archkeel.render.atlas import boundary_permissions_payload
+
+    output = _boundary_permission_report(tmp_path)
+    original = parse_observation(decode_canonical_model(json.loads(output.read_bytes())))
+    projection = _result(original).architecture_projection
+    fact = next(
+        row
+        for row in original.records("typing_signals")
+        if row.kind == "boundary_type_allowance"
+        and row.data.get("qualified_name") == "sample.app.read"
+    )
+    declaration_id = boundary_permissions_payload(
+        original, architecture_report(original), projection
+    )["applied"][0]["declaration_id"]
+    assert declaration_id
+    for missing, expected in (("field_path", declaration_id), ("container_depth", None)):
+        changed = replace(
+            fact,
+            data=RecordData(
+                tuple((key, value) for key, value in fact.data.entries if key != missing)
+            ),
+        )
+        model = replace(
+            original,
+            sections=tuple(
+                replace(section, records=(changed,))
+                if section.name == "typing_signals"
+                else section
+                for section in original.sections
+            ),
+        )
+        row = boundary_permissions_payload(model, architecture_report(model), projection)[
+            "applied"
+        ][0]
+        assert row["declaration_id"] == expected
+
+
+def test_boundary_permissions_offline_module_and_diff_member_selection(tmp_path):
+    api = pytest.importorskip("playwright.sync_api")
+    output = _boundary_permission_report(tmp_path)
+    index = output.with_suffix(".report.html")
+    payload = _flow_payload(index)
+    module = next(row for row in payload["atlas"]["modules"] if row["name"] == "sample.app.impl")
+    applied = next(
+        row
+        for row in payload["boundary_permissions"]["applied"]
+        if row["data"]["qualified_name"] == "sample.app.BaseLiteralGenerator.generate"
+    )
+    route = applied["routes"][0]
+    errors = []
+    playwright, browser, page = _browser_page(api, index.read_text(), errors=errors)
+    try:
+        page.goto(
+            index.as_uri() + f"?scope=COMP-APP&selected={module['id']}&view=diagram&content=modules"
+        )
+        _open_details(page)
+        inspector = page.locator(".flow-inspector")
+        assert "applied boundary permissions" in inspector.inner_text().lower()
+        page.goto(
+            output.with_suffix(".detail.html").as_uri()
+            + f"?component=COMP-APP&module={route['module_id']}&scope={route['scope_id']}"
+            + f"&selected={route['entity_id']}&origin=observed&view=diff"
+        )
+        _open_details(page)
+        assert "applied boundary permissions" in inspector.inner_text().lower()
+        assert "declared boundary permissions" in inspector.inner_text().lower()
+        assert "sample.app.unused" not in inspector.inner_text()
+        assert not errors
+    finally:
+        browser.close()
+        playwright.stop()
+
+
+_ALIAS_PAIR = {
+    "origin": "sample.app.impl:Packet",
+    "shape": (
+        "tuple[tuple[str, list[object]] | tuple[str, list[object], "
+        "sample.app.types.Metadata], list[dict[str, object]]]"
+    ),
+}
+_ABSENT_ALIAS_PAIR = object()
+
+
+def _alias_permission_payload(tmp_path, declared, applied, *, duplicate=False):
+    from archkeel.ir.facts_codec import freeze_data
+    from archkeel.render.atlas import boundary_permissions_payload
+
+    output = _boundary_permission_report(tmp_path)
+    model = parse_observation(decode_canonical_model(json.loads(output.read_bytes())))
+    projection = _result(model).architecture_projection
+    fact = next(
+        row for row in model.records("typing_signals") if row.kind == "boundary_type_allowance"
+    )
+    permission = next(
+        row for row in projection.permission_rules if row.declaration.kind == "boundary_types"
+    )
+    data = json.loads(value_bytes(fact.data))
+    selector = {
+        key: value
+        for key, value in data.items()
+        if key
+        in {
+            "qualified_name",
+            "position",
+            "field_path",
+            "annotation",
+            "container_depth",
+            "mapping_depth",
+        }
+    }
+    if declared is not _ABSENT_ALIAS_PAIR:
+        selector["alias_body"] = declared
+    declaration_data = json.loads(value_bytes(permission.declaration.data))
+    declaration = replace(
+        permission.declaration,
+        data=freeze_data({**declaration_data, "allowed_positions": [selector]}),
+    )
+    permission = replace(permission, declaration=declaration)
+    if applied is not _ABSENT_ALIAS_PAIR:
+        data["alias_body"] = applied
+    fact = replace(fact, data=freeze_data(data), provenance=("fact-own-provenance",))
+    model = replace(
+        model,
+        sections=tuple(
+            replace(section, records=(fact,))
+            if section.name == "typing_signals"
+            else replace(
+                section,
+                records=tuple(
+                    declaration if row.id == declaration.id else row for row in section.records
+                ),
+            )
+            if section.name == "declarations"
+            else section
+            for section in model.sections
+        ),
+    )
+    model = parse_observation(decode_canonical_model(json.loads(canonical_report_bytes(model))))
+    projection = replace(
+        projection, permission_rules=(permission, permission) if duplicate else (permission,)
+    )
+    return boundary_permissions_payload(model, architecture_report(model), projection), model
+
+
+@pytest.mark.parametrize(
+    "declared,applied,joined",
+    [
+        (_ALIAS_PAIR, _ALIAS_PAIR, True),
+        (_ALIAS_PAIR, dict(reversed(tuple(_ALIAS_PAIR.items()))), True),
+        (_ALIAS_PAIR, {**_ALIAS_PAIR, "origin": "sample.app.moved:Packet"}, False),
+        (_ALIAS_PAIR, {**_ALIAS_PAIR, "shape": _ALIAS_PAIR["shape"] + " | None"}, False),
+        (_ALIAS_PAIR, _ABSENT_ALIAS_PAIR, False),
+        (_ABSENT_ALIAS_PAIR, _ALIAS_PAIR, False),
+        (_ABSENT_ALIAS_PAIR, _ABSENT_ALIAS_PAIR, True),
+        *[
+            (bad, bad, False)
+            for bad in [
+                None,
+                [],
+                "Packet",
+                {},
+                {"origin": "only"},
+                {"shape": "only"},
+                {**_ALIAS_PAIR, "extra": "no"},
+                {**_ALIAS_PAIR, "origin": ""},
+                {**_ALIAS_PAIR, "shape": ""},
+                {**_ALIAS_PAIR, "shape": " "},
+                {**_ALIAS_PAIR, "origin": 7},
+                {**_ALIAS_PAIR, "shape": []},
+            ]
+        ],
+    ],
+)
+def test_bound_alias_permission_join_requires_exact_valid_pair(tmp_path, declared, applied, joined):
+    payload, model = _alias_permission_payload(tmp_path, declared, applied)
+    row = payload["applied"][0]
+    assert bool(row["declaration_id"]) is joined
+    assert bool(row["rationale"]) is joined
+    assert row["provenance"] == ("fact-own-provenance",)
+    if applied is not _ABSENT_ALIAS_PAIR:
+        assert row["data"]["alias_body"] == applied
+    if declared is not _ABSENT_ALIAS_PAIR:
+        assert payload["declared"][0]["alias_body"] == declared
+    json.dumps(payload)
+    audit = json.loads(value_bytes(model.records("typing_signals")[0].data))
+    assert ("alias_body" in audit) is (applied is not _ABSENT_ALIAS_PAIR)
+    if applied is not _ABSENT_ALIAS_PAIR:
+        assert audit["alias_body"] == applied
+
+
+@pytest.mark.parametrize(
+    "declared",
+    [
+        _ALIAS_PAIR,
+        {**_ALIAS_PAIR, "shape": _ALIAS_PAIR["shape"] + " | None"},
+        {**_ALIAS_PAIR, "origin": "sample.app.other:Packet"},
+    ],
+)
+def test_bound_alias_duplicate_exact_or_near_declarations_do_not_join(tmp_path, declared):
+    payload, _ = _alias_permission_payload(tmp_path, declared, _ALIAS_PAIR, duplicate=True)
+    assert payload["applied"][0]["declaration_id"] is None
+
+
+@pytest.mark.parametrize(
+    "binding",
+    [
+        None,
+        [],
+        "Packet",
+        {},
+        {"origin": "only"},
+        {**_ALIAS_PAIR, "extra": "no"},
+        {**_ALIAS_PAIR, "origin": 7},
+        {"origin": ["malformed"], "shape": {"bad": "value"}},
+    ],
+)
+def test_bound_alias_malformed_saved_audit_never_borrows_rationale(tmp_path, binding):
+    api = pytest.importorskip("playwright.sync_api")
+    payload, model = _alias_permission_payload(tmp_path, binding, binding)
+    fact = payload["applied"][0]
+    errors = []
+    playwright, browser, page = _browser_page(api, _page(model), errors=errors)
+    try:
+        _open_details(page)
+        entry = page.locator(f'[data-boundary-permission="{fact["id"]}"]')
+        entry.locator("summary").click()
+        assert "Unavailable or ambiguous" in entry.inner_text()
+        assert "Rationale unavailable" in entry.inner_text()
+        assert "fact-own-provenance" in entry.inner_text()
+        assert "alias_body" in entry.inner_text()
+        assert "[object Object]" not in entry.inner_text()
+        assert entry.get_by_role("link", name="Complete audit JSON", exact=True).count() == 1
+        assert not errors
+    finally:
+        browser.close()
+        playwright.stop()
+
+
+@pytest.mark.parametrize(
+    "applied,joined",
+    [
+        (_ALIAS_PAIR, True),
+        ({**_ALIAS_PAIR, "origin": "sample.app.changed:Packet"}, False),
+        ({**_ALIAS_PAIR, "shape": _ALIAS_PAIR["shape"] + " | None"}, False),
+        (_ABSENT_ALIAS_PAIR, False),
+    ],
+)
+def test_bound_alias_saved_body_origin_and_presence_match_in_browser(tmp_path, applied, joined):
+    api = pytest.importorskip("playwright.sync_api")
+    payload, model = _alias_permission_payload(tmp_path, _ALIAS_PAIR, applied)
+    fact = payload["applied"][0]
+    errors = []
+    playwright, browser, page = _browser_page(api, _page(model), errors=errors)
+    try:
+        _open_details(page)
+        entry = page.locator(f'[data-boundary-permission="{fact["id"]}"]')
+        entry.locator("summary").click()
+        assert ("Unavailable or ambiguous" not in entry.inner_text()) is joined
+        assert ("Rationale unavailable" not in entry.inner_text()) is joined
+        assert "fact-own-provenance" in entry.inner_text() and not errors
+    finally:
+        browser.close()
+        playwright.stop()
+
+
+def _bound_alias_report(tmp_path, *, facade=True):
+    from test_boundary_type_bound_aliases import _fixture
+    from test_boundary_types_contained_mapping import _commit_report_fixture
+
+    _fixture(tmp_path, facade=facade)
+    _commit_report_fixture(tmp_path)
+    output = tmp_path / "out/architecture.json"
+    assert main(["report", "--root", str(tmp_path), "--output", str(output), "--json"]) == 0
+    return output
+
+
+@pytest.mark.parametrize("facade", [False, True])
+def test_bound_alias_real_cli_wire_and_shared_reports(tmp_path, facade):
+    output = _bound_alias_report(tmp_path, facade=facade)
+    model = parse_observation(decode_canonical_model(json.loads(output.read_bytes())))
+    assert canonical_report_bytes(model) == output.read_bytes()
+    overview = _flow_payload(output.with_suffix(".report.html"))
+    detail = _flow_payload(output.with_suffix(".detail.html"))
+    assert overview["boundary_permissions"] == detail["boundary_permissions"]
+    permissions = overview["boundary_permissions"]
+    assert len(permissions["declared"]) == len(permissions["applied"]) == 4
+    assert all(row["alias_body"] == _ALIAS_PAIR for row in permissions["declared"])
+    for row in permissions["applied"]:
+        assert row["data"]["alias_body"] == _ALIAS_PAIR
+        assert row["declaration_id"] and row["rationale"] and row["routes"]
+        assert row["data"]["observed_container_depth"] == (
+            3 if row["data"].get("accepted_opacity") else 2
+        )
+        assert ("container_depth" in row["data"]) is bool(row["data"].get("accepted_opacity"))
+        assert row["locations"] and row["evidence_ids"] and row["fact_ids"]
+    assert len(model.records("violations")) == 1
+    assert model.records("unknowns")
+
+
+@pytest.mark.parametrize("facade", [False, True])
+def test_bound_alias_real_offline_navigation_and_target_purity(tmp_path, facade):
+    api = pytest.importorskip("playwright.sync_api")
+    output = _bound_alias_report(tmp_path, facade=facade)
+    index = output.with_suffix(".report.html")
+    payload = _flow_payload(index)
+    opaque = next(
+        row
+        for row in payload["boundary_permissions"]["applied"]
+        if row["data"].get("accepted_opacity")
+    )
+    errors = []
+    playwright, browser, page = _browser_page(api, index.read_text(), errors=errors)
+    try:
+        page.goto(index.as_uri())
+        _open_details(page)
+        entry = page.locator(f'[data-boundary-permission="{opaque["id"]}"]')
+        entry.locator("summary").click()
+        assert _ALIAS_PAIR["origin"] in entry.inner_text()
+        assert _ALIAS_PAIR["shape"] in entry.inner_text()
+        assert "Accepted opacity; type closure remains unproven." in entry.inner_text()
+        route = next(
+            row
+            for row in opaque["routes"]
+            if row["label"].endswith("." + opaque["data"]["qualified_name"].rsplit(".", 1)[1])
+        )
+        entry.get_by_role("link", name=route["label"], exact=True).click()
+        page.wait_for_url("**/*.detail.html?*")
+        _open_details(page)
+        page.locator("[data-boundary-permission]").evaluate_all(
+            "rows => rows.forEach(row => row.open = true)"
+        )
+        assert f"selected={route['entity_id']}" in page.url
+        assert "Requested scope" not in page.locator(".flow-inspector").inner_text()
+        assert _ALIAS_PAIR["shape"] in page.locator(".flow-inspector").inner_text()
+        page.reload()
+        _open_details(page)
+        page.locator("[data-boundary-permission]").evaluate_all(
+            "rows => rows.forEach(row => row.open = true)"
+        )
+        assert _ALIAS_PAIR["origin"] in page.locator(".flow-inspector").inner_text()
+        implementation = tmp_path / "sample/app/impl.py"
+        implementation.write_text(
+            implementation.read_text().replace("dict[str, object]", "dict[int, object]")
+        )
+        changed = tmp_path / "out/changed.json"
+        assert main(["report", "--root", str(tmp_path), "--output", str(changed), "--json"]) == 0
+        changed_payload = _flow_payload(changed.with_suffix(".report.html"))
+        assert (
+            changed_payload["boundary_permissions"]["declared"]
+            == payload["boundary_permissions"]["declared"]
+        )
+        assert changed_payload["boundary_permissions"]["applied"] == []
+        page.goto(changed.with_suffix(".report.html").as_uri() + "?view=target")
+        _open_details(page)
+        page.locator("[data-boundary-permission]").evaluate_all(
+            "rows => rows.forEach(row => row.open = true)"
+        )
+        text = page.locator(".flow-inspector").inner_text()
+        assert _ALIAS_PAIR["shape"] in text
+        assert "applied boundary permissions" not in text.lower()
+        assert "[object Object]" not in text and not errors
+    finally:
+        browser.close()
+        playwright.stop()
+
+
+@pytest.mark.parametrize(
+    "binding",
+    [
+        _ALIAS_PAIR,
+        {"origin": "</script><img src=x onerror=alert(1)>", "shape": "<script>alert(1)</script>"},
+        {"origin": ["malformed"], "shape": {"bad": "value"}},
+    ],
+)
+def test_bound_alias_offline_rows_are_complete_escaped_and_lens_specific(tmp_path, binding):
+    api = pytest.importorskip("playwright.sync_api")
+    output = _boundary_permission_report(tmp_path)
+    html = output.with_suffix(".report.html").read_text()
+    data = _flow_payload(output.with_suffix(".report.html"))
+    data["boundary_permissions"]["declared"][0]["alias_body"] = binding
+    data["boundary_permissions"]["applied"][0]["data"]["alias_body"] = binding
+    data["boundary_permissions"]["applied"][0]["data"]["observed_container_depth"] = 2
+    match = re.search(r'<script id="flow-data" type="application/json">(.*?)</script>', html, re.S)
+    html = html[: match.start(1)] + json.dumps(data).replace("<", "\\u003c") + html[match.end(1) :]
+    errors = []
+    playwright, browser, page = _browser_page(api, html, errors=errors)
+    try:
+        _open_details(page)
+        inspector = page.locator(".flow-inspector")
+        for lens, declared, applied in [
+            ("As-Is", False, True),
+            ("Target", True, False),
+            ("Diff", True, True),
+        ]:
+            page.get_by_role("button", name=lens, exact=True).click()
+            _open_details(page)
+            entries = inspector.locator("[data-boundary-permission]")
+            entries.evaluate_all("rows => rows.forEach(row => row.open = true)")
+            text = inspector.inner_text()
+            assert ("declared boundary permissions" in text.lower()) is declared
+            assert ("applied boundary permissions" in text.lower()) is applied
+            assert ("Observed container depth" in text) is applied
+            assert "alias_body.origin" in text and "alias_body.shape" in text
+            for value in binding.values():
+                assert (
+                    value if isinstance(value, str) else json.dumps(value, separators=(",", ":"))
+                ) in text
+            assert "[object Object]" not in text
+            assert not inspector.locator("img, script, [onerror], a[href^='javascript:']").count()
         assert not errors
     finally:
         browser.close()

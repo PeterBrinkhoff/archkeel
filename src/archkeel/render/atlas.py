@@ -7,10 +7,20 @@ from collections import Counter, defaultdict
 from dataclasses import asdict, replace
 from pathlib import PurePosixPath
 
-from archkeel.ir.architecture_graph import ArchitectureReport, Coverage
+from archkeel.ir.architecture_graph import ArchitectureGraph, ArchitectureReport, Coverage, Entity
 from archkeel.ir.architecture_projection import ArchitectureProjection
+from archkeel.ir.codec import decode_json, value_bytes
 from archkeel.ir.decisions import rule_assessment_applies_to_component, rule_uncertainty_evidence
-from archkeel.ir.model import Observation, RunResult, stable_id
+from archkeel.ir.model import (
+    Evidence,
+    EvidenceClass,
+    Observation,
+    RecordData,
+    RunResult,
+    module_in_ownership,
+    stable_id,
+    text_value,
+)
 from archkeel.ir.module_explore import ModuleExploreLevel, ModuleStatistic, module_exploration
 
 
@@ -590,3 +600,223 @@ def atlas_payload(
         "unassigned_detail_href": "?component=unassigned",
         "architecture_href": architecture_href,
     }
+
+
+def _permission_locations(
+    evidence: dict[str, Evidence], ids: tuple[str, ...]
+) -> list[dict[str, object]]:
+    return [
+        {
+            "id": identity,
+            "file": evidence[identity].file,
+            "line": evidence[identity].line,
+            "end_line": evidence[identity].end_line,
+            "column": evidence[identity].column,
+        }
+        for identity in ids
+        if identity in evidence
+    ]
+
+
+def _permission_navigation(
+    report: ArchitectureReport,
+    projection: ArchitectureProjection,
+    graph: ArchitectureGraph | None,
+    identities: tuple[str, ...],
+) -> dict[str, object]:
+    if graph is None:
+        return {"entity_ids": [], "component_ids": [], "routes": []}
+    entities = {item.id: item for item in graph.entities}
+    matches_by_id = {}
+    for identity in identities:
+        candidates = [
+            item
+            for item in entities.values()
+            if identity in (item.id, item.qualified_name, *item.record_ids)
+        ]
+        if len(candidates) == 1:
+            matches_by_id[candidates[0].id] = candidates[0]
+    matches = list(matches_by_id.values())
+    routes = []
+    component_ids = set()
+    for entity in matches:
+        current: Entity | None = entity
+        module_id = None
+        component_id = None
+        ancestors = []
+        while current is not None and current.id not in ancestors:
+            ancestors.append(current.id)
+            if current.kind == "module":
+                module_id = current.id
+            if current.kind == "component":
+                component_id = current.id
+                component_ids.add(current.id)
+            current = entities.get(current.parent_id or "")
+        if graph and graph.origin == "observed" and module_id:
+            owners = [
+                membership.component_id
+                for membership in report.memberships
+                if module_id in membership.module_ids
+            ]
+            component_ids.update(owners)
+            parents = {item.parent_id for item in projection.components if item.id in owners}
+            leaves = [identity for identity in owners if identity not in parents]
+            if len(leaves) == 1:
+                component_id = leaves[0]
+        routes.append(
+            {
+                "entity_id": entity.id,
+                "module_id": module_id,
+                "component_id": component_id,
+                "origin": graph.origin,
+                "scope_id": entity.parent_id
+                if entity.kind not in ("module", "component", "package")
+                else entity.id,
+                "label": entity.qualified_name,
+            }
+        )
+    return {
+        "entity_ids": sorted(item.id for item in matches),
+        "component_ids": sorted(component_ids),
+        "routes": routes,
+    }
+
+
+def _declared_permissions(
+    report: ArchitectureReport, projection: ArchitectureProjection, evidence: dict[str, Evidence]
+) -> list[dict[str, object]]:
+    declared: list[dict[str, object]] = []
+    for permission in projection.permission_rules:
+        rule = permission.declaration
+        if rule.kind != "boundary_types":
+            continue
+        positions = rule.data.get("allowed_positions")
+        if not isinstance(positions, tuple):
+            continue
+        for index, position in enumerate(positions):
+            if not isinstance(position, RecordData):
+                continue
+            selector = {key: decode_json(value_bytes(value)) for key, value in position.entries}
+            selector.setdefault("field_path", "")
+            name = selector.get("qualified_name")
+            source = rule.data.get("source")
+            links = _permission_navigation(
+                report, projection, report.target, (name,) if isinstance(name, str) else ()
+            )
+            if not links["routes"] and report.target is not None:
+                modules = [
+                    item
+                    for item in report.target.entities
+                    if item.kind == "module" and item.qualified_name == source
+                ]
+                if len(modules) == 1:
+                    links = _permission_navigation(
+                        report, projection, report.target, (modules[0].id,)
+                    )
+            owners = [
+                item
+                for item in projection.components
+                if item.parent_id == permission.parent_id
+                and (
+                    (
+                        isinstance(source, str)
+                        and module_in_ownership(source, item.packages, item.exact_modules)
+                    )
+                    or (
+                        isinstance(name, str)
+                        and module_in_ownership(name, item.packages, item.exact_modules)
+                    )
+                )
+            ]
+            if len(owners) == 1:
+                links["component_ids"] = [owners[0].id]
+            declared.append(
+                {
+                    "id": f"{rule.id}:allowed-position:{index}",
+                    "rule_id": rule.id,
+                    "contract_scope_id": permission.parent_id,
+                    "source": source,
+                    **selector,
+                    "rationale": rule.data.get("rationale"),
+                    "decided_by": rule.data.get("decided_by"),
+                    "provenance": rule.provenance,
+                    "evidence_ids": rule.evidence_ids,
+                    "locations": _permission_locations(evidence, rule.evidence_ids),
+                    **links,
+                }
+            )
+    return declared
+
+
+def _valid_alias_body(selector: dict[str, object]) -> bool:
+    if "alias_body" not in selector:
+        return True
+    binding = selector["alias_body"]
+    if not isinstance(binding, dict) or set(binding) != {"origin", "shape"}:
+        return False
+    for key in ("origin", "shape"):
+        value: str = text_value(binding[key])
+        if not value.strip():
+            return False
+    return True
+
+
+def boundary_permissions_payload(
+    model: Observation, report: ArchitectureReport, projection: ArchitectureProjection
+) -> dict[str, object]:
+    """Resolve presentation links while canonical source identities are still available."""
+    evidence = {item.id: item for item in model.evidence}
+    declared = _declared_permissions(report, projection, evidence)
+    applied: list[dict[str, object]] = []
+    coordinates = (
+        "qualified_name",
+        "position",
+        "field_path",
+        "annotation",
+        "container_depth",
+        "mapping_depth",
+        "alias_body",
+    )
+
+    for fact in model.records("typing_signals") or ():
+        if fact.kind != "boundary_type_allowance" or fact.evidence_class != EvidenceClass.FACT:
+            continue
+        selector: dict[str, object] = {
+            key: decode_json(value_bytes(value))
+            for key, value in fact.data.entries
+            if key
+            in (*coordinates, "nested_annotation", "accepted_opacity", "observed_container_depth")
+        }
+        selector.setdefault("field_path", "")
+        candidates = [
+            row
+            for row in declared
+            if row["rule_id"] in fact.rule_ids
+            and _valid_alias_body(row)
+            and _valid_alias_body(selector)
+            and all(
+                (key in row) == (key in selector) and row.get(key) == selector.get(key)
+                for key in coordinates
+            )
+        ]
+        declaration = candidates[0] if len(candidates) == 1 else None
+        links = _permission_navigation(
+            report, projection, report.observed, (*fact.subjects, *fact.fact_ids)
+        )
+        applied.append(
+            {
+                "id": fact.id,
+                "title": fact.title,
+                "data": selector,
+                "declaration_id": declaration["id"] if declaration else None,
+                "rationale": declaration["rationale"] if declaration else None,
+                "decided_by": declaration["decided_by"] if declaration else None,
+                "rule_ids": fact.rule_ids,
+                "fact_ids": fact.fact_ids,
+                "evidence_ids": fact.evidence_ids,
+                "provenance": fact.provenance,
+                "locations": _permission_locations(evidence, fact.evidence_ids),
+                **links,
+            }
+        )
+    return {"declared": declared, "applied": applied}

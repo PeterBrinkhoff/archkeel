@@ -581,7 +581,8 @@ def _open_project_uml_details(
                 {
                     key: value
                     for key, value in detail.items()
-                    if key not in {"initial_scope", "initial_view", "navigation"}
+                    if key
+                    not in {"initial_scope", "initial_view", "navigation", "boundary_permissions"}
                 }
             )
             assert report.comparison is not None
@@ -629,7 +630,7 @@ def _check_dart_uml_detail(
     core_payload = {
         key: value
         for key, value in json.loads(payload).items()
-        if key not in {"initial_scope", "initial_view", "navigation"}
+        if key not in {"initial_scope", "initial_view", "navigation", "boundary_permissions"}
     }
     report = parse_report(core_payload)
     expected_assessment = {
@@ -659,7 +660,7 @@ def _check_dart_uml_detail(
         assert {
             key: value
             for key, value in json.loads(page.locator("#flow-data").text_content() or "{}").items()
-            if key not in {"initial_scope", "initial_view", "navigation"}
+            if key not in {"initial_scope", "initial_view", "navigation", "boundary_permissions"}
         } == core_payload
         nodes = page.locator(".flow-nodes [data-uml-id]")
         assert {"class", "enum", "constant", "type_alias"} <= set(
@@ -839,7 +840,7 @@ def _check_flutter_uml_detail(page: Page, name: str, output: Path) -> None:
         core_payload = {
             key: value
             for key, value in detail_payload.items()
-            if key not in {"initial_scope", "initial_view", "navigation"}
+            if key not in {"initial_scope", "initial_view", "navigation", "boundary_permissions"}
         }
         assessments = core_payload["comparison"]["assessments"]
         if name == "uml-flutter-signature-fail":
@@ -887,7 +888,8 @@ def _check_flutter_uml_detail(page: Page, name: str, output: Path) -> None:
                 for key, value in json.loads(
                     page.locator("#flow-data").text_content() or "{}"
                 ).items()
-                if key not in {"initial_scope", "initial_view", "navigation"}
+                if key
+                not in {"initial_scope", "initial_view", "navigation", "boundary_permissions"}
             } == core_payload
             page.locator(f'.flow-nodes [data-label="{classifier}"]').dblclick()
             _wait_for_layout(page)
@@ -926,7 +928,7 @@ def _check_inner_uml(page: Page, name: str, output: Path) -> None:
         {
             key: value
             for key, value in fields.items()
-            if key not in {"initial_scope", "initial_view", "navigation"}
+            if key not in {"initial_scope", "initial_view", "navigation", "boundary_permissions"}
         }
     )
     expected = {

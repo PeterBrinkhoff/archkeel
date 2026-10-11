@@ -225,3 +225,5 @@ For current behavior, use the [contract](../../../architecture-contract.json), s
 | AD-216 | [Native mapping alternatives retain their union proof](ad-216-native-mapping-alternatives.md) |
 | AD-217 | [Nested maps need an exact owner coordinate](ad-217-nested-map-allowances.md) |
 | AD-218 | [Native Iterable elements use proven signatures](ad-218-native-iterable-elements-use-proven-signatures.md) |
+| AD-219 | [Shared boundary permission presentation](ad-219-atlas-boundary-permissions.md) |
+| AD-220 | [Exact alias body permissions](ad-220-exact-alias-body-permissions.md) |

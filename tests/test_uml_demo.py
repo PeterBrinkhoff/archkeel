@@ -36,7 +36,7 @@ def _demo_report(output):
         {
             key: value
             for key, value in data.items()
-            if key not in {"initial_scope", "initial_view", "navigation"}
+            if key not in {"initial_scope", "initial_view", "navigation", "boundary_permissions"}
         }
     )
 
