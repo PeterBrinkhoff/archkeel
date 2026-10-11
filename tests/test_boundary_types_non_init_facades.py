@@ -9,11 +9,13 @@ from unittest.mock import patch
 
 import pytest
 from test_analyzer import _component, _observe
+from test_boundary_types_reexport_proofs import _OVERLOAD_GROUP
 
 from archkeel.check.ports import ScanConfig
 from archkeel.check.report import run_report
 from archkeel.cli.observe import observe
 from archkeel.ir.codec import decode_canonical_model, parse_observation
+from archkeel.ir.facts_codec import thaw_data
 from archkeel.ir.model import Record, RunResult
 from archkeel.ir.trace import trace_valid_violations
 
@@ -319,6 +321,69 @@ def test_overload_signatures_define_the_public_method_surface(tmp_path: Path) ->
 
     assert result.observation is not None, result.diagnostics
     assert not trace_valid_violations(result.observation)
+
+
+@pytest.mark.parametrize("scoped", [False, True], ids=["ordinary-reader", "scoped-reader"])
+def test_overload_reexport_publishes_all_declared_types_without_implementation(
+    tmp_path: Path, scoped: bool
+) -> None:
+    public = ["sample.app.api:constraints", "sample.app.impl:Payload"]
+    _write_app(
+        tmp_path,
+        public=public,
+        init="",
+        api="from .impl import resolve_source_entity as constraints\n__all__ = ['constraints']\n",
+        implementation="class Payload: pass\nclass Noise: pass\n"
+        + _OVERLOAD_GROUP.replace("-> str: ...", "-> Payload: ...")
+        .replace("-> str | None: ...", "-> Payload: ...")
+        .replace("-> str | None:\n", "-> Noise:\n"),
+    )
+    if scoped:
+        path = tmp_path / "contract.json"
+        contract = json.loads(path.read_text())
+        contract["components"][0]["inside"] = "inside.json"
+        (tmp_path / "inside.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": "2.1.0",
+                    "components": [_component("io", packages=["sample.app"], public=public)],
+                    "rules": [
+                        *contract["rules"],
+                        {
+                            "id": "LOCAL-INTERFACE",
+                            "kind": "interface_boundary",
+                            "rationale": "Use declared signature types at this boundary.",
+                            "provenance": ["docs/architecture/sample.md"],
+                            "decided_by": "architect",
+                        },
+                    ],
+                }
+            )
+        )
+        path.write_text(json.dumps(contract))
+
+    result = _observe(tmp_path)
+    assert result.observation is not None
+    assert not trace_valid_violations(result.observation)
+    assert not [
+        item
+        for item in result.observation.records("unknowns") or ()
+        if "APP-TYPES-NOT-DICT" in item.rule_ids
+    ]
+    group = [
+        item
+        for item in result.observation.records("symbols") or ()
+        if item.data.get("qualified_name") == "sample.app.impl.resolve_source_entity"
+    ]
+    assert len(group) == 3
+    for item in group:
+        data = thaw_data(item.data)
+        types = (
+            data.get("facade_types_by_mount", {}).get("app", {}).get("sample.app.api", [])
+            if scoped
+            else data.get("facade_types", [])
+        )
+        assert types == (["sample.app.impl.Payload"] if data["overload_signature"] else [])
 
 
 def test_local_overload_decorator_does_not_hide_broad_implementation(tmp_path: Path) -> None:

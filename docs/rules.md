@@ -59,6 +59,9 @@ not every helper. Types published by their actual owner, builtins, enums and
 Pydantic models qualify. Broad maps and native `object` need reviewed exact
 allowances. `allowed_positions` removes only its matching finding; other member
 findings and UNKNOWNs remain. Accepted opacity never proves type closure.
+Static re-exports of a proven stdlib overload group expose every declared signature,
+excluding the implementation signature. Incomplete groups, unproven decorators and
+uncertain routes remain UNKNOWN.
 For a DTO's native map value, combine `field_path` with `container_depth` and
 the complete field `annotation`. Only one alias-free map and literal `object`
 or `list[object]` value can match. Depth counts containers from the signature,

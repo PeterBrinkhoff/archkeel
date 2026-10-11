@@ -35,6 +35,7 @@ from .source import (
     resolve_static_name,
     setter_local_references,
     stable_direct_module_bindings,
+    static_overload_bindings,
     unique_direct_module_bindings,
     unproven_member_bindings,
 )
@@ -336,7 +337,11 @@ def resolve_reexports(
     stable_bindings: dict[str, frozenset[str]] = {
         module.module: stable_direct_module_bindings(module) for module in parsed
     }
-    uncertain_origins = resolve_import_origins(imports, exports_by_module, stable_bindings)
+    origin_bindings = {
+        module.module: stable_bindings[module.module] | static_overload_bindings(module)
+        for module in parsed
+    }
+    uncertain_origins = resolve_import_origins(imports, exports_by_module, origin_bindings)
     modules = {module.module: module for module in parsed}
     module_counts = Counter(module.module for module in parsed)
     providers = {

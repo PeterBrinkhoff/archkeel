@@ -4688,6 +4688,7 @@ def _public_alias_route_has_unproven_hop(
         or binding not in stable_bindings_by_module.get(module, frozenset())
     ):
         return True
+    publisher = imports_by_binding.get((module, binding), [])
     for alias in route[1:]:
         alias_name: str = alias
         module, separator, name = alias_name.rpartition(".")
@@ -4698,6 +4699,12 @@ def _public_alias_route_has_unproven_hop(
         definitions = symbols_by_binding.get((module, name), [])
         bindings = imports_by_binding.get((module, name), [])
         if definitions:
+            if (
+                alias == route[-1]
+                and not bindings
+                and _public_overload_origin_proven(definitions, publisher, route)
+            ):
+                return False
             if (
                 len(definitions) != 1
                 or bindings
@@ -4721,6 +4728,47 @@ def _public_alias_route_has_unproven_hop(
         if not binding_data["reexport"]:
             return True
     return False
+
+
+def _public_overload_origin_proven(
+    definitions: Sequence[RawRecord], publisher: Sequence[RawRecord], route: tuple[str, ...]
+) -> bool:
+    if len(publisher) != 1 or len(definitions) < 3:
+        return False
+    imported = publisher[0]["data"]
+    if (
+        imported.get("reexport") is not True
+        or imported.get("source_binding_unique") is not True
+        or imported.get("origin_binding_unique") is not True
+        or imported.get("origin_definition") != route[-1]
+        or tuple(imported.get("reexport_chain", ())) != route[1:]
+    ):
+        return False
+    implementation = []
+    for item in definitions:
+        data = item["data"]
+        if data.get("overload_signature") is False:
+            implementation.append(data)
+    if len(implementation) != 1:
+        return False
+    implementation_data = implementation[0]
+    if implementation_data.get("decorators") != []:
+        return False
+    for item in definitions:
+        data = item["data"]
+        if not (
+            item["kind"] == "function"
+            and data.get("overloaded") is True
+            and (data.get("overload_signature") is True or data.get("overload_signature") is False)
+            and "parent" in data
+            and data["parent"] is None
+            and data.get("namespace_bound") is True
+            and data.get("definition_contexts") == []
+            and (data.get("async") is True or data.get("async") is False)
+            and data.get("async") is implementation_data.get("async")
+        ):
+            return False
+    return True
 
 
 def boundary_type_limits(

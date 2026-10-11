@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -18,6 +19,20 @@ from archkeel.ir.facts_codec import RawRecord
 from archkeel.ir.model import Observation
 from archkeel.ir.reexports import resolve_reexports
 from archkeel.ir.trace import trace_valid_violations
+
+_OVERLOAD_GROUP = (
+    "from typing import overload\n\n"
+    "@overload\n"
+    "def resolve_source_entity(source_entity: str | None, type_: str | None, "
+    "name: str) -> str: ...\n\n"
+    "@overload\n"
+    "def resolve_source_entity(source_entity: str | None, type_: str | None, "
+    "name: None) -> str | None: ...\n\n"
+    "def resolve_source_entity(source_entity: str | None, type_: str | None, "
+    "name: str | None) -> str | None:\n"
+    "    return source_entity or type_ or name\n"
+)
+_OVERLOAD_PARTS = _OVERLOAD_GROUP.split("\n\n")
 
 
 def _observe_facade(
@@ -340,3 +355,290 @@ def test_dynamic_or_conditionally_rebound_alias_stays_unknown(
             item.kind == "boundary_type_route" and "APP-TYPES-NOT-DICT" in item.rule_ids
             for item in observation.records("unknowns") or ()
         )
+
+
+@pytest.mark.parametrize("multihop", [False, True], ids=["ordinary", "package-aliased"])
+def test_static_overload_reexport_evaluates_every_signature(tmp_path: Path, multihop: bool) -> None:
+    observation = _observe_facade(
+        tmp_path,
+        public="sample.app:constraints" if multihop else "sample.app.api:constraints",
+        api="from .impl import resolve_source_entity as constraints\n__all__ = ['constraints']\n",
+        init="from .api import constraints\n__all__ = ['constraints']\n" if multihop else "",
+        implementation=_OVERLOAD_GROUP,
+    )
+
+    assert not trace_valid_violations(observation)
+    assert not [
+        item
+        for item in observation.records("unknowns") or ()
+        if "APP-TYPES-NOT-DICT" in item.rule_ids
+    ]
+    group = [
+        item
+        for item in observation.records("symbols") or ()
+        if item.data.get("qualified_name") == "sample.app.impl.resolve_source_entity"
+    ]
+    assert len({item.id for item in group}) == 3
+    signatures = [item for item in group if item.data.get("overload_signature") is True]
+    assert len(signatures) == 2
+    assert sum(len(item.data.get("parameters")) + 1 for item in signatures) == 8
+    imported = next(
+        item
+        for item in observation.records("imports") or ()
+        if item.data.get("source_module") == "sample.app.api"
+    )
+    assert imported.data.get("origin_definition") == "sample.app.impl.resolve_source_entity"
+    assert imported.data.get("reexport") is True
+
+
+@pytest.mark.parametrize("arm", [0, 1])
+@pytest.mark.parametrize("reverse", [False, True])
+@pytest.mark.parametrize("position", ["return", "source_entity"])
+def test_broad_overload_reexport_retains_the_declaring_arm(
+    tmp_path: Path, arm: int, reverse: bool, position: str
+) -> None:
+    sections = _OVERLOAD_GROUP.split("\n\n")
+    declaration = sections[arm + 1]
+    sections[arm + 1] = (
+        declaration.replace("-> str", "-> object")
+        if position == "return"
+        else declaration.replace("source_entity: str | None", "source_entity: object")
+    )
+    if reverse:
+        sections[1:3] = reversed(sections[1:3])
+    observation = _observe_facade(
+        tmp_path,
+        api="from .impl import resolve_source_entity as constraints\n__all__ = ['constraints']\n",
+        implementation="\n\n".join(sections),
+    )
+
+    violations = trace_valid_violations(observation)
+    assert len(violations) == 1
+    finding = violations[0]
+    assert finding.data.get("position") == position
+    assert finding.data.get("qualified_name") == "sample.app.api.constraints"
+    symbol = next(
+        item for item in observation.records("symbols") or () if item.id in finding.fact_ids
+    )
+    assert symbol.data.get("overload_signature") is True
+    assert symbol.data.get("parameters")[-1].get("annotation") == ("str" if arm == 0 else "None")
+    expected_annotation = "object | None" if position == "return" and arm == 1 else "object"
+    assert finding.data.get("annotation") == expected_annotation
+    assert not [
+        item
+        for item in observation.records("unknowns") or ()
+        if "APP-TYPES-NOT-DICT" in item.rule_ids
+    ]
+
+
+@pytest.mark.parametrize(
+    "implementation",
+    [
+        pytest.param(
+            _OVERLOAD_GROUP.replace("@overload\n", "if enabled:\n    @overload\n    ", 1),
+            id="conditional-declaration",
+        ),
+        pytest.param(
+            _OVERLOAD_GROUP.replace(
+                _OVERLOAD_PARTS[-1],
+                "if enabled:\n    "
+                + _OVERLOAD_PARTS[-1].replace("\n    return", "\n        return"),
+            ),
+            id="conditional-implementation",
+        ),
+        pytest.param(_OVERLOAD_GROUP + _OVERLOAD_PARTS[-1], id="duplicate-implementation"),
+        pytest.param("\n\n".join(_OVERLOAD_PARTS[:-1]), id="missing-implementation"),
+        pytest.param(
+            "\n\n".join([_OVERLOAD_PARTS[0], _OVERLOAD_PARTS[-1], *_OVERLOAD_PARTS[1:3]]),
+            id="early-implementation",
+        ),
+        pytest.param(
+            "\n\n".join([*_OVERLOAD_PARTS[:2], "marker = 1", *_OVERLOAD_PARTS[2:]]),
+            id="interleaved",
+        ),
+        pytest.param(_OVERLOAD_GROUP + "resolve_source_entity = str\n", id="assignment"),
+        pytest.param(_OVERLOAD_GROUP + "from other import resolve_source_entity\n", id="import"),
+        pytest.param(_OVERLOAD_GROUP + "del resolve_source_entity\n", id="delete"),
+        pytest.param(
+            _OVERLOAD_GROUP.replace(
+                "from typing import overload", "def overload(function): return function"
+            ),
+            id="fake-decorator",
+        ),
+        pytest.param(_OVERLOAD_GROUP + "overload = str\n", id="rebound-decorator"),
+        pytest.param(_OVERLOAD_GROUP.replace("@overload", "@overload()"), id="called-decorator"),
+        pytest.param(
+            _OVERLOAD_GROUP.replace("@overload", "@other\n@overload"), id="extra-decorator"
+        ),
+        pytest.param("from other import *\n" + _OVERLOAD_GROUP, id="star-import"),
+        pytest.param(
+            _OVERLOAD_GROUP + "def configure():\n    global resolve_source_entity\n",
+            id="global-rebind",
+        ),
+        pytest.param(_OVERLOAD_GROUP + "exec('pass')\n", id="dynamic-namespace"),
+        pytest.param(
+            _OVERLOAD_GROUP + "resolve_source_entity.__defaults__ = ()\n", id="member-write"
+        ),
+        pytest.param(
+            _OVERLOAD_GROUP + "setattr(resolve_source_entity, '__defaults__', ())\n",
+            id="explicit-mutation",
+        ),
+        pytest.param(
+            "from typing import TypeVar\nT = TypeVar('T')\n"
+            + _OVERLOAD_GROUP.replace("source_entity: str | None", "source_entity: T"),
+            id="generic",
+        ),
+        pytest.param(
+            _OVERLOAD_GROUP + "def configure(value=(resolve_source_entity := None)): pass\n",
+            id="default-rebind",
+        ),
+        pytest.param(
+            _OVERLOAD_GROUP + "marker: (resolve_source_entity := str)\n", id="annotation-rebind"
+        ),
+        pytest.param(
+            _OVERLOAD_GROUP.replace("-> str: ...", "-> str:\n    return 'changed'", 1),
+            id="non-inert-stub",
+        ),
+        pytest.param(
+            _OVERLOAD_GROUP.replace(
+                "def resolve_source_entity", "async def resolve_source_entity", 1
+            ),
+            id="mixed-async",
+        ),
+    ],
+)
+def test_unproven_overload_origin_keeps_reexport_unknown(
+    tmp_path: Path, implementation: str
+) -> None:
+    observation = _observe_facade(
+        tmp_path,
+        api="from .impl import resolve_source_entity as constraints\n__all__ = ['constraints']\n",
+        implementation=implementation,
+    )
+
+    assert not trace_valid_violations(observation)
+    assert any(
+        item.kind == "boundary_type_route" and "APP-TYPES-NOT-DICT" in item.rule_ids
+        for item in observation.records("unknowns") or ()
+    )
+
+
+@pytest.mark.parametrize(
+    "implementation",
+    [
+        pytest.param(
+            _OVERLOAD_GROUP.replace(
+                "    return source_entity",
+                "    resolve_source_entity = None\n    return source_entity",
+            ),
+            id="same-name-local",
+        ),
+        pytest.param(
+            _OVERLOAD_GROUP.replace("def resolve_source_entity", "async def resolve_source_entity"),
+            id="async",
+        ),
+        pytest.param(
+            _OVERLOAD_GROUP.replace("from typing import overload", "import typing as t").replace(
+                "@overload", "@t.overload"
+            ),
+            id="module-alias",
+        ),
+        pytest.param(
+            _OVERLOAD_GROUP.replace(
+                "from typing import overload", "from typing_extensions import overload as ol"
+            ).replace("@overload", "@ol"),
+            id="extension-alias",
+        ),
+        pytest.param(_OVERLOAD_GROUP.replace(": ...", ":\n    pass"), id="pass-stubs"),
+        pytest.param(
+            _OVERLOAD_GROUP.replace("-> str | None:\n", "-> object:\n"),
+            id="broad-implementation",
+        ),
+    ],
+)
+def test_static_overload_group_variants_keep_reexport_decidable(
+    tmp_path: Path, implementation: str
+) -> None:
+    observation = _observe_facade(
+        tmp_path,
+        api="from .impl import resolve_source_entity as constraints\n__all__ = ['constraints']\n",
+        implementation=implementation,
+    )
+
+    assert not trace_valid_violations(observation)
+    assert not [
+        item
+        for item in observation.records("unknowns") or ()
+        if "APP-TYPES-NOT-DICT" in item.rule_ids
+    ]
+
+
+def test_static_overload_route_does_not_prove_an_unsupported_annotation(tmp_path: Path) -> None:
+    observation = _observe_facade(
+        tmp_path,
+        api="from .impl import resolve_source_entity as constraints\n__all__ = ['constraints']\n",
+        implementation=_OVERLOAD_GROUP.replace("-> str: ...", "-> Missing: ...", 1),
+    )
+    unknowns = [
+        item
+        for item in observation.records("unknowns") or ()
+        if "APP-TYPES-NOT-DICT" in item.rule_ids
+    ]
+    assert any(
+        item.kind == "boundary_type_position" and item.data.get("annotation") == "Missing"
+        for item in unknowns
+    )
+    assert not any(item.kind == "boundary_type_route" for item in unknowns)
+
+
+@pytest.mark.skipif(sys.version_info < (3, 12), reason="PEP 695 syntax requires Python 3.12")
+def test_generic_overload_group_remains_outside_static_origin_proof(tmp_path: Path) -> None:
+    observation = _observe_facade(
+        tmp_path,
+        api="from .impl import resolve_source_entity as constraints\n__all__ = ['constraints']\n",
+        implementation=_OVERLOAD_GROUP.replace(
+            "def resolve_source_entity(", "def resolve_source_entity[T]("
+        ),
+    )
+    assert any(
+        item.kind == "boundary_type_route" and "APP-TYPES-NOT-DICT" in item.rule_ids
+        for item in observation.records("unknowns") or ()
+    )
+
+
+@pytest.mark.parametrize(
+    ("api", "intermediate"),
+    [
+        (
+            "from .impl import resolve_source_entity as constraints\n"
+            "if enabled:\n    __all__ = ['constraints']\n",
+            None,
+        ),
+        (
+            "from .impl import resolve_source_entity as constraints\n"
+            "__all__ = ['constraints']\n__all__.append('other')\n",
+            None,
+        ),
+        (
+            "from .intermediate import constraints\n__all__ = ['constraints']\n",
+            "from .impl import resolve_source_entity as constraints\n"
+            "if enabled:\n    constraints = str\n__all__ = ['constraints']\n",
+        ),
+        (
+            "from .impl import resolve_source_entity as constraints\n"
+            "from .intermediate import constraints\n__all__ = ['constraints']\n",
+            "def constraints(value: str) -> str: return value\n__all__ = ['constraints']\n",
+        ),
+    ],
+    ids=["conditional-export", "mutated-export", "intermediate-rebind", "ambiguous-import"],
+)
+def test_static_overload_origin_does_not_prove_an_uncertain_route(
+    tmp_path: Path, api: str, intermediate: str | None
+) -> None:
+    observation = _observe_facade(
+        tmp_path, api=api, intermediate=intermediate, implementation=_OVERLOAD_GROUP
+    )
+    assert not trace_valid_violations(observation)
+    assert any(
+        "APP-TYPES-NOT-DICT" in item.rule_ids for item in observation.records("unknowns") or ()
+    )
