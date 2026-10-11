@@ -227,3 +227,4 @@ For current behavior, use the [contract](../../../architecture-contract.json), s
 | AD-218 | [Native Iterable elements use proven signatures](ad-218-native-iterable-elements-use-proven-signatures.md) |
 | AD-219 | [Shared boundary permission presentation](ad-219-atlas-boundary-permissions.md) |
 | AD-220 | [Exact alias body permissions](ad-220-exact-alias-body-permissions.md) |
+| AD-221 | [Exact key alias unions](ad-221-exact-key-alias-unions.md) |

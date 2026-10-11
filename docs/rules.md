@@ -99,6 +99,18 @@ Header proof never establishes field closure.
 binding amendment. Old contract versions reject this opt-in field; absent
 bindings preserve their existing behavior. See
 [AD-220](architecture/decisions/ad-220-exact-alias-body-permissions.md).
+Contract **3.1.0** also permits an outer union of at least two distinct proven
+maps at depth 0 and empty `field_path`: keys are builtin `str`, exact
+`tuple[int, int]`, or ordered `str | None`; values are builtin `str`, `int`,
+or `float`. One direct nullable-string key alias may use an exact
+`key_alias_body: {origin, shape}`. A named root with an aliased key needs both
+pairs; partial inline needs only the key pair; fully expanded inline needs
+neither (fully expanded named needs only the root pair). Bindings preserve
+complete ordered shapes and actual providers. Chains, wrappers, repeated maps,
+native/unknown arms, unsupported keys/values and stale or malformed bindings
+fail closed. Target shows declarations; Actual/Diff retain applied source
+proof. A grant certifies no runtime homogeneity, copy behavior or type closure.
+See [AD-221](architecture/decisions/ad-221-exact-key-alias-unions.md).
 See [boundary examples](../tests/test_boundary_types_facades.py) before choosing
 selectors. Aliases, inheritance, re-exports and unsupported forms require proof.
 

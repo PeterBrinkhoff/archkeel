@@ -736,6 +736,78 @@ def test_atlas_fullscreen_uses_available_canvas_and_background_drag_pans(tmp_pat
         playwright.stop()
 
 
+@pytest.mark.parametrize("scope", ["module", "class"])
+def test_reset_and_fit_restores_native_scale_and_filters_without_leaving_scope(tmp_path, scope):
+    api = pytest.importorskip("playwright.sync_api")
+    html, _ = _uml_report(tmp_path)
+    errors = []
+    playwright, browser, page = _browser_page(api, html, errors=errors)
+    try:
+        _open_module(page, "As-Is")
+        if scope == "class":
+            page.locator('.flow-nodes [data-label="Client"]').dblclick()
+            _wait_for_layout(page)
+        reset = page.get_by_role("button", name="Reset and fit", exact=True)
+        assert reset.count() == 1
+        assert reset.inner_text() == "Reset and fit"
+        reset.click()
+        _wait_for_layout(page)
+        zoom = page.locator(".flow-zoom-value")
+        fit = zoom.inner_text()
+        assert fit != "100%"
+        breadcrumb = page.locator(".flow-breadcrumb").inner_text()
+        payload = page.locator("#flow-data").text_content()
+        node_ids = page.locator(".flow-nodes [data-uml-id]").evaluate_all(
+            "nodes => nodes.map(node => node.dataset.umlId).sort()"
+        )
+        page.get_by_role("button", name="Zoom in", exact=True).click()
+        assert int(zoom.inner_text().rstrip("%")) > int(fit.rstrip("%"))
+        page.get_by_role("button", name="Zoom out", exact=True).click()
+        assert zoom.inner_text() == fit
+        page.get_by_role("button", name="Fit overview", exact=True).click()
+        reset.click()
+        _wait_for_layout(page)
+        assert zoom.inner_text() == fit
+
+        page.locator(".flow-filters summary").click()
+        kind = page.get_by_label("Element kind", exact=True)
+        kind.select_option("class" if scope == "module" else "method")
+        _wait_for_layout(page)
+        focus = page.locator("#flow-focus")
+        focus.select_option(focus.locator("option").nth(1).get_attribute("value"))
+        _wait_for_layout(page)
+        assert kind.input_value() and focus.input_value()
+        page.locator(".flow-nodes [data-uml-id]").first.click()
+        assert page.locator('.flow-nodes [aria-pressed="true"]').count() == 1
+        reset.click()
+        _wait_for_layout(page)
+        assert kind.input_value() == focus.input_value() == ""
+        assert page.locator('.flow-nodes [aria-pressed="true"]').count() == 0
+        violations = page.get_by_label("Violating edges only", exact=True)
+        violations.check()
+        _wait_for_layout(page)
+        assert violations.is_checked()
+        page.get_by_role("button", name="Zoom in", exact=True).click()
+        reset.click()
+        _wait_for_layout(page)
+        assert kind.input_value() == focus.input_value() == ""
+        assert not violations.is_checked()
+        assert page.locator('.flow-nodes [aria-pressed="true"]').count() == 0
+        assert zoom.inner_text() == fit
+        assert page.locator(".flow-breadcrumb").inner_text() == breadcrumb
+        assert (
+            page.locator(".flow-nodes [data-uml-id]").evaluate_all(
+                "nodes => nodes.map(node => node.dataset.umlId).sort()"
+            )
+            == node_ids
+        )
+        assert page.locator("#flow-data").text_content() == payload
+        assert not errors
+    finally:
+        browser.close()
+        playwright.stop()
+
+
 @pytest.mark.parametrize("view", ["As-Is", "Target", "Diff"])
 def test_native_card_drag_reroutes_all_hits_and_keeps_architecture_unchanged(tmp_path, view):
     api = pytest.importorskip("playwright.sync_api")
@@ -744,7 +816,7 @@ def test_native_card_drag_reroutes_all_hits_and_keeps_architecture_unchanged(tmp
     try:
         _open_module(page, view)
         page.locator(".flow-toolbar").get_by_role(
-            "button", name="Reset filters", exact=True
+            "button", name="Reset and fit", exact=True
         ).click()
         _wait_for_layout(page)
         canvas = page.locator(".flow-canvas")
@@ -792,7 +864,7 @@ def test_incomplete_manual_positions_fall_back_to_automatic_card_coverage(tmp_pa
     try:
         _open_module(page, "As-Is")
         page.locator(".flow-toolbar").get_by_role(
-            "button", name="Reset filters", exact=True
+            "button", name="Reset and fit", exact=True
         ).click()
         _wait_for_layout(page)
         card = page.locator('.flow-nodes [data-label="Client"]')
@@ -833,7 +905,7 @@ def test_left_up_drag_keeps_other_cards_fixed_and_small_scope_starts_unscrolled(
     try:
         _open_module(page, view)
         page.locator(".flow-toolbar").get_by_role(
-            "button", name="Reset filters", exact=True
+            "button", name="Reset and fit", exact=True
         ).click()
         _wait_for_layout(page)
         for _ in range(zoom_steps):
@@ -1039,7 +1111,7 @@ def test_blocked_route_keeps_accessible_warning_endpoints_and_evidence(tmp_path,
     try:
         _open_module(page, "Target")
         page.locator(".flow-toolbar").get_by_role(
-            "button", name="Reset filters", exact=True
+            "button", name="Reset and fit", exact=True
         ).click()
         page.locator(".flow-canvas").scroll_into_view_if_needed()
         payload = page.locator("#flow-data").text_content()

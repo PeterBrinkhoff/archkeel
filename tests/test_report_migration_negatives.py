@@ -324,7 +324,7 @@ def test_hiding_all_failed_and_unknown_entities_does_not_change_the_report(tmp_p
         assert page.locator("#known-unknowns").inner_text() == unknowns
         assert page.locator("#flow-data").text_content() == data
         page.locator(".flow-filters > summary").click()
-        page.locator("#flow").get_by_role("button", name="Reset filters", exact=True).click()
+        page.locator("#flow").get_by_role("button", name="Reset and fit", exact=True).click()
         _wait_for_layout(page)
         assert page.locator('.flow-nodes [data-assessment-status="FAIL"]').count() > 0
         assert page.locator('.flow-nodes [data-assessment-status="UNKNOWN"]').count() > 0

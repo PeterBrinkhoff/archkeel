@@ -504,6 +504,7 @@ class BoundaryTypeAllowance:
     container_depth: int | None = None
     mapping_depth: int | None = None
     alias_body: BoundaryAliasBody | None = None
+    key_alias_body: BoundaryAliasBody | None = None
 
     def __repr__(self) -> str:
         base = (
@@ -516,6 +517,8 @@ class BoundaryTypeAllowance:
             base += f", mapping_depth={self.mapping_depth!r}"
         if self.alias_body is not None:
             base += f", alias_body={self.alias_body!r}"
+        if self.key_alias_body is not None:
+            base += f", key_alias_body={self.key_alias_body!r}"
         return base + ")"
 
 
@@ -657,7 +660,7 @@ class ContractDeclarations:
 
 @dataclass(frozen=True, slots=True)
 class ArchitectureContract:
-    schema_version: Literal["2.1.0", "2.2.0", "2.3.0", "3.0.0"]
+    schema_version: Literal["2.1.0", "2.2.0", "2.3.0", "3.0.0", "3.1.0"]
     components: tuple[ContractComponent, ...]
     rules: tuple[ArchitectureRule, ...]
     schema: str | None = None
@@ -760,6 +763,39 @@ def _references(
 _SCALAR_FIELDS: Final = frozenset({"source", "target", "root", "namespace", "command", "owner"})
 
 
+def _boundary_allowance_references(
+    index: int, allowances: tuple[BoundaryTypeAllowance, ...]
+) -> list[ModuleReference]:
+    references: list[ModuleReference] = []
+    references += [
+        ModuleReference(
+            f"/rules/{index}/allowed_positions/{item}/qualified_name",
+            allowance.qualified_name,
+            False,
+        )
+        for item, allowance in enumerate(allowances)
+    ]
+    references += [
+        ModuleReference(
+            f"/rules/{index}/allowed_positions/{item}/alias_body/origin",
+            allowance.alias_body.origin,
+            False,
+        )
+        for item, allowance in enumerate(allowances)
+        if allowance.alias_body is not None
+    ]
+    references += [
+        ModuleReference(
+            f"/rules/{index}/allowed_positions/{item}/key_alias_body/origin",
+            allowance.key_alias_body.origin,
+            False,
+        )
+        for item, allowance in enumerate(allowances)
+        if allowance.key_alias_body is not None
+    ]
+    return references
+
+
 def _rule_references(
     index: int, rule: ArchitectureRule, external: frozenset[str]
 ) -> list[ModuleReference]:
@@ -805,23 +841,7 @@ def _rule_references(
         ]
     references = _references(f"/rules/{index}", named)
     if isinstance(rule, BoundaryTypesRule):
-        references += [
-            ModuleReference(
-                f"/rules/{index}/allowed_positions/{item}/qualified_name",
-                allowance.qualified_name,
-                False,
-            )
-            for item, allowance in enumerate(rule.allowed_positions)
-        ]
-        references += [
-            ModuleReference(
-                f"/rules/{index}/allowed_positions/{item}/alias_body/origin",
-                allowance.alias_body.origin,
-                False,
-            )
-            for item, allowance in enumerate(rule.allowed_positions)
-            if allowance.alias_body is not None
-        ]
+        references += _boundary_allowance_references(index, rule.allowed_positions)
     if isinstance(rule, ForbiddenConstructRule):
         references += [
             ModuleReference(

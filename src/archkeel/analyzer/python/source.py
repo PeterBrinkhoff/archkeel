@@ -273,6 +273,9 @@ class ParsedModule:
     all_literal: bool = False
     compatibility_logic_free: bool = False
     incoming_member_escapes: set[str] = field(default_factory=set)
+    _proven_map_union_expressions: frozenset[ast.expr] = field(
+        default_factory=frozenset, init=False, repr=False
+    )
     all_nodes: tuple[ast.AST, ...] = field(init=False, repr=False)
     scope_nodes: tuple[ast.AST, ...] = field(init=False, repr=False)
     bound_names: tuple[str, ...] = field(init=False, repr=False)
@@ -1077,13 +1080,9 @@ def _protected_type_expressions(nodes: Sequence[ast.AST]) -> list[ast.expr]:
     return expressions
 
 
-def _contained_member_roots(
-    module: ParsedModule,
-    nodes: Sequence[ast.AST],
-    *,
-    owner_exposure_only: bool = False,
-    unsafe_providers: AbstractSet[str] = frozenset(),
-) -> set[tuple[str, str]]:
+def _contained_member_owners(
+    module: ParsedModule, nodes: Sequence[ast.AST]
+) -> list[tuple[str, ast.AST]]:
     owners: list[tuple[str, ast.AST]] = [
         (node.name, node)
         for node in nodes
@@ -1103,6 +1102,17 @@ def _contained_member_roots(
     ]
     if sys.version_info >= (3, 12):
         owners += [(node.name.id, node) for node in nodes if isinstance(node, ast.TypeAlias)]
+    return owners
+
+
+def _contained_member_roots(
+    module: ParsedModule,
+    nodes: Sequence[ast.AST],
+    *,
+    owner_exposure_only: bool = False,
+    unsafe_providers: AbstractSet[str] = frozenset(),
+) -> set[tuple[str, str]]:
+    owners = _contained_member_owners(module, nodes)
     contained = {
         (name, target.id)
         for name, owner in owners
@@ -1111,6 +1121,14 @@ def _contained_member_roots(
             *(owner.bases if isinstance(owner, ast.ClassDef) else ()),
         ]
         for target in ast.walk(expression)
+        if isinstance(target, ast.Name) and isinstance(target.ctx, ast.Load)
+    }
+    contained |= {
+        (name, target.id)
+        for node, name in module_scope_bindings(module)
+        if (value := admitted_type_alias_value(module, node)) is not None
+        and value in module._proven_map_union_expressions
+        for target in ast.walk(value)
         if isinstance(target, ast.Name) and isinstance(target.ctx, ast.Load)
     }
     contained |= {
@@ -1272,6 +1290,12 @@ def _protected_member_references(
     type_expressions = _protected_type_expressions(nodes)
     protected = _type_reference_nodes(module, type_expressions) if member_surface else set()
     if member_surface:
+        protected |= {
+            item
+            for expression in module._proven_map_union_expressions
+            for item in ast.walk(expression)
+            if isinstance(item, ast.Name) and isinstance(item.ctx, ast.Load)
+        }
         protected |= {
             item
             for owner in nodes
@@ -1443,6 +1467,128 @@ def is_static_type_alias_value(module: ParsedModule, node: ast.expr) -> bool:
             "frozenset",
         }
     return False
+
+
+def admitted_type_alias_value(module: ParsedModule, node: ast.AST) -> ast.expr | None:
+    """Reuse symbol admission without asserting provider or member safety."""
+    if node not in module.tree.body:
+        return None
+    if (
+        isinstance(node, ast.Assign)
+        and len(node.targets) == 1
+        and isinstance(node.targets[0], ast.Name)
+        and node.targets[0].id[:1].isupper()
+        and is_static_type_alias_value(module, node.value)
+    ):
+        return node.value
+    if (
+        isinstance(node, ast.AnnAssign)
+        and isinstance(node.target, ast.Name)
+        and isinstance(node.value, ast.expr)
+        and resolve_static_name(module, node.annotation) == "typing.TypeAlias"
+    ):
+        return node.value
+    if sys.version_info >= (3, 12) and isinstance(node, ast.TypeAlias) and not node.type_params:
+        return node.value
+    return None
+
+
+def _bare_builtin(module: ParsedModule, node: ast.AST, names: AbstractSet[str]) -> bool:
+    return (
+        isinstance(node, ast.Name)
+        and node.id in names
+        and module.binding_names is not None
+        and node.id not in module.bound_names
+        and not (
+            sys.version_info >= (3, 12)
+            and any(
+                isinstance(
+                    item, ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef | ast.TypeAlias
+                )
+                and item.type_params
+                for item in module.all_nodes
+            )
+        )
+    )
+
+
+def _nullable_builtin_key(module: ParsedModule, node: ast.AST) -> bool:
+    return (
+        isinstance(node, ast.BinOp)
+        and isinstance(node.op, ast.BitOr)
+        and _bare_builtin(module, node.left, {"str"})
+        and isinstance(node.right, ast.Constant)
+        and node.right.value is None
+    )
+
+
+def intrinsic_nullable_aliases(module: ParsedModule) -> frozenset[str]:
+    stable = stable_direct_module_bindings(module)
+    counts = Counter(module.bound_names)
+    return frozenset(
+        name
+        for node, name in module_scope_bindings(module)
+        if counts[name] == 1
+        and name in stable
+        and (value := admitted_type_alias_value(module, node)) is not None
+        and _nullable_builtin_key(module, value)
+    )
+
+
+def proven_map_union_candidates(
+    module: ParsedModule, aliases: Mapping[str, tuple[str, str]]
+) -> dict[ast.expr, frozenset[tuple[str, str]]]:
+    candidates: dict[ast.expr, frozenset[tuple[str, str]]] = {}
+    expressions = [
+        *_protected_type_expressions(module.all_nodes),
+        *(
+            value
+            for node in module.tree.body
+            if (value := admitted_type_alias_value(module, node)) is not None
+        ),
+    ]
+    for expression in expressions:
+        pending = [expression]
+        maps: list[ast.expr] = []
+        while pending:
+            arm = pending.pop()
+            if isinstance(arm, ast.BinOp) and isinstance(arm.op, ast.BitOr):
+                pending.extend((arm.right, arm.left))
+            else:
+                maps.append(arm)
+        if len(maps) < 2:
+            continue
+        dependencies: set[tuple[str, str]] = set()
+        alias_count = 0
+        for arm in maps:
+            if not (
+                isinstance(arm, ast.Subscript)
+                and _bare_builtin(module, arm.value, {"dict"})
+                and isinstance(arm.slice, ast.Tuple)
+                and len(arm.slice.elts) == 2
+                and _bare_builtin(module, arm.slice.elts[1], {"str", "int", "float"})
+            ):
+                break
+            key = arm.slice.elts[0]
+            if _bare_builtin(module, key, {"str"}) or _nullable_builtin_key(module, key):
+                continue
+            if (
+                isinstance(key, ast.Subscript)
+                and _bare_builtin(module, key.value, {"tuple"})
+                and isinstance(key.slice, ast.Tuple)
+                and len(key.slice.elts) == 2
+                and all(_bare_builtin(module, item, {"int"}) for item in key.slice.elts)
+            ):
+                continue
+            if isinstance(key, ast.Name) and key.id in aliases:
+                alias_count += 1
+                dependencies.update(((module.module, key.id), aliases[key.id]))
+                if alias_count <= 1:
+                    continue
+            break
+        else:
+            candidates[expression] = frozenset(dependencies)
+    return candidates
 
 
 def resolve_static_name(module: ParsedModule, node: ast.AST) -> str:
