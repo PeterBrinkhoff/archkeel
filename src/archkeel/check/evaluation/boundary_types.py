@@ -3781,15 +3781,37 @@ def _effective_method_surface(
 ) -> _MethodSurface | None:
     data = item["data"]
     qualified_name = data["qualified_name"]
+    typed_dict = (
+        not visited
+        and data.get("typed_dict_header_static") is True
+        and data["base_roots"] == ["typing.TypedDict"]
+        and len(data["bases"]) == 1
+        and not methods_by_parent.get(qualified_name)
+        and isinstance(data.get("attribute_declarations"), list)
+        and all(
+            any(
+                declaration["name"] == field["name"]
+                and declaration["annotation"] == field["annotation"]
+                for declaration in data["attribute_declarations"]
+            )
+            for field in data["fields"]
+        )
+    )
     if (
         qualified_name in visited
         or data["class_body_control_flow"]
-        or data.get("class_header_static") is not True
+        or not (data.get("class_header_static") is True or typed_dict)
         or data.get("source_binding_unique") is not True
         or data.get("source_member_binding_static") is not True
         or not _member_origin_static(qualified_name, incoming_imports)
     ):
         return None
+    if typed_dict:
+        root = type_shapes.get(data["bases"][0])
+        if root is None or not _base_route_member_static(root, data["module"], imports, classes):
+            return None
+        # TypedDict publishes value fields; dict operations are not its declared callable API.
+        return {}
     base, reason = _public_api_base(
         item,
         symbols,
@@ -3853,6 +3875,28 @@ def _inherited_facade_types(
     property_chains = _property_chains(methods_by_parent.get(item["data"]["qualified_name"], ()))
     names: set[str] = set()
     positions: list[tuple[str, str, str, str, _Position]] = []
+    data = item["data"]
+    if data.get("typed_dict_header_static") is True and data["base_roots"] == ["typing.TypedDict"]:
+        for declaration in data["attribute_declarations"]:
+            verdict = _boundary_type_verdict(
+                declaration["annotation"],
+                data["module"],
+                contract,
+                exports_by_module,
+                imports_by_binding,
+                classes_by_location,
+                type_shapes=type_shapes,
+            )
+            positions.append(
+                (
+                    declaration["name"],
+                    declaration["definition_id"],
+                    declaration["name"],
+                    declaration["annotation"],
+                    verdict,
+                )
+            )
+            names.update(f"{module}.{name}" for module, name in verdict.resolved)
     for name, members in surface.items():
         if not _is_public_method_name(name):
             continue
@@ -3875,6 +3919,22 @@ def _inherited_facade_types(
             names.update(method_names)
             positions.extend(method_positions)
     return sorted(names), positions, True
+
+
+def _surface_position_origin(
+    owner: RawRecord, identity: str, symbols_by_id: dict[str, RawRecord]
+) -> RawRecord:
+    if identity in symbols_by_id:
+        return symbols_by_id[identity]
+    declaration = next(
+        declaration
+        for declaration in owner["data"]["attribute_declarations"]
+        if declaration["definition_id"] == identity
+    )
+    return {
+        **owner,
+        "evidence_ids": sorted(set(owner["evidence_ids"]) | set(declaration["evidence_ids"])),
+    }
 
 
 def _declared_chain_positions(
@@ -5049,7 +5109,7 @@ def _boundary_types_violations(
                         annotation,
                         verdict,
                         identity_suffix=method_id,
-                        origin_symbol=symbols_by_id[method_id],
+                        origin_symbol=_surface_position_origin(item, method_id, symbols_by_id),
                         resolved_types=tuple(
                             f"{module}:{name}" for module, name in verdict.resolved
                         ),
@@ -5155,7 +5215,7 @@ def _boundary_type_violation_records(
                 ),
                 rule_ids=[rule.id],
                 fact_ids=[item["id"], origin_symbol["id"]]
-                if origin_symbol is not None
+                if origin_symbol is not None and origin_symbol["id"] != item["id"]
                 else [item["id"]],
                 data={
                     "source": rule.source,
@@ -5216,7 +5276,7 @@ def _boundary_type_position_record(
         ),
         rule_ids=[rule.id],
         fact_ids=[symbol["id"], origin_symbol["id"]]
-        if origin_symbol is not None
+        if origin_symbol is not None and origin_symbol["id"] != symbol["id"]
         else [symbol["id"]],
         data=detail,
     )
@@ -5654,7 +5714,8 @@ def _boundary_rule_positions(
                 }
                 if not complete or ambiguous_facade:
                     detail["signature_scope"] = "declared"
-                method_data = symbols_by_id[method_id]["data"]
+                origin = _surface_position_origin(item, method_id, symbols_by_id)
+                method_data = origin["data"]
                 uncertainties = (
                     method_data["annotation_binding_uncertainties"]
                     if "annotation_binding_uncertainties" in method_data
@@ -5669,7 +5730,7 @@ def _boundary_rule_positions(
                         rule,
                         item,
                         detail,
-                        origin_symbol=symbols_by_id[method_id],
+                        origin_symbol=origin,
                         unknown_context=verdict.unknown_context,
                     )
                 )

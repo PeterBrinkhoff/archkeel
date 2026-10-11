@@ -30,6 +30,7 @@ from .source import (
     member_binding_closure,
     module_scope_bindings,
     native_owner_creation_static,
+    native_typed_dict_provider_static,
     package_for,
     proven_annotation_carrier_candidates,
     proven_callable_candidates,
@@ -832,10 +833,16 @@ def _opaque_import_member_escapes(
             for expression in module._proven_annotation_carriers
         )
     )
+    native_typed_dict = native_typed_dict_provider_static(module, data["binding"], unsafe_providers)
     if (
         not owner_exposure_only
         and data["symbol"] is not None
-        and not (framework or carrier or data["binding"] in module._proven_callable_providers)
+        and not (
+            framework
+            or carrier
+            or native_typed_dict
+            or data["binding"] in module._proven_callable_providers
+        )
     ):
         escaped |= {data["binding"]}
     if data["symbol"] is None or owner_exposure_only:
@@ -851,7 +858,12 @@ def _opaque_import_member_escapes(
         )
         for owner in module.all_nodes:
             if not isinstance(owner, ast.ClassDef) or (
-                owner_exposure_only
+                (
+                    owner_exposure_only
+                    or native_typed_dict
+                    and len(owner.bases) == 1
+                    and resolve_static_name(module, owner.bases[0]) == NATIVE_TYPED_DICT_BASE
+                )
                 and native_owner_creation_static(module, owner, unsafe_providers)
             ):
                 continue
