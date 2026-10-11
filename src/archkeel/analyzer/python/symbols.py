@@ -36,6 +36,7 @@ from .source import (
     native_owner_creation_static,
     own_scope,
     property_bindings,
+    quoted_type_expression,
     stable_direct_module_bindings,
     typed_dict_header_static,
     unproven_class_body,
@@ -368,7 +369,27 @@ def _annotation_binding_uncertainties(
     for position, annotation, statement in annotations:
         if annotation is None:
             continue
-        names = {child.id for child in ast.walk(annotation) if isinstance(child, ast.Name)}
+        names: dict[str, bool] = {}
+        pending = [(annotation, deferred, True)]
+        while pending:
+            expression, lookup_deferred, decode_quoted = pending.pop()
+            if isinstance(expression, ast.Name):
+                names[expression.id] = names.get(expression.id, False) or lookup_deferred
+            decoded = quoted_type_expression(expression) if decode_quoted else None
+            if decoded is not None:
+                pending.append((decoded, True, True))
+            elif isinstance(expression, ast.Subscript) and _resolve_static_name(
+                module, expression.value
+            ) in {"typing.Literal", "typing_extensions.Literal"}:
+                # Literal values still bind names; string values are not quoted types.
+                pending.append((expression.value, lookup_deferred, decode_quoted))
+                pending.append((expression.slice, lookup_deferred, False))
+            else:
+                pending.extend(
+                    (child, lookup_deferred, decode_quoted)
+                    for child in ast.iter_child_nodes(expression)
+                    if isinstance(child, ast.expr)
+                )
         shadowed = sorted(
             name
             for name in names
@@ -377,7 +398,7 @@ def _annotation_binding_uncertainties(
                 scope is not None
                 and (
                     _binding_may_exist_before(
-                        module, scope.body, None if deferred else statement, name
+                        module, scope.body, None if names[name] else statement, name
                     )
                     or (
                         isinstance(statement, ast.AnnAssign)
