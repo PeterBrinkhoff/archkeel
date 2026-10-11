@@ -150,3 +150,40 @@ def test_wildcard_import_retains_arbitrary_binding_uncertainty() -> None:
 def test_binding_index_preserves_every_binding_form(declaration: str) -> None:
     module = _parsed_module(declaration + "\n")
     assert source.binding_may_exist_before(module, module.tree.body, None, "property")
+
+
+def test_setter_local_parameter_does_not_hide_real_outer_escape() -> None:
+    module = _parsed_module(
+        "class value: pass\nclass Counter:\n"
+        " @property\n def value(self) -> int: return 7\n"
+        " @value.setter\n def value(self, value: int) -> None:\n"
+        "  copy = value\n  self._value = copy\n"
+        "mutate(value)\n"
+    )
+    assert {"value", "Counter"} <= unproven_member_bindings(module)
+
+
+def test_same_named_setter_incoming_escape_remains_live() -> None:
+    module = _parsed_module(
+        "class Counter:\n @property\n def value(self) -> int: return 7\n"
+        " @value.setter\n def value(self, value: int) -> None: self._value = value\n"
+    )
+    assert "Counter" not in unproven_member_bindings(module)
+    module.incoming_member_escapes.add("Counter")
+    assert "Counter" in unproven_member_bindings(module)
+
+
+@pytest.mark.parametrize("owner_exposure,creation", [(False, True), (True, True), (True, False)])
+def test_setter_scope_is_shared_by_member_proof_modes(owner_exposure, creation):
+    module = _parsed_module(
+        "class Counter:\n @property\n def value(self) -> int: return 7\n"
+        " @value.setter\n def value(self, value: int) -> None:\n"
+        "  copy = value\n  self._value = copy\n"
+    )
+    assert "Counter" not in unproven_member_bindings(
+        module, owner_exposure_only=owner_exposure, include_creation_uncertainty=creation
+    )
+    module.incoming_member_escapes.add("Counter")
+    assert "Counter" in unproven_member_bindings(
+        module, owner_exposure_only=owner_exposure, include_creation_uncertainty=creation
+    )

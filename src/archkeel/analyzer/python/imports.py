@@ -30,6 +30,7 @@ from .source import (
     native_owner_creation_static,
     package_for,
     resolve_static_name,
+    setter_local_references,
     stable_direct_module_bindings,
     unique_direct_module_bindings,
     unproven_member_bindings,
@@ -624,7 +625,12 @@ def _opaque_import_member_escapes(
         escaped |= {data["binding"]}
     if data["symbol"] is None or owner_exposure_only:
         base_bindings = (
-            member_binding_closure(module.all_nodes, {data["binding"]}, member_surface=True)
+            member_binding_closure(
+                module.all_nodes,
+                {data["binding"]},
+                member_surface=True,
+                local_references=setter_local_references(module),
+            )
             if owner_exposure_only
             else {data["binding"]}
         )
