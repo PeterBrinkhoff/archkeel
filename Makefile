@@ -62,6 +62,7 @@ pr-report-test:
 	$(UV) run --locked --with playwright==$(PLAYWRIGHT_VERSION) python -m pytest -n 2 --dist=loadfile --max-worker-restart=0 -q \
 		--junitxml=test-artifacts/pytest/pr-report.xml \
 		tests/test_report_renderer_units.py \
+		tests/test_explorer_report.py \
 		tests/test_report_interactions.py::test_native_card_drag_reroutes_all_hits_and_keeps_architecture_unchanged \
 		tests/test_uml_rendering.py::test_standard_uml_ignores_stale_layout_and_retries_rejected_layout \
 		tests/test_atlas_report.py::test_target_content_is_independent_of_observed_evidence \

@@ -316,7 +316,7 @@ def test_unfiltered_html_report_carries_no_filter_marker(tmp_path: Path) -> None
     assert result.report_filter is None
     assert "data-report-filter=" not in page
     assert "Filtered (" not in page
-    assert 'data-atlas="true"' in page and "Architecture Atlas" in page
+    assert 'data-atlas="true"' in page and "ArchQ Explorer" in page
     assert 'href="architecture.json"' in page
 
 

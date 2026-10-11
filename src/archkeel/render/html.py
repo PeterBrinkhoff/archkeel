@@ -101,7 +101,7 @@ def _html_report_bytes(report: ArchitectureReport) -> bytes:
 
 
 def _document(*, repository: str, kind: str, title: str, content: str) -> bytes:
-    css = _asset("archkeel-report.css").decode("utf-8")
+    css = (_asset("archkeel-report.css") + _asset("report-canvas.css")).decode("utf-8")
     dark_logo = _data_uri("archkeel-logo-dark.svg", "image/svg+xml")
     light_logo = _data_uri("archkeel-logo-light.svg", "image/svg+xml")
     mark = _data_uri("archkeel-mark.svg", "image/svg+xml")
@@ -661,7 +661,7 @@ def _flow_section_head(*, atlas: bool = False) -> str:
         </div>"""
     )
     return f"""
-    <section class="report-section flow-section{section_suffix}" aria-label="Architecture explorer">
+    <section class="report-section flow-section{section_suffix}" aria-label="ArchQ Explorer">
       <div id="flow" class="flow"{atlas_attribute}>
         <h2 id="flow-heading">Component dependencies</h2>
         <nav class="flow-views" aria-label="Architecture views" hidden>
@@ -699,6 +699,7 @@ def _explorer_section(payload: str, *, atlas: bool = False) -> str:
         ("report-scene.js", ' data-report-asset="scene"'),
         ("report-layout.js", ' data-report-asset="layout"'),
         ("flow.js", ""),
+        ("report-canvas.js", ' data-report-asset="canvas"'),
     ):
         source: bytes = _asset(name)
         script: str = source.decode("utf-8")
@@ -804,6 +805,11 @@ def _atlas_content(
     )
     summary = report_summary(result)
     inventory_status = "complete" if symbols_complete else "partial"
+    explorer_link = (
+        "<a class='explorer-return' href='?explorer=1'>Open ArchQ Explorer</a>"
+        if not detail_page
+        else ""
+    )
     overview_href = (
         navigation.get("main_href") if isinstance(navigation, dict) else None
     ) or "architecture.report.html"
@@ -826,13 +832,14 @@ def _atlas_content(
       · Symbol inventory: {_text(inventory_status)}</p>'''
     )
     return f"""<section class="report-heading atlas-heading">
-      <div><span class="eyebrow">Architecture Atlas</span><h1>{_text(repository)}</h1>
+      <div><span class="eyebrow">ArchQ Explorer</span><h1>{_text(repository)}</h1>
       <p><code>{_text(observation.source.git_head)}</code>
       · {observation.coverage.files_parsed} observed files
       · {components} whole-contract components</p></div>
       <button class="theme-toggle" type="button" aria-label="Switch to light theme">☀</button>
       </section>
       {status_header}
+      {explorer_link}
       {_atlas_section(data)}
       {_atlas_review_claims(observation, result.architecture_projection) if not detail_page else ""}
       <details class="atlas-source"><summary>Snapshot and audit</summary>
@@ -874,7 +881,7 @@ def _atlas_document(
     return _document(
         repository=repository,
         kind="Architecture report",
-        title="Architecture Atlas",
+        title="ArchQ Explorer",
         content=_atlas_content(
             result, observation, data, repository=repository, architecture_href=architecture_href
         ),
@@ -973,7 +980,7 @@ def render_architecture_details(
         filename: _document(
             repository=repository,
             kind="Architecture report",
-            title="Architecture Atlas",
+            title="ArchQ Explorer",
             content=_atlas_content(
                 result,
                 observation,

@@ -91,7 +91,7 @@ archkeel report --input test-artifacts/architecture/architecture.json --only arc
 Use `--component` with an id or scope from the summary, and `--only violations` for findings.
 Saved queries do not rescan or change the repository. See [focused agent reports](docs/reference.md#focused-agent-reports).
 
-The explorer shows **As-Is** (observed code), **Target** (declared architecture),
+ArchQ Explorer shows **As-Is** (observed code), **Target** (declared architecture),
 and **Diff** (their differences). These are views of one snapshot, not two revisions.
 Folders help navigation; they do not establish ownership or runtime behavior.
 

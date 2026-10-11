@@ -478,8 +478,24 @@
       ).values()];
       return { nodes, edges, layoutEdges, frames: [], componentOverview: true, atlas: true, declared };
     }
+    function searchIndex(viewMode) {
+      if (!ATLAS) return [];
+      const path = (item) => componentRoute(item.id).map((parent) => parent.label).join(" / ");
+      const modules = viewMode === "target" ? ATLAS.declared_modules : ATLAS.modules;
+      return [
+        ...ATLAS.components.map((item) => ({ kind: "component", id: item.id, label: item.label,
+          sub: [path(item), item.layer].filter(Boolean).join(" · "), status: item.status,
+          text: `${item.label} ${item.path || ""} ${item.id} ${path(item)}`.toLowerCase() })),
+        ...modules.map((item) => ({ kind: "module", id: item.id, label: item.name.split(".").at(-1),
+          sub: item.path || item.name, text: `${item.name} ${item.path || ""}`.toLowerCase(), module: item })),
+        ...ATLAS.rule_assessments.map((item) => ({ kind: "rule", id: item.id, label: item.id,
+          sub: `${item.kind} · ${item.scope}`, status: item.status,
+          text: `${item.id} ${item.kind} ${item.scope}`.toLowerCase(), rule: item })),
+      ];
+    }
     return {
       atlas: ATLAS,
+      searchIndex,
       atlasComponent,
       atlasModuleById,
       entities: architectureEntities,
@@ -498,5 +514,48 @@
       countLabel,
     };
   }
-  global.ArchkeelReportScene = { create };
+  const decider = (value) => value === "agent" ? "Agent" : value === "architect" ? "Architect"
+    : value && value !== "UNKNOWN" ? String(value) : "Not recorded";
+  const perspectives = {
+    decision: { label: "Decided by", value: (node) => node.component ? decider(node.component.decided_by) : null,
+      colors: { Agent: "#e8590c", Architect: "#2563eb", "Not recorded": "#868e96" } },
+    layer: { label: "Layer", value: (node) => node.component?.layer || null },
+    evidence: { label: "Evidence", value: (node) => node.component?.status || null,
+      colors: { PASS: "var(--ck-pass)", FAIL: "var(--ck-fail)", UNKNOWN: "var(--ck-unknown)" } },
+  };
+  const compare = (a, b) => a < b ? -1 : a > b ? 1 : 0;
+  function search(index, text, visibleIds = [], limit = 40) {
+    const needle = text.trim().toLowerCase();
+    const visible = new Set(visibleIds);
+    const order = { component: 0, module: 1, rule: 2 };
+    return index.map((row) => {
+      const label = row.label.toLowerCase();
+      const score = !needle ? visible.has(row.id) ? 0 : null
+        : label === needle ? 0 : label.startsWith(needle) ? 1
+          : row.text.split(/[\s./:_-]+/).some((token) => token.startsWith(needle)) ? 2
+            : row.text.includes(needle) ? 3 : null;
+      return { row, score };
+    }).filter((hit) => hit.score !== null)
+      .sort((a, b) => a.score - b.score || order[a.row.kind] - order[b.row.kind]
+        || compare(a.row.label, b.row.label) || compare(a.row.id, b.row.id))
+      .slice(0, limit).map((hit) => hit.row);
+  }
+  function sceneToMermaid(scene) {
+    if (!scene) return "";
+    const nodes = [...scene.nodes].sort((a, b) => compare(a.id, b.id));
+    const ids = new Map(nodes.map((node, i) => [node.id, `n${i}`]));
+    // Mermaid's decimal entities keep user labels out of its grammar and HTML.
+    const escape = (value) => String(value ?? "").replace(/[&#"<>|\[\]{}\\\r\n]/g,
+      (char) => `#${char.codePointAt(0)};`);
+    return ["flowchart LR",
+      ...nodes.map((node) => `  ${ids.get(node.id)}["${escape([node.label, node.component?.status].filter(Boolean).join(" · "))}"]`),
+      ...[...scene.edges].sort((a, b) => compare(a.id, b.id))
+        .filter((edge) => ids.has(edge.source) && ids.has(edge.target))
+        .map((edge) => {
+          const label = escape([...new Set([edge.label, edge.status, edge.state])].filter(Boolean).join(" · "));
+          return `  ${ids.get(edge.source)} -->${label ? `|"${label}"|` : ""} ${ids.get(edge.target)}`;
+        }),
+    ].join("\n");
+  }
+  global.ArchkeelReportScene = { create, search, sceneToMermaid, decider, perspectives };
 })(window);

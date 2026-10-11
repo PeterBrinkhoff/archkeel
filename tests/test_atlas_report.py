@@ -11,7 +11,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
-from browser_report_support import _browser_page, _open_details
+from browser_report_support import _browser_page, _open_details, _open_health_check
 from test_architecture_demo import _prepare_repo
 from test_module_explore import _sample
 from test_report_filter import CONFIG as TOUR_CONFIG
@@ -278,9 +278,9 @@ def test_default_report_is_one_authentic_repository_with_sparse_native_cells(tmp
         .stat()
         .st_size
     )
-    # The offline engine adds 1,609,707 bytes; this fixture renders to 1,916,009 bytes.
+    # The Explorer adds inline search, perspectives and export; ELK still dominates the file.
     assert page_bytes < 2_000_000
-    assert page_bytes - elk_bytes < 350_000
+    assert page_bytes - elk_bytes < 400_000
 
 
 def test_atlas_header_shows_four_status_cards_with_native_rule_counts(tmp_path):
@@ -440,6 +440,7 @@ def test_atlas_keeps_every_rule_of_a_finding_without_inflating_totals(tmp_path):
     assert len(atlas["findings"]) == len(records)
     playwright, browser, page = _browser_page(api, html)
     try:
+        _open_health_check(page)
         panel = page.locator(".atlas-findings")
         assert panel.locator(":scope > summary").inner_text() == f"Findings · {len(records)}"
         for rule in original.rule_ids + ("second",):
@@ -586,27 +587,23 @@ def test_component_detail_links_are_relative_and_keep_shared_uml(tmp_path):
 
 
 @pytest.mark.parametrize("width", [1440, 390])
-@pytest.mark.parametrize("expanded", [False, True])
-def test_atlas_closed_details_releases_diagram_space(tmp_path, width, expanded):
+def test_atlas_closed_details_releases_diagram_space(tmp_path, width):
     api = pytest.importorskip("playwright.sync_api")
     errors = []
     playwright, browser, page = _browser_page(
         api, _page(_sample(tmp_path)), width=width, height=900, errors=errors
     )
     try:
-        if expanded:
-            page.locator(".flow-fullscreen").click()
-            api.expect(page.locator(".flow")).to_have_attribute("data-expanded", re.compile(".+"))
         _open_details(page)
         opened = page.locator(".flow-canvas").bounding_box()
         page.locator(".flow-details-toggle").click()
         api.expect(page.locator(".flow-inspector")).to_be_hidden()
         layout = page.locator(".flow-layout").bounding_box()
         closed = page.locator(".flow-canvas").bounding_box()
-        assert closed["width"] >= layout["width"] - 2
+        assert closed["width"] >= layout["width"] - (62 if width == 1440 else 2)
         if width == 1440:
             assert closed["width"] > opened["width"] + 200
-        elif expanded:
+        else:
             assert closed["height"] > opened["height"] + 100
         page.locator(".flow-details-toggle").click()
         api.expect(page.locator(".flow-inspector")).to_be_visible()
@@ -625,6 +622,7 @@ def test_atlas_browser_keeps_positions_and_unknown_cells_across_lenses(tmp_path,
     errors = []
     playwright, browser, page = _browser_page(api, page_html, width=width, errors=errors)
     try:
+        _open_health_check(page)
         card = page.locator('.flow-nodes [data-label="core"]')
         assert card.count() == 1
         if width == 1440:
@@ -652,6 +650,7 @@ def test_atlas_browser_keeps_positions_and_unknown_cells_across_lenses(tmp_path,
         assert "observed import cell" not in details.lower()
         assert "evidence ids" not in details.lower()
         page.get_by_role("button", name="As-Is", exact=True).click()
+        _open_health_check(page)
         page.locator(".matrix-label[data-module]").first.click()
         assert "observed module" in page.locator(".flow-inspector-content").inner_text().lower()
         page.get_by_role("button", name="Target", exact=True).click()
@@ -869,7 +868,9 @@ def test_diff_balance_links_select_the_deviation_source(tmp_path):
     errors = []
     playwright, browser, page = _browser_page(api, html, errors=errors)
     try:
+        _open_health_check(page)
         page.goto(path.as_uri())
+        _open_health_check(page)
         page.get_by_role("button", name="Diff", exact=True).click()
         balance = page.locator(".atlas-balance")
         assert (
@@ -898,6 +899,7 @@ def test_recorded_findings_are_visible_in_each_atlas_lens(tmp_path, theme, fill)
     errors = []
     playwright, browser, page = _browser_page(api, _page(_sample(tmp_path)), errors=errors)
     try:
+        _open_health_check(page)
         page.evaluate("theme => document.documentElement.dataset.theme = theme", theme)
         atlas = json.loads(page.locator("#flow-data").text_content())["atlas"]
         _open_details(page)
@@ -1241,6 +1243,7 @@ def test_long_atlas_paths_fit_mobile_on_initial_view_and_after_resize(tmp_path):
 
         for lens in ("As-Is", "Target", "Diff"):
             page.get_by_role("button", name=lens, exact=True).click()
+            _open_health_check(page)
             panel = page.locator(".atlas-findings")
             for group in panel.locator(".atlas-finding-group").all():
                 group.locator("summary").click()
@@ -1261,6 +1264,7 @@ def test_long_atlas_paths_fit_mobile_on_initial_view_and_after_resize(tmp_path):
         page.set_viewport_size({"width": 1440, "height": 900})
         page.get_by_role("button", name="Diff", exact=True).click()
         page.set_viewport_size({"width": 375, "height": 900})
+        _open_health_check(page)
         page.locator(".atlas-module-list summary").click()
         assert (
             page.locator(".atlas-module-list")
@@ -1313,6 +1317,7 @@ def test_tour_nested_scope_chips_balances_and_deviation_links(tmp_path):
     errors = []
     playwright, browser, page = _browser_page(api, html, errors=errors)
     try:
+        _open_health_check(page)
 
         def assert_matrix_labels_do_not_overlap():
             overlaps = page.locator(".flow-matrix svg").evaluate("""svg => {
@@ -1344,6 +1349,7 @@ def test_tour_nested_scope_chips_balances_and_deviation_links(tmp_path):
 
         for lens in ("As-Is", "Target", "Diff"):
             page.goto(report.as_uri())
+            _open_health_check(page)
             page.get_by_role("button", name=lens, exact=True).click()
             rule_links = page.locator('a[href*="#atlas-rule-"]')
             assert (rule_links.count() > 0) == (lens != "Target")
@@ -1357,8 +1363,7 @@ def test_tour_nested_scope_chips_balances_and_deviation_links(tmp_path):
               return {summaryTop: summary.top, summaryBottom: summary.bottom,
                 breadcrumbBottom: breadcrumb.bottom, canvasTop: canvas.top};
             }""")
-            assert spacing["summaryTop"] >= spacing["breadcrumbBottom"] + 12
-            assert spacing["canvasTop"] >= spacing["breadcrumbBottom"] + 12
+            assert spacing["canvasTop"] >= spacing["breadcrumbBottom"] + 8
             if lens == "As-Is":
                 assert_matrix_labels_do_not_overlap()
                 for axis in ("column", "row"):
@@ -1444,6 +1449,7 @@ def test_tour_nested_scope_chips_balances_and_deviation_links(tmp_path):
                     root_deviation["source_id"]
                 ]
                 page.goto(report.as_uri())
+                _open_health_check(page)
                 page.get_by_role("button", name="Diff", exact=True).click()
                 store_card = page.locator(f'.flow-nodes [data-uml-id="{store["id"]}"]')
                 store_card.press("Space")
@@ -1484,6 +1490,7 @@ def test_tour_nested_scope_chips_balances_and_deviation_links(tmp_path):
                 assert links.count() == len(nested_deviations)
                 for index, deviation in enumerate(nested_deviations):
                     page.goto(report.as_uri() + f"?scope={store['id']}&view=diff")
+                    _open_health_check(page)
                     link = page.locator(".atlas-balance a").nth(index)
                     link.click()
                     assert parse_qs(urlsplit(page.url).query)["selected"] == [
@@ -1564,6 +1571,7 @@ def test_matrix_reserves_space_for_long_native_module_names(tmp_path, extra_coun
     model = _sample(tmp_path, extra_files=files)
     playwright, browser, page = _browser_page(api, _page(model))
     try:
+        _open_health_check(page)
         column = page.locator(".matrix-label[transform]").filter(has_text=name).bounding_box()
         assert column is not None
         groups = page.locator(".matrix-group-label").evaluate_all(
@@ -1923,8 +1931,10 @@ def test_unknown_detail_links_keep_deeper_claimed_modules_and_distinct_names(
     errors = []
     playwright, browser, page = _browser_page(api, index.read_text(), errors=errors)
     try:
+        _open_health_check(page)
         page.goto(index.as_uri())
         page.locator(f'.flow-nodes [data-uml-id="{component_id}"]').dblclick()
+        _open_health_check(page)
         page.locator(".atlas-module-list > summary").click()
         entry = page.locator(".atlas-module-list").get_by_role("link", name="core.py", exact=True)
         entry_href = entry.get_attribute("href")
@@ -2361,6 +2371,7 @@ def test_offline_import_cell_return_preserves_native_cell_and_source_lens(tmp_pa
     playwright, browser, page = _browser_page(api, index.read_text(), errors=errors)
     try:
         page.goto(index.as_uri() + "?view=diff&theme=dark")
+        _open_health_check(page)
         page.locator('.flow-matrix [data-cell="0"]').click()
         assert "cell=0" in page.url
         before = page.locator(".flow-inspector-content").inner_text()

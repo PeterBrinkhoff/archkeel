@@ -45,6 +45,12 @@ def _open_details(page: Any) -> None:
         toggle.click()
 
 
+def _open_health_check(page: Any) -> None:
+    toggle = page.get_by_role("button", name="Health check", exact=True)
+    if toggle.count() and toggle.get_attribute("aria-expanded") != "true":
+        toggle.click()
+
+
 def _report_page(root: Path) -> tuple[str, dict[str, Any]]:
     result, architecture = run_report(root, config=CONFIG, analyzer=observe)
     assert architecture is not None, result.diagnostics
