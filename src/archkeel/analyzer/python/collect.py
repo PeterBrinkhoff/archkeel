@@ -40,7 +40,7 @@ from archkeel.ir.protocol import CollectionRequest
 from .bindings import collect_bindings
 from .calls import collect_calls
 from .constructs import collect_constructs
-from .imports import collect_imports, resolve_reexports
+from .imports import collect_imports, resolve_reexports, typed_dict_unsafe_providers
 from .private_attributes import collect_private_attributes
 from .references import collect_references
 from .resolve import build_symbol_index
@@ -90,7 +90,9 @@ def collect(request: CollectionRequest) -> SourceFacts:
         {module.module: module.all_exports for module in modules},
         modules,
     )
-    symbols, symbol_nodes, symbol_owners = collect_symbols(modules, evidence)
+    symbols, symbol_nodes, symbol_owners = collect_symbols(
+        modules, evidence, unsafe_typed_dict_providers=typed_dict_unsafe_providers(imports, modules)
+    )
     type_shapes = collect_type_shapes(symbol_type_expressions(symbols))
     symbol_index = build_symbol_index(symbols)
     calls = collect_calls(modules, symbol_index, evidence)

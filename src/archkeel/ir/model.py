@@ -488,6 +488,12 @@ class SymbolPlacementRule:
 
 
 @dataclass(frozen=True, slots=True)
+class BoundaryAliasBody:
+    origin: str
+    shape: str
+
+
+@dataclass(frozen=True, slots=True)
 class BoundaryTypeAllowance:
     """One exact signature, DTO field or opaque map-value exception."""
 
@@ -497,6 +503,7 @@ class BoundaryTypeAllowance:
     annotation: str
     container_depth: int | None = None
     mapping_depth: int | None = None
+    alias_body: BoundaryAliasBody | None = None
 
     def __repr__(self) -> str:
         base = (
@@ -507,6 +514,8 @@ class BoundaryTypeAllowance:
         )
         if self.mapping_depth is not None:
             base += f", mapping_depth={self.mapping_depth!r}"
+        if self.alias_body is not None:
+            base += f", alias_body={self.alias_body!r}"
         return base + ")"
 
 
@@ -648,7 +657,7 @@ class ContractDeclarations:
 
 @dataclass(frozen=True, slots=True)
 class ArchitectureContract:
-    schema_version: Literal["2.1.0", "2.2.0", "2.3.0"]
+    schema_version: Literal["2.1.0", "2.2.0", "2.3.0", "3.0.0"]
     components: tuple[ContractComponent, ...]
     rules: tuple[ArchitectureRule, ...]
     schema: str | None = None
@@ -803,6 +812,15 @@ def _rule_references(
                 False,
             )
             for item, allowance in enumerate(rule.allowed_positions)
+        ]
+        references += [
+            ModuleReference(
+                f"/rules/{index}/allowed_positions/{item}/alias_body/origin",
+                allowance.alias_body.origin,
+                False,
+            )
+            for item, allowance in enumerate(rule.allowed_positions)
+            if allowance.alias_body is not None
         ]
     if isinstance(rule, ForbiddenConstructRule):
         references += [

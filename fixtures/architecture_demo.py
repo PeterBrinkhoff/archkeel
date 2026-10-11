@@ -462,7 +462,8 @@ def uml_suite(output_dir: Path) -> int:
             {
                 key: value
                 for key, value in detail_payload.items()
-                if key not in {"initial_scope", "initial_view", "navigation"}
+                if key
+                not in {"initial_scope", "initial_view", "navigation", "boundary_permissions"}
             }
         )
         if report.comparison is None or report.comparison.status != comparison_status:

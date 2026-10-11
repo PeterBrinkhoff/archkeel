@@ -22,7 +22,7 @@ from archkeel.ir.architecture_graph import (
 )
 from archkeel.ir.architecture_projection import ArchitectureProjection
 from archkeel.ir.facts import MemberInventory
-from archkeel.ir.model import ArchitectureContract, Coverage, Diagnostic, FilteredViolation, Record
+from archkeel.ir.model import Coverage, Diagnostic, FilteredViolation, Record
 from archkeel.ir.report_projection import ArchitectureCommandEnvelope
 
 
@@ -312,12 +312,6 @@ def member_inventory_schema() -> dict[str, object]:
 
 def _update_contract_schema(path: Path) -> None:
     schema = json.loads(path.read_bytes())
-    versions = list(get_args(get_type_hints(ArchitectureContract)["schema_version"]))
-    schema["$id"] = f"urn:archkeel:architecture-contract:{versions[-1]}"
-    schema["description"] = (
-        f"Contract {' / '.join(versions)} structure. Rule semantics are cataloged in docs/rules.md."
-    )
-    schema["properties"]["schema_version"] = {"enum": versions}
     schema["$defs"]["component"]["properties"]["layer"] = {
         "type": "string",
         "pattern": "\\S",
@@ -354,30 +348,6 @@ def _update_contract_schema(path: Path) -> None:
         choices.append(reference)
     schema["$defs"]["uml"] = target_schema()
     schema["$defs"]["declarations"]["properties"]["uml"] = {"$ref": "#/$defs/uml"}
-    schema["allOf"] = [
-        {
-            "if": {"properties": {"schema_version": {"const": "2.1.0"}}},
-            "then": {"properties": {"declarations": {"not": {"required": ["uml"]}}}},
-        }
-    ]
-    schema["allOf"].append(
-        {
-            "if": {"properties": {"schema_version": {"enum": ["2.1.0", "2.2.0"]}}},
-            "then": {
-                "properties": {
-                    "components": {"items": {"not": {"required": ["layer"]}}},
-                    "rules": {
-                        "items": {
-                            "not": {
-                                "properties": {"kind": {"const": "layer_order"}},
-                                "required": ["kind"],
-                            }
-                        }
-                    },
-                }
-            },
-        }
-    )
     path.write_text(json.dumps(schema, indent=2) + "\n", encoding="utf-8")
 
 
@@ -390,7 +360,7 @@ def _update_source_profile_schema(path: Path) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("output", type=Path)
-    parser.add_argument("--contract", type=Path)
+    parser.add_argument("--contract", type=Path, action="append", default=[])
     parser.add_argument("--comparison", type=Path)
     parser.add_argument("--report", type=Path)
     parser.add_argument("--projection", type=Path)
@@ -400,8 +370,8 @@ def main() -> None:
     args = parser.parse_args()
     output = args.output
     output.write_text(json.dumps(graph_schema(), indent=2) + "\n", encoding="utf-8")
-    if args.contract is not None:
-        _update_contract_schema(args.contract)
+    for contract in args.contract:
+        _update_contract_schema(contract)
     if args.comparison is not None:
         args.comparison.write_text(
             json.dumps(comparison_schema(), indent=2) + "\n", encoding="utf-8"

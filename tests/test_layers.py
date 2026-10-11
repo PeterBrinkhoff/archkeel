@@ -86,11 +86,12 @@ def test_old_contract_rejects_layer(version):
 
 
 @pytest.mark.parametrize("nested", [False, True])
-def test_layer_compiler_matches_authenticated_projection(tmp_path, nested):
+@pytest.mark.parametrize("contract_version", ["2.3.0", "3.0.0"])
+def test_layer_compiler_matches_authenticated_projection(tmp_path, nested, contract_version):
     root, config = _nested_repository(tmp_path) if nested else _repository(tmp_path)
     for path in (config.contract, "inside.json", "leaf.json") if nested else (config.contract,):
         raw = json.loads((root / path).read_bytes())
-        raw["schema_version"] = "2.3.0"
+        raw["schema_version"] = contract_version
         raw["components"][0]["layer"] = "Core"
         (root / path).write_text(json.dumps(raw))
     data = (root / config.contract).read_bytes()
