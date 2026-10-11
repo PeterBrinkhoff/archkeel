@@ -8,6 +8,8 @@ from pathlib import Path
 import pytest
 from browser_report_support import _browser_page
 
+from archkeel.render.html import _flow_toolbar
+
 ASSET_DIR = Path(__file__).parents[1] / "src/archkeel/render/assets"
 
 
@@ -21,6 +23,21 @@ def _asset_page(api, assets):
         playwright.stop()
         raise
     return playwright, browser, page
+
+
+@pytest.mark.parametrize("atlas", [False, True])
+def test_reset_and_fit_toolbar_has_matching_visible_and_accessible_name(atlas):
+    api = pytest.importorskip("playwright.sync_api")
+    playwright, browser, page = _browser_page(api, _flow_toolbar(atlas=atlas))
+    try:
+        page.locator(".flow-toolbar").evaluate("toolbar => toolbar.hidden = false")
+        reset = page.get_by_role("button", name="Reset and fit", exact=True)
+        assert reset.count() == 1
+        assert reset.inner_text() == "Reset and fit"
+        assert reset.get_attribute("class") == "flow-fit flow-zoom-100"
+    finally:
+        browser.close()
+        playwright.stop()
 
 
 def test_report_scene_projection_is_stable_and_does_not_mutate_payload():
