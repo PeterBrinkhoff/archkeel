@@ -229,3 +229,5 @@ For current behavior, use the [contract](../../../architecture-contract.json), s
 | AD-220 | [Exact alias body permissions](ad-220-exact-alias-body-permissions.md) |
 | AD-221 | [Exact key alias unions](ad-221-exact-key-alias-unions.md) |
 | AD-222 | [Literal mapping arms](ad-222-literal-mapping-arms.md) |
+
+| AD-223 | [Explicit Callable boundaries](ad-223-explicit-callable-boundaries.md) |
