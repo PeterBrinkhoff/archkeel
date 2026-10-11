@@ -14,6 +14,17 @@ ordered `str | None`; values are `str`, `int` or `float`. Chains, wrappers,
 duplicate occurrences, unsupported/native/unknown arms and unproven bindings
 fail closed. A present pair never falls through to an older permission.
 
+Python collection proves source safety only: complete intrinsic map expressions
+may protect referenced bindings from a false escape. Import resolution joins
+direct providers, replaces private snapshot expression identities on each origin
+resolution, and only revokes candidates while escapes converge. Symbols publish
+immutable binding facts. Core independently proves complete type shapes and matches exact
+contract selectors; rendering only projects declarations and applied facts.
+Ordinary nullable-map permissions retain their meaning across 3.0 and 3.1.
+Nested contracts enforce dependencies; [binding reuse](../../../tests/test_binding_proof_reuse.py),
+[union](../../../tests/test_boundary_type_alternative_maps.py) and
+[compatibility](../../../tests/test_boundary_type_bound_aliases.py) tests enforce these invariants.
+
 Reuse existing records, selector coordinates and report envelopes. A rationale
 joins only one exact valid declaration, including both optional pair identities.
 Target uses declarations; Actual/Diff use applied facts and source evidence.
