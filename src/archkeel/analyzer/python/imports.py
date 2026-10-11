@@ -30,6 +30,7 @@ from .source import (
     member_binding_closure,
     module_scope_bindings,
     native_owner_creation_static,
+    native_typed_dict_provider_static,
     package_for,
     proven_annotation_carrier_candidates,
     proven_map_union_candidates,
@@ -735,17 +736,7 @@ def _opaque_import_member_escapes(
             for expression in module._proven_annotation_carriers
         )
     )
-    native_typed_dict = any(
-        isinstance(owner, ast.ClassDef)
-        and len(owner.bases) == 1
-        and resolve_static_name(module, owner.bases[0]) == NATIVE_TYPED_DICT_BASE
-        and any(
-            isinstance(node, ast.Name) and node.id == data["binding"]
-            for node in ast.walk(owner.bases[0])
-        )
-        and native_owner_creation_static(module, owner, unsafe_providers)
-        for owner in module.tree.body
-    )
+    native_typed_dict = native_typed_dict_provider_static(module, data["binding"], unsafe_providers)
     if (
         not owner_exposure_only
         and data["symbol"] is not None

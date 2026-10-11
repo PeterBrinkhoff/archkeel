@@ -1203,6 +1203,21 @@ def _native_factory_binding_static(
     )
 
 
+def native_typed_dict_provider_static(
+    module: ParsedModule, binding: str, unsafe_providers: AbstractSet[str]
+) -> bool:
+    return any(
+        isinstance(owner, ast.ClassDef)
+        and len(owner.bases) == 1
+        and resolve_static_name(module, owner.bases[0]) == NATIVE_TYPED_DICT_BASE
+        and any(
+            isinstance(node, ast.Name) and node.id == binding for node in ast.walk(owner.bases[0])
+        )
+        and native_owner_creation_static(module, owner, unsafe_providers)
+        for owner in module.tree.body
+    )
+
+
 def _protected_type_expressions(nodes: Sequence[ast.AST]) -> list[ast.expr]:
     expressions = [
         node.annotation
