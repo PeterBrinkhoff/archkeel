@@ -15,6 +15,12 @@ Architecture checks for coding agents.
 - **Unproven alias bodies stay UNKNOWN.** They do not justify body-dependent findings or
   grants. Proven literal findings remain; ordinary permissions cannot bypass
   uncertain alias proof by changing union order.
+- **Explicit Callable signatures.** Proven stdlib argument lists and results use
+  the existing boundary checks. SourceFacts **3.0.0** carries neutral TypeList
+  facts; versions 1/2 retain exact round trips and reject that new shape.
+- **Direct stdlib TypedDict fields.** Proven declarations check every key,
+  including underscore keys. Broad fields fail; unproven providers remain UNKNOWN.
+  Public model fields also retain proven type-name reach during validation.
 - **Full reports retain every recorded UNKNOWN.** `report --only architecture
   --full --json` exports complete original records, including IDs, details and
   evidence references, even with a component filter. Full architecture output uses schema
