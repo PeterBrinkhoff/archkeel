@@ -399,13 +399,9 @@ def resolve_reexports(
     return uncertain_origins
 
 
-def _converge_member_escapes(
-    imports: Sequence[RawRecord],
+def _initial_member_exposures(
     modules: dict[str, ParsedModule],
-    stable_bindings: dict[str, frozenset[str]],
-    escaped_bindings: dict[str, frozenset[str]],
-    candidates: dict[str, dict[ast.expr, frozenset[tuple[str, str]]]],
-) -> dict[str, frozenset[str]]:
+) -> tuple[dict[str, set[str]], dict[str, set[str]]]:
     exposed_bindings, transferred_bindings = (
         {
             module.module: set(
@@ -421,6 +417,17 @@ def _converge_member_escapes(
         }
         for include_creation in (True, False)
     )
+    return exposed_bindings, transferred_bindings
+
+
+def _converge_member_escapes(
+    imports: Sequence[RawRecord],
+    modules: dict[str, ParsedModule],
+    stable_bindings: dict[str, frozenset[str]],
+    escaped_bindings: dict[str, frozenset[str]],
+    candidates: dict[str, dict[ast.expr, frozenset[tuple[str, str]]]],
+) -> dict[str, frozenset[str]]:
+    exposed_bindings, transferred_bindings = _initial_member_exposures(modules)
     namespace_bindings = {
         name: set(stable_bindings[name]) | {binding for _, binding in module_scope_bindings(module)}
         for name, module in modules.items()
@@ -453,24 +460,9 @@ def _converge_member_escapes(
                 incoming_escapes=bindings,
                 unsafe_providers=unsafe_providers,
             )
-        protection_changed = False
-        for name, module in modules.items():
-            current_candidates = candidates[name]
-            retained = {
-                expression: dependencies
-                for expression, dependencies in current_candidates.items()
-                if not any(
-                    binding in escaped_bindings[provider]
-                    or binding in exposed_bindings[provider]
-                    or binding in transferred_bindings[provider]
-                    or binding in modules[provider].incoming_member_escapes
-                    for provider, binding in dependencies
-                )
-            }
-            protection = frozenset(retained)
-            protection_changed |= protection != module._proven_map_union_expressions
-            candidates[name] = retained
-            module._proven_map_union_expressions = protection
+        protection_changed = _retain_map_union_protection(
+            modules, candidates, escaped_bindings, exposed_bindings, transferred_bindings
+        )
         escaped = {module.module: unproven_member_bindings(module) for module in modules.values()}
         exposed, transferred = (
             {
@@ -499,6 +491,34 @@ def _converge_member_escapes(
         exposed_bindings = {name: set(values) for name, values in exposed.items()}
         transferred_bindings = {name: set(values) for name, values in transferred.items()}
     return escaped_bindings
+
+
+def _retain_map_union_protection(
+    modules: Mapping[str, ParsedModule],
+    candidates: dict[str, dict[ast.expr, frozenset[tuple[str, str]]]],
+    escaped_bindings: Mapping[str, AbstractSet[str]],
+    exposed_bindings: Mapping[str, AbstractSet[str]],
+    transferred_bindings: Mapping[str, AbstractSet[str]],
+) -> bool:
+    protection_changed = False
+    for name, module in modules.items():
+        current_candidates = candidates[name]
+        retained = {
+            expression: dependencies
+            for expression, dependencies in current_candidates.items()
+            if not any(
+                binding in escaped_bindings[provider]
+                or binding in exposed_bindings[provider]
+                or binding in transferred_bindings[provider]
+                or binding in modules[provider].incoming_member_escapes
+                for provider, binding in dependencies
+            )
+        }
+        protection = frozenset(retained)
+        protection_changed |= protection != module._proven_map_union_expressions
+        candidates[name] = retained
+        module._proven_map_union_expressions = protection
+    return protection_changed
 
 
 def _saturate_unknown_owner_namespaces(

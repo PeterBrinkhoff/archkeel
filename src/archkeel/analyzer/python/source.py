@@ -1080,13 +1080,9 @@ def _protected_type_expressions(nodes: Sequence[ast.AST]) -> list[ast.expr]:
     return expressions
 
 
-def _contained_member_roots(
-    module: ParsedModule,
-    nodes: Sequence[ast.AST],
-    *,
-    owner_exposure_only: bool = False,
-    unsafe_providers: AbstractSet[str] = frozenset(),
-) -> set[tuple[str, str]]:
+def _contained_member_owners(
+    module: ParsedModule, nodes: Sequence[ast.AST]
+) -> list[tuple[str, ast.AST]]:
     owners: list[tuple[str, ast.AST]] = [
         (node.name, node)
         for node in nodes
@@ -1106,6 +1102,17 @@ def _contained_member_roots(
     ]
     if sys.version_info >= (3, 12):
         owners += [(node.name.id, node) for node in nodes if isinstance(node, ast.TypeAlias)]
+    return owners
+
+
+def _contained_member_roots(
+    module: ParsedModule,
+    nodes: Sequence[ast.AST],
+    *,
+    owner_exposure_only: bool = False,
+    unsafe_providers: AbstractSet[str] = frozenset(),
+) -> set[tuple[str, str]]:
+    owners = _contained_member_owners(module, nodes)
     contained = {
         (name, target.id)
         for name, owner in owners

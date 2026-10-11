@@ -1681,6 +1681,75 @@ def _parse_symbol_placement(raw: RawJson, label: str) -> SymbolPlacementRule:
 _BARE_BROAD_ANNOTATIONS: Final = frozenset({"Dict", "Mapping", "MutableMapping"})
 
 
+def _parse_boundary_type_allowance(value: RawJson, label: str) -> BoundaryTypeAllowance:
+    entry = _contract_fields(
+        value,
+        {"qualified_name", "position", "annotation"},
+        {"field_path", "container_depth", "mapping_depth", "alias_body", "key_alias_body"},
+        label,
+    )
+    qualified_name = _nonempty(entry["qualified_name"], f"{label}.qualified_name")
+    position = _nonempty(entry["position"], f"{label}.position")
+    field_path = (
+        ""
+        if entry.get("field_path", "") == ""
+        else _nonempty(entry["field_path"], f"{label}.field_path")
+    )
+    annotation = _nonempty(entry["annotation"], f"{label}.annotation")
+    depth: int | None = None
+    if "container_depth" in entry:
+        raw_depth = entry["container_depth"]
+        if isinstance(raw_depth, bool) or not isinstance(raw_depth, int) or raw_depth < 1:
+            raise ValueError(f"{label}.container_depth must be a positive integer")
+        depth = raw_depth
+    mapping_depth: int | None = None
+    if "mapping_depth" in entry:
+        raw_mapping_depth = entry["mapping_depth"]
+        if type(raw_mapping_depth) is not int or raw_mapping_depth < 1:
+            raise ValueError(f"{label}.mapping_depth must be a positive integer")
+        mapping_depth = raw_mapping_depth
+        if field_path:
+            raise ValueError(f"{label}.mapping_depth cannot select a DTO field")
+        if depth is not None and depth != mapping_depth + 1:
+            raise ValueError(f"{label}.container_depth must be mapping_depth plus one")
+    alias_body: BoundaryAliasBody | None = None
+    if "alias_body" in entry:
+        body_label = f"{label}.alias_body"
+        body = _exact(entry["alias_body"], {"origin", "shape"}, body_label)
+        alias_body = BoundaryAliasBody(
+            _nonempty(body["origin"], f"{body_label}.origin"),
+            _nonempty(body["shape"], f"{body_label}.shape"),
+        )
+        if field_path or mapping_depth is not None:
+            raise ValueError(f"{body_label} requires empty field_path and absent mapping_depth")
+    key_alias_body: BoundaryAliasBody | None = None
+    if "key_alias_body" in entry:
+        body_label = f"{label}.key_alias_body"
+        body = _exact(entry["key_alias_body"], {"origin", "shape"}, body_label)
+        key_alias_body = BoundaryAliasBody(
+            _nonempty(body["origin"], f"{body_label}.origin"),
+            _nonempty(body["shape"], f"{body_label}.shape"),
+        )
+        if field_path or depth is not None or mapping_depth is not None:
+            raise ValueError(
+                f"{body_label} requires empty field_path and absent container_depth/mapping_depth"
+            )
+    if annotation == "dict":
+        raise ValueError(f"{label}.annotation cannot allow bare dict")
+    if not field_path and annotation in _BARE_BROAD_ANNOTATIONS:
+        raise ValueError(f"{label}.annotation cannot allow bare {annotation} at the root")
+    return BoundaryTypeAllowance(
+        qualified_name,
+        position,
+        field_path,
+        annotation,
+        depth,
+        mapping_depth,
+        alias_body,
+        key_alias_body,
+    )
+
+
 def _parse_boundary_types(raw: RawJson, label: str) -> BoundaryTypesRule:
     item, item_id, provenance = _contract_record(
         raw,
@@ -1695,75 +1764,8 @@ def _parse_boundary_types(raw: RawJson, label: str) -> BoundaryTypesRule:
         raise ValueError(f"{label}.allowed_positions must be an array")
     positions: list[BoundaryTypeAllowance] = []
     for index, value in enumerate(raw_positions):
-        entry_label = f"{label}.allowed_positions[{index}]"
-        entry = _contract_fields(
-            value,
-            {"qualified_name", "position", "annotation"},
-            {"field_path", "container_depth", "mapping_depth", "alias_body", "key_alias_body"},
-            entry_label,
-        )
-        qualified_name = _nonempty(entry["qualified_name"], f"{entry_label}.qualified_name")
-        position = _nonempty(entry["position"], f"{entry_label}.position")
-        field_path = (
-            ""
-            if entry.get("field_path", "") == ""
-            else _nonempty(entry["field_path"], f"{entry_label}.field_path")
-        )
-        annotation = _nonempty(entry["annotation"], f"{entry_label}.annotation")
-        depth: int | None = None
-        if "container_depth" in entry:
-            raw_depth = entry["container_depth"]
-            if isinstance(raw_depth, bool) or not isinstance(raw_depth, int) or raw_depth < 1:
-                raise ValueError(f"{entry_label}.container_depth must be a positive integer")
-            depth = raw_depth
-        mapping_depth: int | None = None
-        if "mapping_depth" in entry:
-            raw_mapping_depth = entry["mapping_depth"]
-            if type(raw_mapping_depth) is not int or raw_mapping_depth < 1:
-                raise ValueError(f"{entry_label}.mapping_depth must be a positive integer")
-            mapping_depth = raw_mapping_depth
-            if field_path:
-                raise ValueError(f"{entry_label}.mapping_depth cannot select a DTO field")
-            if depth is not None and depth != mapping_depth + 1:
-                raise ValueError(f"{entry_label}.container_depth must be mapping_depth plus one")
-        alias_body: BoundaryAliasBody | None = None
-        if "alias_body" in entry:
-            body_label = f"{entry_label}.alias_body"
-            body = _exact(entry["alias_body"], {"origin", "shape"}, body_label)
-            alias_body = BoundaryAliasBody(
-                _nonempty(body["origin"], f"{body_label}.origin"),
-                _nonempty(body["shape"], f"{body_label}.shape"),
-            )
-            if field_path or mapping_depth is not None:
-                raise ValueError(f"{body_label} requires empty field_path and absent mapping_depth")
-        key_alias_body: BoundaryAliasBody | None = None
-        if "key_alias_body" in entry:
-            body_label = f"{entry_label}.key_alias_body"
-            body = _exact(entry["key_alias_body"], {"origin", "shape"}, body_label)
-            key_alias_body = BoundaryAliasBody(
-                _nonempty(body["origin"], f"{body_label}.origin"),
-                _nonempty(body["shape"], f"{body_label}.shape"),
-            )
-            if field_path or depth is not None or mapping_depth is not None:
-                raise ValueError(
-                    f"{body_label} requires empty field_path "
-                    "and absent container_depth/mapping_depth"
-                )
-        if annotation == "dict":
-            raise ValueError(f"{entry_label}.annotation cannot allow bare dict")
-        if not field_path and annotation in _BARE_BROAD_ANNOTATIONS:
-            raise ValueError(f"{entry_label}.annotation cannot allow bare {annotation} at the root")
         positions.append(
-            BoundaryTypeAllowance(
-                qualified_name,
-                position,
-                field_path,
-                annotation,
-                depth,
-                mapping_depth,
-                alias_body,
-                key_alias_body,
-            )
+            _parse_boundary_type_allowance(value, f"{label}.allowed_positions[{index}]")
         )
     if len(set(positions)) != len(positions):
         raise ValueError(f"{label}.allowed_positions must contain unique entries")

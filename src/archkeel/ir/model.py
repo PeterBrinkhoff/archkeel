@@ -763,6 +763,39 @@ def _references(
 _SCALAR_FIELDS: Final = frozenset({"source", "target", "root", "namespace", "command", "owner"})
 
 
+def _boundary_allowance_references(
+    index: int, allowances: tuple[BoundaryTypeAllowance, ...]
+) -> list[ModuleReference]:
+    references: list[ModuleReference] = []
+    references += [
+        ModuleReference(
+            f"/rules/{index}/allowed_positions/{item}/qualified_name",
+            allowance.qualified_name,
+            False,
+        )
+        for item, allowance in enumerate(allowances)
+    ]
+    references += [
+        ModuleReference(
+            f"/rules/{index}/allowed_positions/{item}/alias_body/origin",
+            allowance.alias_body.origin,
+            False,
+        )
+        for item, allowance in enumerate(allowances)
+        if allowance.alias_body is not None
+    ]
+    references += [
+        ModuleReference(
+            f"/rules/{index}/allowed_positions/{item}/key_alias_body/origin",
+            allowance.key_alias_body.origin,
+            False,
+        )
+        for item, allowance in enumerate(allowances)
+        if allowance.key_alias_body is not None
+    ]
+    return references
+
+
 def _rule_references(
     index: int, rule: ArchitectureRule, external: frozenset[str]
 ) -> list[ModuleReference]:
@@ -808,32 +841,7 @@ def _rule_references(
         ]
     references = _references(f"/rules/{index}", named)
     if isinstance(rule, BoundaryTypesRule):
-        references += [
-            ModuleReference(
-                f"/rules/{index}/allowed_positions/{item}/qualified_name",
-                allowance.qualified_name,
-                False,
-            )
-            for item, allowance in enumerate(rule.allowed_positions)
-        ]
-        references += [
-            ModuleReference(
-                f"/rules/{index}/allowed_positions/{item}/alias_body/origin",
-                allowance.alias_body.origin,
-                False,
-            )
-            for item, allowance in enumerate(rule.allowed_positions)
-            if allowance.alias_body is not None
-        ]
-        references += [
-            ModuleReference(
-                f"/rules/{index}/allowed_positions/{item}/key_alias_body/origin",
-                allowance.key_alias_body.origin,
-                False,
-            )
-            for item, allowance in enumerate(rule.allowed_positions)
-            if allowance.key_alias_body is not None
-        ]
+        references += _boundary_allowance_references(index, rule.allowed_positions)
     if isinstance(rule, ForbiddenConstructRule):
         references += [
             ModuleReference(
