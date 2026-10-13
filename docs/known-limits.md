@@ -57,6 +57,9 @@ standing scan disclaimers retain their separate meanings.
 Import graphs, ownership, externals, cycles and layout are measured. Lexical UML
 declarations, members, signatures and proven local relationships are available;
 they do not provide compiler type checking or Python-style symbol/type rules.
+Type and value definitions with the same name can match distinct UML intent;
+same-namespace duplicates, class/enum overlaps and declaration merging remain UNKNOWN
+([AD-233](architecture/decisions/ad-233-typescript-namespace-identities.md)).
 Construct, call and private-use metrics remain unavailable. Computed/indirect
 loaders, incomplete JavaScript closure and missing resolver inputs retain UNKNOWN, as do
 `extends` through a package, `exports` and `typesVersions` maps, and syntax the

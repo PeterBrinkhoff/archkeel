@@ -75,6 +75,8 @@ and reference joins use the same source span
 Complete native direct-member inventories can retain bound local evidence under
 unrelated resolver gaps; global coverage and unresolved traits remain incomplete
 ([AD-229](decisions/ad-229-local-member-inventory-proof.md)).
+TypeScript UML identity matching separates type and value namespaces while retaining
+definition-site ambiguity within each ([AD-233](decisions/ad-233-typescript-namespace-identities.md)).
 Proposed contract extensions are tracked in [#356](https://github.com/rapiddweller/archkeel/issues/356).
 
 ## Decisions
