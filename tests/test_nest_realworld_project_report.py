@@ -49,10 +49,10 @@ SOURCE_DIGESTS = {
     ),
 }
 EXPECTED_ASSESSMENTS = {
-    "nest-realworld-project": Counter(PASS=874, UNKNOWN=36),
-    "nest-realworld-forbidden-edge": Counter(PASS=874, UNKNOWN=36),
-    "nest-realworld-signature-fail": Counter(PASS=873, UNKNOWN=36, FAIL=1),
-    "nest-realworld-dynamic-unknown": Counter(PASS=873, UNKNOWN=37),
+    "nest-realworld-project": Counter(PASS=877, UNKNOWN=35),
+    "nest-realworld-forbidden-edge": Counter(PASS=877, UNKNOWN=35),
+    "nest-realworld-signature-fail": Counter(PASS=876, UNKNOWN=35, FAIL=1),
+    "nest-realworld-dynamic-unknown": Counter(PASS=876, UNKNOWN=36),
 }
 
 

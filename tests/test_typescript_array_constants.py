@@ -73,6 +73,56 @@ def test_unsupported_array_declarations_do_not_invent_module_constants(source: s
     )
 
 
+@pytest.mark.parametrize("competitor", ["() => Entry", "make()", "[...entries]"])
+@pytest.mark.parametrize(
+    "array_first, same_statement", [(True, False), (False, False), (True, True), (False, True)]
+)
+def test_omitted_module_variable_peer_does_not_prove_unique_array_identity(
+    tmp_path: Path, competitor: str, array_first: bool, same_statement: bool
+):
+    declarations = ["registry = [Entry] as const", f"registry = {competitor}"]
+    if not array_first:
+        declarations.reverse()
+    source = (
+        f"export const {', '.join(declarations)};\n"
+        if same_statement
+        else "\n".join(f"export const {item};" for item in declarations)
+    )
+    facts = _collected(tmp_path, source)
+    observed = _graph_from_source_facts(facts, ("src",))
+    name = "app.src.main_x2e_ts.registry"
+    assert not any(item.qualified_name == name for item in observed.entities)
+    target = ArchitectureGraph(
+        "declared",
+        entities=(
+            Entity(
+                "registry",
+                "constant",
+                name,
+                "typescript",
+                presence="planned",
+                provenance=("docs/target.md",),
+            ),
+        ),
+    )
+    assert compare_graphs(observed, target).status == "UNKNOWN"
+
+
+@pytest.mark.parametrize(
+    "competitor",
+    [
+        "export const other = make();",
+        "if (enabled) { const registry = make(); }",
+        "function local() { const registry = () => Entry; }",
+        "namespace Internal { export const registry = [...entries]; }",
+    ],
+)
+def test_unrelated_or_local_variable_peer_preserves_module_array_identity(competitor: str):
+    source = f"export const registry = [Entry] as const;\n{competitor}\n"
+    definitions = parse("src/main.ts", source.encode()).definitions
+    assert len([item for item in definitions if item.name == "registry"]) == 1
+
+
 def test_pinned_nest_registry_matches_independent_target_live_and_saved(tmp_path: Path):
     fixture = Path(__file__).parents[1] / "fixtures/L-nest-realworld/src/entities.generated.ts"
     original = fixture.read_bytes()
@@ -155,10 +205,16 @@ def test_pinned_nest_registry_matches_independent_target_live_and_saved(tmp_path
     assert compare_graphs(parse_graph(json.loads(graph_bytes(complete))), target).status == "FAIL"
 
 
-def test_duplicate_array_declarations_remain_ambiguous(tmp_path: Path):
-    facts = _collected(
-        tmp_path, "export const registry = [Entry];\nexport const registry = [Other];\n"
-    )
+@pytest.mark.parametrize(
+    "source",
+    [
+        "export const registry = [Entry];\nexport const registry = [Other];\n",
+        "export const registry = [Entry], registry = [Other];\n",
+        "export const registry = [Entry];\nexport const registry = Other;\n",
+    ],
+)
+def test_duplicate_array_declarations_remain_ambiguous(tmp_path: Path, source: str):
+    facts = _collected(tmp_path, source)
     observed = _graph_from_source_facts(facts, ("src",))
     name = "app.src.main_x2e_ts.registry"
     definitions = [item for item in observed.entities if item.qualified_name == name]

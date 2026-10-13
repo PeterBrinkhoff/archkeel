@@ -673,32 +673,46 @@ def _variables(
     source: _Source, scopes: list[tuple[Node, str, int]], declarations: dict[Node, str]
 ) -> list[Definition]:
     result = []
+    omitted_module_names: set[str] = set()
+    array_spans: set[Span] = set()
     for node in _walk(source.root):
         if node.type != "variable_declarator":
             continue
         name_node = node.child_by_field_name("name")
         value = node.child_by_field_name("value")
         parent = node.parent
-        if name_node is None or name_node.type != "identifier" or value is None:
+        if name_node is None or name_node.type != "identifier":
             continue
+        name = _text(name_node)
+        declaration_parent = parent.parent if parent is not None else None
+        module_level = declaration_parent is not None and (
+            declaration_parent.type == "program"
+            or (
+                declaration_parent.type == "export_statement"
+                and declaration_parent.parent is not None
+                and declaration_parent.parent.type == "program"
+            )
+        )
         declaration = (
             parent if parent is not None and parent.type == "lexical_declaration" else None
         )
         kind_node = declaration.child_by_field_name("kind") if declaration else None
+        is_array = value is not None and _module_array_constant(node, value)
         if (
-            kind_node is None
+            value is None
+            or kind_node is None
             or _text(kind_node) != "const"
             or (
                 value.type not in {"identifier", "string", "number", "true", "false", "null"}
-                and not _module_array_constant(node, value)
+                and not is_array
             )
         ):
+            if module_level:
+                omitted_module_names |= {name}
             continue
-        name = _text(name_node)
         owner = next((item for item, _, _ in reversed(scopes) if _contains(item, node)), None)
         parent_name = next((qualified for item, qualified, _ in scopes if item is owner), None)
         owner_span = source.span(owner) if owner is not None else None
-        declaration_parent = declaration.parent if declaration is not None else None
         exported = declaration_parent is not None and declaration_parent.type == "export_statement"
         result.append(
             Definition(
@@ -716,23 +730,19 @@ def _variables(
                 (),
                 False,
                 False,
-                top_level=(
-                    declaration_parent is not None
-                    and (
-                        declaration_parent.type == "program"
-                        or (
-                            declaration_parent.type == "export_statement"
-                            and declaration_parent.parent is not None
-                            and declaration_parent.parent.type == "program"
-                        )
-                    )
-                ),
+                top_level=module_level,
                 parent_line=owner_span.line if owner_span else None,
                 parent_column=owner_span.column if owner_span else None,
             )
         )
+        if is_array:
+            array_spans |= {result[-1].span}
         declarations[name_node] = "constant"
-    return result
+    return [
+        item
+        for item in result
+        if item.span not in array_spans or item.name not in omitted_module_names
+    ]
 
 
 def _sites(
