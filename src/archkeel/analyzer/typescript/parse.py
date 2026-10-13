@@ -610,7 +610,7 @@ def _decorated_member(node: Node) -> Node | None:
         }
     ):
         return None
-    name = candidate.child_by_field_name("name")
+    name = Node.child_by_field_name(candidate, "name")
     return (
         candidate
         if name is not None
@@ -629,8 +629,8 @@ def _valid_unicode_member_name(name: Node) -> bool:
         if child.type != "escape_sequence":
             continue
         escape = _text(child)
-        if escape.startswith("\\u{"):
-            hexadecimal = escape[3:-1].lstrip("0") or "0"
+        if escape[:3] == "\\u{":
+            hexadecimal = str.lstrip(escape[3:-1], "0") or "0"
             if len(hexadecimal) > 6 or int(hexadecimal, 16) > 0x10FFFF:
                 return False
     return True
@@ -638,19 +638,19 @@ def _valid_unicode_member_name(name: Node) -> bool:
 
 def _constructor_escape(match: re.Match[str]) -> str:
     """Decode only escape values that can occur in the ASCII name constructor."""
-    hexadecimal = next((value for value in match.groups()[:3] if value is not None), None)
+    hexadecimal = next((match[index] for index in (1, 2, 3) if match[index] is not None), None)
     if hexadecimal is not None:
         value = int(hexadecimal, 16)
-        return chr(value) if value < 128 else match.group(0)
-    character = match.group(4)
+        return chr(value) if value < 128 else match[0]
+    character = match[4]
     if character in {"\n", "\r", "\r\n", "\u2028", "\u2029"}:
         return ""
-    return character if character in {"c", "o", "s"} else match.group(0)
+    return character if character in {"c", "o", "s"} else match[0]
 
 
 def _instance_constructor(node: Node) -> bool:
     """Recognize the restricted instance constructor name without rewriting source names."""
-    name = node.child_by_field_name("name")
+    name = Node.child_by_field_name(node, "name")
     if (
         node.type != "method_definition"
         or not _class_member(node)
