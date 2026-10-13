@@ -66,7 +66,7 @@ _INVENTORY_SOURCE_SECTIONS = (
 
 
 def _inventory_digest(value: object) -> str:
-    payload = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    payload: str = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
@@ -97,13 +97,14 @@ def _inventory_selected_inputs(model: Observation, inputs: tuple[RecordData, ...
     if model.analyzer.name not in {"archkeel-dart-analyzer", "archkeel-typescript-imports"}:
         return set()
     runtime = model.runtime
+    version: str = runtime.version if runtime is not None else ""
     if (
         runtime is None
         or runtime.name != "python"
         or runtime.required != ">=3.11"
         or runtime.requirement_state != "declared"
-        or re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", runtime.version) is None
-        or tuple(int(v) for v in runtime.version.split(".")) < (3, 11, 0)
+        or re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version) is None
+        or tuple(int(v) for v in version.split(".")) < (3, 11, 0)
     ):
         return set()
     if model.producer is None or model.producer.name != model.analyzer.name:
@@ -121,12 +122,13 @@ def _inventory_selected_inputs(model: Observation, inputs: tuple[RecordData, ...
     rows: list[dict[str, str]] = []
     for item in inputs:
         path, digest, role = item.get("path"), item.get("digest"), item.get("role")
+        relative: PurePosixPath = PurePosixPath(str(path))
         if (
             set(dict(item.entries)) != {"path", "digest", "role"}
             or not isinstance(path, str)
             or not path
-            or PurePosixPath(path).is_absolute()
-            or ".." in PurePosixPath(path).parts
+            or relative.is_absolute()
+            or ".." in relative.parts
             or "\\" in path
             or ":" in path
             or not isinstance(digest, str)
@@ -138,7 +140,7 @@ def _inventory_selected_inputs(model: Observation, inputs: tuple[RecordData, ...
         rows.append({"path": path, "digest": digest, "role": role})
     if len({row["path"] for row in rows}) != len(rows):
         return set()
-    listing = (
+    listing: str = (
         "".join(json.dumps(row, separators=(",", ":"), ensure_ascii=False) for row in rows)
         if model.analyzer.name == "archkeel-dart-analyzer"
         else json.dumps(rows, separators=(",", ":"), ensure_ascii=False)
@@ -176,7 +178,7 @@ def _inventory_libraries(model: Observation, selected: set[str]) -> dict[str, se
         paths = {evidence[key].file for key in record.evidence_ids if key in evidence}
         if len(paths) != 1 or not paths <= selected:
             return {}
-        libraries[module].update(paths)
+        libraries[module] |= paths
     return libraries
 
 
@@ -215,8 +217,14 @@ def _inventory_gap_files(
         file = gap.data.get("file")
         module, source_module = gap.data.get("module"), gap.data.get("source_module")
         reasons = [gap.data.get(key) for key in ("reason", "message") if key in keys]
-        if not reasons or any(not isinstance(value, str) or not value.strip() for value in reasons):
+        if not reasons:
             return None
+        for value in reasons:
+            if not isinstance(value, str):
+                return None
+            reason: str = value
+            if not reason.strip():
+                return None
         if file is None and module is None and source_module is None:
             return None
         if file is not None and (
@@ -257,7 +265,7 @@ def _inventory_owners(model: Observation, selected: set[str]) -> tuple[str, ...]
             and names[item.data.get("qualified_name")] == 1
             and isinstance((module := item.data.get("module")), str)
             and module in libraries
-            and not libraries[module].intersection(gaps)
+            and not libraries[module] & gaps
             and any(
                 inv.status == "complete"
                 for inv in member_inventories(item.data.get("member_inventories"))
@@ -270,7 +278,10 @@ def member_inventory_proof(
     model: Observation, inputs: tuple[ResolutionInput, ...]
 ) -> Record | None:
     """Bind complete native direct inventories to one eligible collected snapshot."""
-    rows = tuple(RecordData(tuple(sorted(asdict(item).items()))) for item in inputs)
+    rows = tuple(
+        RecordData((("digest", item.digest), ("path", item.path), ("role", item.role)))
+        for item in inputs
+    )
     selected = _inventory_selected_inputs(model, rows)
     owners = _inventory_owners(model, selected) if selected else ()
     if not owners:

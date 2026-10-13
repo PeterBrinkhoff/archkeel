@@ -27,7 +27,6 @@ from archkeel.ir.source_graph import (
 from archkeel.ir.target_records import recorded_target_graph
 from archkeel.ir.trace import validate_evidence_classes
 
-from .runtime import runtime_diagnostic
 from .uml_compare import compare_graphs
 
 
@@ -42,8 +41,6 @@ def _validated_member_inventory_result(result: ObservationResult) -> Observation
         in {UmlEligibility.VALIDATED_PARTIAL_SOURCE, UmlEligibility.AUTHENTICATED_PARTIAL}
         and result.partial_uml_diagnostics
         and result.diagnostics == result.partial_uml_diagnostics
-        and model.runtime is not None
-        and runtime_diagnostic(model.runtime) is None
         and validated_member_inventory_proof(model) is not None
     ):
         return result
@@ -68,7 +65,6 @@ def _validated_member_inventory_result(result: ObservationResult) -> Observation
 def _comparison_receipt(
     declaration: Record,
     comparison: GraphComparison,
-    common: dict[str, object],
     partial: bool,
     inventory_proof: Record | None,
 ) -> Record:
@@ -76,7 +72,10 @@ def _comparison_receipt(
     evidence = sorted({key for item in comparison.assessments for key in item.evidence_ids})
     return parse_record(
         {
-            **common,
+            "area": "uml",
+            "subjects": list(declaration.subjects),
+            "rule_ids": [declaration.id],
+            "provenance": list(declaration.provenance),
             "id": stable_id("UML-EVALUATION", declaration.id),
             "evidence_class": "FACT",
             "kind": "rule_evaluation",
@@ -118,7 +117,7 @@ def _records(
         "rule_ids": [declaration.id],
         "provenance": list(declaration.provenance),
     }
-    receipts = [_comparison_receipt(declaration, comparison, common, partial, inventory_proof)]
+    receipts = [_comparison_receipt(declaration, comparison, partial, inventory_proof)]
     violations: list[Record] = []
     unknowns: list[Record] = []
     additions = {"scope_observations": receipts, "violations": violations, "unknowns": unknowns}

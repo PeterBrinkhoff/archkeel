@@ -111,7 +111,7 @@ def _inventory_comparison_is_bound(
             scope
             for scope in declared.target_scopes
             if scope.mode == "closed"
-            and set(scope.entity_kinds).intersection({"attribute", "method", "enum_literal"})
+            and set(scope.entity_kinds) & {"attribute", "method", "enum_literal"}
         )
         if declared is not None
         else ()

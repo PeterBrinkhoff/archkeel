@@ -39,6 +39,7 @@ from archkeel.ir.model import (
     public_api_id,
     stable_id,
 )
+from archkeel.ir.source_graph import MEMBER_INVENTORY_PROOF, validated_member_inventory_proof
 from archkeel.ir.target_graph import component_permissions, declared_tree_graph
 
 from .declarations import project_rule_declaration
@@ -410,9 +411,26 @@ def _revoke_dependency_proofs(result: ObservationResult) -> ObservationResult:
     return replace(result, observation=replace(model, sections=sections))
 
 
-def assemble_uml(result: ObservationResult, contract_root: Path, path: str) -> ObservationResult:
-    from .uml_evaluation import _validated_member_inventory_result
+def _validated_member_inventory_result(result: ObservationResult) -> ObservationResult:
+    model = result.observation
+    if model is None or not any(
+        r.kind == MEMBER_INVENTORY_PROOF for r in model.records("scope_observations") or ()
+    ):
+        return result
+    if (
+        result.uml_eligibility
+        in {UmlEligibility.VALIDATED_PARTIAL_SOURCE, UmlEligibility.AUTHENTICATED_PARTIAL}
+        and result.partial_uml_diagnostics
+        and result.diagnostics == result.partial_uml_diagnostics
+        and validated_member_inventory_proof(model) is not None
+    ):
+        return result
+    from .uml_evaluation import evaluate_uml
 
+    return evaluate_uml(result)
+
+
+def assemble_uml(result: ObservationResult, contract_root: Path, path: str) -> ObservationResult:
     result = _validated_member_inventory_result(result)
     model = result.observation
     if model is None or any(item.code == "contract.invalid" for item in result.diagnostics):
@@ -440,7 +458,6 @@ def assemble_uml(result: ObservationResult, contract_root: Path, path: str) -> O
     ):
         return replace(result, uml_eligibility=UmlEligibility.BLOCKED)
     root = contract_root.resolve()
-
     pointer = "/"
     try:
         payload, identity = _read_contract(root, path)
