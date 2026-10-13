@@ -411,6 +411,9 @@ def _revoke_dependency_proofs(result: ObservationResult) -> ObservationResult:
 
 
 def assemble_uml(result: ObservationResult, contract_root: Path, path: str) -> ObservationResult:
+    from .uml_evaluation import _validated_member_inventory_result
+
+    result = _validated_member_inventory_result(result)
     model = result.observation
     if model is None or any(item.code == "contract.invalid" for item in result.diagnostics):
         return replace(_revoke_dependency_proofs(result), uml_eligibility=UmlEligibility.BLOCKED)

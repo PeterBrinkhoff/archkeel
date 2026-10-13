@@ -3,6 +3,9 @@
 # SPDX-License-Identifier: MIT
 """Read one standard report boundary from authenticated Core evidence."""
 
+import json
+from dataclasses import asdict
+
 from archkeel.ir.architecture_graph import (
     ArchitectureGraph,
     ArchitectureReport,
@@ -18,7 +21,7 @@ from archkeel.ir.graph_codec import parse_comparison
 from archkeel.ir.interfaces import component_owners, owner_of
 from archkeel.ir.levels import inside_levels
 from archkeel.ir.model import TARGET_GRAPH_RECORD_KINDS, UML_TARGET_KIND, Observation, stable_id
-from archkeel.ir.source_graph import observed_graph
+from archkeel.ir.source_graph import observed_graph, validated_member_inventory_proof
 from archkeel.ir.target_records import recorded_target_graph
 
 
@@ -63,6 +66,16 @@ def architecture_report(model: Observation) -> ArchitectureReport:
         ),
         None,
     )
+    if receipt is not None and receipt.data.get("member_inventory_binding") is not None:
+        proof = validated_member_inventory_proof(model)
+        if (
+            proof is None
+            or receipt.data.get("member_inventory_binding") != proof.data.get("binding")
+            or target is None
+            or receipt.data.get("member_inventory_target")
+            != stable_id("MEMBER-INVENTORY-TARGET", json.dumps(asdict(target), sort_keys=True))
+        ):
+            receipt = None
     comparison = (
         parse_comparison(decode_json(value_bytes(receipt.data.get("comparison"))))
         if receipt is not None
