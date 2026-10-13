@@ -24,6 +24,7 @@ class ScanConfig:
     language: Language = "python"
     tsconfig: str | None = None
     collector_argv: tuple[str, ...] | None = None
+    collector_output_limit_bytes: int | None = None
 
 
 class FilesToWrite(Mapping[str, bytes]):

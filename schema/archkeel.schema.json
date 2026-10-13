@@ -55,6 +55,12 @@
           },
           "description": "TypeScript project config. TypeScript defaults to tsconfig.json; runtime validation checks that it exists inside the repository."
         },
+        "collector_output_limit_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 67108864,
+          "description": "Finite collector stdout limit in bytes. Raise explicitly for large valid scopes; protocol validation and the complete source scope remain unchanged."
+        },
         "collector_argv": {
           "type": "array",
           "minItems": 1,

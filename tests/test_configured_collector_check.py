@@ -8,14 +8,17 @@ import shutil
 import sys
 from pathlib import Path
 
+import pytest
+
 from archkeel.cli import main
 from archkeel.cli.config import parse_config
 from archkeel.cli.observe import observer_for
 from fixtures import demo_catalog_check
 
 
+@pytest.mark.parametrize("limit", [None, 1, 256 * 1024 * 1024])
 def test_check_reobserves_revisions_with_configured_collector(
-    tmp_path: Path, monkeypatch, capsys
+    tmp_path: Path, monkeypatch, capsys, limit: int | None
 ) -> None:
     fixture = tmp_path / "fixture"
     shutil.copytree(demo_catalog_check.FIXTURE_DIR, fixture)
@@ -35,6 +38,8 @@ def test_check_reobserves_revisions_with_configured_collector(
         '[scan]\nroots=["shop"]\nnamespace="shop"\ncontract="architecture-contract.json"\n'
         f"collector_argv={json.dumps(argv)}\n"
     ).encode()
+    if limit is not None:
+        config_bytes += f"collector_output_limit_bytes={limit}\n".encode()
     (fixture / "archkeel.toml").write_bytes(config_bytes)
     config = parse_config(config_bytes)
     monkeypatch.setattr(demo_catalog_check, "FIXTURE_DIR", fixture)
@@ -75,8 +80,16 @@ def test_check_reobserves_revisions_with_configured_collector(
         ]
     )
     result = json.loads(capsys.readouterr().out)
-    assert code == 0, result
+    if limit == 1:
+        assert code == 2, result
+        assert result["observation_complete"] == "UNKNOWN"
+        assert any("1 byte limit" in item["unknown_claim"] for item in result["diagnostics"])
+    else:
+        assert code == 0, result
     assert seen.is_file(), "check bypassed the configured collector"
     revisions = seen.read_text().splitlines()
-    assert source.head in revisions
-    assert len(revisions) == 2
+    if limit == 1:
+        assert len(revisions) == 1  # Reject incomplete accepted evidence before the candidate.
+    else:
+        assert source.head in revisions
+        assert len(revisions) == 2

@@ -359,7 +359,11 @@ def build_parser() -> _Parser:
         action="append",
         help="Source directory or TypeScript file relative to --root; repeat for more roots.",
     )
-    init.add_argument("--namespace", help="Dotted namespace for the observed source modules.")
+    for option, help_text in (
+        ("--namespace", "Dotted namespace for the observed source modules."),
+        ("--tsconfig", "TypeScript project config relative to --root."),
+    ):
+        init.add_argument(option, help=help_text)
     init.add_argument(
         "--language",
         choices=["python", "dart", "typescript"],
@@ -367,7 +371,13 @@ def build_parser() -> _Parser:
         help="Source language of --source. Dart needs --source and --namespace (the pubspec "
         "name). TypeScript also needs --tsconfig. Default: python.",
     )
-    init.add_argument("--tsconfig", help="TypeScript project config relative to --root.")
+    init.add_argument(
+        "--collector-output-limit-bytes",
+        type=int,
+        metavar="BYTES",
+        help="Positive collector stdout limit in bytes, saved in archkeel.toml. "
+        "Default: 67108864 (64 MiB).",
+    )
     init.add_argument(
         "--collector-argv",
         nargs="+",
@@ -447,10 +457,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                         args.language,
                         collector_argv=tuple(args.collector_argv) if args.collector_argv else None,
                         tsconfig=args.tsconfig or "tsconfig.json",
+                        output_limit_bytes=args.collector_output_limit_bytes,
                     ),
                     language=args.language,
                     tsconfig=args.tsconfig,
                     collector_argv=tuple(args.collector_argv) if args.collector_argv else None,
+                    collector_output_limit_bytes=args.collector_output_limit_bytes,
                 )
             elif command == "report" and args.input is not None:
                 if args.full and args.only != "architecture":
@@ -499,6 +511,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                         config.language,
                         collector_argv=config.collector_argv,
                         tsconfig=config.tsconfig or "tsconfig.json",
+                        output_limit_bytes=config.collector_output_limit_bytes,
                     ),
                     only_violations=args.only == "violations",
                     only_calls=args.only == "calls",
@@ -590,6 +603,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                         config.language,
                         collector_argv=config.collector_argv,
                         tsconfig=config.tsconfig or "tsconfig.json",
+                        output_limit_bytes=config.collector_output_limit_bytes,
                     ),
                     write_graph=args.write_graph,
                     compact_open_decisions=args.compact_open_decisions,
@@ -625,6 +639,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                         config.language,
                         collector_argv=config.collector_argv,
                         tsconfig=config.tsconfig or "tsconfig.json",
+                        output_limit_bytes=config.collector_output_limit_bytes,
                     ),
                 )
                 result = replace(result, scan_roots=config.roots)

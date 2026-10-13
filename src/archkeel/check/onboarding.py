@@ -396,6 +396,7 @@ def run_init(
     language: Language = "python",
     tsconfig: str | None = None,
     collector_argv: tuple[str, ...] | None = None,
+    collector_output_limit_bytes: int | None = None,
 ) -> tuple[RunResult, FilesToWrite]:
     """Observe the repository and return the onboarding files without writing them."""
     if language == "typescript" and (not source or not namespace or not tsconfig):
@@ -429,7 +430,16 @@ def run_init(
             )
         )
     roots = (source,) if isinstance(source, str) else source
-    config = ScanConfig(roots, namespace, CONTRACT_PATH, "", language, tsconfig, collector_argv)
+    config = ScanConfig(
+        roots,
+        namespace,
+        CONTRACT_PATH,
+        "",
+        language,
+        tsconfig,
+        collector_argv,
+        collector_output_limit_bytes=collector_output_limit_bytes,
+    )
     with TemporaryDirectory(prefix="archkeel-init-") as temporary:
         scaffold = Path(temporary)
         (scaffold / CONTRACT_PATH).write_bytes(
@@ -470,12 +480,17 @@ def run_init(
     collector_line = (
         "" if collector_argv is None else f"collector_argv = {json.dumps(collector_argv)}\n"
     )
+    output_limit_line = (
+        ""
+        if collector_output_limit_bytes is None
+        else f"collector_output_limit_bytes = {collector_output_limit_bytes}\n"
+    )
     files = FilesToWrite(
         {
             CONFIG_PATH: (
                 f"[scan]\nroots = {json.dumps(roots)}\nnamespace = {json.dumps(namespace)}\n"
                 f"contract = {json.dumps(CONTRACT_PATH)}\n"
-                f"{language_line}{tsconfig_line}{collector_line}"
+                f"{language_line}{tsconfig_line}{collector_line}{output_limit_line}"
             ).encode(),
             CONTRACT_PATH: contract_bytes(contract),
             DOCUMENT_PATH: architecture_document(
