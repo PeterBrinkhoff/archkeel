@@ -978,19 +978,22 @@ class Resolver:
                 else ()
             )
         if len(receiver_parts) == 2:
-            imported_types = [
-                item
-                for item in self._imported_bindings(
-                    module, receiver_parts[1], prefix=receiver_parts[0]
-                )
-                if item.kind in {"class", "interface", "enum", "mixin"}
-            ]
-            if len({item.declaration_id for item in imported_types}) == 1:
-                type_binding = imported_types[0]
+            imported = self._imported_bindings(module, receiver_parts[1], prefix=receiver_parts[0])
+            if len(imported) == 1 and imported[0].kind in {"class", "interface", "enum", "mixin"}:
+                type_binding = imported[0]
                 return self._site_members(
                     site,
                     self._member_bindings(
                         type_binding.module, type_binding.name, site.name or "", static_only=True
+                    )
+                    or (
+                        self._constructor_bindings(
+                            type_binding.module, type_binding.name, site.name or ""
+                        )
+                        if self._constructor_namespace_closed(
+                            module, receiver_parts[1], receiver_parts[0]
+                        )
+                        else ()
                     ),
                 )
         prefix = receiver.rpartition(".")[2]
@@ -1013,6 +1016,64 @@ class Resolver:
             if resolved_owner
             else ()
         )
+
+    def _constructor_namespace_closed(self, module: str, name: str, prefix: str) -> bool:
+        imports = self._imports[module] if module in self._imports else ()
+        for path, directive in imports:
+            if directive.prefix != prefix or not self._visible(directive, name):
+                continue
+            if not self._directive_namespace_closed(path, directive, name, frozenset()):
+                return False
+        return True
+
+    def _export_namespace_closed(self, rel_path: str, name: str, seen: frozenset[str]) -> bool:
+        module = self.module_for(rel_path)
+        if module is None or not self.syntax[rel_path].complete:
+            return False
+        if any(
+            self._owners[part] == rel_path and not self.syntax[part].complete
+            for part in self._owners
+        ):
+            return False
+        if module in seen:
+            return True
+        if any(
+            item.definition.visibility == "public"
+            for item in self._local_declarations(module, name)
+        ):
+            return True
+        exports = self._exports[module] if module in self._exports else ()
+        for path, directive in exports:
+            if not self._visible(directive, name):
+                continue
+            if not self._directive_namespace_closed(path, directive, name, seen | {module}):
+                return False
+        return True
+
+    def _directive_namespace_closed(
+        self, rel_path: str, directive: Directive, name: str, seen: frozenset[str]
+    ) -> bool:
+        previous: frozenset[str] | None = None
+        for uri in (directive.target, *(uri for _, uri in directive.alternatives)):
+            if uri is None:
+                return False
+            target = self.resolve_uri(rel_path, uri)
+            if (
+                target is None
+                or target.rel_path is None
+                or target.rel_path in self._owners
+                or not self._export_namespace_closed(target.rel_path, name, seen)
+            ):
+                return False
+            if directive.alternatives:
+                bindings = frozenset(
+                    item.declaration_id
+                    for item in self._exported_bindings(target.rel_path, name, set(seen), None)
+                )
+                if previous is not None and previous != bindings:
+                    return False
+                previous = bindings
+        return True
 
     def _constructed_receiver_bindings(
         self, rel_path: str, module: str, site: Site, receiver: str

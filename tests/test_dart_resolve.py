@@ -186,6 +186,268 @@ def test_constructor_binding_uses_actual_declarations_and_never_guesses_by_capit
     assert implicit_call.bindings[0].kind == "implicit_constructor"
 
 
+@pytest.mark.parametrize("other", ["typedef Box = int;", "void Box() {}", "class Box {}"])
+def test_prefixed_constructor_reference_keeps_mixed_declarations_ambiguous(
+    tmp_path: Path, other: str
+) -> None:
+    snapshot, syntax = _snapshot(
+        tmp_path,
+        {
+            "lib/model.dart": "class Box { Box.named(); }\n",
+            "lib/other.dart": other + "\n",
+            "lib/main.dart": "import 'model.dart' as m; import 'other.dart' as m;\n"
+            "void run() { final constructor = m.Box.named; }\n",
+        },
+    )
+    resolver = Resolver(snapshot, syntax)
+    reference = next(
+        item
+        for item in resolver.resolved_sites("lib/main.dart")
+        if item.site.kind == "reference" and item.site.expression == "m.Box.named"
+    )
+    assert reference.status != "resolved"
+    assert reference.bindings == ()
+
+
+def test_prefixed_constructor_reference_deduplicates_the_same_exported_class(
+    tmp_path: Path,
+) -> None:
+    snapshot, syntax = _snapshot(
+        tmp_path,
+        {
+            "lib/model.dart": "class Box { Box.named(); }\n",
+            "lib/facade.dart": "export 'model.dart' show Box;\n",
+            "lib/main.dart": "import 'model.dart' as m; import 'facade.dart' as m;\n"
+            "void run() { final constructor = m.Box.named; }\n",
+        },
+    )
+    reference = next(
+        item
+        for item in Resolver(snapshot, syntax).resolved_sites("lib/main.dart")
+        if item.site.kind == "reference" and item.site.expression == "m.Box.named"
+    )
+    assert reference.status == "resolved"
+    assert len(reference.bindings) == 1
+    assert reference.bindings[0].name == "Box.named"
+    assert reference.bindings[0].rel_path == "lib/model.dart"
+
+
+@pytest.mark.parametrize(
+    "directive,known",
+    [
+        ("import 'package:external/widgets.dart' as m;", False),
+        ("import 'package:external/widgets.dart' as m show Box;", False),
+        ("import 'package:external/widgets.dart' as m show Other;", True),
+        ("import 'package:external/widgets.dart' as m hide Box;", True),
+        ("import 'package:external/widgets.dart' as m hide named;", False),
+        ("import 'package:external/widgets.dart' as m show named;", True),
+    ],
+)
+def test_prefixed_constructor_reference_requires_visible_import_namespace_closure(
+    tmp_path: Path, directive: str, known: bool
+) -> None:
+    snapshot, syntax = _snapshot(
+        tmp_path,
+        {
+            "lib/model.dart": "class Box { Box.named(); }\n",
+            "lib/main.dart": f"import 'model.dart' as m; {directive}\n"
+            "void run() { final constructor = m.Box.named; }\n",
+        },
+    )
+    reference = next(
+        item
+        for item in Resolver(snapshot, syntax).resolved_sites("lib/main.dart")
+        if item.site.kind == "reference" and item.site.expression == "m.Box.named"
+    )
+    assert (reference.status == "resolved") is known
+
+
+@pytest.mark.parametrize(
+    "external_export,known",
+    [
+        ("export 'package:external/widgets.dart';", False),
+        ("export 'package:external/widgets.dart' show Box;", False),
+        ("export 'package:external/widgets.dart' show Other;", True),
+        ("export 'package:external/widgets.dart' hide Box;", True),
+        ("export 'package:external/widgets.dart' hide named;", False),
+        ("export 'package:external/widgets.dart' show named;", True),
+    ],
+)
+def test_prefixed_constructor_reference_requires_visible_export_namespace_closure(
+    tmp_path: Path, external_export: str, known: bool
+) -> None:
+    snapshot, syntax = _snapshot(
+        tmp_path,
+        {
+            "lib/model.dart": "class Box { Box.named(); }\n",
+            "lib/facade.dart": f"export 'model.dart'; {external_export}\n",
+            "lib/main.dart": "import 'facade.dart' as m;\n"
+            "void run() { final constructor = m.Box.named; }\n",
+        },
+    )
+    reference = next(
+        item
+        for item in Resolver(snapshot, syntax).resolved_sites("lib/main.dart")
+        if item.site.kind == "reference" and item.site.expression == "m.Box.named"
+    )
+    assert (reference.status == "resolved") is known
+
+
+@pytest.mark.parametrize(
+    "extra,known",
+    [
+        ({}, False),
+        ({"lib/boundary.dart": "class Broken {"}, False),
+        ({"lib/boundary.dart": "export 'missing.dart';"}, False),
+        (
+            {
+                "lib/boundary.dart": "export 'other.dart';",
+                "lib/other.dart": "export 'package:external/widgets.dart';",
+            },
+            False,
+        ),
+        (
+            {"lib/boundary.dart": "export 'model.dart' if (dart.library.io) 'missing.dart';"},
+            False,
+        ),
+        (
+            {
+                "lib/boundary.dart": "part 'piece.dart';",
+                "lib/piece.dart": "part of 'boundary.dart'; class Broken {",
+            },
+            False,
+        ),
+        (
+            {
+                "lib/boundary.dart": "export 'model.dart'; export 'other.dart';",
+                "lib/other.dart": "export 'boundary.dart';",
+            },
+            True,
+        ),
+        (
+            {
+                "lib/boundary.dart": "export 'other.dart' show Other;",
+                "lib/other.dart": "export 'package:external/widgets.dart';",
+            },
+            True,
+        ),
+        (
+            {
+                "lib/boundary.dart": "export 'other.dart' hide Box;",
+                "lib/other.dart": "export 'package:external/widgets.dart';",
+            },
+            True,
+        ),
+        ({"lib/boundary.dart": "import 'package:external/widgets.dart';"}, True),
+    ],
+)
+def test_prefixed_constructor_reference_closes_every_visible_source_path(
+    tmp_path: Path, extra: dict[str, str], known: bool
+) -> None:
+    snapshot, syntax = _snapshot(
+        tmp_path,
+        {
+            "lib/model.dart": "class Box { Box.named(); }\n",
+            "lib/main.dart": "import 'model.dart' as m; import 'boundary.dart' as m;\n"
+            "void run() { final constructor = m.Box.named; }\n",
+            **extra,
+        },
+    )
+    reference = next(
+        item
+        for item in Resolver(snapshot, syntax).resolved_sites("lib/main.dart")
+        if item.site.kind == "reference" and item.site.expression == "m.Box.named"
+    )
+    assert (reference.status == "resolved") is known
+
+
+def test_constructor_namespace_guard_preserves_preexisting_static_member_behavior(
+    tmp_path: Path,
+) -> None:
+    snapshot, syntax = _snapshot(
+        tmp_path,
+        {
+            "lib/model.dart": "class Box { Box.named(); static void run() {} }\n",
+            "lib/main.dart": "import 'model.dart' as m; "
+            "import 'package:external/widgets.dart' as m;\n"
+            "void main() { final ctor = m.Box.named; final method = m.Box.run; }\n",
+        },
+    )
+    references = {
+        item.site.expression: item
+        for item in Resolver(snapshot, syntax).resolved_sites("lib/main.dart")
+        if item.site.kind == "reference"
+    }
+    assert references["m.Box.named"].status != "resolved"
+    assert references["m.Box.run"].status == "resolved"
+
+
+@pytest.mark.parametrize(
+    "first,alternative,known",
+    [
+        ("class Box { Box.named(); }", "class Other {}", False),
+        ("class Box { Box.named(); }", "class Box { Box.named(); }", False),
+        ("export 'model.dart';", "export 'model.dart';", True),
+    ],
+)
+def test_prefixed_constructor_reference_requires_conditional_export_binding_agreement(
+    tmp_path: Path, first: str, alternative: str, known: bool
+) -> None:
+    snapshot, syntax = _snapshot(
+        tmp_path,
+        {
+            "lib/model.dart": "class Box { Box.named(); }\n",
+            "lib/barrel.dart": "export 'first.dart' if (dart.library.io) 'alternative.dart';\n",
+            "lib/first.dart": first + "\n",
+            "lib/alternative.dart": alternative + "\n",
+            "lib/main.dart": "import 'barrel.dart' as m;\n"
+            "void run() { final constructor = m.Box.named; }\n",
+        },
+    )
+    reference = next(
+        item
+        for item in Resolver(snapshot, syntax).resolved_sites("lib/main.dart")
+        if item.site.kind == "reference" and item.site.expression == "m.Box.named"
+    )
+    assert (reference.status == "resolved") is known
+
+
+@pytest.mark.parametrize(
+    "barrel,extra,known",
+    [
+        (
+            "export 'cycle.dart' if (dart.library.io) 'model.dart';",
+            {"lib/cycle.dart": "export 'barrel.dart';"},
+            False,
+        ),
+        (
+            "export 'model.dart'; export 'first.dart' if (dart.library.io) 'alternative.dart';",
+            {"lib/first.dart": "class Other {}", "lib/alternative.dart": "class Another {}"},
+            True,
+        ),
+    ],
+)
+def test_conditional_constructor_namespace_preserves_ancestors_and_equal_absence(
+    tmp_path: Path, barrel: str, extra: dict[str, str], known: bool
+) -> None:
+    snapshot, syntax = _snapshot(
+        tmp_path,
+        {
+            "lib/model.dart": "class Box { Box.named(); }\n",
+            "lib/barrel.dart": barrel + "\n",
+            "lib/main.dart": "import 'barrel.dart' as m;\n"
+            "void run() { final constructor = m.Box.named; }\n",
+            **extra,
+        },
+    )
+    reference = next(
+        item
+        for item in Resolver(snapshot, syntax).resolved_sites("lib/main.dart")
+        if item.site.kind == "reference" and item.site.expression == "m.Box.named"
+    )
+    assert (reference.status == "resolved") is known
+
+
 def test_duplicate_class_candidates_do_not_resolve_constructor_or_member_call(
     tmp_path: Path,
 ) -> None:

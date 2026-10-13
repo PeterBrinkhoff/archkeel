@@ -505,10 +505,11 @@ class _Collection:
         member: Member,
     ) -> str:
         name = member.name
-        accessor = f"::{member.kind}" if member.kind in {"getter", "setter"} else ""
-        qualified = f"{parent}.{name}{accessor}"
-        identity = stable_id("DARTDEF", rel, member.span.start_byte, qualified, "method")
         constructor = member.kind == "constructor"
+        member_spelling = name.rsplit(".", 1)[-1]
+        accessor = f"::{member.kind}" if member.kind in {"getter", "setter"} else ""
+        qualified = f"{parent}.{member_spelling if constructor else name}{accessor}"
+        identity = stable_id("DARTDEF", rel, member.span.start_byte, qualified, "method")
         owner = self._owner_definition(rel, module, parent)
         parameters = self._member_parameters(rel, owner, member, constructor)
         returns = None if constructor else member.return_type
@@ -524,7 +525,6 @@ class _Collection:
             p["default_known"] and (not p.get("field_formal") or p.get("annotation") is not None)
             for p in parameters
         )
-        member_spelling = name.rsplit(".", 1)[-1]
         visibility = (
             ("private" if member_spelling.startswith("_") else "public")
             if constructor

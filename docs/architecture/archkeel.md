@@ -66,6 +66,9 @@ omitted pairs retain their undecided status ([AD-225](decisions/ad-225-compact-v
 The TypeScript frontend is packaged in Python at
 [`archkeel.analyzer.typescript`](../../src/archkeel/analyzer/typescript/); it remains a
 process collector and does not execute project code. Missing source evidence remains UNKNOWN.
+Dart named constructor identities retain their lexical owner once; declaration
+and reference joins use the same source span
+([AD-228](decisions/ad-228-dart-constructor-identities.md)).
 Proposed contract extensions are tracked in [#356](https://github.com/rapiddweller/archkeel/issues/356).
 
 ## Decisions

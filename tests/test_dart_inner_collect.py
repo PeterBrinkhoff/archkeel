@@ -2023,7 +2023,7 @@ String describe() => 'value';
         if record.kind == "method" or record.kind == "function"
     }
     assert symbols["commerce.main.Box.Box"].get("returns") == "Box<T>"
-    assert symbols["commerce.main.Box.Box.named"].get("returns") == "Box<T>"
+    assert symbols["commerce.main.Box.named"].get("returns") == "Box<T>"
     assert symbols["commerce.main.Maker.Maker"].get("returns") == "Maker<T>"
     assert symbols["commerce.main.MakerImpl.MakerImpl"].get("returns") == "MakerImpl<T>"
     assert symbols["commerce.main.Values.value::getter"].get("returns") == "int"
@@ -2032,19 +2032,140 @@ String describe() => 'value';
     assert symbols["commerce.main.status::getter"].get("returns") == "int"
     assert symbols["commerce.main.status::setter"].get("returns") == "void"
     assert symbols["commerce.main.describe"].get("returns") == "String"
-    assert symbols["commerce.main.Box.Box._"].get("qualified_name") == "commerce.main.Box.Box._"
-    assert symbols["commerce.main.Box.Box._"].get("visibility_detail").get("kind") == "private"
-    assert symbols["commerce.main.Box.Box._"].get("visibility_detail").get("spelling") == "_"
-    assert symbols["commerce.main.Box.Box.named"].get("visibility_detail").get("kind") == "public"
+    assert symbols["commerce.main.Box._"].get("qualified_name") == "commerce.main.Box._"
+    assert symbols["commerce.main.Box._"].get("visibility_detail").get("kind") == "private"
+    assert symbols["commerce.main.Box._"].get("visibility_detail").get("spelling") == "_"
+    assert symbols["commerce.main.Box.named"].get("visibility_detail").get("kind") == "public"
+    assert symbols["commerce.main._Hidden.named"].get("visibility_detail").get("kind") == "public"
     assert (
-        symbols["commerce.main._Hidden._Hidden.named"].get("visibility_detail").get("kind")
-        == "public"
-    )
-    assert (
-        symbols["commerce.main._Hidden._Hidden.named"].get("visibility_detail").get("spelling")
-        == "named"
+        symbols["commerce.main._Hidden.named"].get("visibility_detail").get("spelling") == "named"
     )
     assert symbols["commerce.main.Box.Box"].get("visibility_detail").get("kind") == "public"
+
+
+def test_native_named_constructor_definitions_and_references_share_identity(tmp_path: Path) -> None:
+    _write_package(
+        tmp_path,
+        """class Box<T> {
+  final T value;
+  Box.named(this.value);
+  factory Box.make(T value) => Box.named(value);
+}
+typedef IntBox = Box<int>;
+class Redirect {
+  factory Redirect.named(String value) = Implementation.named;
+}
+class Implementation implements Redirect {
+  Implementation.named(String value);
+}
+void main() {
+  final box = Box.named(1);
+  final factory = Box.make;
+  final generative = Box.named;
+  final redirected = Redirect.named;
+}
+""",
+    )
+    facts = _native_facts(tmp_path)
+    assert _native_facts(tmp_path) == facts
+    graph = _source_graph(facts)
+    entities = {item.qualified_name: item for item in graph.entities}
+    named = entities["commerce.main.Box.named"]
+    factory = entities["commerce.main.Box.make"]
+    redirected = entities["commerce.main.Redirect.named"]
+    assert named.parent_id == factory.parent_id == entities["commerce.main.Box"].id
+    assert named.signature.parameters[0].annotation == "T"
+    assert named.signature.returns == factory.signature.returns == "Box<T>"
+    assert redirected.signature.parameters[0].annotation == "String"
+    assert redirected.signature.returns == "Redirect"
+    assert entities["commerce.main.IntBox"].annotation == "Box"
+    for expression, constructor in (
+        ("Box.named", named),
+        ("Box.make", factory),
+        ("Redirect.named", redirected),
+    ):
+        reference = next(
+            edge
+            for edge in graph.relationships
+            if edge.kind == "references" and edge.expression == expression
+        )
+        assert reference.target_id == constructor.id
+        assert reference.resolution == "resolved"
+    inside_factory = next(
+        edge
+        for edge in graph.relationships
+        if edge.kind == "calls" and edge.expression == "Box.named(value)"
+    )
+    assert inside_factory.source_id == factory.id
+    assert inside_factory.target_id == entities["commerce.main.Box"].id
+    assert inside_factory.resolution == "resolved"
+    creations = [
+        edge
+        for edge in graph.relationships
+        if edge.expression == "Box.named(1)" and edge.kind in {"creates", "instance_of"}
+    ]
+    assert {edge.kind for edge in creations} == {"creates", "instance_of"}
+    assert all(edge.target_id == entities["commerce.main.Box"].id for edge in creations)
+
+
+def test_native_prefixed_named_constructors_join_declarations_without_inventing_instances(
+    tmp_path: Path,
+) -> None:
+    _write_package(
+        tmp_path,
+        """import 'model.dart' as m;
+import 'package:external/widgets.dart';
+typedef Alias = m.Box;
+void main() {
+  final box = m.Box.named();
+  final factory = m.Box.make();
+  final generativeReference = m.Box.named;
+  final factoryReference = m.Box.make;
+  final privateReference = m.Box._;
+  final missing = m.Box.missing();
+  final external = External.named();
+  final aliased = Alias.named();
+}
+""",
+    )
+    (tmp_path / "lib/model.dart").write_text(
+        "class Box { Box.named(); Box._(); factory Box.make() => Box.named(); }\n",
+        encoding="utf-8",
+    )
+    facts = _native_facts(tmp_path)
+    graph = _source_graph(facts)
+    entities = {item.qualified_name: item for item in graph.entities}
+    for name in ("named", "make"):
+        reference = next(
+            edge
+            for edge in graph.relationships
+            if edge.kind == "references" and edge.expression == f"m.Box.{name}"
+        )
+        assert reference.target_id == entities[f"commerce.model.Box.{name}"].id
+        assert reference.resolution == "resolved"
+    private_reference = next(
+        edge
+        for edge in graph.relationships
+        if edge.kind == "references" and edge.expression == "m.Box._"
+    )
+    assert private_reference.target_id is None and private_reference.resolution == "unresolved"
+    calls = {
+        record.data.get("expression"): record.data
+        for section in facts.sections
+        if section.name == "calls"
+        for record in section.records
+    }
+    assert calls["m.Box.named()"].get("construction").get("status") == "resolved"
+    assert calls["m.Box.make()"].get("construction").get("status") == "partially_resolved"
+    assert not any(
+        edge.kind in {"creates", "instance_of"}
+        and edge.resolution == "resolved"
+        and edge.expression == "m.Box.make()"
+        for edge in graph.relationships
+    )
+    for expression in ("m.Box.missing()", "External.named()", "Alias.named()"):
+        assert calls[expression].get("status") == "unresolved"
+        assert calls[expression].get("targets") == ()
 
 
 def test_native_duplicate_functions_remain_an_explicit_gap(tmp_path: Path) -> None:

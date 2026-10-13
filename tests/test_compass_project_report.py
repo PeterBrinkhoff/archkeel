@@ -18,7 +18,7 @@ from fixtures.architecture_demo import REPORT_CASES, replay
 from fixtures.demo_catalog_compass import COMPASS_FIXTURE_DIR, VARIANTS
 
 SOURCE_DIGEST = "c6c1b8fe62fbc950af3b3dc4a033cac300bdeec2564e563909504a69df753e72"
-TARGET_DIGEST = "47e9644d744777c0acab7c76df551924eaa395a9bc391aa32a97367364bdc566"
+TARGET_DIGEST = "4f6fb239818ff66ae963ce5a4ffe43d319b6d21cbeaf76d262d9cbf670a33a67"
 
 
 def _payload(html: Path) -> dict:
@@ -44,6 +44,29 @@ def _report(output: Path):
             if key not in {"initial_scope", "initial_view", "navigation", "boundary_permissions"}
         }
     )
+
+
+def _assert_named_factory_identities(report) -> None:
+    factories = [
+        entity
+        for entity in report.target.entities
+        if entity.kind == "method" and entity.qualified_name.endswith(".fromJson")
+    ]
+    assert len(factories) == 11
+    for factory in factories:
+        matches = [
+            entity
+            for entity in report.observed.entities
+            if entity.kind == "method" and entity.qualified_name == factory.qualified_name
+        ]
+        assert len(matches) == 1
+        for aspect in ("existence", "signature"):
+            assessment = next(
+                item
+                for item in report.comparison.assessments
+                if item.subject_id == factory.id and item.aspect == aspect
+            )
+            assert assessment.status == "PASS"
 
 
 def test_compass_variants_are_source_only_and_keep_the_full_snapshot() -> None:
@@ -131,6 +154,7 @@ def test_compass_reports_keep_target_comparison_and_partial_coverage_distinct(
         assert output.with_suffix(".report.html").is_file()
         assert output.with_suffix(".detail.html").is_file()
         report = _report(output)
+        _assert_named_factory_identities(report)
         assert report.comparison and report.comparison.status == comparison_status
         assert len(report.target.entities) == 468
         assert len(report.target.relationships) == 275

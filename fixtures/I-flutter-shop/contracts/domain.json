@@ -1163,7 +1163,7 @@
         {
           "id": "order-from-cart",
           "kind": "method",
-          "qualified_name": "shop.domain.orders.order.Order.Order.fromCart",
+          "qualified_name": "shop.domain.orders.order.Order.fromCart",
           "parent_id": "order-class",
           "language": "dart",
           "presence": "planned",
