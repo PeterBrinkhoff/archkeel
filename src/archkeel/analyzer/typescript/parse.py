@@ -641,6 +641,30 @@ def _exported(node: Node) -> bool:
     return parent is not None and parent.type == "export_statement"
 
 
+def _module_array_constant(node: Node, value: Node) -> bool:
+    """Recognize a direct module declaration, without evaluating its array elements."""
+    declaration = node.parent
+    statement = declaration.parent if declaration is not None else None
+    if _in_error(node) or statement is None or not (
+        statement.type == "program"
+        or (
+            statement.type == "export_statement"
+            and statement.parent is not None
+            and statement.parent.type == "program"
+        )
+    ):
+        return False
+    if value.type == "as_expression":
+        parts = [item for item in value.children if item.type != "comment"]
+        if len(parts) != 3 or parts[1].type != "as" or parts[2].type != "const":
+            return False
+        value = parts[0]
+    return value.type == "array" and all(
+        item.type in {"identifier", "string", "number", "true", "false", "null", "comment"}
+        for item in value.named_children
+    )
+
+
 def _variables(
     source: _Source, scopes: list[tuple[Node, str, int]], declarations: dict[Node, str]
 ) -> list[Definition]:
@@ -660,7 +684,10 @@ def _variables(
         if (
             kind_node is None
             or _text(kind_node) != "const"
-            or value.type not in {"identifier", "string", "number", "true", "false", "null"}
+            or (
+                value.type not in {"identifier", "string", "number", "true", "false", "null"}
+                and not _module_array_constant(node, value)
+            )
         ):
             continue
         name = _text(name_node)

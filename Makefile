@@ -35,6 +35,7 @@ pr-test:
 		tests/test_contract_model.py tests/test_boundary_type_nested_mapping.py tests/test_decisions.py \
 		tests/test_collection_protocol.py tests/test_source_trust_boundary.py \
 		tests/test_analyzer.py tests/test_typescript_config.py tests/test_typescript_resolve.py \
+		tests/test_typescript_array_constants.py \
 		tests/test_uml_comparison.py tests/test_saved_report.py tests/test_cli.py \
 		tests/test_partial_member_inventory.py \
 		tests/test_report_recorded_unknowns.py \
