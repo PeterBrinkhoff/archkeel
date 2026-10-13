@@ -465,6 +465,50 @@ def test_real_cli_init_results_match_the_published_schema(validator, tmp_path: P
         assert not validator.is_valid(malformed), size
 
 
+@pytest.mark.parametrize("compact", [False, True])
+def test_real_cli_validate_decision_summaries_match_supported_schemas(
+    validator, current_validator, tmp_path: Path, compact: bool
+) -> None:
+    root = _onboarding_repository(tmp_path / "repository")
+    init = subprocess.run(
+        [sys.executable, "-m", "archkeel.cli", "init", "--root", str(root), "--json"],
+        capture_output=True,
+        text=True,
+    )
+    assert init.returncode == 0, (init.stdout, init.stderr)
+    run = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "archkeel.cli",
+            "validate",
+            "--root",
+            str(root),
+            "--json",
+            *(["--compact-open-decisions"] if compact else []),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    payload = json.loads(run.stdout)
+
+    assert run.returncode == 2, (payload, run.stderr)
+    assert payload["observation_complete"] == "PASS"
+    assert payload["open_decision_count"] == 6
+    assert payload["open_decisions_complete"] is not compact
+    assert len(payload["open_decisions"]) == (3 if compact else 6)
+    for schema in (validator, current_validator):
+        assert not list(schema.iter_errors(payload))
+        for field, value in (
+            ("open_decision_count", -1),
+            ("open_decision_count", True),
+            ("open_decisions_complete", "false"),
+        ):
+            malformed = copy.deepcopy(payload)
+            malformed[field] = value
+            assert not schema.is_valid(malformed), (field, value)
+
+
 def test_real_dart_delta_matches_the_published_schema(validator, tmp_path: Path) -> None:
     result = _observe(tmp_path, {"lib/a.dart": ""})
     assert result.exit_code == 0 and result.observation is not None

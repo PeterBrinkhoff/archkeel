@@ -145,6 +145,9 @@ architect's own words as the `rationale`, with `decided_by: "architect"`.
    `open_decision_count`; when `open_decisions_complete` is false, unlisted pairs remain
    undecided. Use `init --json --full` on the initial command to include every pair; for an
    existing draft, `validate --json` returns the full decision list without rewriting files.
+   Use `validate --compact-open-decisions --json` to retrieve observed undecided crossings
+   with the exact total and completeness instead; omitted pairs remain undecided and UNKNOWN
+   evidence stays UNKNOWN. The flag changes no verdict, diagnostic or contract decision.
    Batch everything consistent
    with the confirmed picture into one confirmation. Then encode each allowed direction as a
    `requires` entry on its source component and add one `complete_requires` rule, so absence
@@ -374,6 +377,10 @@ programmatically: `archkeel validate --json`, `archkeel init --json`, `archkeel 
 Read `declared_rules`, not just exit 0: FAIL names violated constraints; UNKNOWN retains
 unproved results. The [command-result schema](https://github.com/rapiddweller/archkeel/blob/main/schema/command-result.schema.json)
 covers `init`, `check`, `validate` and `report`, excluding `skill` and the observation artifact.
-For `init`, `open_decision_count` is the exact total and `open_decisions_complete` marks whether
-`open_decisions` lists every pair; `draft_sizes` records each proposed component's measured size.
+For completed `init` and observed `validate` results, `open_decision_count` is the exact total
+and `open_decisions_complete` marks whether `open_decisions` lists every pair. `init` defaults
+to observed crossings; `validate` defaults to the full list and offers
+`--compact-open-decisions` for observed undecided crossings. Omitted pairs remain undecided;
+an empty compact list with a positive total still needs decisions. `draft_sizes` records
+each component's measured size only for `init`. Unavailable summaries remain `null`.
 Use the CLI’s bundled schemas for offline validation; pin schema and CLI together.
