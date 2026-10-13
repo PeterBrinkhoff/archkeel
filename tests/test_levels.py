@@ -41,7 +41,7 @@ def test_the_inside_of_check_carries_its_sub_components_and_their_edges(
         ("observation", "inputs", 5),
         ("regression", "inputs", 2),
         ("workflows", "declarations", 1),
-        ("workflows", "evaluation", 2),
+        ("workflows", "evaluation", 3),
         ("workflows", "inputs", 33),
         ("workflows", "observation", 1),
         ("workflows", "regression", 16),
