@@ -19,10 +19,16 @@ def observer_for(
     *,
     collector_argv: tuple[str, ...] | None = None,
     tsconfig: str = "tsconfig.json",
+    output_limit_bytes: int | None = None,
 ) -> Observer:
     if collector_argv is None:
         collector_argv = (sys.executable, "-I", "-B", "-m", f"archkeel.analyzer.{language}.entry")
-    return Observer(ProcessCollector(collector_argv), tsconfig)
+    collector = (
+        ProcessCollector(collector_argv)
+        if output_limit_bytes is None
+        else ProcessCollector(collector_argv, output_limit_bytes=output_limit_bytes)
+    )
+    return Observer(collector, tsconfig)
 
 
 def observe(

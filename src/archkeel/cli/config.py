@@ -73,11 +73,11 @@ def parse_config(payload: bytes, name: str = CONFIG_PATH) -> ScanConfig:
     if set(raw) != {"scan"} or not isinstance(raw["scan"], dict):
         raise ConfigError("configuration must contain only [scan]")
     scan = raw["scan"]
-    optional = {"language", "tsconfig", "collector_argv"}
+    optional = {"language", "tsconfig", "collector_argv", "collector_output_limit_bytes"}
     if set(scan) - optional != _REQUIRED_SCAN:
         raise ConfigError(
-            "[scan] requires roots, namespace, and contract; language, tsconfig, and "
-            "collector_argv are optional"
+            "[scan] requires roots, namespace, and contract; language, tsconfig, "
+            "collector_argv, and collector_output_limit_bytes are optional"
         )
     # AD-97: absent means Python, so an existing archkeel.toml keeps its bytes and its digest.
     language_value = scan.get("language", "python")
@@ -112,6 +112,9 @@ def parse_config(payload: bytes, name: str = CONFIG_PATH) -> ScanConfig:
         collector_argv = tuple(argv_raw)
     else:
         collector_argv = None
+    output_limit = scan.get("collector_output_limit_bytes")
+    if output_limit is not None and (type(output_limit) is not int or output_limit <= 0):
+        raise ConfigError("scan.collector_output_limit_bytes must be a positive integer")
     roots_raw = scan["roots"]
     if not isinstance(roots_raw, list) or not roots_raw:
         raise ConfigError("scan.roots must be a non-empty list")
@@ -138,6 +141,7 @@ def parse_config(payload: bytes, name: str = CONFIG_PATH) -> ScanConfig:
         language=language,
         tsconfig=tsconfig,
         collector_argv=collector_argv,
+        collector_output_limit_bytes=output_limit,
     )
 
 
