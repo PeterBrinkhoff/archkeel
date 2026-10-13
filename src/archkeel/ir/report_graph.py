@@ -3,12 +3,16 @@
 # SPDX-License-Identifier: MIT
 """Read one standard report boundary from authenticated Core evidence."""
 
+import json
+from dataclasses import asdict
+
 from archkeel.ir.architecture_graph import (
     ArchitectureGraph,
     ArchitectureReport,
     ComponentMembership,
     DependencyDecisionGap,
     Entity,
+    GraphComparison,
     Relationship,
     ReportFinding,
 )
@@ -17,8 +21,14 @@ from archkeel.ir.decisions import open_decisions
 from archkeel.ir.graph_codec import parse_comparison
 from archkeel.ir.interfaces import component_owners, owner_of
 from archkeel.ir.levels import inside_levels
-from archkeel.ir.model import TARGET_GRAPH_RECORD_KINDS, UML_TARGET_KIND, Observation, stable_id
-from archkeel.ir.source_graph import observed_graph
+from archkeel.ir.model import (
+    TARGET_GRAPH_RECORD_KINDS,
+    UML_TARGET_KIND,
+    Observation,
+    Record,
+    stable_id,
+)
+from archkeel.ir.source_graph import observed_graph, validated_member_inventory_proof
 from archkeel.ir.target_records import recorded_target_graph
 
 
@@ -68,6 +78,12 @@ def architecture_report(model: Observation) -> ArchitectureReport:
         if receipt is not None
         else None
     )
+    if (
+        receipt is not None
+        and comparison is not None
+        and not _inventory_comparison_is_bound(model, target, declared, receipt, comparison)
+    ):
+        comparison = None
     report = ArchitectureReport(
         observed,
         declared,
@@ -81,6 +97,55 @@ def architecture_report(model: Observation) -> ArchitectureReport:
     )
     report.validate()
     return report
+
+
+def _inventory_comparison_is_bound(
+    model: Observation,
+    target: Record | None,
+    declared: ArchitectureGraph | None,
+    receipt: Record,
+    comparison: GraphComparison,
+) -> bool:
+    closed = (
+        tuple(
+            scope
+            for scope in declared.target_scopes
+            if scope.mode == "closed"
+            and set(scope.entity_kinds) & {"attribute", "method", "enum_literal"}
+        )
+        if declared is not None
+        else ()
+    )
+    inventory_pass = model.coverage.status != "PASS" and any(
+        a.aspect == "completeness"
+        and a.status == "PASS"
+        and a.id
+        == stable_id(
+            "UML-ASSESSMENT",
+            scope.scope_id,
+            "completeness",
+            "matched",
+            *scope.entity_kinds,
+            *scope.relationship_kinds,
+            *a.observed_ids,
+        )
+        for a in comparison.assessments
+        for scope in closed
+    )
+    if (
+        not inventory_pass
+        and receipt.data.get("member_inventory_binding") is None
+        and receipt.data.get("member_inventory_target") is None
+    ):
+        return True
+    proof = validated_member_inventory_proof(model)
+    return (
+        proof is not None
+        and receipt.data.get("member_inventory_binding") == proof.data.get("binding")
+        and target is not None
+        and receipt.data.get("member_inventory_target")
+        == stable_id("MEMBER-INVENTORY-TARGET", json.dumps(asdict(target), sort_keys=True))
+    )
 
 
 def _decision_gaps(

@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from collections import Counter
 from pathlib import Path
 
 import pytest
@@ -19,6 +20,12 @@ from fixtures.demo_catalog_compass import COMPASS_FIXTURE_DIR, VARIANTS
 
 SOURCE_DIGEST = "c6c1b8fe62fbc950af3b3dc4a033cac300bdeec2564e563909504a69df753e72"
 TARGET_DIGEST = "4f6fb239818ff66ae963ce5a4ffe43d319b6d21cbeaf76d262d9cbf670a33a67"
+EXPECTED_ASSESSMENTS = {
+    "compass-project": Counter(PASS=1749, UNKNOWN=23),
+    "compass-forbidden-edge": Counter(PASS=1749, UNKNOWN=23),
+    "compass-signature-fail": Counter(PASS=1748, UNKNOWN=23, FAIL=1),
+    "compass-dynamic-unknown": Counter(PASS=1747, UNKNOWN=24, FAIL=1),
+}
 
 
 def _payload(html: Path) -> dict:
@@ -171,6 +178,14 @@ def test_compass_reports_keep_target_comparison_and_partial_coverage_distinct(
         report = _report(output)
         _assert_named_factory_identities(report)
         assert report.comparison and report.comparison.status == comparison_status
+        assert (
+            Counter(a.status for a in report.comparison.assessments)
+            == EXPECTED_ASSESSMENTS[variant_id]
+        )
+        assert not any(
+            a.status == "UNKNOWN" and a.aspect == "completeness"
+            for a in report.comparison.assessments
+        )
         assert len(report.target.entities) == 468
         assert len(report.target.relationships) == 275
         assert any(item.status == "UNKNOWN" for item in report.comparison.assessments)

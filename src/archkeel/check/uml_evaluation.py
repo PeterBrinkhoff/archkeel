@@ -6,7 +6,7 @@
 import json
 from dataclasses import asdict, replace
 
-from archkeel.ir.architecture_graph import GraphComparison
+from archkeel.ir.architecture_graph import ArchitectureGraph, GraphComparison
 from archkeel.ir.codec import parse_record
 from archkeel.ir.model import (
     UML_TARGET_KIND,
@@ -19,35 +19,63 @@ from archkeel.ir.model import (
     UmlEligibility,
     stable_id,
 )
-from archkeel.ir.source_graph import observed_graph
+from archkeel.ir.source_graph import (
+    MEMBER_INVENTORY_PROOF,
+    observed_graph,
+    validated_member_inventory_proof,
+)
 from archkeel.ir.target_records import recorded_target_graph
 from archkeel.ir.trace import validate_evidence_classes
 
 from .uml_compare import compare_graphs
 
 
-def _records(
-    declaration: Record, comparison: GraphComparison, *, partial: bool = False
-) -> dict[str, list[Record]]:
-    receipts: list[Record] = []
-    violations: list[Record] = []
-    unknowns: list[Record] = []
-    additions: dict[str, list[Record]] = {
-        "scope_observations": receipts,
-        "violations": violations,
-        "unknowns": unknowns,
-    }
-    common = {
-        "area": "uml",
-        "subjects": list(declaration.subjects),
-        "rule_ids": [declaration.id],
-        "provenance": list(declaration.provenance),
-    }
+def _validated_member_inventory_result(result: ObservationResult) -> ObservationResult:
+    model = result.observation
+    if model is None or not any(
+        r.kind == MEMBER_INVENTORY_PROOF for r in model.records("scope_observations") or ()
+    ):
+        return result
+    if (
+        result.uml_eligibility
+        in {UmlEligibility.VALIDATED_PARTIAL_SOURCE, UmlEligibility.AUTHENTICATED_PARTIAL}
+        and result.partial_uml_diagnostics
+        and result.diagnostics == result.partial_uml_diagnostics
+        and validated_member_inventory_proof(model) is not None
+    ):
+        return result
+    return replace(
+        result,
+        uml_eligibility=UmlEligibility.BLOCKED,
+        observation=replace(
+            model,
+            sections=tuple(
+                replace(
+                    section,
+                    records=tuple(r for r in section.records if r.kind != MEMBER_INVENTORY_PROOF),
+                )
+                if section.name == "scope_observations"
+                else section
+                for section in model.sections
+            ),
+        ),
+    )
+
+
+def _comparison_receipt(
+    declaration: Record,
+    comparison: GraphComparison,
+    partial: bool,
+    inventory_proof: Record | None,
+) -> Record:
     facts = sorted({key for item in comparison.assessments for key in item.fact_ids})
     evidence = sorted({key for item in comparison.assessments for key in item.evidence_ids})
-    receipt = parse_record(
+    return parse_record(
         {
-            **common,
+            "area": "uml",
+            "subjects": list(declaration.subjects),
+            "rule_ids": [declaration.id],
+            "provenance": list(declaration.provenance),
             "id": stable_id("UML-EVALUATION", declaration.id),
             "evidence_class": "FACT",
             "kind": "rule_evaluation",
@@ -60,10 +88,39 @@ def _records(
                 and comparison.status != "UNKNOWN"
                 and not any(item.status == "UNKNOWN" for item in comparison.assessments),
                 "comparison": json.loads(json.dumps(asdict(comparison))),
+                **(
+                    {
+                        "member_inventory_binding": inventory_proof.data.get("binding"),
+                        "member_inventory_target": stable_id(
+                            "MEMBER-INVENTORY-TARGET",
+                            json.dumps(asdict(declaration), sort_keys=True),
+                        ),
+                    }
+                    if inventory_proof is not None
+                    else {}
+                ),
             },
         }
     )
-    receipts.append(receipt)
+
+
+def _records(
+    declaration: Record,
+    comparison: GraphComparison,
+    *,
+    partial: bool = False,
+    inventory_proof: Record | None = None,
+) -> dict[str, list[Record]]:
+    common: dict[str, object] = {
+        "area": "uml",
+        "subjects": list(declaration.subjects),
+        "rule_ids": [declaration.id],
+        "provenance": list(declaration.provenance),
+    }
+    receipts = [_comparison_receipt(declaration, comparison, partial, inventory_proof)]
+    violations: list[Record] = []
+    unknowns: list[Record] = []
+    additions = {"scope_observations": receipts, "violations": violations, "unknowns": unknowns}
     for assessment in comparison.assessments:
         if assessment.status == "PASS":
             continue
@@ -160,7 +217,33 @@ def _replace_evaluations(
     return evaluated
 
 
+def _has_certified_closed_inventory(
+    comparison: GraphComparison,
+    target: ArchitectureGraph,
+    proof: Record | None,
+) -> bool:
+    if proof is None:
+        return False
+    scoped = {
+        s.scope_id
+        for s in target.target_scopes
+        if s.mode == "closed"
+        and s.entity_kinds
+        and not s.relationship_kinds
+        and set(s.entity_kinds) <= {"attribute", "method", "enum_literal"}
+    }
+    return any(
+        a.subject_id in scoped
+        and a.aspect == "completeness"
+        and a.status == "PASS"
+        and a.fact_ids
+        and set(a.fact_ids) <= set(proof.fact_ids)
+        for a in comparison.assessments
+    )
+
+
 def evaluate_uml(result: ObservationResult) -> ObservationResult:
+    result = _validated_member_inventory_result(result)
     model = result.observation
     authenticated = result.uml_eligibility == UmlEligibility.AUTHENTICATED_PARTIAL
     partial = (
@@ -192,10 +275,21 @@ def evaluate_uml(result: ObservationResult) -> ObservationResult:
         partial_receipt = False
         for declaration in declarations:
             _validate_receipt_identity(declaration, model.records("scope_observations") or ())
-            compared = compare_graphs(observed, recorded_target_graph(model, declaration))
-            if partial and compared.status == "PASS":
+            target = recorded_target_graph(model, declaration)
+            compared = compare_graphs(observed, target)
+            inventory_proof = validated_member_inventory_proof(model)
+            if (
+                partial
+                and compared.status == "PASS"
+                and not _has_certified_closed_inventory(compared, target, inventory_proof)
+            ):
                 continue
-            projected: dict[str, list[Record]] = _records(declaration, compared, partial=partial)
+            projected: dict[str, list[Record]] = _records(
+                declaration,
+                compared,
+                partial=partial,
+                inventory_proof=inventory_proof,
+            )
             for name, records in projected.items():
                 destination: list[Record] = additions[name]
                 destination.extend(records)

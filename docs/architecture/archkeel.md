@@ -72,6 +72,9 @@ Coverage and cycle closure remain conservative.
 Dart named constructor identities retain their lexical owner once; declaration
 and reference joins use the same source span
 ([AD-228](decisions/ad-228-dart-constructor-identities.md)).
+Complete native direct-member inventories can retain bound local evidence under
+unrelated resolver gaps; global coverage and unresolved traits remain incomplete
+([AD-229](decisions/ad-229-local-member-inventory-proof.md)).
 Proposed contract extensions are tracked in [#356](https://github.com/rapiddweller/archkeel/issues/356).
 
 ## Decisions

@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: MIT
 """Build observations by injecting a source collector into Core evaluation."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Final
 
@@ -43,6 +43,7 @@ from archkeel.ir.protocol import (
     SourceScope,
     TypeScriptSettings,
 )
+from archkeel.ir.source_graph import member_inventory_proof
 
 from .declarations import ContractError, load_contract
 from .observation import assemble_observation
@@ -239,6 +240,36 @@ def _partial_uml_source_is_eligible(
     return all(failures[identity].kind == SOURCE_RESOLUTION_GAP_KIND for identity in derived_ids)
 
 
+def _observation_result(
+    facts: SourceFacts,
+    model: Observation,
+    diagnostics: tuple[Diagnostic, ...],
+    eligibility: UmlEligibility,
+) -> ObservationResult:
+    if (
+        eligibility == UmlEligibility.VALIDATED_PARTIAL_SOURCE
+        and "inner-uml-v1" in facts.capabilities.resolution_features
+    ):
+        proof = member_inventory_proof(model, facts.inputs)
+        if proof is not None:
+            model = replace(
+                model,
+                sections=tuple(
+                    replace(section, records=(*section.records, proof))
+                    if section.name == "scope_observations"
+                    else section
+                    for section in model.sections
+                ),
+            )
+    return ObservationResult(
+        model,
+        model.coverage,
+        diagnostics,
+        eligibility,
+        diagnostics if eligibility == UmlEligibility.VALIDATED_PARTIAL_SOURCE else (),
+    )
+
+
 def _observe(
     collector: SourceCollector,
     tsconfig: str,
@@ -320,13 +351,7 @@ def _observe(
             if _partial_uml_source_is_eligible(facts, model, runtime)
             else UmlEligibility.BLOCKED
         )
-        return ObservationResult(
-            model,
-            model.coverage,
-            diagnostics,
-            eligibility,
-            diagnostics if eligibility == UmlEligibility.VALIDATED_PARTIAL_SOURCE else (),
-        )
+        return _observation_result(facts, model, diagnostics, eligibility)
     except OSError as error:
         return _failure(
             "parse_error",

@@ -69,7 +69,7 @@ from .ratchets import call_rows, calls_measured, unknown_positions_by_rule
 from .run import inspect_observation
 from .runtime import runtime_diagnostic
 from .snapshot import resolve_commit
-from .uml import _revoke_dependency_proofs, assemble_uml
+from .uml import _revoke_dependency_proofs, _validated_member_inventory_result, assemble_uml
 from .uml_evaluation import evaluate_uml
 
 VIOLATION_REMEDY = "Change the code or amend the contract with owner approval."
@@ -615,6 +615,7 @@ def run_report(
         full_architecture,
     )
     result = _projection_result(observe_repository(root, config, analyzer))
+    result = _validated_member_inventory_result(result)
     architecture = (
         canonical_report_bytes(result.observation) if result.observation is not None else None
     )

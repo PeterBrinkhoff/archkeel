@@ -34,6 +34,12 @@ partial. The Python-hosted Dart collector records declarations, members, signatu
 and bounded source relationships. TypeScript records lexical declarations and statically
 bound relationships. Static sites do not prove live object identity, lifetime,
 runtime dispatch or composition; unsupported and unresolved facts stay UNKNOWN.
+Complete native Dart/TypeScript direct-member inventories can prove their closed
+owner scopes under unrelated resolver gaps, using bound local source evidence
+([AD-229](decisions/ad-229-local-member-inventory-proof.md)). Every selected input
+must be read and parsed, and the owner's library and owned parts must be free of
+gaps. Inherited/generated members, unresolved traits and overall observation
+completion retain their existing limits.
 
 Contract 2.1 retains its original bytes and digest; UML requires 2.2. Graph/Target
 format 1.1.0 adds enum literals; 1.0.0 remains readable with its original vocabulary.
