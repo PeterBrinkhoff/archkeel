@@ -109,12 +109,128 @@ def test_omitted_module_variable_peer_does_not_prove_unique_array_identity(
 
 
 @pytest.mark.parametrize(
+    "binding",
+    [
+        "{registry}",
+        "[registry]",
+        "{entry: registry}",
+        "{registry = Entry}",
+        "[registry = Entry]",
+        "{...registry}",
+        "[...registry]",
+        r"r\u0065gistry",
+        r"r\u{65}gistry",
+    ],
+)
+@pytest.mark.parametrize("array_first", [True, False])
+def test_opaque_module_binding_does_not_prove_unique_array_identity(
+    tmp_path: Path, binding: str, array_first: bool
+):
+    declarations = ["export const registry = [Entry] as const;", f"const {binding} = make();"]
+    if not array_first:
+        declarations.reverse()
+    facts = _collected(tmp_path, "\n".join(declarations))
+    observed = _graph_from_source_facts(facts, ("src",))
+    name = "app.src.main_x2e_ts.registry"
+    assert not any(item.qualified_name == name for item in observed.entities)
+    target = ArchitectureGraph(
+        "declared",
+        entities=(
+            Entity(
+                "registry",
+                "constant",
+                name,
+                "typescript",
+                presence="planned",
+                provenance=("docs/target.md",),
+            ),
+        ),
+    )
+    assert compare_graphs(observed, target).status == "UNKNOWN"
+
+
+@pytest.mark.parametrize(
+    "import_statement, retained",
+    [
+        ("import {registry} from 'dep';", False),
+        ("import {entry as registry} from 'dep';", False),
+        ("import registry from 'dep';", False),
+        ("import * as registry from 'dep';", False),
+        (r"import {entry as r\u0065gistry} from 'dep';", False),
+        ("import type {registry} from 'dep';", True),
+        ("import {type registry} from 'dep';", True),
+        ("import type registry from 'dep';", True),
+        ("import type * as registry from 'dep';", True),
+        ("import {registry as other} from 'dep';", True),
+        ("import 'dep';", True),
+        ("import registry = require('dep');", False),
+        ("import registry = Dep.registry;", False),
+        ("import type registry = require('dep');", True),
+        ("namespace registry { export const other = 1; }", False),
+        ("export namespace registry { export const other = 1; }", False),
+        ("declare namespace registry { const other: number; }", False),
+        (r"namespace r\u0065gistry { export const other = 1; }", False),
+        ("namespace Other { export const other = 1; }", True),
+    ],
+)
+@pytest.mark.parametrize("array_first", [True, False])
+def test_module_import_binding_closes_array_identity_in_value_namespace(
+    tmp_path: Path, import_statement: str, retained: bool, array_first: bool
+):
+    statements = ["export const registry = [Entry] as const;", import_statement]
+    if not array_first:
+        statements.reverse()
+    facts = _collected(tmp_path, "\n".join(statements))
+    observed = _graph_from_source_facts(facts, ("src",))
+    name = "app.src.main_x2e_ts.registry"
+    target = ArchitectureGraph(
+        "declared",
+        entities=(
+            Entity(
+                "registry",
+                "constant",
+                name,
+                "typescript",
+                presence="planned",
+                provenance=("docs/target.md",),
+            ),
+        ),
+    )
+    assert compare_graphs(observed, target).status == ("PASS" if retained else "UNKNOWN")
+
+
+@pytest.mark.parametrize("type_only", [True, False])
+def test_namespace_import_type_flag_cannot_prove_runtime_dispatch(tmp_path: Path, type_only: bool):
+    qualifier = "type " if type_only else ""
+    source = f"import {qualifier}* as dependency from './dependency';\ndependency.run();\n"
+    syntax = parse("src/main.ts", source.encode())
+    assert len(syntax.import_bindings) == 1
+    assert syntax.import_bindings[0].type_only is type_only
+    facts = _collected_files(
+        tmp_path,
+        {"src/main.ts": source, "src/dependency.ts": "export function run() {}\n"},
+    )
+    calls = [
+        record
+        for section in facts.sections
+        if section.name == "calls"
+        for record in section.records
+    ]
+    assert len(calls) == 1
+    assert calls[0].data.get("status") == "unresolved"
+
+
+@pytest.mark.parametrize(
     "competitor",
     [
         "export const other = make();",
         "if (enabled) { const registry = make(); }",
         "function local() { const registry = () => Entry; }",
         "namespace Internal { export const registry = [...entries]; }",
+        "if (enabled) { const {registry} = make(); }",
+        r"function local() { const r\u0065gistry = () => Entry; }",
+        "namespace Internal { export const {...registry} = make(); }",
+        "class Owner { constructor() { const [registry] = entries; } }",
     ],
 )
 def test_unrelated_or_local_variable_peer_preserves_module_array_identity(competitor: str):

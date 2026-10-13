@@ -669,21 +669,52 @@ def _module_array_constant(node: Node, value: Node) -> bool:
     )
 
 
+def _uncollected_module_binding(node: Node) -> tuple[str | None, bool]:
+    """Veto new array identities beside unsupported module binding syntax."""
+    if node.type not in {"import_alias", "import_require_clause", "internal_module"}:
+        return None, False
+    scope = node.parent
+    declaration = scope if node.type == "import_require_clause" else node
+    if node.type == "import_require_clause":
+        scope = scope.parent if scope is not None else None
+    while scope is not None and scope.type in {
+        "export_statement",
+        "ambient_declaration",
+        "expression_statement",
+    }:
+        scope = scope.parent
+    if (
+        scope is None
+        or scope.type != "program"
+        or declaration is None
+        or any(child.type == "type" for child in declaration.children)
+    ):
+        return None, False
+    binding = next(iter(node.named_children), None)
+    if binding is None or binding.type != "identifier":
+        return None, True
+    name = _text(binding)
+    return (name, False) if name and "\\" not in name else (None, True)
+
+
 def _variables(
     source: _Source, scopes: list[tuple[Node, str, int]], declarations: dict[Node, str]
 ) -> list[Definition]:
     result = []
-    omitted_module_names: set[str] = set()
+    imported = _import_bindings(source)
+    omitted_module_names = {item.local for item in imported if not item.type_only}
     array_spans: set[Span] = set()
+    opaque_module_binding = any("\\" in name for name in omitted_module_names)
     for node in _walk(source.root):
+        peer_name, opaque = _uncollected_module_binding(node)
+        if peer_name is not None:
+            omitted_module_names |= {peer_name}
+        opaque_module_binding |= opaque
         if node.type != "variable_declarator":
             continue
         name_node = node.child_by_field_name("name")
         value = node.child_by_field_name("value")
         parent = node.parent
-        if name_node is None or name_node.type != "identifier":
-            continue
-        name = _text(name_node)
         declaration_parent = parent.parent if parent is not None else None
         module_level = declaration_parent is not None and (
             declaration_parent.type == "program"
@@ -693,20 +724,20 @@ def _variables(
                 and declaration_parent.parent.type == "program"
             )
         )
+        if name_node is None or name_node.type != "identifier":
+            opaque_module_binding |= module_level
+            continue
+        name = _text(name_node)
+        opaque_module_binding |= module_level and (not name or "\\" in name)
         declaration = (
             parent if parent is not None and parent.type == "lexical_declaration" else None
         )
         kind_node = declaration.child_by_field_name("kind") if declaration else None
         is_array = value is not None and _module_array_constant(node, value)
-        if (
-            value is None
-            or kind_node is None
-            or _text(kind_node) != "const"
-            or (
-                value.type not in {"identifier", "string", "number", "true", "false", "null"}
-                and not is_array
-            )
-        ):
+        plain = value is not None and (
+            value.type in {"identifier", "string", "number", "true", "false", "null"}
+        )
+        if kind_node is None or _text(kind_node) != "const" or not (plain or is_array):
             if module_level:
                 omitted_module_names |= {name}
             continue
@@ -741,7 +772,8 @@ def _variables(
     return [
         item
         for item in result
-        if item.span not in array_spans or item.name not in omitted_module_names
+        if item.span not in array_spans
+        or (not opaque_module_binding and item.name not in omitted_module_names)
     ]
 
 
@@ -985,7 +1017,15 @@ def _import_bindings(source: _Source) -> tuple[ImportBinding, ...]:
         if namespace is not None:
             local = next(iter(namespace.named_children), None)
             if local is not None:
-                result.append(ImportBinding(span, "*", _text(local), True))
+                result.append(
+                    ImportBinding(
+                        span,
+                        "*",
+                        _text(local),
+                        True,
+                        type_only=any(child.type == "type" for child in statement.children),
+                    )
+                )
     return tuple(result)
 
 

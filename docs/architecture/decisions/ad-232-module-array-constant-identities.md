@@ -20,6 +20,9 @@ constructor/function-local, arrow-local and namespace-local arrays cannot become
 module declarations. Duplicate declarations retain separate sites and ambiguity.
 An omitted direct module variable of the same name vetoes the new array identity,
 regardless of declaration order; unrelated names and nested scopes do not.
+Value imports and uncollected namespace/import-alias bindings also veto a
+same-name array; explicit type-only imports do not. Direct module destructuring
+and escaped binding spellings make uniqueness opaque and veto new array facts.
 Existing identifier/scalar handling and TypeScript type/value matching are unchanged.
 
 Rejected: interpreting `as const` as runtime immutability or proof of element
