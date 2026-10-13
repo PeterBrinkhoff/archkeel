@@ -219,6 +219,7 @@ class _Collection:
                         (parent_name or "", definition.parent_line, definition.parent_column)
                     )
             data = self._symbol_metadata(
+                rel,
                 module,
                 qualified,
                 parent_name,
@@ -270,6 +271,7 @@ class _Collection:
 
     def _symbol_metadata(
         self,
+        rel: str,
         module: str,
         qualified: str,
         parent_name: str | None,
@@ -298,7 +300,10 @@ class _Collection:
             "source_binding_unique": binding_unique,
             "source_member_binding_static": True,
             "class_header_static": True,
-            "decorators": [],
+            "decorators": [spelling for spelling, _ in definition.decorator_sources],
+            "decorator_evidence_ids": [
+                self._cite(rel, span) for _, span in definition.decorator_sources
+            ],
             "signature_complete": definition.signature_complete,
             "overload_signature": definition.overload_signature,
         }
@@ -334,6 +339,10 @@ class _Collection:
                     member.name,
                 ),
                 "evidence_ids": [self._cite(rel, member.span)],
+                "decorators": [spelling for spelling, _ in member.decorator_sources],
+                "decorator_evidence_ids": [
+                    self._cite(rel, span) for _, span in member.decorator_sources
+                ],
                 "static": member.static,
             }
             for member in definition.members

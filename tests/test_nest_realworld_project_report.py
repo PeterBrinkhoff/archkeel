@@ -49,10 +49,10 @@ SOURCE_DIGESTS = {
     ),
 }
 EXPECTED_ASSESSMENTS = {
-    "nest-realworld-project": Counter(PASS=877, UNKNOWN=35),
-    "nest-realworld-forbidden-edge": Counter(PASS=877, UNKNOWN=35),
-    "nest-realworld-signature-fail": Counter(PASS=876, UNKNOWN=35, FAIL=1),
-    "nest-realworld-dynamic-unknown": Counter(PASS=876, UNKNOWN=36),
+    "nest-realworld-project": Counter(PASS=878, UNKNOWN=34),
+    "nest-realworld-forbidden-edge": Counter(PASS=878, UNKNOWN=34),
+    "nest-realworld-signature-fail": Counter(PASS=877, UNKNOWN=34, FAIL=1),
+    "nest-realworld-dynamic-unknown": Counter(PASS=877, UNKNOWN=35),
 }
 
 
@@ -231,7 +231,7 @@ def test_nest_realworld_catalog_and_reports_preserve_full_target_with_partial_co
         report = _report(output)
         assert report.comparison is not None
         assert report.comparison.status == UML_DEMO_COMPARISONS[f"uml-{variant.id}"]
-        assert len(report.comparison.assessments) == 905
+        assert len(report.comparison.assessments) == 912
         assert (
             Counter(item.status for item in report.comparison.assessments)
             == EXPECTED_ASSESSMENTS[variant.id]

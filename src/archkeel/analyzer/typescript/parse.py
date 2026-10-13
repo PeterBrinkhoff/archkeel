@@ -118,6 +118,7 @@ class Member:
     visibility: str | None
     static: bool
     literal: str | None = None
+    decorator_sources: tuple[tuple[str, Span], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -150,6 +151,7 @@ class Definition:
     parent_line: int | None = None
     parent_column: int | None = None
     is_async: bool = False
+    decorator_sources: tuple[tuple[str, Span], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -531,7 +533,7 @@ def _definition(
         _type(node.child_by_field_name("return_type")),
         tuple(bases),
         tuple(members),
-        any(child.type == "decorator" for child in node.children),
+        bool(_decorators(node)),
         "abstract" in _modifiers(node),
         _members_complete(body),
         node.child_by_field_name("body") is None,
@@ -548,11 +550,12 @@ def _definition(
         parent_location.line if parent_location else None,
         parent_location.column if parent_location else None,
         is_async=any(child.type == "async" for child in node.children),
+        decorator_sources=tuple((_text(item), source.span(item)) for item in _decorators(node)),
     )
 
 
 def _members_complete(body: Node | None) -> bool:
-    if body is None:
+    if body is None or body.has_error:
         return False
     supported = {
         "public_field_definition",
@@ -565,6 +568,8 @@ def _members_complete(body: Node | None) -> bool:
         "comment",
     }
     for child in body.named_children:
+        if child.type == "decorator" and _decorated_member(child) is not None:
+            continue
         if child.type not in supported:
             return False
         if child.type in {
@@ -579,14 +584,117 @@ def _members_complete(body: Node | None) -> bool:
                 continue
             if name is None or name.type == "computed_property_name":
                 return False
-            if child.type == "method_definition" and _text(name) == "constructor":
+            if child.type in {
+                "method_definition",
+                "method_signature",
+            } and not _valid_unicode_member_name(name):
+                return False
+            if _instance_constructor(child):
+                if any(token.type in {"async", "*", "get", "set"} for token in child.children):
+                    return False
                 parameters = child.child_by_field_name("parameters")
                 if parameters is not None and any(
-                    _modifiers(parameter) & {"public", "private", "protected"}
+                    _modifiers(parameter) & {"public", "private", "protected", "readonly"}
                     for parameter in parameters.named_children
                 ):
                     return False
     return True
+
+
+def _decorated_member(node: Node) -> Node | None:
+    """A body-level decorator belongs only to the next supported lexical member."""
+    candidate = node.next_named_sibling
+    while candidate is not None and candidate.type in {"decorator", "comment"}:
+        candidate = candidate.next_named_sibling
+    if (
+        candidate is None
+        or candidate.has_error
+        or candidate.type
+        not in {
+            "method_definition",
+            "method_signature",
+            "public_field_definition",
+        }
+    ):
+        return None
+    name = Node.child_by_field_name(candidate, "name")
+    return (
+        candidate
+        if name is not None
+        and name.type != "computed_property_name"
+        and _valid_unicode_member_name(name)
+        and not _instance_constructor(candidate)
+        else None
+    )
+
+
+def _valid_unicode_member_name(name: Node) -> bool:
+    """String names allow code points that unvalidated escaped identifiers cannot prove."""
+    if name.type != "string":
+        return "\\" not in _text(name)
+    for child in name.named_children:
+        if child.type != "escape_sequence":
+            continue
+        escape = _text(child)
+        if escape[:3] == "\\u{":
+            hexadecimal = re.sub("^0*", "", escape[3:-1]) or "0"
+            if len(hexadecimal) > 6 or int(hexadecimal, 16) > 0x10FFFF:
+                return False
+    return True
+
+
+def _constructor_escape(match: re.Match[str]) -> str:
+    """Decode only escape values that can occur in the ASCII name constructor."""
+    hexadecimal = next((match[index] for index in (1, 2, 3) if match[index] is not None), None)
+    if hexadecimal is not None:
+        value = int(hexadecimal, 16)
+        return chr(value) if value < 128 else match[0]
+    character = match[4]
+    if character in {"\n", "\r", "\r\n", "\u2028", "\u2029"}:
+        return ""
+    return character if character in {"c", "o", "s"} else match[0]
+
+
+def _instance_constructor(node: Node) -> bool:
+    """Recognize the restricted instance constructor name without rewriting source names."""
+    name = Node.child_by_field_name(node, "name")
+    if (
+        node.type not in {"method_definition", "method_signature"}
+        or not _class_member(node)
+        or node.parent is None
+        or node.parent.type != "class_body"
+        or "static" in _modifiers(node)
+        or name is None
+    ):
+        return False
+    spelling = _text(name)
+    if name.type == "string":
+        spelling = spelling[1:-1]
+    spelling = re.sub(
+        r"\\(?:u(?:\{(0*[0-9a-fA-F]{1,6})\}|([0-9a-fA-F]{4}))|x([0-9a-fA-F]{2})|(\r\n|[\s\S]))",
+        _constructor_escape,
+        spelling,
+    )
+    return spelling == "constructor"
+
+
+def _decorators(node: Node) -> tuple[Node, ...]:
+    """Read attached decorators and the class body's contiguous sibling decorators."""
+    attached = tuple(child for child in node.named_children if child.type == "decorator")
+    parent = node.parent
+    if parent is not None and parent.type == "export_statement":
+        attached = (
+            tuple(child for child in parent.named_children if child.type == "decorator") + attached
+        )
+    if not _class_member(node):
+        return attached
+    previous = node.prev_named_sibling
+    preceding = []
+    while previous is not None and previous.type in {"decorator", "comment"}:
+        if previous.type == "decorator" and _decorated_member(previous) == node:
+            preceding.append(previous)
+        previous = previous.prev_named_sibling
+    return (*reversed(preceding), *attached)
 
 
 def _class_member(node: Node) -> bool:
@@ -620,6 +728,7 @@ def _member(node: Node, source: _Source) -> Member | None:
         "static" in _modifiers(node)
         or node.type in {"enum_assignment", "property_identifier", "identifier"},
         literal,
+        tuple((_text(item), source.span(item)) for item in _decorators(node)),
     )
 
 
