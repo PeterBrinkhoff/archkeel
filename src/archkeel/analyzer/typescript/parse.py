@@ -641,33 +641,170 @@ def _exported(node: Node) -> bool:
     return parent is not None and parent.type == "export_statement"
 
 
+def _module_array_constant(node: Node, value: Node) -> bool:
+    """Recognize a direct module declaration, without evaluating its array elements."""
+    declaration = node.parent
+    statement = declaration.parent if declaration is not None else None
+    if (
+        _in_error(node)
+        or statement is None
+        or not (
+            statement.type == "program"
+            or (
+                statement.type == "export_statement"
+                and statement.parent is not None
+                and statement.parent.type == "program"
+            )
+        )
+    ):
+        return False
+    if value.type == "as_expression":
+        parts = [item for item in value.children if item.type != "comment"]
+        if len(parts) != 3 or parts[1].type != "as" or parts[2].type != "const":
+            return False
+        value = parts[0]
+    return value.type == "array" and all(
+        item.type in {"identifier", "string", "number", "true", "false", "null", "comment"}
+        for item in value.named_children
+    )
+
+
+def _module_var_array_peer(node: Node) -> tuple[str | None, bool]:
+    """A block/control-flow var still competes with a module array declaration."""
+    parent = node.parent
+    variable = (
+        node.type == "variable_declarator"
+        and parent is not None
+        and parent.type == "variable_declaration"
+    )
+    loop = node.type == "for_in_statement" and any(child.type == "var" for child in node.children)
+    if not (variable or loop) or any(
+        ancestor.type
+        in {
+            "function_declaration",
+            "generator_function_declaration",
+            "function_expression",
+            "generator_function",
+            "arrow_function",
+            "method_definition",
+            "class_body",
+            "internal_module",
+        }
+        for ancestor in _ancestors(node)
+    ):
+        return None, False
+    binding = next(iter(node.named_children), None)
+    if binding is None or binding.type != "identifier":
+        return None, True
+    name = _text(binding)
+    return (name, False) if name and "\\" not in name else (None, True)
+
+
+def _uncollected_module_binding(node: Node) -> tuple[str | None, bool]:
+    """Veto new array identities beside unsupported module binding syntax."""
+    peer_name, opaque = _module_var_array_peer(node)
+    if peer_name is not None or opaque:
+        return peer_name, opaque
+    variable = node.type == "variable_declarator"
+    defined = node.type in {
+        "class_declaration",
+        "function_declaration",
+        "function_signature",
+        "enum_declaration",
+    }
+    if (
+        not defined
+        and not variable
+        and node.type
+        not in {
+            "import_alias",
+            "import_require_clause",
+            "internal_module",
+            "generator_function_declaration",
+            "abstract_class_declaration",
+        }
+    ):
+        return None, False
+    scope = node.parent
+    declaration = scope if node.type == "import_require_clause" else node
+    if variable:
+        scope = scope.parent if scope is not None else None
+        if scope is None or scope.type != "ambient_declaration":
+            return None, False
+    if node.type == "import_require_clause":
+        scope = scope.parent if scope is not None else None
+    while scope is not None and scope.type in {
+        "export_statement",
+        "ambient_declaration",
+        "expression_statement",
+    }:
+        scope = scope.parent
+    if (
+        scope is None
+        or scope.type != "program"
+        or declaration is None
+        or any(child.type == "type" for child in declaration.children)
+    ):
+        return None, False
+    if defined:
+        return None, any(
+            child.type in {"identifier", "type_identifier"} and "\\" in _text(child)
+            for child in node.named_children
+        )
+    binding = next(iter(node.named_children), None)
+    if binding is None or binding.type not in {"identifier", "type_identifier"}:
+        return None, True
+    name = _text(binding)
+    return (name, False) if name and "\\" not in name else (None, True)
+
+
 def _variables(
     source: _Source, scopes: list[tuple[Node, str, int]], declarations: dict[Node, str]
 ) -> list[Definition]:
     result = []
+    imported = _import_bindings(source)
+    omitted_module_names = {item.local for item in imported if not item.type_only}
+    array_spans: set[Span] = set()
+    opaque_module_binding = any("\\" in name for name in omitted_module_names)
     for node in _walk(source.root):
+        peer_name, opaque = _uncollected_module_binding(node)
+        if peer_name is not None:
+            omitted_module_names |= {peer_name}
+        opaque_module_binding |= opaque
         if node.type != "variable_declarator":
             continue
         name_node = node.child_by_field_name("name")
         value = node.child_by_field_name("value")
         parent = node.parent
-        if name_node is None or name_node.type != "identifier" or value is None:
+        declaration_parent = parent.parent if parent is not None else None
+        module_level = declaration_parent is not None and (
+            declaration_parent.type == "program"
+            or (
+                declaration_parent.type == "export_statement"
+                and declaration_parent.parent is not None
+                and declaration_parent.parent.type == "program"
+            )
+        )
+        if name_node is None or name_node.type != "identifier":
+            opaque_module_binding |= module_level
             continue
+        name = _text(name_node)
+        opaque_module_binding |= module_level and (not name or "\\" in name)
         declaration = (
             parent if parent is not None and parent.type == "lexical_declaration" else None
         )
         kind_node = declaration.child_by_field_name("kind") if declaration else None
-        if (
-            kind_node is None
-            or _text(kind_node) != "const"
-            or value.type not in {"identifier", "string", "number", "true", "false", "null"}
-        ):
+        is_array = value is not None and _module_array_constant(node, value)
+        plain = value is not None and (
+            value.type in {"identifier", "string", "number", "true", "false", "null"}
+        )
+        if kind_node is None or _text(kind_node) != "const" or not (plain or is_array):
+            if module_level:
+                omitted_module_names |= {name}
             continue
-        name = _text(name_node)
         owner = next((item for item, _, _ in reversed(scopes) if _contains(item, node)), None)
         parent_name = next((qualified for item, qualified, _ in scopes if item is owner), None)
         owner_span = source.span(owner) if owner is not None else None
-        declaration_parent = declaration.parent if declaration is not None else None
         exported = declaration_parent is not None and declaration_parent.type == "export_statement"
         result.append(
             Definition(
@@ -685,23 +822,20 @@ def _variables(
                 (),
                 False,
                 False,
-                top_level=(
-                    declaration_parent is not None
-                    and (
-                        declaration_parent.type == "program"
-                        or (
-                            declaration_parent.type == "export_statement"
-                            and declaration_parent.parent is not None
-                            and declaration_parent.parent.type == "program"
-                        )
-                    )
-                ),
+                top_level=module_level,
                 parent_line=owner_span.line if owner_span else None,
                 parent_column=owner_span.column if owner_span else None,
             )
         )
+        if is_array:
+            array_spans |= {result[-1].span}
         declarations[name_node] = "constant"
-    return result
+    return [
+        item
+        for item in result
+        if item.span not in array_spans
+        or (not opaque_module_binding and item.name not in omitted_module_names)
+    ]
 
 
 def _sites(
@@ -944,7 +1078,15 @@ def _import_bindings(source: _Source) -> tuple[ImportBinding, ...]:
         if namespace is not None:
             local = next(iter(namespace.named_children), None)
             if local is not None:
-                result.append(ImportBinding(span, "*", _text(local), True))
+                result.append(
+                    ImportBinding(
+                        span,
+                        "*",
+                        _text(local),
+                        True,
+                        type_only=any(child.type == "type" for child in statement.children),
+                    )
+                )
     return tuple(result)
 
 
