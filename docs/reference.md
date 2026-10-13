@@ -101,6 +101,15 @@ Ignore unknown result properties; required fields and enum meanings remain stric
 Schema shape validation proves neither authenticity nor conformance.
 `report`/`check --output` also write `.report.html`/`.check.html` companions.
 
+`validate --json` includes every open ordered component pair by default. For a smaller
+review result, use `validate --compact-open-decisions --json`: it lists observed undecided
+crossings, `open_decision_count` reports the exact total, and `open_decisions_complete` is
+true only when every open pair is listed. Omitted pairs remain undecided; an empty compact
+list does not close a positive total. Both modes keep verdicts, UNKNOWN evidence and
+diagnostics unchanged. Summaries are `null` when validation cannot derive them.
+`init --json` uses the same summary fields and defaults to observed crossings; `init --full`
+retrieves every pair on the initial draft.
+
 `validate --write-graph` updates eligible marked provenance graphs from observed
 imports or Target permissions. Exactly one observed marker is required; Target
 is optional. Subgraphs, labels and styles require manual editing.

@@ -232,3 +232,4 @@ For current behavior, use the [contract](../../../architecture-contract.json), s
 
 | AD-223 | [Explicit Callable boundaries](ad-223-explicit-callable-boundaries.md) |
 | AD-224 | [Configurable finite collector output limit](ad-224-configurable-collector-output-limit.md) |
+| AD-225 | [Compact validation decisions](ad-225-compact-validation-decisions.md) |

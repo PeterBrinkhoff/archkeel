@@ -15,6 +15,7 @@ from test_report_159_160 import _flow_data
 
 from archkeel.check.validation import COMPONENT_GRAPH_MARKER, TARGET_GRAPH_MARKER
 from archkeel.cli import main
+from archkeel.ir import decisions as decision_derivation
 from archkeel.ir.baseline import KnownViolation, ViolationFingerprint
 from archkeel.ir.codec import baseline_bytes
 from fixtures.architecture_demo import CATALOG
@@ -107,6 +108,137 @@ def test_init_full_retrieves_all_sparse_open_pairs(
 
     assert result["open_decision_count"] == 39 * 38
     assert len(result["open_decisions"]) == 39 * 38
+    assert result["open_decisions_complete"] is True
+
+
+@pytest.mark.parametrize("modules", [39, 100])
+def test_validate_compact_counts_sparse_pairs_without_materializing_unobserved_options(
+    tmp_path: Path, capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch, modules: int
+) -> None:
+    root = _sparse_init_repository(tmp_path, modules)
+    assert main(["init", "--root", str(root), "--json"]) == 0
+    capsys.readouterr()
+    materialize = decision_derivation._materialize_open_decision
+    materialized = []
+
+    def record_materialization(source, target, import_sites, packages, declarations):
+        decision = materialize(source, target, import_sites, packages, declarations)
+        materialized.append(decision)
+        return decision
+
+    monkeypatch.setattr(decision_derivation, "_materialize_open_decision", record_materialization)
+    assert main(["validate", "--root", str(root), "--compact-open-decisions", "--json"]) == 2
+    output = capsys.readouterr().out
+    result = json.loads(output)
+
+    assert result["observation_complete"] == "PASS"
+    assert result["open_decision_count"] == modules * (modules - 1)
+    assert result["open_decisions_complete"] is False
+    assert [(item["source"], item["target"]) for item in result["open_decisions"]] == [
+        ("module_0", "module_1")
+    ]
+    assert all(item.observed for item in materialized)
+    diagnostic = next(item for item in result["diagnostics"] if item["code"] == "decision.open")
+    assert diagnostic["subject"] == f"{modules * (modules - 1)} open dependency decisions"
+    assert len(output) < 10_000
+
+
+def test_validate_default_retrieves_every_sparse_open_pair(
+    tmp_path: Path, capsys: pytest.CaptureFixture
+) -> None:
+    root = _sparse_init_repository(tmp_path, 39)
+    assert main(["init", "--root", str(root), "--json"]) == 0
+    capsys.readouterr()
+    assert main(["validate", "--root", str(root), "--json"]) == 2
+    result = json.loads(capsys.readouterr().out)
+
+    assert result["open_decision_count"] == 39 * 38
+    assert result["open_decisions_complete"] is True
+    assert {(item["source"], item["target"]) for item in result["open_decisions"]} == {
+        (f"module_{source}", f"module_{target}")
+        for source in range(39)
+        for target in range(39)
+        if source != target
+    }
+    assert sum(item["observed"] for item in result["open_decisions"]) == 1
+
+
+@pytest.mark.parametrize("dense", [False, True])
+def test_validate_compact_completeness_tracks_observed_open_pairs(
+    tmp_path: Path, capsys: pytest.CaptureFixture, dense: bool
+) -> None:
+    root = _sparse_init_repository(tmp_path, 4)
+    for source in range(4):
+        imports = (
+            "".join(f"import sample.module_{target}\n" for target in range(4) if source != target)
+            if dense
+            else ""
+        )
+        (root / f"src/sample/module_{source}.py").write_text(f"{imports}VALUE = 1\n")
+    assert main(["init", "--root", str(root), "--json"]) == 0
+    capsys.readouterr()
+    assert main(["validate", "--root", str(root), "--compact-open-decisions", "--json"]) == 2
+    compact = json.loads(capsys.readouterr().out)
+    assert main(["validate", "--root", str(root), "--json"]) == 2
+    full = json.loads(capsys.readouterr().out)
+
+    assert compact["open_decision_count"] == full["open_decision_count"] == 12
+    assert compact["open_decisions_complete"] is dense
+    assert compact["open_decisions"] == [
+        item for item in full["open_decisions"] if item["observed"]
+    ]
+    for field in ("diagnostics", "declared_rules", "coverage", "measurements", "rule_assessments"):
+        assert compact[field] == full[field]
+
+
+def test_validate_compact_keeps_unknown_rules_and_counts_only_undecided_pairs(
+    tmp_path: Path, capsys: pytest.CaptureFixture
+) -> None:
+    root = _sparse_init_repository(tmp_path, 3)
+    assert main(["init", "--root", str(root), "--json"]) == 0
+    capsys.readouterr()
+    path = root / "architecture-contract.json"
+    contract = json.loads(path.read_bytes())
+    contract["declarations"] = {
+        "public_api": ["sample.module_0:Unproven"],
+        "public_api_provenance": ["docs/architecture/architecture.md"],
+    }
+    contract["rules"] = [
+        {
+            "id": "DEP-0-ALLOWS-1",
+            "kind": "allowed_dependency",
+            "source": "sample.module_0",
+            "target": "sample.module_1",
+            "rationale": "The source uses this public dependency.",
+            "provenance": ["docs/architecture/architecture.md"],
+            "decided_by": "architect",
+        }
+    ]
+    path.write_text(json.dumps(contract))
+    assert main(["validate", "--root", str(root), "--compact-open-decisions", "--json"]) == 2
+    compact = json.loads(capsys.readouterr().out)
+    assert main(["validate", "--root", str(root), "--json"]) == 2
+    full = json.loads(capsys.readouterr().out)
+
+    assert compact["declared_rules"] == full["declared_rules"] == "UNKNOWN"
+    assert compact["observation_complete"] == full["observation_complete"] == "PASS"
+    assert compact["measurements"] == full["measurements"]
+    assert compact["open_decision_count"] == full["open_decision_count"] == 5
+    assert compact["open_decisions"] == []
+    assert compact["open_decisions_complete"] is False
+    assert len(full["open_decisions"]) == 5
+
+
+@pytest.mark.parametrize("compact", [False, True])
+def test_validate_decided_contract_reports_a_complete_empty_decision_list(
+    tmp_path: Path, capsys: pytest.CaptureFixture, compact: bool
+) -> None:
+    root = _prepare_repo(tmp_path, {})
+    args = ["validate", "--root", str(root), "--json"]
+    assert main([*args, *(["--compact-open-decisions"] if compact else [])]) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["open_decisions"] == []
+    assert result["open_decision_count"] == 0
     assert result["open_decisions_complete"] is True
 
 
