@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import re
 from bisect import bisect_right
+from collections import Counter as _Counter
 from collections.abc import Iterator
 from dataclasses import dataclass, replace
 from functools import cache
@@ -490,15 +491,7 @@ def _definition(
     bases: list[Base] = []
     body = node.child_by_field_name("body")
     if kind in {"class", "interface", "enum"} and body is not None:
-        for item in body.named_children:
-            if item.type in (
-                "public_field_definition",
-                "property_signature",
-                "enum_assignment",
-            ) or (kind == "enum" and item.type in {"property_identifier", "identifier"}):
-                member = _member(item, source)
-                if member is not None:
-                    members.append(member)
+        members = _declared_members(body, kind, source)
         for heritage in node.named_children:
             clauses = (
                 heritage.named_children
@@ -554,6 +547,58 @@ def _definition(
     )
 
 
+def _parameter_properties(node: Node) -> tuple[Node, ...] | None:
+    name = node.child_by_field_name("name")
+    if (
+        node.type not in {"method_definition", "method_signature"}
+        or name is None
+        or _text(name) != "constructor"
+    ):
+        return ()
+    parameters = node.child_by_field_name("parameters")
+    properties = (
+        tuple(
+            item
+            for item in parameters.named_children
+            if _modifiers(item) & {"public", "private", "protected", "readonly"}
+        )
+        if parameters is not None
+        else ()
+    )
+    if properties and node.child_by_field_name("body") is None:
+        return None
+    for item in properties:
+        pattern = item.child_by_field_name("pattern") or item.child_by_field_name("name")
+        if (
+            item.has_error
+            or item.type not in {"required_parameter", "optional_parameter"}
+            or pattern is None
+            or pattern.type != "identifier"
+            or len(_modifiers(item) & {"public", "private", "protected"}) > 1
+        ):
+            return None
+    return properties
+
+
+def _declared_members(body: Node, kind: DefinitionKind, source: _Source) -> list[Member]:
+    members: list[Member] = []
+    properties: list[Member] = []
+    for item in body.named_children:
+        if item.type in {"public_field_definition", "property_signature", "enum_assignment"} or (
+            kind == "enum" and item.type in {"property_identifier", "identifier"}
+        ):
+            member = _member(item, source)
+            if member is not None:
+                members.append(member)
+        if kind == "class":
+            for parameter in _parameter_properties(item) or ():
+                member = _member(parameter, source)
+                if member is not None:
+                    properties.append(replace(member, literal=None))
+    names = _Counter(member.name for member in (*members, *properties))
+    return members + [member for member in properties if names[member.name] == 1]
+
+
 def _members_complete(body: Node | None) -> bool:
     if body is None or body.has_error:
         return False
@@ -567,6 +612,8 @@ def _members_complete(body: Node | None) -> bool:
         "identifier",
         "comment",
     }
+    attributes: set[str] = set()
+    constructors = 0
     for child in body.named_children:
         if child.type == "decorator" and _decorated_member(child) is not None:
             continue
@@ -589,15 +636,25 @@ def _members_complete(body: Node | None) -> bool:
                 "method_signature",
             } and not _valid_unicode_member_name(name):
                 return False
-            if _instance_constructor(child):
-                if any(token.type in {"async", "*", "get", "set"} for token in child.children):
+            if child.type in {"public_field_definition", "property_signature"}:
+                if _text(name) in attributes:
                     return False
-                parameters = child.child_by_field_name("parameters")
-                if parameters is not None and any(
-                    _modifiers(parameter) & {"public", "private", "protected", "readonly"}
-                    for parameter in parameters.named_children
-                ):
+                attributes.add(_text(name))
+            if (
+                child.type in {"method_definition", "method_signature"}
+                and _text(name) == "constructor"
+            ):
+                constructors += 1
+                properties = _parameter_properties(child)
+                if constructors > 1 or properties is None:
                     return False
+                for parameter in properties:
+                    pattern = parameter.child_by_field_name(
+                        "pattern"
+                    ) or parameter.child_by_field_name("name")
+                    if pattern is None or _text(pattern) in attributes:
+                        return False
+                    attributes.add(_text(pattern))
     return True
 
 
@@ -709,8 +766,10 @@ def _class_member(node: Node) -> bool:
 
 
 def _member(node: Node, source: _Source) -> Member | None:
-    name_node = node.child_by_field_name("name") or (
-        node if node.type in {"property_identifier", "identifier"} else None
+    name_node = (
+        node.child_by_field_name("name")
+        or node.child_by_field_name("pattern")
+        or (node if node.type in {"property_identifier", "identifier"} else None)
     )
     if name_node is None or name_node.type == "computed_property_name":
         return None

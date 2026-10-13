@@ -18,6 +18,11 @@ signature gaps do not prove or disprove imports. Legacy or unbound gaps remain
 blocking. Global coverage FAIL and exit 2 stay visible
 ([AD-227](architecture/decisions/ad-227-scoped-dependency-proof.md)).
 
+Named TypeScript constructor parameter properties are observed as direct attributes.
+Ordinary parameters and runtime assignments do not declare that inventory. Computed,
+malformed and ambiguous members still prevent completeness
+([AD-230](architecture/decisions/ad-230-typescript-parameter-properties.md)).
+
 The bundled collector has a 300-second deadline. Timeout exits 2 without a complete
 observation. An older report file is not fresh evidence. Match the analyzed project's
 Python runtime to avoid `runtime_mismatch`.
