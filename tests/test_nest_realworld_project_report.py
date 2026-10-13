@@ -231,7 +231,7 @@ def test_nest_realworld_catalog_and_reports_preserve_full_target_with_partial_co
         report = _report(output)
         assert report.comparison is not None
         assert report.comparison.status == UML_DEMO_COMPARISONS[f"uml-{variant.id}"]
-        assert len(report.comparison.assessments) == 905
+        assert len(report.comparison.assessments) == 912
         assert (
             Counter(item.status for item in report.comparison.assessments)
             == EXPECTED_ASSESSMENTS[variant.id]
