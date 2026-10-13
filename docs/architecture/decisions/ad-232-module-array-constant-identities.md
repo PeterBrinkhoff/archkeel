@@ -25,6 +25,8 @@ same-name array; explicit type-only imports do not. Direct module destructuring
 and escaped binding spellings make uniqueness opaque and veto new array facts.
 Uncollected direct value declarations, including ambient forms, also remain
 competitors. Plain supported declarations retain their original facts and ambiguity.
+Module-scoped `var` also competes through blocks and loop headers; function,
+class and namespace scopes stop that hoisting, and block `let` remains local.
 Existing identifier/scalar handling and TypeScript type/value matching are unchanged.
 
 Rejected: interpreting `as const` as runtime immutability or proof of element

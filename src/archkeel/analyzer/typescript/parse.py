@@ -669,8 +669,42 @@ def _module_array_constant(node: Node, value: Node) -> bool:
     )
 
 
+def _module_var_array_peer(node: Node) -> tuple[str | None, bool]:
+    """A block/control-flow var still competes with a module array declaration."""
+    parent = node.parent
+    variable = (
+        node.type == "variable_declarator"
+        and parent is not None
+        and parent.type == "variable_declaration"
+    )
+    loop = node.type == "for_in_statement" and any(child.type == "var" for child in node.children)
+    if not (variable or loop) or any(
+        ancestor.type
+        in {
+            "function_declaration",
+            "generator_function_declaration",
+            "function_expression",
+            "generator_function",
+            "arrow_function",
+            "method_definition",
+            "class_body",
+            "internal_module",
+        }
+        for ancestor in _ancestors(node)
+    ):
+        return None, False
+    binding = next(iter(node.named_children), None)
+    if binding is None or binding.type != "identifier":
+        return None, True
+    name = _text(binding)
+    return (name, False) if name and "\\" not in name else (None, True)
+
+
 def _uncollected_module_binding(node: Node) -> tuple[str | None, bool]:
     """Veto new array identities beside unsupported module binding syntax."""
+    peer_name, opaque = _module_var_array_peer(node)
+    if peer_name is not None or opaque:
+        return peer_name, opaque
     variable = node.type == "variable_declarator"
     defined = node.type in {
         "class_declaration",
