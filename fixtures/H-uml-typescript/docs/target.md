@@ -19,6 +19,9 @@ constructor is UNKNOWN. As-Is and Diff show only recorded facts.
 Replay with `make demo-architecture VARIANT=uml-typescript-match OUTPUT=demo-output/ts-match.json`.
 The `uml-typescript-mismatch` and `uml-typescript-partial` variants exercise FAIL and
 UNKNOWN. Use fresh output paths; `make demo-uml` generates these alongside Python and Dart.
+It first runs `make typescript-compiler-check`: pinned TypeScript 5.9.3 checks this
+fixture's strict `tsconfig.json` with `--noEmit`. This development acceptance needs
+Node and npm; collecting TypeScript source facts with the installed CLI does not.
 
 Tracked in #339 (demos) and #340 (complete ArchKeel Target).
 

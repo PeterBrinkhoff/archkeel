@@ -39,7 +39,7 @@ jobs:
       - name: Install locked dependencies
         run: uv sync --locked
 
-      - name: Run full suite, browser proof, timing, and report gallery
+      - name: Run full suite, TypeScript compiler check, browser proof, timing, and report gallery
         run: |
           make ci-check
           make mermaid

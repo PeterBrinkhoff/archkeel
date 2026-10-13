@@ -3,7 +3,7 @@ UV ?= uv
 DART_EXECUTABLE ?= dart
 FLUTTER_EXECUTABLE ?= flutter
 
-.PHONY: against gate ci ci-check ci-core-check ci-report-check ci-pr-check ci-pr-report-check pr-test pr-report-test ci-typescript ci-artifacts-clean prune-report-artifacts mermaid check test collector-safety typescript-native dart-test lint typecheck self-validate fixtures self-observation demo demo-github github-pr-report demo-onboarding demo-dart demo-typescript demo-snapshot-check demo-architecture demo-uml loop-figure demo-screenshots browser-install report-browser report-browser-tests report-browser-proof report-pages plugin plugin-directory build smoke release-check rule-yield architecture-graph-schema report-timing flutter-demo-check
+.PHONY: against gate ci ci-check ci-core-check ci-report-check ci-pr-check ci-pr-report-check pr-test pr-report-test ci-typescript ci-artifacts-clean prune-report-artifacts mermaid check test collector-safety typescript-native typescript-compiler-check dart-test lint typecheck self-validate fixtures self-observation demo demo-github github-pr-report demo-onboarding demo-dart demo-typescript demo-snapshot-check demo-architecture demo-uml loop-figure demo-screenshots browser-install report-browser report-browser-tests report-browser-proof report-pages plugin plugin-directory build smoke release-check rule-yield architecture-graph-schema report-timing flutter-demo-check
 
 check: lint typecheck test
 
@@ -20,7 +20,7 @@ ci-check: ci-artifacts-clean ci-core-check ci-report-check
 
 ci-core-check: PYTEST_EXTRA = --with playwright==$(PLAYWRIGHT_VERSION)
 ci-core-check: PYTEST_STOP := --maxfail=1
-ci-core-check: browser-install gate ci-typescript
+ci-core-check: browser-install gate typescript-compiler-check ci-typescript
 
 ci-report-check: report-timing report-browser-proof
 
@@ -140,6 +140,10 @@ collector-safety:
 		tests/test_collector_safety_acceptance.py tests/test_collector_liveness_observer.py \
 		tests/test_inheritance_proof_transport.py
 .PHONY: typescript-differential
+# Development acceptance, separate from the Python-hosted source collector.
+typescript-compiler-check:
+	npx --yes --package typescript@5.9.3 tsc --noEmit --project fixtures/H-uml-typescript/tsconfig.json
+
 typescript-native:
 	$(UV) run --locked python -m pytest -q tests/test_typescript_parse.py \
 		tests/test_typescript_inner.py tests/test_typescript_uml_acceptance.py \
@@ -240,7 +244,7 @@ demo-architecture:
 	@test -n "$(OUTPUT)" || { echo "OUTPUT is required"; exit 2; }
 	@$(UV) run --locked python -m fixtures.architecture_demo --replay "$(VARIANT)" --output "$(OUTPUT)"
 
-demo-uml:
+demo-uml: typescript-compiler-check
 	@test -n "$(OUTPUT)" || { echo "OUTPUT is required"; exit 2; }
 	@$(UV) run --locked python -m fixtures.architecture_demo --uml-suite --output "$(OUTPUT)"
 
