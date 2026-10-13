@@ -19,6 +19,7 @@ CI_CHECK_STEPS = [
     "ci-artifacts-clean",
     "browser-install",
     *GATE_STEPS,
+    "typescript-compiler-check",
     "demo-typescript",
     "report-timing",
     "report-browser-proof",
@@ -103,6 +104,7 @@ def test_gate_uses_pinned_base_instead_of_duplicate_self_validation(
         "self-validate",
         "ci-artifacts-clean",
         "report-timing",
+        "typescript-compiler-check",
         "demo-typescript",
         "browser-install",
         "mermaid",
@@ -122,6 +124,33 @@ def test_ci_check_leaves_mermaid_to_its_parallel_workflow_job(tmp_path: Path, jo
     result, steps = _run_gate(tmp_path, "ci-check", None, jobs, True)
     assert result.returncode == 0, result.stderr
     assert steps == CI_CHECK_STEPS
+
+
+@pytest.mark.parametrize("compiler_exit", [0, 1])
+def test_uml_demo_checks_typescript_before_generating_reports(tmp_path: Path, compiler_exit: int):
+    steps = tmp_path / "steps"
+    overrides = tmp_path / "Makefile"
+    overrides.write_text(
+        f"include {ROOT / 'Makefile'}\n"
+        "typescript-compiler-check:\n"
+        f'\t@echo compiler >> "{steps}"\n'
+        f"\t@exit {compiler_exit}\n"
+    )
+    runner = tmp_path / "uv"
+    runner.write_text(f'#!/bin/sh\necho report >> "{steps}"\n')
+    runner.chmod(0o755)
+    result = subprocess.run(
+        ["make", "-j2", "-f", str(overrides), "demo-uml", f"OUTPUT={tmp_path / 'reports'}"],
+        cwd=ROOT,
+        env={**os.environ, "MAKEFLAGS": "", "UV": str(runner)},
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    assert steps.read_text().splitlines() == (
+        ["compiler", "report"] if compiler_exit == 0 else ["compiler"]
+    ), result.stderr
+    assert result.returncode == (0 if compiler_exit == 0 else 2), result.stderr
 
 
 def test_against_receives_the_exact_ci_base_and_stops_before_tests(tmp_path: Path) -> None:

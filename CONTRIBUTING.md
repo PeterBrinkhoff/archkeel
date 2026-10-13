@@ -13,7 +13,11 @@ uv sync --locked
 
 `.python-version` pins 3.11.12: CI runs the gate on it, and the fresh self-observation records it.
 The runtime test in `make check` also starts `python3.12`, so 3.12 must be on your `PATH`.
-Flow browser tests and Mermaid rendering require Node.js 22; CI installs it for these tools.
+Flow browser tests, Mermaid rendering and the UML TypeScript compiler check require
+Node.js 22 and npm; CI installs them. `make typescript-compiler-check` runs pinned
+TypeScript 5.9.3 against `fixtures/H-uml-typescript/tsconfig.json` with `--noEmit`.
+This development check is separate from the Python-hosted `make typescript-native`
+collector tests and the installed CLI, which do not require Node.
 Dart analysis runs in Python. `make dart-test` checks it without installing a Dart SDK.
 Only `make flutter-demo-check`, which builds and runs the demo app, needs Flutter and Dart.
 
@@ -32,7 +36,8 @@ renderer, drag/async and independent-Target checks. Samples do not replace testi
 you change. The normal core set uses one Dart CLI smoke, one UNKNOWN safety case and four Flutter
 Target guards; complete Dart and Flutter variant coverage stays in the full checks.
 
-The scheduled **Full verification** workflow runs the complete `make ci` gate, report timing and
+The scheduled **Full verification** workflow runs the complete `make ci` gate, including
+the UML TypeScript compiler check, report timing and
 browser proof, gallery generation, plus Windows collector safety and a shared Python/OS matrix for TypeScript and Dart. It
 also supports manual dispatch. Release tags call that same full workflow before package build and
 publication. Use `make ci BASE=origin/main` locally for the complete gate.
@@ -45,6 +50,8 @@ Actions** as its publishing source.
 Run `make report-pages` to generate the same site in `test-artifacts/pages/`: an entry page,
 the current report and the Python, Dart and TypeScript demos with shared detail pages and canonical
 JSON. Demo links open in the dark theme; `/demos/` leads to the gallery.
+`make demo-uml OUTPUT=<fresh-directory>` checks the TypeScript fixture with the same
+compiler before generating the Python, Dart and TypeScript UML reports.
 
 ## Inspect the self-observation
 
