@@ -616,7 +616,7 @@ def _declared_members(body: Node, kind: DefinitionKind, source: _Source) -> list
             for parameter in _parameter_properties(item) or ():
                 member = _member(parameter, source)
                 if member is not None:
-                    properties.append(replace(member, literal=None))
+                    properties.append(replace(member, literal=None, decorator_sources=()))
     keys = [_static_member_name(member.name) for member in members]
     if None in keys:
         return members
@@ -656,15 +656,10 @@ def _members_complete(body: Node | None) -> bool:
                 continue
             if name is None or name.type == "computed_property_name":
                 return False
-            if child.type in {
-                "method_definition",
-                "method_signature",
-            } and not _valid_unicode_member_name(name):
-                return False
-            key = _static_member_name(_text(name))
-            if key is None:
-                return False
             if child.type in {"public_field_definition", "property_signature"}:
+                key = _static_member_name(_text(name))
+                if key is None:
+                    return False
                 if key in attributes:
                     return False
                 attributes.add(key)

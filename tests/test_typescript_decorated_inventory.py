@@ -126,7 +126,6 @@ def test_supported_decorated_lexical_members_are_complete(member: str) -> None:
     [
         "@Get() [key](): void {}",
         "@Field() [key]: string;",
-        "@Get() run() {} constructor(private value: string) {}",
         "@Get() run() {} static { initialize(); }",
         "@Get()",
         "@Get(); run() {}",
@@ -460,7 +459,6 @@ def test_duplicate_decorated_owners_keep_closed_inventory_unknown(tmp_path: Path
     [
         "@Get() [key]() {}",
         "@Get() run() {} static { initialize(); }",
-        "@Get() run() {} constructor(private value: string) {}",
         "@Get()",
     ],
 )

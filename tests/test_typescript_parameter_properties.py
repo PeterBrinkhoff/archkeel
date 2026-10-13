@@ -77,7 +77,7 @@ def test_ambiguous_or_malformed_parameter_properties_keep_inventory_partial(body
     assert len({m.name for m in owner.members}) == len(owner.members)
 
 
-@pytest.mark.parametrize("extra", ["[key](): void {}", "@Get() read(): void {}"])
+@pytest.mark.parametrize("extra", ["[key](): void {}", "static { initialize(); }"])
 def test_other_unsupported_members_do_not_become_complete(extra):
     syntax = parse(
         "main.ts", f"class Store {{ constructor(private repo: string) {{}} {extra} }}".encode()
@@ -270,6 +270,141 @@ def test_quoted_constructor_matches_closed_field_and_method_target(tmp_path, spe
     root, config = _target(tmp_path / "project", "repo", spelling, methods=True)
     result, encoded = run_report(root, config=config, analyzer=Observer(_TypeScriptCollector()))
     assert result.declared_rules == "PASS"
+    path = root / "saved.json"
+    path.write_bytes(encoded)
+    assert run_saved_report(path).rule_assessments == result.rule_assessments
+
+
+def test_parameter_decorators_do_not_become_property_decorators(tmp_path):
+    source = """@ClassTag()
+export class Store {
+  @FieldTag() declared: string;
+  constructor(@Inject('repo') private readonly repo: string, ordinary: number) {}
+  @MethodTag() run(): void {}
+}
+"""
+    syntax = parse("src/main.ts", source.encode())
+    owner = next(d for d in syntax.definitions if d.kind == "class")
+    constructor = next(d for d in syntax.definitions if d.name == "constructor")
+    method = next(d for d in syntax.definitions if d.name == "run")
+    assert owner.members_complete and constructor.signature_complete
+    assert [value for value, _ in owner.decorator_sources] == ["@ClassTag()"]
+    assert [value for value, _ in method.decorator_sources] == ["@MethodTag()"]
+    assert constructor.decorator_sources == ()
+    fields = {member.name: member for member in owner.members}
+    assert [value for value, _ in fields["declared"].decorator_sources] == ["@FieldTag()"]
+    assert fields["repo"].decorator_sources == ()
+    assert fields["repo"].span.line == 4 and fields["repo"].literal is None
+    facts = _collected(tmp_path, source)
+    symbols = next(s.records for s in facts.sections if s.name == "symbols")
+    record = next(r for r in symbols if r.kind == "class")
+    declarations = {item.get("name"): item for item in record.data.get("attribute_declarations")}
+    assert declarations["declared"].get("decorators") == ("@FieldTag()",)
+    assert declarations["repo"].get("decorators") == ()
+    assert declarations["repo"].get("decorator_evidence_ids") == ()
+    evidence = {item.id: item for item in facts.evidence}
+    assert [
+        evidence[identity].excerpt
+        for identity in declarations["declared"].get("decorator_evidence_ids")
+    ] == ["@FieldTag()"]
+
+
+@pytest.mark.parametrize("spelling", ["constructor", "'constructor'"])
+@pytest.mark.parametrize("signature_first", [True, False])
+def test_decorated_methods_do_not_hide_constructor_overload_ambiguity(spelling, signature_first):
+    signature, implementation = f"{spelling}(repo: string);", f"{spelling}(repo: string) {{}}"
+    constructors = (signature, implementation) if signature_first else (implementation, signature)
+    source = f"class Store {{ {' '.join(constructors)} @Get() run(): void {{}} }}"
+    syntax = parse("main.ts", source.encode())
+    owner = next(d for d in syntax.definitions if d.kind == "class")
+    assert syntax.first_error is None
+    assert owner.members_complete is False
+
+
+@pytest.mark.parametrize(
+    "member",
+    [
+        r'@Get() static "constr\u0075ctor"(): void {}',
+        r'@Get() "constr\u{20}uctor"(): void {}',
+    ],
+)
+def test_property_support_preserves_supported_decorated_quoted_method_names(member):
+    source = f"class Store {{ constructor(readonly repo: string) {{}} {member} }}"
+    syntax = parse("main.ts", source.encode())
+    owner = next(d for d in syntax.definitions if d.kind == "class")
+    assert syntax.first_error is None
+    assert [m.name for m in owner.members] == ["repo"]
+    assert owner.members_complete
+    method = syntax.definitions[-1]
+    assert [value for value, _ in method.decorator_sources] == ["@Get()"]
+
+
+@pytest.mark.parametrize(
+    "constructor",
+    [
+        "@Get() 'constructor'(readonly repo: string) {}",
+        r'"constr\u0075ctor"(readonly repo: string) {}',
+        "@Get() static constructor(readonly repo: string) {}",
+        "@Get() read(readonly repo: string) {}",
+    ],
+)
+def test_decorator_composition_cannot_authorize_unsupported_property_owners(constructor):
+    syntax = parse("main.ts", f"class Store {{ {constructor} }}".encode())
+    owner = next(d for d in syntax.definitions if d.kind == "class")
+    assert syntax.first_error is None
+    assert owner.members_complete is False and not owner.members
+    if constructor.startswith("@Get() '"):
+        assert syntax.definitions[-1].name == "'constructor'"
+
+
+@pytest.mark.parametrize("name", [r'"bad\u{110000}name"', r"bad\u0020name"])
+def test_named_properties_do_not_bypass_decorator_unicode_guards(name):
+    source = f"class Store {{ constructor(readonly repo: string) {{}} @Get() {name}() {{}} }}"
+    syntax = parse("main.ts", source.encode())
+    owner = next(d for d in syntax.definitions if d.kind == "class")
+    assert [m.name for m in owner.members] == ["repo"]
+    assert owner.members_complete is False
+
+
+def test_decorated_field_alias_still_blocks_parameter_property_closure():
+    source = 'class Store { @Field() "repo": string; constructor(private repo: string) {} }'
+    syntax = parse("main.ts", source.encode())
+    owner = next(d for d in syntax.definitions if d.kind == "class")
+    assert owner.members_complete is False
+    assert [member.name for member in owner.members] == ['"repo"']
+    assert [value for value, _ in owner.members[0].decorator_sources] == ["@Field()"]
+
+
+@pytest.mark.parametrize("spelling", ["constructor", "'constructor'"])
+@pytest.mark.parametrize("expected,status", [("repo", "PASS"), ("missing", "FAIL")])
+def test_parameter_decorator_matches_independent_closed_target_and_saved_report(
+    tmp_path, spelling, expected, status
+):
+    root, config = _target(tmp_path / "project", expected, spelling, methods=True)
+    (root / "src/main.ts").write_text(
+        f"@ClassTag() export class Store {{ {spelling}("
+        "@Inject('repo') readonly repo: string, ordinary: number) {} }\n"
+    )
+    result, encoded = run_report(root, config=config, analyzer=Observer(_TypeScriptCollector()))
+    assert result.declared_rules == status
+    path = root / "saved.json"
+    path.write_bytes(encoded)
+    assert run_saved_report(path).rule_assessments == result.rule_assessments
+
+
+def test_decorated_extra_method_is_known_failure_beside_parameter_property(tmp_path):
+    root, config = _target(tmp_path / "project", "repo", methods=True)
+    (root / "src/main.ts").write_text(
+        "export class Store { constructor(readonly repo: string, ordinary: number) {} "
+        "@Get() extra(): void {} }\n"
+    )
+    result, encoded = run_report(root, config=config, analyzer=Observer(_TypeScriptCollector()))
+    assert result.declared_rules == "FAIL"
+    model = parse_observation(decode_canonical_model(json.loads(encoded)))
+    assert any(
+        a.aspect == "completeness" and a.status == "FAIL"
+        for a in architecture_report(model).comparison.assessments
+    )
     path = root / "saved.json"
     path.write_bytes(encoded)
     assert run_saved_report(path).rule_assessments == result.rule_assessments
