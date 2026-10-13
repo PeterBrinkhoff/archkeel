@@ -664,6 +664,8 @@ def _members_complete(body: Node | None) -> bool:
                     return False
                 attributes.add(key)
             if child.type in {"method_definition", "method_signature"}:
+                if not _valid_unicode_member_name(name):
+                    return False
                 properties = _parameter_properties(child)
                 constructor = _instance_constructor(child)
                 constructors += constructor

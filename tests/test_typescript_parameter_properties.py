@@ -408,3 +408,37 @@ def test_decorated_extra_method_is_known_failure_beside_parameter_property(tmp_p
     path = root / "saved.json"
     path.write_bytes(encoded)
     assert run_saved_report(path).rule_assessments == result.rule_assessments
+
+
+@pytest.mark.parametrize(
+    "name,status",
+    [
+        (r"constr\u{20}uctor", "UNKNOWN"),
+        (r"constr\u0020uctor", "UNKNOWN"),
+        (r"r\u0065ad", "UNKNOWN"),
+        (r'"constr\u{110000}ctor"', "UNKNOWN"),
+        (r'"constr\u{FFFFFFFF}ctor"', "UNKNOWN"),
+        (r'"constr\u{20}uctor"', "PASS"),
+        (r'"constr\u{D800}uctor"', "PASS"),
+    ],
+)
+def test_undecorated_method_unicode_guard_preserves_private_attribute_target(
+    tmp_path, name, status
+):
+    source = (
+        "export class Store { constructor(private repo: string, ordinary: number) {} "
+        f"{name}(): void {{}} }}\n"
+    )
+    syntax = parse("src/main.ts", source.encode())
+    owner = next(d for d in syntax.definitions if d.kind == "class")
+    assert syntax.first_error is None
+    assert [member.name for member in owner.members] == ["repo"]
+    assert owner.members[0].visibility == "private"
+    assert owner.members_complete is (status == "PASS")
+    root, config = _target(tmp_path / "project", "repo")
+    (root / "src/main.ts").write_text(source)
+    result, encoded = run_report(root, config=config, analyzer=Observer(_TypeScriptCollector()))
+    assert result.declared_rules == status
+    path = root / "saved.json"
+    path.write_bytes(encoded)
+    assert run_saved_report(path).rule_assessments == result.rule_assessments
