@@ -659,7 +659,7 @@ def _instance_constructor(node: Node) -> bool:
     """Recognize the restricted instance constructor name without rewriting source names."""
     name = Node.child_by_field_name(node, "name")
     if (
-        node.type != "method_definition"
+        node.type not in {"method_definition", "method_signature"}
         or not _class_member(node)
         or node.parent is None
         or node.parent.type != "class_body"

@@ -391,6 +391,42 @@ def test_mixed_decorator_cannot_certify_unsupported_instance_constructor_shapes(
 
 
 @pytest.mark.parametrize(
+    "constructor",
+    [
+        "constructor(private repo: string)",
+        "'constructor'(private repo: string)",
+        "constructor(readonly repo: string)",
+        '"constructor"(readonly repo: string)',
+    ],
+)
+def test_constructor_signatures_keep_uncollected_property_inventory_partial(
+    tmp_path: Path,
+    constructor: str,
+) -> None:
+    source = f"class Endpoint {{ {constructor}; @Get() run() {{}} }}"
+    syntax = parse("src/main.ts", source.encode())
+    assert syntax.first_error is None
+    assert syntax.definitions[0].members_complete is False
+    assert syntax.definitions[1].overload_signature is True
+    graph = _graph_from_source_facts(_collected(tmp_path, source), ("src",))
+    assert compare_graphs(graph, _target((), kind="attribute")).status == "UNKNOWN"
+
+
+def test_constructor_overload_bindings_remain_ambiguous_in_a_decorated_class(
+    tmp_path: Path,
+) -> None:
+    source = (
+        "class Endpoint { constructor(repo: string); constructor(repo: string) {} @Get() run() {} }"
+    )
+    graph = _graph_from_source_facts(_collected(tmp_path, source), ("src",))
+    comparison = compare_graphs(graph, _target(("constructor", "run")))
+    assert comparison.status == "UNKNOWN"
+    assert any(
+        item.status == "UNKNOWN" and item.change == "ambiguous" for item in comparison.assessments
+    )
+
+
+@pytest.mark.parametrize(
     "names,status",
     [
         (("run", "plain"), "PASS"),
