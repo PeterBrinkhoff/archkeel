@@ -40,6 +40,8 @@ contract diagnostics revoke proof before evaluation and canonical serialization.
 Partial closed-member completeness PASS requires both source and exact-Target
 bindings even if metadata fields are missing or the current inventory is complete.
 Legacy open-scope known comparisons retain their original behavior.
+Use the existing assessment identity's exact scope kinds to distinguish closed
+and open scopes on the same owner; an open-scope PASS needs no inventory binding.
 
 Native tests cover unrelated/local gaps, owned Dart parts, missing/broken parts,
 exact presence/absence, live/saved parity, deterministic repetition, all-PASS

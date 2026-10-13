@@ -107,18 +107,30 @@ def _inventory_comparison_is_bound(
     comparison: GraphComparison,
 ) -> bool:
     closed = (
-        {
-            scope.scope_id
+        tuple(
+            scope
             for scope in declared.target_scopes
             if scope.mode == "closed"
             and set(scope.entity_kinds).intersection({"attribute", "method", "enum_literal"})
-        }
+        )
         if declared is not None
-        else set()
+        else ()
     )
     inventory_pass = model.coverage.status != "PASS" and any(
-        a.subject_id in closed and a.aspect == "completeness" and a.status == "PASS"
+        a.aspect == "completeness"
+        and a.status == "PASS"
+        and a.id
+        == stable_id(
+            "UML-ASSESSMENT",
+            scope.scope_id,
+            "completeness",
+            "matched",
+            *scope.entity_kinds,
+            *scope.relationship_kinds,
+            *a.observed_ids,
+        )
         for a in comparison.assessments
+        for scope in closed
     )
     if (
         not inventory_pass

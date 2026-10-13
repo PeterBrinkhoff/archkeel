@@ -480,6 +480,42 @@ def test_legacy_partial_open_scope_keeps_known_comparison(tmp_path, language):
     assert architecture_report(changed).comparison == comparison
 
 
+@pytest.mark.parametrize("local_gap", [False, True])
+def test_partial_owner_with_closed_attributes_and_open_methods_keeps_known_comparison(
+    tmp_path, local_gap
+):
+    config = _project(tmp_path, "typescript")
+    path = tmp_path / "architecture-contract.json"
+    contract = json.loads(path.read_text())
+    closed = contract["declarations"]["uml"]["scopes"][0]
+    closed["entity_kinds"] = ["attribute"]
+    contract["declarations"]["uml"]["scopes"].append(
+        {**closed, "mode": "open", "entity_kinds": ["method"]}
+    )
+    path.write_text(json.dumps(contract))
+    source = tmp_path / "src/model.ts"
+    if local_gap:
+        source.write_text(source.read_text() + "const id = './gap'; import(id);\n")
+    result, encoded = run_report(
+        tmp_path, config=config, analyzer=Observer(_Collector("typescript"))
+    )
+    model = parse_observation(decode_canonical_model(json.loads(encoded)))
+    assert _inventory_is_complete(model) is not local_gap
+    comparison = architecture_report(model).comparison
+    assert comparison is not None and comparison.status == "FAIL"
+    scopes = [
+        a for a in comparison.assessments if a.subject_id == "data" and a.aspect == "completeness"
+    ]
+    assert {a.status for a in scopes} == ({"PASS", "UNKNOWN"} if local_gap else {"PASS"})
+    assert any(a.aspect == "signature" and a.status == "FAIL" for a in comparison.assessments)
+    saved_path = tmp_path / "architecture.json"
+    saved_path.write_bytes(encoded)
+    assert run_saved_report(saved_path).rule_assessments == result.rule_assessments
+    if not local_gap:
+        changed = _unbound_inventory_snapshot(model, "proof_and_binding")
+        assert architecture_report(changed).comparison is None
+
+
 @pytest.mark.parametrize("alter", ["schema", "inputs", "owner", "duplicate"])
 def test_malformed_inventory_proof_cannot_replay_comparison(certified, alter):
     model, _ = certified
