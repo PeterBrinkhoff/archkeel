@@ -645,12 +645,16 @@ def _module_array_constant(node: Node, value: Node) -> bool:
     """Recognize a direct module declaration, without evaluating its array elements."""
     declaration = node.parent
     statement = declaration.parent if declaration is not None else None
-    if _in_error(node) or statement is None or not (
-        statement.type == "program"
-        or (
-            statement.type == "export_statement"
-            and statement.parent is not None
-            and statement.parent.type == "program"
+    if (
+        _in_error(node)
+        or statement is None
+        or not (
+            statement.type == "program"
+            or (
+                statement.type == "export_statement"
+                and statement.parent is not None
+                and statement.parent.type == "program"
+            )
         )
     ):
         return False
