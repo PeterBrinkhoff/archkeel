@@ -671,10 +671,32 @@ def _module_array_constant(node: Node, value: Node) -> bool:
 
 def _uncollected_module_binding(node: Node) -> tuple[str | None, bool]:
     """Veto new array identities beside unsupported module binding syntax."""
-    if node.type not in {"import_alias", "import_require_clause", "internal_module"}:
+    variable = node.type == "variable_declarator"
+    defined = node.type in {
+        "class_declaration",
+        "function_declaration",
+        "function_signature",
+        "enum_declaration",
+    }
+    if (
+        not defined
+        and not variable
+        and node.type
+        not in {
+            "import_alias",
+            "import_require_clause",
+            "internal_module",
+            "generator_function_declaration",
+            "abstract_class_declaration",
+        }
+    ):
         return None, False
     scope = node.parent
     declaration = scope if node.type == "import_require_clause" else node
+    if variable:
+        scope = scope.parent if scope is not None else None
+        if scope is None or scope.type != "ambient_declaration":
+            return None, False
     if node.type == "import_require_clause":
         scope = scope.parent if scope is not None else None
     while scope is not None and scope.type in {
@@ -690,8 +712,13 @@ def _uncollected_module_binding(node: Node) -> tuple[str | None, bool]:
         or any(child.type == "type" for child in declaration.children)
     ):
         return None, False
+    if defined:
+        return None, any(
+            child.type in {"identifier", "type_identifier"} and "\\" in _text(child)
+            for child in node.named_children
+        )
     binding = next(iter(node.named_children), None)
-    if binding is None or binding.type != "identifier":
+    if binding is None or binding.type not in {"identifier", "type_identifier"}:
         return None, True
     name = _text(binding)
     return (name, False) if name and "\\" not in name else (None, True)

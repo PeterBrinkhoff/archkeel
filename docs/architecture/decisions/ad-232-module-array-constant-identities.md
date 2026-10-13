@@ -23,6 +23,8 @@ regardless of declaration order; unrelated names and nested scopes do not.
 Value imports and uncollected namespace/import-alias bindings also veto a
 same-name array; explicit type-only imports do not. Direct module destructuring
 and escaped binding spellings make uniqueness opaque and veto new array facts.
+Uncollected direct value declarations, including ambient forms, also remain
+competitors. Plain supported declarations retain their original facts and ambiguity.
 Existing identifier/scalar handling and TypeScript type/value matching are unchanged.
 
 Rejected: interpreting `as const` as runtime immutability or proof of element
