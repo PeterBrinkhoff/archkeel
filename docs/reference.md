@@ -96,7 +96,9 @@ expectations are n/a. Filtering and baseline display do not change canonical fac
 Exit 0 is not architecture approval. Exit 2 carries diagnostics with `kind`,
 `subject`, `unknown_claim` and `remedy`; inspected evidence may remain available.
 JSON null means unavailable/inapplicable; an empty list means measured empty.
-Pin CLI and [command schema](../schema/command-result-7.0.schema.json) together.
+Pin CLI and [command schema](../schema/command-result-8.0.schema.json) together.
+Version 8 retains version 6/7 readers and permits an incomplete report to preserve
+a traceable FAIL assessment while coverage stays UNKNOWN/FAIL; it cannot claim PASS.
 Ignore unknown result properties; required fields and enum meanings remain strict.
 Schema shape validation proves neither authenticity nor conformance.
 `report`/`check --output` also write `.report.html`/`.check.html` companions.

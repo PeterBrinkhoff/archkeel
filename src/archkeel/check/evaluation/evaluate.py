@@ -291,6 +291,7 @@ def _inside_rule_results(
     evidence: dict[str, RawEvidence],
     cycle_scan_roots: tuple[str, ...] = (),
     cycle_namespace: str = "",
+    receipt_scan_roots: tuple[str, ...] = (),
 ) -> InsideRuleResults:
     """Evaluate nested rules with the root scan's facts, limited to each parent's modules."""
     violations: list[RawRecord] = []
@@ -334,6 +335,7 @@ def _inside_rule_results(
             assessments=assessments,
             cycle_scan_roots=cycle_scan_roots,
             cycle_namespace=cycle_namespace,
+            receipt_scan_roots=receipt_scan_roots,
             type_shapes=type_shapes,
             construct_capabilities=construct_capabilities,
         )
@@ -494,6 +496,7 @@ def _evaluate_inside_contract(
     assessments: list[RawRecord],
     cycle_scan_roots: tuple[str, ...],
     cycle_namespace: str,
+    receipt_scan_roots: tuple[str, ...],
 ) -> tuple[list[RawRecord], list[RawRecord], list[RawRecord], list[RawRecord]]:
     """Run shared evaluators for one clipped contract over one already-collected scan."""
     failures = rule_subject_failures(
@@ -532,6 +535,7 @@ def _evaluate_inside_contract(
         ancestor_contracts=ancestor_contracts,
         cycle_scan_roots=cycle_scan_roots,
         cycle_namespace=cycle_namespace,
+        receipt_scan_roots=receipt_scan_roots,
         type_shapes=type_shapes,
     )
     unknowns = (
@@ -567,6 +571,14 @@ def _unproven_binding_view(item: RawRecord) -> RawRecord:
             "symbol_category": "dynamic_binding",
         },
     }
+
+
+def _source_inventory_complete(facts: SourceFacts) -> bool:
+    selected = set(facts.coverage.selected_files)
+    return bool(selected) and (
+        selected == {item.path for item in facts.inputs if item.role == "selected"}
+        and facts.coverage.files_read == facts.coverage.files_parsed == len(selected)
+    )
 
 
 def evaluate_source(
@@ -795,6 +807,7 @@ def evaluate_source(
         assessment_parent="root",
         cycle_scan_roots=roots if facts.coverage.full_scope and not failures else (),
         cycle_namespace=namespace,
+        receipt_scan_roots=roots if _source_inventory_complete(facts) else (),
         type_shapes=type_shapes,
     )
     (
@@ -825,6 +838,7 @@ def evaluate_source(
         evidence=evidence,
         cycle_scan_roots=roots if facts.coverage.full_scope and not failures else (),
         cycle_namespace=namespace,
+        receipt_scan_roots=roots if _source_inventory_complete(facts) else (),
         type_shapes=type_shapes,
     )
     violations = sorted([*violations, *inside_violations], key=lambda item: item["id"])

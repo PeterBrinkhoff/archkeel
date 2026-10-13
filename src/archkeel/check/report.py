@@ -60,7 +60,7 @@ from archkeel.ir.model import (
 from archkeel.ir.profiles import PROFILES
 from archkeel.ir.report_graph import architecture_report
 from archkeel.ir.report_projection import architecture_projection
-from archkeel.ir.trace import validate_evidence_classes
+from archkeel.ir.trace import trace_valid_violations, validate_evidence_classes
 
 from .git import git_bytes
 from .observe import observation_diagnostics
@@ -69,7 +69,7 @@ from .ratchets import call_rows, calls_measured, unknown_positions_by_rule
 from .run import inspect_observation
 from .runtime import runtime_diagnostic
 from .snapshot import resolve_commit
-from .uml import assemble_uml
+from .uml import _revoke_dependency_proofs, assemble_uml
 from .uml_evaluation import evaluate_uml
 
 VIOLATION_REMEDY = "Change the code or amend the contract with owner approval."
@@ -297,11 +297,27 @@ def _report_filter(
 
 def _incomplete_report_result(result: ObservationResult) -> RunResult:
     model = result.observation
+    declared: _Literal["PASS", "FAIL", "UNKNOWN"] = "UNKNOWN"
+    if (
+        model is not None
+        and model.runtime is not None
+        and runtime_diagnostic(model.runtime) is None
+        and not any(
+            item.kind in {"contract_invalid", "runtime_mismatch", "incomparable_runtime"}
+            for item in result.diagnostics
+        )
+    ):
+        try:
+            if trace_valid_violations(model):
+                declared = "FAIL"
+        except ValueError:
+            pass
     return RunResult(
         "report",
         2,
         diagnostics=result.diagnostics,
         coverage=result.coverage,
+        declared_rules=declared,
         python_version=model.python_version if model is not None else None,
         rule_assessments=(
             rule_assessments(
@@ -399,6 +415,14 @@ def _selected_finding_rules(report: ArchitectureReport, finding_ids: set[str]) -
     }
 
 
+def _selected_finding_ids(
+    report: ArchitectureReport, projection: ArchitectureProjection, component: str | None
+) -> set[str]:
+    if component is None:
+        return {item.id for item in report.findings}
+    return {identity for owner in projection.components for identity in owner.finding_ids}
+
+
 def _architecture_result(
     model: Observation,
     command_result: RunResult,
@@ -410,11 +434,12 @@ def _architecture_result(
     only_architecture = report_filter is not None and report_filter.only_architecture
     component = report_filter.component if report_filter is not None else None
     complete = command_result.observation_complete == "PASS"
+    findings_available = complete or command_result.declared_rules == "FAIL"
     component_rules: set[str] = set()
     try:
         selected_violations = (
             _selected_violations(model, replace(report_filter, component=None))
-            if complete and only_violations and report_filter is not None
+            if findings_available and only_violations and report_filter is not None
             else ()
         )
         report = architecture_report(model)
@@ -441,11 +466,7 @@ def _architecture_result(
             component_rules = _component_rule_assessment_ids(
                 report.target, projection, tuple(item.id for item in selected_components)
             )
-        finding_ids = (
-            {identity for owner in projection.components for identity in owner.finding_ids}
-            if component is not None
-            else {item.id for item in report.findings}
-        )
+        finding_ids = _selected_finding_ids(report, projection, component)
         if only_architecture or only_violations:
             component_rules |= _selected_finding_rules(report, finding_ids)
         command_result = replace(
@@ -453,7 +474,7 @@ def _architecture_result(
             report_filter=report_filter,
             architecture_projection=projection,
             filtered_violations=None
-            if not complete
+            if not findings_available
             else tuple(item for item in selected_violations if item.record.id in finding_ids)
             if only_violations
             else tuple(
@@ -480,6 +501,15 @@ def _architecture_result(
     return _scope_report_assessments(command_result, report_filter, component_rules)
 
 
+def _projection_result(result: ObservationResult) -> ObservationResult:
+    if any(
+        item.kind in {"contract_invalid", "runtime_mismatch", "incomparable_runtime"}
+        for item in result.diagnostics
+    ):
+        return _revoke_dependency_proofs(result)
+    return result
+
+
 def _report_result(
     result: ObservationResult,
     report_filter: ReportFilter | None,
@@ -489,6 +519,7 @@ def _report_result(
     require_source_graph: bool = False,
 ) -> RunResult:
     only_calls = report_filter is not None and report_filter.only_calls
+    result = _projection_result(result)
     model = result.observation
     if result.diagnostics or model is None:
         command_result = _incomplete_report_result(result)
@@ -583,7 +614,7 @@ def run_report(
         only_architecture,
         full_architecture,
     )
-    result = observe_repository(root, config, analyzer)
+    result = _projection_result(observe_repository(root, config, analyzer))
     architecture = (
         canonical_report_bytes(result.observation) if result.observation is not None else None
     )

@@ -31,6 +31,7 @@ from archkeel.ir.model import (
     ExternalDependencyScopeRule,
     ObservationResult,
     Record,
+    RecordData,
     RootLayoutRule,
     Section,
     UmlEligibility,
@@ -381,10 +382,38 @@ def _append_targets(
     )
 
 
+def _revoke_dependency_proofs(result: ObservationResult) -> ObservationResult:
+    model = result.observation
+    if model is None:
+        return result
+    sections = tuple(
+        replace(
+            section,
+            records=tuple(
+                replace(
+                    record,
+                    data=RecordData(
+                        tuple(
+                            (key, False if key == "assessment_complete" else value)
+                            for key, value in record.data.entries
+                            if key != "dependency_scope_proof"
+                        )
+                    ),
+                )
+                if record.data.get("dependency_scope_proof") is not None
+                else record
+                for record in section.records
+            ),
+        )
+        for section in model.sections
+    )
+    return replace(result, observation=replace(model, sections=sections))
+
+
 def assemble_uml(result: ObservationResult, contract_root: Path, path: str) -> ObservationResult:
     model = result.observation
     if model is None or any(item.code == "contract.invalid" for item in result.diagnostics):
-        return replace(result, uml_eligibility=UmlEligibility.BLOCKED)
+        return replace(_revoke_dependency_proofs(result), uml_eligibility=UmlEligibility.BLOCKED)
     if any(item.kind == "inside_contract_incomplete" for item in model.coverage.failures):
         return replace(result, uml_eligibility=UmlEligibility.BLOCKED)
     known = {record.id: record for section in model.sections for record in section.records}
@@ -435,7 +464,7 @@ def assemble_uml(result: ObservationResult, contract_root: Path, path: str) -> O
         sections = _append_targets(model.sections, projected)
     except (OSError, ValueError) as error:
         return replace(
-            result,
+            _revoke_dependency_proofs(result),
             uml_eligibility=UmlEligibility.BLOCKED,
             diagnostics=(
                 *result.diagnostics,

@@ -66,6 +66,9 @@ omitted pairs retain their undecided status ([AD-225](decisions/ad-225-compact-v
 The TypeScript frontend is packaged in Python at
 [`archkeel.analyzer.typescript`](../../src/archkeel/analyzer/typescript/); it remains a
 process collector and does not execute project code. Missing source evidence remains UNKNOWN.
+Complete dependency scopes can retain an authenticated requires receipt alongside
+unrelated source resolution gaps ([AD-227](decisions/ad-227-scoped-dependency-proof.md)).
+Coverage and cycle closure remain conservative.
 Dart named constructor identities retain their lexical owner once; declaration
 and reference joins use the same source span
 ([AD-228](decisions/ad-228-dart-constructor-identities.md)).

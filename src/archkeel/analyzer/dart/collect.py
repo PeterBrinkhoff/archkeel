@@ -511,7 +511,7 @@ class _Collection:
         qualified = f"{parent}.{member_spelling if constructor else name}{accessor}"
         identity = stable_id("DARTDEF", rel, member.span.start_byte, qualified, "method")
         owner = self._owner_definition(rel, module, parent)
-        parameters = self._member_parameters(rel, owner, member, constructor)
+        parameters = self._member_parameters(rel, owner, member, constructor, identity)
         returns = None if constructor else member.return_type
         if member.kind == "setter" and returns is None:
             returns = "void"
@@ -579,7 +579,7 @@ class _Collection:
         )
 
     def _member_parameters(
-        self, rel: str, owner: Definition | None, member: Member, constructor: bool
+        self, rel: str, owner: Definition | None, member: Member, constructor: bool, identity: str
     ) -> list[RawData]:
         if not constructor or owner is None:
             return self._parameters(member.parameters)
@@ -590,8 +590,16 @@ class _Collection:
                 problem.span or member.span,
                 problem.kind,
                 problem.message,
+                signature_id=identity if problem.kind == "source_resolution_gap" else None,
             )
-        return self._resolved_parameters(resolution.parameters)
+        parameters = self._resolved_parameters(resolution.parameters)
+        formals = {item.name: item for item in member.parameters if item.super_formal}
+        for parameter in parameters:
+            name = parameter["name"]
+            if name in formals:
+                parameter["super_formal"] = True
+                parameter["evidence_ids"] = [self._cite(rel, formals[name].span)]
+        return parameters
 
     def _attribute(
         self,
@@ -1239,7 +1247,14 @@ class _Collection:
         )
 
     def _gap(
-        self, rel: str, span: Span, kind: str, message: str, evidence_ids: list[str] | None = None
+        self,
+        rel: str,
+        span: Span,
+        kind: str,
+        message: str,
+        evidence_ids: list[str] | None = None,
+        *,
+        signature_id: str | None = None,
     ) -> None:
         identity = stable_id("COVERAGE", rel, span.line, kind, message)
         if identity in self.gaps:
@@ -1268,9 +1283,19 @@ class _Collection:
             area="analysis_coverage",
             kind=kind,
             title=f"{rel}:{span.line} could not be analyzed: {message}",
-            subjects=[f"{rel}:{span.line}"],
+            subjects=[self.modules[rel]] if signature_id else [f"{rel}:{span.line}"],
             evidence_ids=cited,
-            data={"file": rel, "line": span.line, "message": message},
+            fact_ids=[signature_id] if signature_id else [],
+            data={
+                "file": rel,
+                "line": span.line,
+                "message": message,
+                **(
+                    {"module": self.modules[rel], "resolution_dimension": "signature"}
+                    if signature_id
+                    else {}
+                ),
+            },
         )
 
     def _record(

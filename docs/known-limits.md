@@ -6,11 +6,17 @@ Determinism is measured for a machine/runtime, not across every platform.
 
 ## Before claiming PASS
 
-A rule needs applicable subjects, complete coverage and sufficient evidence.
+A rule needs applicable subjects, complete relevant coverage and sufficient evidence.
 `interface_boundary` and `complete_requires` also need unique ownership; missing
 receipts keep their rows and aggregate verdict UNKNOWN. Only Python initializers
 with no AST statements may be unowned without breaking this proof; docstrings and
 imports are statements. An empty violation list is insufficient.
+
+An explicitly certified `complete_requires` scope can PASS with unrelated source
+resolution gaps. Arbitrary imports still block their own scopes and ancestors;
+signature gaps do not prove or disprove imports. Legacy or unbound gaps remain
+blocking. Global coverage FAIL and exit 2 stay visible
+([AD-227](architecture/decisions/ad-227-scoped-dependency-proof.md)).
 
 The bundled collector has a 300-second deadline. Timeout exits 2 without a complete
 observation. An older report file is not fresh evidence. Match the analyzed project's

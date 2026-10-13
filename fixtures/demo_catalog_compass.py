@@ -76,7 +76,7 @@ VARIANTS: tuple[Variant, ...] = (
         expected_codes=(),
         expected_kinds=_COVERAGE_GAP_KINDS,
         fixture=COMPASS_FIXTURE_DIR,
-        expected_declared_rules="UNKNOWN",
+        expected_declared_rules="FAIL",
     ),
     Variant(
         id="compass-signature-fail",
@@ -95,7 +95,7 @@ VARIANTS: tuple[Variant, ...] = (
         expected_codes=(),
         expected_kinds=_COVERAGE_GAP_KINDS,
         fixture=COMPASS_FIXTURE_DIR,
-        expected_declared_rules="UNKNOWN",
+        expected_declared_rules="FAIL",
     ),
     Variant(
         id="compass-dynamic-unknown",
@@ -114,6 +114,6 @@ VARIANTS: tuple[Variant, ...] = (
         expected_codes=(),
         expected_kinds=_COVERAGE_GAP_KINDS,
         fixture=COMPASS_FIXTURE_DIR,
-        expected_declared_rules="UNKNOWN",
+        expected_declared_rules="FAIL",
     ),
 )

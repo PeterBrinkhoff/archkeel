@@ -19,7 +19,14 @@ from archkeel.ir.codec import (
 )
 from archkeel.ir.digest import package_digest
 from archkeel.ir.facts import SourceFacts, dart_module_name
-from archkeel.ir.facts_codec import RawRecord, classified, file_evidence
+from archkeel.ir.facts_codec import (
+    RawRecord,
+    classified,
+    file_evidence,
+    parse_evidence,
+    parse_record,
+)
+from archkeel.ir.facts_validation import validate_source_bindings
 from archkeel.ir.identity import module_identity
 from archkeel.ir.model import (
     SCHEMA_VERSION,
@@ -39,7 +46,7 @@ from .declarations import (
 )
 from .evaluation.evaluate import ScanResult, evaluate_source
 from .ports import SourceCollector
-from .runtime import has_invalid_python_requirement
+from .runtime import has_invalid_python_requirement, runtime_diagnostic
 
 OBSERVATION_VERSION = "0.74.0"
 
@@ -628,6 +635,112 @@ def _layer_order_evidence(
     scan.evidence = sorted(evidence.values(), key=lambda item: item["id"])
 
 
+def _dependency_binding_id(scan: ScanResult, declarations: list[RawRecord]) -> str:
+    bound = [
+        parse_record(record)
+        for values in (
+            scan.modules,
+            scan.imports,
+            scan.symbols,
+            scan.coverage["failures"],
+            [
+                item
+                for item in declarations
+                if item["kind"]
+                in {
+                    "component_responsibility",
+                    "inside_component_responsibility",
+                    "complete_requires",
+                }
+            ],
+        )
+        for record in values
+    ]
+    evidence = [parse_evidence(item) for item in scan.evidence]
+    return stable_id(
+        "DEPENDENCY-PROOF",
+        repr(
+            (
+                tuple(sorted(bound, key=lambda item: item.id)),
+                tuple(sorted(evidence, key=lambda item: item.id)),
+            )
+        ),
+    )
+
+
+def _certify_dependency_scopes(
+    scan: ScanResult, facts: SourceFacts, contract_digest: str, declarations: list[RawRecord]
+) -> None:
+    """Bind complete requires receipts to validated physical inventory and runtime."""
+    if scan.coverage["status"] == "PASS":
+        return
+    requires = {item["id"] for item in declarations if item["kind"] == "complete_requires"}
+    receipts = [
+        item
+        for item in scan.scope_observations
+        if item["kind"] == "rule_evaluation"
+        and len(item["rule_ids"]) == 1
+        and item["rule_ids"][0] in requires
+    ]
+    for receipt in receipts:
+        receipt["data"]["assessment_complete"] = False
+    selected = set(facts.coverage.selected_files)
+    if (
+        not selected
+        or scan.coverage["rules"] != "PASS"
+        or facts.coverage.files_read != len(selected)
+        or facts.coverage.files_parsed != len(selected)
+        or selected != {item.path for item in facts.inputs if item.role == "selected"}
+        or runtime_diagnostic(facts.runtime) is not None
+    ):
+        return
+    records = {
+        record["id"]: parse_record(record)
+        for values in (scan.modules, scan.symbols, scan.imports, scan.unknowns)
+        for record in values
+    }
+    evidence = {item["id"]: parse_evidence(item) for item in scan.evidence}
+    paths = {item.module: item.rel_path for item in facts.files}
+    gaps = [parse_record(item) for item in scan.coverage["failures"]]
+    if not gaps or any(gap.kind != "source_resolution_gap" for gap in gaps):
+        return
+    try:
+        validate_source_bindings(
+            gaps,
+            paths,
+            {},
+            evidence,
+            import_ids=(),
+            selected_inputs=selected,
+            source_records=records,
+        )
+    except ValueError:
+        return
+    origins = [(gap, gap.data.get("source_module", gap.data.get("module"))) for gap in gaps]
+    proof = {
+        "binding_id": _dependency_binding_id(scan, declarations),
+        "source_digest": facts.source.source_digest,
+        "contract_digest": contract_digest,
+        "selected_files": sorted(selected),
+        "gap_ids": sorted(gap.id for gap in gaps),
+        "module_ids": sorted(item["id"] for item in scan.modules),
+        "import_ids": sorted(item["id"] for item in scan.imports),
+        "runtime": {
+            "name": facts.runtime.name,
+            "version": facts.runtime.version,
+            "required": facts.runtime.required,
+            "requirement_state": facts.runtime.requirement_state,
+        },
+    }
+    for receipt in receipts:
+        if not any(
+            gap.data.get("resolution_dimension") == "imports" and module in receipt["subjects"]
+            for gap, module in origins
+        ):
+            receipt["data"]["dependency_scope_proof"] = proof
+            receipt["data"]["assessment_complete"] = True
+
+
 def assemble_observation(
     facts: SourceFacts,
     *,
@@ -663,6 +776,7 @@ def assemble_observation(
     declarations = _declaration_records(
         contract, scan, inside_records, contract_reference, scope, language
     )
+    _certify_dependency_scopes(scan, facts, full_contract_digest, declarations)
     model: dict[str, object] = {
         "schema_version": SCHEMA_VERSION,
         "analyzer": {

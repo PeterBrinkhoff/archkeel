@@ -37,6 +37,7 @@ pr-test:
 		tests/test_analyzer.py tests/test_typescript_config.py tests/test_typescript_resolve.py \
 		tests/test_uml_comparison.py tests/test_saved_report.py tests/test_cli.py \
 		tests/test_report_recorded_unknowns.py \
+		tests/test_scoped_dependency_proof.py \
 		tests/test_result_schema.py \
 		tests/test_dart_parse.py tests/test_dart_snapshot.py tests/test_dart_resolve.py \
 		tests/test_dart_sdk_free.py tests/test_dart_inner_collect.py tests/test_dart_target.py \

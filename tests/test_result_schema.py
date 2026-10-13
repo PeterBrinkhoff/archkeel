@@ -123,7 +123,7 @@ def validator() -> Draft202012Validator:
 
 @pytest.fixture(scope="module")
 def current_validator() -> Draft202012Validator:
-    return _validator("command-result-7.0.schema.json")
+    return _validator("command-result-8.0.schema.json")
 
 
 def test_command_coverage_distinguishes_unmeasured_from_mixed_call_counts(validator) -> None:

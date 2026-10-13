@@ -10,6 +10,9 @@ PASS requires applicable subjects, complete relevant coverage and sufficient evi
 `interface_boundary` and `complete_requires` also need unique ownership.
 Known violations remain FAIL beside UNKNOWNs. No finding alone proves conformance.
 Unsupported capabilities cannot PASS.
+`complete_requires` may retain complete scoped proof beside unrelated source gaps;
+global coverage and cycle closure stay incomplete. See
+[AD-227](architecture/decisions/ad-227-scoped-dependency-proof.md).
 
 | Need | Rule |
 | --- | --- |

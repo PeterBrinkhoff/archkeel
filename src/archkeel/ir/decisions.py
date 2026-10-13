@@ -9,6 +9,7 @@ component edges, so validation and reports share one derivation.
 
 from __future__ import annotations
 
+import re
 from collections import Counter as _Counter
 from collections.abc import Mapping as _Mapping
 from dataclasses import dataclass
@@ -19,6 +20,7 @@ from .baseline import ViolationFingerprint as _ViolationFingerprint
 from .baseline import violation_rows
 from .bindings import unread_bindings
 from .duplication import repeated_logic
+from .facts_validation import validate_source_bindings
 from .interfaces import component_owners, owner_of
 from .measurements import RatchetError
 from .model import (
@@ -37,9 +39,12 @@ from .model import (
     ReviewClaims,
     RuleAssessment,
     RuleAssessmentStatus,
+    RuntimeInfo,
     ViolationCounts,
     declared_package_pair,
     in_scope,
+    module_in_ownership,
+    stable_id,
 )
 from .model import (
     RuleUncertaintyCause as RuleUncertaintyCause,
@@ -313,6 +318,13 @@ def _rule_uncertainty_action(record: Record) -> RuleUncertaintyAction:
 def rule_uncertainty_evidence(observation: Observation) -> dict[str, RuleUncertainty]:
     """Return typed causes and causal evidence using the same position semantics as ratchets."""
     _, counts, unknown_evidence = _unknown_evidence_and_counts(observation)
+    complete_scopes = {
+        row.id
+        for row in rule_assessments(
+            observation, undecided_by_rule=counts, complete=observation.coverage.status == "PASS"
+        )
+        if row.evaluation_proven
+    }
     records_by_rule = {rule_id: list(records) for rule_id, records in unknown_evidence.items()}
     ownership_blockers = tuple(
         record
@@ -327,13 +339,16 @@ def rule_uncertainty_evidence(observation: Observation) -> dict[str, RuleUncerta
             if (
                 declaration.evidence_class == EvidenceClass.DECLARED_RULE
                 and declaration.kind in RULE_RECORD_KINDS
+                and declaration.id not in complete_scopes
             ):
                 records_by_rule.setdefault(declaration.id, [])
 
     result: dict[str, RuleUncertainty] = {}
     for rule_id, records in sorted(records_by_rule.items()):
         actions = {_rule_uncertainty_action(record) for record in records}
-        if observation.coverage.status != "PASS" or observation.coverage.failures:
+        if (
+            observation.coverage.status != "PASS" or observation.coverage.failures
+        ) and rule_id not in complete_scopes:
             actions |= {_INCOMPLETE_EXECUTION_ACTION}
         result[rule_id] = RuleUncertainty(
             tuple(sorted(actions, key=lambda item: (item.cause.value, item.next_action))),
@@ -741,6 +756,201 @@ def _rule_receipt_complete(declaration: Record, receipt: Record | None) -> bool:
     return receipt is not None and receipt.data.get("assessment_complete", True) is True
 
 
+def _declared_scope_ownership(record: Record) -> ComponentOwnership:
+    exact = record.data.get("exact_modules")
+    return (
+        record.title,
+        record.subjects,
+        (
+            tuple(name for name in exact if isinstance(name, str))
+            if isinstance(exact, tuple)
+            else ()
+        ),
+    )
+
+
+def _dependency_receipt_ownership(
+    observation: Observation, declaration: Record, receipt: Record
+) -> bool:
+    parent_id = declaration.data.get("parent_id")
+    declarations = observation.records("declarations") or ()
+    parents = [
+        item
+        for item in declarations
+        if item.kind in _COMPONENT_KINDS and (item.id == parent_id or item.title == parent_id)
+    ]
+    parent = parents[0] if len(parents) == 1 else None
+    components = tuple(
+        _declared_scope_ownership(item)
+        for item in declarations
+        if item.kind in _COMPONENT_KINDS and item.data.get("parent_id") == parent_id
+    )
+    names = {
+        str(item.data.get("qualified_name"))
+        for item in observation.records("modules") or ()
+        if parent_id is None
+        or parent is not None
+        and module_in_ownership(
+            str(item.data.get("qualified_name")),
+            *_declared_scope_ownership(parent)[1:],
+        )
+    }
+    return (
+        bool(names)
+        and set(receipt.subjects) == names
+        and all(owner_of(name, components) is not None for name in names)
+    )
+
+
+def _dependency_binding_id(observation: Observation) -> str:
+    bound = [
+        record
+        for section in observation.sections
+        for record in section.records
+        if section.name in {"modules", "imports", "symbols"}
+        or section.name == "declarations"
+        and record.kind
+        in {
+            "component_responsibility",
+            "inside_component_responsibility",
+            "complete_requires",
+        }
+    ]
+    bound.extend(observation.coverage.failures)
+    return stable_id(
+        "DEPENDENCY-PROOF",
+        repr(
+            (
+                tuple(sorted(bound, key=lambda item: item.id)),
+                tuple(sorted(observation.evidence, key=lambda item: item.id)),
+            )
+        ),
+    )
+
+
+def _native_scope_runtime_valid(runtime: RuntimeInfo) -> bool:
+    """Replay only a simple numeric Python lower bound already validated by Core."""
+    if (
+        runtime.name != "python"
+        or runtime.requirement_state != "declared"
+        or runtime.required is None
+        or re.fullmatch(r">=[0-9]+\.[0-9]+(?:\.[0-9]+)?", runtime.required) is None
+        or re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", runtime.version) is None
+    ):
+        return False
+    actual = tuple(int(value) for value in re.findall(r"[0-9]+", runtime.version))
+    lower = tuple(int(value) for value in re.findall(r"[0-9]+", runtime.required))
+    return actual >= (*lower, 0)[:3]
+
+
+def _dependency_gaps_complete(
+    observation: Observation,
+    receipt: Record,
+    module_paths: dict[str, str],
+    records: dict[str, Record],
+    selected: tuple[JsonValue, ...],
+) -> bool:
+    evidence = {item.id: item for item in observation.evidence}
+    if any(gap.kind != "source_resolution_gap" for gap in observation.coverage.failures):
+        return False
+    try:
+        validate_source_bindings(
+            observation.coverage.failures,
+            module_paths,
+            {},
+            evidence,
+            import_ids=(),
+            selected_inputs=tuple(str(path) for path in selected),
+            source_records=records,
+        )
+    except ValueError:
+        return False
+    return all(
+        records.get(gap.id) == gap
+        and not (
+            gap.data.get("resolution_dimension") == "imports"
+            and gap.data.get("source_module", gap.data.get("module")) in receipt.subjects
+        )
+        for gap in observation.coverage.failures
+    )
+
+
+def _scoped_dependency_receipt(
+    observation: Observation, declaration: Record, receipt: Record | None
+) -> bool:
+    """Replay an explicit Core proof; old receipts cannot override incomplete observation."""
+    if (
+        declaration.kind != "complete_requires"
+        or receipt is None
+        or not _dependency_receipt_ownership(observation, declaration, receipt)
+    ):
+        return False
+    proof = receipt.data.get("dependency_scope_proof")
+    runtime = observation.runtime
+    coverage = observation.coverage
+    if (
+        not isinstance(proof, RecordData)
+        or runtime is None
+        or not _native_scope_runtime_valid(runtime)
+        or coverage.rules != "PASS"
+        or proof.get("source_digest") != observation.source.source_digest
+        or proof.get("contract_digest") != observation.contract.digest
+        or proof.get("binding_id") != _dependency_binding_id(observation)
+        or proof.get("runtime")
+        != RecordData(
+            (
+                ("name", runtime.name),
+                ("required", runtime.required),
+                ("requirement_state", runtime.requirement_state),
+                ("version", runtime.version),
+            )
+        )
+    ):
+        return False
+    selected = proof.get("selected_files")
+    if (
+        not isinstance(selected, tuple)
+        or not selected
+        or any(not isinstance(path, str) for path in selected)
+        or len(set(selected)) != len(selected)
+        or coverage.files_discovered != len(selected)
+        or coverage.files_read != len(selected)
+        or coverage.files_parsed != len(selected)
+        or proof.get("gap_ids") != tuple(sorted(gap.id for gap in coverage.failures))
+        or not coverage.failures
+    ):
+        return False
+    records = {record.id: record for section in observation.sections for record in section.records}
+    modules = observation.records("modules") or ()
+    if proof.get("module_ids") != tuple(sorted(record.id for record in modules)) or proof.get(
+        "import_ids"
+    ) != tuple(sorted(record.id for record in observation.records("imports") or ())):
+        return False
+    paths = {record.data.get("qualified_name"): record.data.get("file") for record in modules}
+    if any(
+        not isinstance(name, str) or not isinstance(path, str) or path not in selected
+        for name, path in paths.items()
+    ):
+        return False
+    module_paths = {str(name): str(path) for name, path in paths.items()}
+    evaluated = [record for record in modules if record.id in receipt.fact_ids]
+    if (
+        not evaluated
+        or len(evaluated) != len(receipt.fact_ids)
+        or set(receipt.subjects) != {record.data.get("qualified_name") for record in evaluated}
+    ):
+        return False
+    return _dependency_gaps_complete(observation, receipt, module_paths, records, selected)
+
+
+def _rule_scope_complete(
+    observation: Observation, declaration: Record, receipt: Record | None, complete: bool
+) -> bool:
+    return (complete and observation.coverage.status == "PASS") or _scoped_dependency_receipt(
+        observation, declaration, receipt
+    )
+
+
 def rule_assessments(
     observation: Observation,
     *,
@@ -770,18 +980,19 @@ def rule_assessments(
         violation_count = violations[identifier]
         receipt = receipts.get(identifier)
         receipt_complete = _rule_receipt_complete(declaration, receipt)
-        evaluation_proven = complete and receipt_complete
+        scope_complete = _rule_scope_complete(observation, declaration, receipt, complete)
+        evaluation_proven = scope_complete and receipt_complete
         declared_only = declaration.kind == "allowed_dependency"
         status, reason = _rule_status(
             declared_only=declared_only,
             violations=violation_count,
-            complete=complete,
+            complete=scope_complete,
             receipt=receipt_complete,
             undecided=undecided,
         )
         if declaration.kind == "layer_order" and status == "PASS":
             reason = "Declared requires permissions follow the selected layer order."
-        if status == "UNKNOWN" and complete and not receipt_complete:
+        if status == "UNKNOWN" and scope_complete and not receipt_complete:
             ownership_reason = _ownership_blocker_reason(observation, identifier)
             if ownership_reason is not None:
                 reason = ownership_reason

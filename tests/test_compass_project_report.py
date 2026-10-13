@@ -134,7 +134,22 @@ def test_compass_reports_keep_target_comparison_and_partial_coverage_distinct(
         report_summary = next(item for item in summaries if item.get("command") == "report")
         assert report_summary["exit_code"] == 2
         assert report_summary["observation_complete"] == "UNKNOWN"
-        assert report_summary["declared_rules"] == "UNKNOWN"
+        assert report_summary["declared_rules"] == (
+            "UNKNOWN" if variant_id == "compass-project" else "FAIL"
+        )
+        requires = {
+            row["id"]: row["status"]
+            for row in report_summary["rule_assessments"]
+            if row["kind"] == "complete_requires"
+        }
+        assert requires == {
+            "Compose environment, localization, routes and app shell:REQUIRES-COMPLETE": "PASS",
+            "data:REQUIRES-COMPLETE": "FAIL" if variant_id == "compass-forbidden-edge" else "PASS",
+            "domain:REQUIRES-COMPLETE": "PASS",
+            "presentation:REQUIRES-COMPLETE": "PASS",
+            "utilities:REQUIRES-COMPLETE": "PASS",
+            "REQUIRES-COMPLETE": "PASS",
+        }
         assert report_summary["coverage"]["status"] == "FAIL"
         raw = json.loads(output.read_text(encoding="utf-8"))
         if variant_id == "compass-project":

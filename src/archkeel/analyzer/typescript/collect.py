@@ -788,7 +788,15 @@ class _Collection:
                 title=reason,
                 subjects=[module],
                 evidence_ids=list(evidence),
-                data={"reason": reason, "module": module},
+                data={
+                    "reason": reason,
+                    "module": module,
+                    **(
+                        {"resolution_dimension": "imports"}
+                        if kind == SOURCE_RESOLUTION_GAP_KIND
+                        else {}
+                    ),
+                },
             ),
         )
 
