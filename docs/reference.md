@@ -58,6 +58,16 @@ needs no Node runtime. Runtime mismatch, malformed replies and incomplete eviden
 cannot certify a scan. Legacy observations remain readable only under supported
 schemas; missing required sections fail closed.
 
+Collector stdout defaults to a finite 64 MiB limit. Large valid scopes may set
+`collector_output_limit_bytes = 268435456` (256 MiB) in `[scan]`. The value must
+be a positive integer; it changes transport capacity, not source scope or protocol
+validation. Larger replies also require more memory to decode and assess. Existing
+configurations retain the default; stderr and execution time remain bounded.
+For a new setup, `archkeel init --collector-output-limit-bytes 268435456` uses that
+limit for initialization and saves it in the generated config. `report`, `validate`
+and `check` use the configured limit; `check` binds it to the accepted config like
+the other scan inputs. See [AD-224](architecture/decisions/ad-224-configurable-collector-output-limit.md).
+
 SourceFacts 3.0.0 adds neutral list type syntax for explicit callback arguments.
 Readers retain byte-compatible 1.0.0/2.0.0 packets; those versions reject the new
 list vocabulary, including nested shapes. Runtime `requirement_state` remains
