@@ -615,9 +615,44 @@ def _decorated_member(node: Node) -> Node | None:
         candidate
         if name is not None
         and name.type != "computed_property_name"
-        and _text(name) != "constructor"
+        and not _instance_constructor(candidate)
         else None
     )
+
+
+def _constructor_escape(match: re.Match[str]) -> str:
+    """Decode only escape values that can occur in the ASCII name constructor."""
+    hexadecimal = next((value for value in match.groups()[:3] if value is not None), None)
+    if hexadecimal is not None:
+        value = int(hexadecimal, 16)
+        return chr(value) if value < 128 else match.group(0)
+    character = match.group(4)
+    if character in {"\n", "\r", "\r\n", "\u2028", "\u2029"}:
+        return ""
+    return character if character in {"c", "o", "s"} else match.group(0)
+
+
+def _instance_constructor(node: Node) -> bool:
+    """Recognize the restricted instance constructor name without rewriting source names."""
+    name = node.child_by_field_name("name")
+    if (
+        node.type != "method_definition"
+        or not _class_member(node)
+        or node.parent is None
+        or node.parent.type != "class_body"
+        or "static" in _modifiers(node)
+        or name is None
+    ):
+        return False
+    spelling = _text(name)
+    if name.type == "string":
+        spelling = spelling[1:-1]
+    spelling = re.sub(
+        r"\\(?:u(?:\{([0-9a-fA-F]{1,6})\}|([0-9a-fA-F]{4}))|x([0-9a-fA-F]{2})|(\r\n|[\s\S]))",
+        _constructor_escape,
+        spelling,
+    )
+    return spelling == "constructor"
 
 
 def _decorators(node: Node) -> tuple[Node, ...]:

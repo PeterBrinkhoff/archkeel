@@ -21,7 +21,9 @@ syntax; they do not prove decorator dispatch, modified signatures or generated A
 
 Computed names, parser repairs, unsupported class-body blocks, dangling decorators
 and unsupported constructor decoration keep inventories unclosed. Duplicate owners
-retain ambiguous bindings. Complete direct scopes can prove declared presence,
+retain ambiguous bindings. Quoted and escaped instance constructor names retain
+the unsupported attachment; ordinary static methods and accessors named
+`constructor` keep their source decorators. Complete direct scopes can prove declared presence,
 known extra members and absent expected members. Partial scopes retain uncertainty
 for absence while preserving known source declarations.
 

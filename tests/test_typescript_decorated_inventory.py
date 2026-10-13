@@ -141,6 +141,88 @@ def test_uncertain_or_unsupported_decorated_bodies_are_not_closed(member: str) -
 
 
 @pytest.mark.parametrize(
+    "spelling",
+    [
+        "constructor",
+        "'constructor'",
+        '"constructor"',
+        r'"constr\u0075ctor"',
+        r'"constr\u{75}ctor"',
+        r'"constr\x75ctor"',
+        r"constr\u0075ctor",
+        r"constr\u{75}ctor",
+        r'"\constructor"',
+    ],
+)
+def test_decorated_instance_constructor_spellings_keep_closed_methods_unknown(
+    tmp_path: Path,
+    spelling: str,
+) -> None:
+    source = f"class Endpoint {{ @Get() {spelling}() {{}} }}"
+    syntax = parse("src/main.ts", source.encode())
+    assert syntax.first_error is None
+    assert syntax.definitions[0].members_complete is False
+    assert syntax.definitions[1].name == spelling
+    graph = _graph_from_source_facts(_collected(tmp_path, source), ("src",))
+    comparison = compare_graphs(graph, _target((spelling,)))
+    assert comparison.status == "UNKNOWN"
+    assert not any(item.status == "FAIL" for item in comparison.assessments)
+
+
+@pytest.mark.parametrize(
+    "member,spelling",
+    [
+        ("static constructor(): void {}", "constructor"),
+        ("public static constructor(value: string): string { return value; }", "constructor"),
+        ("static 'constructor'(): void {}", "'constructor'"),
+        (r'static "constr\u0075ctor"(): void {}', r'"constr\u0075ctor"'),
+        ("static get constructor(): string { return ''; }", "constructor"),
+        ("static set constructor(value: string) {}", "constructor"),
+    ],
+)
+def test_decorated_static_constructor_named_methods_keep_metadata_and_complete_inventory(
+    tmp_path: Path,
+    member: str,
+    spelling: str,
+) -> None:
+    source = f"class Endpoint {{ @Get() {member} }}"
+    syntax = parse("src/main.ts", source.encode())
+    assert syntax.first_error is None
+    assert syntax.definitions[0].members_complete is True
+    method = syntax.definitions[1]
+    assert method.name == spelling and method.decorators is True and method.static is True
+    assert method.parent == "Endpoint"
+    facts = _collected(tmp_path, source)
+    method_record = next(
+        record
+        for section in facts.sections
+        if section.name == "symbols"
+        for record in section.records
+        if record.kind == "method"
+    )
+    assert method_record.data.get("decorators") == ("@Get()",)
+    assert method_record.data.get("qualified_name") == f"{QUALIFIED}.{spelling}"
+    comparison = compare_graphs(_graph_from_source_facts(facts, ("src",)), _target((spelling,)))
+    assert comparison.status == "PASS"
+
+
+@pytest.mark.parametrize(
+    "spelling", [r'"constr\\u0075ctor"', r'"cons\tructor"', r'"constr\u00FCctor"']
+)
+def test_constructor_escape_recognition_does_not_reinterpret_other_member_names(
+    tmp_path: Path,
+    spelling: str,
+) -> None:
+    source = f"class Endpoint {{ @Get() {spelling}(): void {{}} }}"
+    syntax = parse("src/main.ts", source.encode())
+    assert syntax.first_error is None
+    assert syntax.definitions[0].members_complete is True
+    assert syntax.definitions[1].name == spelling and syntax.definitions[1].decorators is True
+    graph = _graph_from_source_facts(_collected(tmp_path, source), ("src",))
+    assert compare_graphs(graph, _target((spelling,))).status == "PASS"
+
+
+@pytest.mark.parametrize(
     "names,status",
     [
         (("run", "plain"), "PASS"),
