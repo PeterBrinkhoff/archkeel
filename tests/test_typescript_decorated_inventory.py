@@ -152,6 +152,9 @@ def test_uncertain_or_unsupported_decorated_bodies_are_not_closed(member: str) -
         r"constr\u0075ctor",
         r"constr\u{75}ctor",
         r'"\constructor"',
+        r'"constr\u{00000075}ctor"',
+        r"constr\u{00000075}ctor",
+        r'"constr\u{000000000000000000000000000075}ctor"',
     ],
 )
 def test_decorated_instance_constructor_spellings_keep_closed_methods_unknown(
@@ -176,6 +179,7 @@ def test_decorated_instance_constructor_spellings_keep_closed_methods_unknown(
         ("public static constructor(value: string): string { return value; }", "constructor"),
         ("static 'constructor'(): void {}", "'constructor'"),
         (r'static "constr\u0075ctor"(): void {}', r'"constr\u0075ctor"'),
+        (r'static "constr\u{00000075}ctor"(): void {}', r'"constr\u{00000075}ctor"'),
         ("static get constructor(): string { return ''; }", "constructor"),
         ("static set constructor(value: string) {}", "constructor"),
     ],
@@ -220,6 +224,29 @@ def test_constructor_escape_recognition_does_not_reinterpret_other_member_names(
     assert syntax.definitions[1].name == spelling and syntax.definitions[1].decorators is True
     graph = _graph_from_source_facts(_collected(tmp_path, source), ("src",))
     assert compare_graphs(graph, _target((spelling,))).status == "PASS"
+
+
+@pytest.mark.parametrize(
+    "spelling",
+    [
+        r'"constr\u{110000}ctor"',
+        r'"constr\u{FFFFFFFF}ctor"',
+        r'"constr\u{000000110000}ctor"',
+        r"constr\u{110000}ctor",
+        r'static "constr\u{110000}ctor"',
+        r'"constr\u{}ctor"',
+    ],
+)
+def test_invalid_unicode_member_names_cannot_close_a_decorated_inventory(
+    tmp_path: Path,
+    spelling: str,
+) -> None:
+    source = f"class Endpoint {{ @Get() {spelling}() {{}} }}"
+    syntax = parse("src/main.ts", source.encode())
+    assert syntax.first_error is not None or syntax.definitions[0].members_complete is False
+    name = spelling.removeprefix("static ")
+    graph = _graph_from_source_facts(_collected(tmp_path, source), ("src",))
+    assert compare_graphs(graph, _target((name,))).status == "UNKNOWN"
 
 
 @pytest.mark.parametrize(

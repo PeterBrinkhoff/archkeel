@@ -23,8 +23,10 @@ Computed names, parser repairs, unsupported class-body blocks, dangling decorato
 and unsupported constructor decoration keep inventories unclosed. Duplicate owners
 retain ambiguous bindings. Quoted and escaped instance constructor names retain
 the unsupported attachment; ordinary static methods and accessors named
-`constructor` keep their source decorators. Complete direct scopes can prove declared presence,
-known extra members and absent expected members. Partial scopes retain uncertainty
+`constructor` keep their source decorators. Brace escapes ignore leading zeroes;
+out-of-range names do not close the new decorator proof. Complete direct scopes
+can prove declared presence, known extra members and absent expected members.
+Partial scopes retain uncertainty
 for absence while preserving known source declarations.
 
 Native controls cover class, field and method decorators, multiple decorators and

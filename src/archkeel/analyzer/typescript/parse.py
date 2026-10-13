@@ -615,9 +615,25 @@ def _decorated_member(node: Node) -> Node | None:
         candidate
         if name is not None
         and name.type != "computed_property_name"
+        and _valid_unicode_member_name(name)
         and not _instance_constructor(candidate)
         else None
     )
+
+
+def _valid_unicode_member_name(name: Node) -> bool:
+    """Parser-accepted brace escapes still need a valid Unicode code point."""
+    escapes = (
+        [_text(child) for child in name.named_children if child.type == "escape_sequence"]
+        if name.type == "string"
+        else re.findall(r"\\u\{[0-9a-fA-F]+\}", _text(name))
+    )
+    for escape in escapes:
+        if escape.startswith("\\u{"):
+            hexadecimal = escape[3:-1].lstrip("0") or "0"
+            if len(hexadecimal) > 6 or int(hexadecimal, 16) > 0x10FFFF:
+                return False
+    return True
 
 
 def _constructor_escape(match: re.Match[str]) -> str:
@@ -648,7 +664,7 @@ def _instance_constructor(node: Node) -> bool:
     if name.type == "string":
         spelling = spelling[1:-1]
     spelling = re.sub(
-        r"\\(?:u(?:\{([0-9a-fA-F]{1,6})\}|([0-9a-fA-F]{4}))|x([0-9a-fA-F]{2})|(\r\n|[\s\S]))",
+        r"\\(?:u(?:\{(0*[0-9a-fA-F]{1,6})\}|([0-9a-fA-F]{4}))|x([0-9a-fA-F]{2})|(\r\n|[\s\S]))",
         _constructor_escape,
         spelling,
     )
