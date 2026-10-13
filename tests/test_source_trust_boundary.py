@@ -342,7 +342,10 @@ def test_resolved_violation_survives_unrelated_unresolved_target(tmp_path: Path)
 
 
 @pytest.mark.parametrize("limit", ["timeout", "output"])
-def test_process_limit_stops_spawned_worker(tmp_path: Path, limit: str) -> None:
+@pytest.mark.parametrize("startup_delay", [0, 0.75], ids=["immediate", "delayed"])
+def test_process_limit_stops_spawned_worker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, limit: str, startup_delay: float
+) -> None:
     """Heartbeats prove execution stopped, including when an orphan is a zombie."""
     pid_path = tmp_path / "worker.pid"
     heartbeat = tmp_path / "heartbeat"
@@ -355,6 +358,7 @@ def test_process_limit_stops_spawned_worker(tmp_path: Path, limit: str) -> None:
     )
     collector = (
         "import subprocess,sys,time\nfrom pathlib import Path\n"
+        f"time.sleep({startup_delay})\n"
         f"subprocess.Popen([sys.executable, '-c', {worker!r}], "
         "stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)\n"
         f"while not Path({str(heartbeat)!r}).exists(): time.sleep(0.005)\n"
@@ -363,6 +367,17 @@ def test_process_limit_stops_spawned_worker(tmp_path: Path, limit: str) -> None:
     )
     request = decode_request(_request())
     request = replace(request, snapshot=replace(request.snapshot, root=str(tmp_path)))
+    original_exchange = ProcessCollector._exchange
+
+    def exchange_after_worker_heartbeat(self, process, payload, workers):
+        deadline = time.monotonic() + 2
+        while not heartbeat.is_file():
+            if time.monotonic() >= deadline:
+                pytest.fail("collector fixture did not publish a worker heartbeat within 2 seconds")
+            time.sleep(0.01)
+        return original_exchange(self, process, payload, workers)
+
+    monkeypatch.setattr(ProcessCollector, "_exchange", exchange_after_worker_heartbeat)
     started = time.monotonic()
     try:
         result = ProcessCollector(
@@ -372,6 +387,11 @@ def test_process_limit_stops_spawned_worker(tmp_path: Path, limit: str) -> None:
         ).collect(request)
         assert isinstance(result, CollectionError)
         assert result.kind == ("timeout" if limit == "timeout" else "protocol_error")
+        assert result.message == (
+            "Collector exceeded 0.5 seconds."
+            if limit == "timeout"
+            else "Collector output exceeded its 1000 byte limit."
+        )
         assert time.monotonic() - started < 4
         assert pid_path.exists(), "The worker must start before the host limit is exercised."
         time.sleep(0.1)
