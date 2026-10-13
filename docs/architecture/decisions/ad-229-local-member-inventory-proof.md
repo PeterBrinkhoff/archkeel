@@ -37,6 +37,9 @@ changed or malformed proof stays partial; permission, source, evidence and runti
 changes cannot replay certified PASS. Semantically invalid runtime metadata is
 rejected even when a forged proof's marker matches that metadata. Late runtime or
 contract diagnostics revoke proof before evaluation and canonical serialization.
+Partial closed-member completeness PASS requires both source and exact-Target
+bindings even if metadata fields are missing or the current inventory is complete.
+Legacy open-scope known comparisons retain their original behavior.
 
 Native tests cover unrelated/local gaps, owned Dart parts, missing/broken parts,
 exact presence/absence, live/saved parity, deterministic repetition, all-PASS

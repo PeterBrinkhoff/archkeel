@@ -17,7 +17,7 @@ from archkeel.analyzer.typescript.collect import collect as collect_typescript
 from archkeel.check.observe import Observer
 from archkeel.check.ports import ScanConfig
 from archkeel.check.report import run_report, run_saved_report
-from archkeel.ir.codec import decode_canonical_model, parse_observation
+from archkeel.ir.codec import canonical_report_bytes, decode_canonical_model, parse_observation
 from archkeel.ir.facts import RecordData, ResolutionInput, SourceFacts
 from archkeel.ir.model import TARGET_GRAPH_RECORD_KINDS, Observation
 from archkeel.ir.protocol import CollectionError, CollectionRequest
@@ -399,6 +399,85 @@ def test_changed_target_cannot_replay_inventory_comparison(certified):
     )
     assert _inventory_is_complete(changed)
     assert architecture_report(changed).comparison is None
+
+
+def _unbound_inventory_snapshot(model, alter):
+    raw = decode_canonical_model(json.loads(canonical_report_bytes(model)))
+    if alter == "proof_and_binding":
+        raw["scope_observations"] = [
+            r for r in raw["scope_observations"] if r["kind"] != MEMBER_INVENTORY_PROOF
+        ]
+    receipt = next(r for r in raw["scope_observations"] if r["kind"] == "rule_evaluation")
+    if alter in {"proof_and_binding", "binding_only", "changed_target"}:
+        receipt["data"].pop("member_inventory_binding")
+        receipt["data"].pop("member_inventory_target")
+    elif alter == "null_binding":
+        receipt["data"]["member_inventory_binding"] = None
+        receipt["data"]["member_inventory_target"] = None
+    elif alter == "missing_target":
+        receipt["data"].pop("member_inventory_target")
+    else:
+        receipt["data"]["member_inventory_target"] = "wrong-target"
+    if alter == "changed_target":
+        declaration = next(r for r in raw["declarations"] if r["kind"] in TARGET_GRAPH_RECORD_KINDS)
+        value = next(e for e in declaration["data"]["target"]["entities"] if e["id"] == "value")
+        value["qualified_name"] = value["qualified_name"].removesuffix("value") + "other"
+    return parse_observation(raw)
+
+
+@pytest.mark.parametrize(
+    "alter",
+    [
+        "proof_and_binding",
+        "binding_only",
+        "null_binding",
+        "missing_target",
+        "wrong_target",
+        "changed_target",
+    ],
+)
+def test_partial_closed_inventory_cannot_replay_unbound_cached_pass(certified, alter):
+    model, _ = certified
+    changed = _unbound_inventory_snapshot(model, alter)
+    if alter == "changed_target":
+        from archkeel.check.uml_compare import compare_graphs
+
+        report = architecture_report(changed)
+        assert _inventory_is_complete(changed)
+        assert compare_graphs(report.observed, report.target).status == "FAIL"
+    assert architecture_report(changed).comparison is None
+
+
+@pytest.mark.parametrize("language", ["dart", "typescript"])
+def test_stripped_legacy_all_pass_inventory_is_withheld_on_saved_replay(tmp_path, language):
+    config = _project(tmp_path, language)
+    _target_without_gap_detail(tmp_path)
+    _, encoded = run_report(tmp_path, config=config, analyzer=Observer(_Collector(language)))
+    model = parse_observation(decode_canonical_model(json.loads(encoded)))
+    assert architecture_report(model).comparison.status == "PASS"
+    changed = _unbound_inventory_snapshot(model, "proof_and_binding")
+    saved_path = tmp_path / "architecture.json"
+    saved_path.write_bytes(canonical_report_bytes(changed))
+    reloaded = parse_observation(decode_canonical_model(json.loads(saved_path.read_bytes())))
+    assert not _inventory_is_complete(reloaded)
+    assert architecture_report(reloaded).comparison is None
+    saved = run_saved_report(saved_path)
+    assert saved.exit_code == 2 and saved.coverage.status == "FAIL"
+
+
+@pytest.mark.parametrize("language", ["dart", "typescript"])
+def test_legacy_partial_open_scope_keeps_known_comparison(tmp_path, language):
+    config = _project(tmp_path, language)
+    path = tmp_path / "architecture-contract.json"
+    contract = json.loads(path.read_text())
+    contract["declarations"]["uml"]["scopes"][0]["mode"] = "open"
+    path.write_text(json.dumps(contract))
+    _, encoded = run_report(tmp_path, config=config, analyzer=Observer(_Collector(language)))
+    model = parse_observation(decode_canonical_model(json.loads(encoded)))
+    comparison = architecture_report(model).comparison
+    assert comparison is not None and comparison.status in {"FAIL", "UNKNOWN"}
+    changed = _unbound_inventory_snapshot(model, "proof_and_binding")
+    assert architecture_report(changed).comparison == comparison
 
 
 @pytest.mark.parametrize("alter", ["schema", "inputs", "owner", "duplicate"])
