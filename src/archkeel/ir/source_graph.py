@@ -38,6 +38,7 @@ from archkeel.ir.model import (
     EvidenceClass,
     JsonValue,
     Observation,
+    RawJson,
     Record,
     RecordData,
     stable_id,
@@ -65,7 +66,7 @@ _INVENTORY_SOURCE_SECTIONS = (
 )
 
 
-def _inventory_digest(value: object) -> str:
+def _inventory_digest(value: RawJson) -> str:
     payload: str = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
@@ -127,7 +128,7 @@ def _inventory_selected_inputs(model: Observation, inputs: tuple[RecordData, ...
             set(dict(item.entries)) != {"path", "digest", "role"}
             or not isinstance(path, str)
             or not path
-            or relative.is_absolute()
+            or path[:1] == "/"
             or ".." in relative.parts
             or "\\" in path
             or ":" in path
