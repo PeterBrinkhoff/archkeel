@@ -27,8 +27,10 @@ become field decorators. Constructor decoration remains unsupported.
 
 Reject changing Core to infer fields from Target names, removing the completeness
 veto without collecting declarations, and editing independent Targets. Existing
-source/evidence binding, global coverage, policies, budgets and schema versions stay
-unchanged. Scoped proof of complete inventories remains the separate AD-229 repair.
+source/evidence binding, global coverage, policies and schema versions stay unchanged.
+Exact SDK receivers avoid new dynamic lookup uncertainty. The measured self baseline
+tightens unresolved calls from 921 to 920; no allowance widens. Scoped proof of
+complete inventories remains the separate AD-229 repair.
 
 [Native controls](../../../tests/test_typescript_parameter_properties.py) verify
 all property modifiers, precise evidence, preserved parameter defaults/signatures,

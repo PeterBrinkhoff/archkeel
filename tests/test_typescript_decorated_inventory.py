@@ -332,28 +332,28 @@ def test_decorated_class_retains_valid_undecorated_quoted_method_names(
 
 
 @pytest.mark.parametrize(
-    "constructor",
+    "constructor,status",
     [
-        "'constructor'(private repo: string)",
-        '"constructor"(protected repo: string)',
-        "constructor(readonly repo: string)",
-        "'constructor'(readonly repo: string)",
-        r'"constr\u{00000075}ctor"(private repo: string)',
+        ("'constructor'(private repo: string)", "FAIL"),
+        ('"constructor"(protected repo: string)', "FAIL"),
+        ("constructor(readonly repo: string)", "FAIL"),
+        ("'constructor'(readonly repo: string)", "FAIL"),
+        (r'"constr\u{00000075}ctor"(private repo: string)', "UNKNOWN"),
     ],
 )
-def test_mixed_decorator_cannot_certify_uncollected_semantic_constructor_properties(
+def test_mixed_decorator_closed_target_detects_supported_constructor_properties(
     tmp_path: Path,
     constructor: str,
+    status: str,
 ) -> None:
     source = f"class Endpoint {{ {constructor} {{}} @Get() run() {{}} }}"
     syntax = parse("src/main.ts", source.encode())
     assert syntax.first_error is None
-    assert syntax.definitions[0].members_complete is False
+    assert syntax.definitions[0].members_complete is (status == "FAIL")
     facts = _collected(tmp_path, source)
     graph = _graph_from_source_facts(facts, ("src",))
     comparison = compare_graphs(graph, _target((), kind="attribute"))
-    assert comparison.status == "UNKNOWN"
-    assert not any(item.status == "FAIL" for item in comparison.assessments)
+    assert comparison.status == status
 
 
 @pytest.mark.parametrize("spelling", ["constructor", "'constructor'", r'"constr\u{00000075}ctor"'])
