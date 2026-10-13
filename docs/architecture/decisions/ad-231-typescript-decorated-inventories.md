@@ -26,6 +26,10 @@ the unsupported attachment; ordinary static methods and accessors named
 `constructor` keep their source decorators. Brace escapes ignore leading zeroes;
 out-of-range names do not close the new decorator proof. Unvalidated escaped
 identifier names also remain partial; quoted strings retain their distinct rules.
+The same name check covers undecorated methods in the classifier body.
+Semantic instance constructors with accessibility or readonly parameter properties
+remain partial until property collection is supported. Unsupported async, generator
+and accessor constructor shapes remain unclosed; static ordinary methods retain their scope.
 Complete direct scopes can prove declared presence, known extra members and absent
 expected members. Partial scopes retain uncertainty for absence while preserving
 known source declarations.

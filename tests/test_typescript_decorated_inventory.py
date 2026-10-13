@@ -295,6 +295,102 @@ def test_quoted_string_names_retain_their_distinct_unicode_character_rules(
 
 
 @pytest.mark.parametrize(
+    "spelling",
+    [
+        r"constr\u{20}uctor",
+        r"constr\u0020uctor",
+        r"\u{30}ctor",
+        r'"constr\u{110000}uctor"',
+        r'"constr\u{000000110000}uctor"',
+    ],
+)
+def test_decorated_class_cannot_close_an_invalid_undecorated_method_name(
+    tmp_path: Path,
+    spelling: str,
+) -> None:
+    source = f"class Endpoint {{ @Get() run() {{}} {spelling}() {{}} }}"
+    syntax = parse("src/main.ts", source.encode())
+    assert syntax.first_error is None
+    assert syntax.definitions[0].members_complete is False
+    assert syntax.definitions[1].decorators is True
+    graph = _graph_from_source_facts(_collected(tmp_path, source), ("src",))
+    comparison = compare_graphs(graph, _target(("run", spelling, "missing")))
+    assert comparison.status == "UNKNOWN"
+    assert not any(item.status == "FAIL" for item in comparison.assessments)
+
+
+@pytest.mark.parametrize("spelling", [r'"constr\u{20}uctor"', r'"constr\u{D800}uctor"'])
+def test_decorated_class_retains_valid_undecorated_quoted_method_names(
+    tmp_path: Path,
+    spelling: str,
+) -> None:
+    source = f"class Endpoint {{ @Get() run() {{}} {spelling}() {{}} }}"
+    syntax = parse("src/main.ts", source.encode())
+    assert syntax.first_error is None
+    assert syntax.definitions[0].members_complete is True
+    graph = _graph_from_source_facts(_collected(tmp_path, source), ("src",))
+    assert compare_graphs(graph, _target(("run", spelling))).status == "PASS"
+
+
+@pytest.mark.parametrize(
+    "constructor",
+    [
+        "'constructor'(private repo: string)",
+        '"constructor"(protected repo: string)',
+        "constructor(readonly repo: string)",
+        "'constructor'(readonly repo: string)",
+        r'"constr\u{00000075}ctor"(private repo: string)',
+    ],
+)
+def test_mixed_decorator_cannot_certify_uncollected_semantic_constructor_properties(
+    tmp_path: Path,
+    constructor: str,
+) -> None:
+    source = f"class Endpoint {{ {constructor} {{}} @Get() run() {{}} }}"
+    syntax = parse("src/main.ts", source.encode())
+    assert syntax.first_error is None
+    assert syntax.definitions[0].members_complete is False
+    facts = _collected(tmp_path, source)
+    graph = _graph_from_source_facts(facts, ("src",))
+    comparison = compare_graphs(graph, _target((), kind="attribute"))
+    assert comparison.status == "UNKNOWN"
+    assert not any(item.status == "FAIL" for item in comparison.assessments)
+
+
+@pytest.mark.parametrize("spelling", ["constructor", "'constructor'", r'"constr\u{00000075}ctor"'])
+def test_mixed_decorator_static_constructor_named_method_has_no_instance_properties(
+    tmp_path: Path,
+    spelling: str,
+) -> None:
+    source = f"class Endpoint {{ static {spelling}(repo: string) {{}} @Get() run() {{}} }}"
+    syntax = parse("src/main.ts", source.encode())
+    assert syntax.first_error is None and syntax.definitions[0].members_complete is True
+    graph = _graph_from_source_facts(_collected(tmp_path, source), ("src",))
+    assert compare_graphs(graph, _target((), kind="attribute")).status == "PASS"
+
+
+@pytest.mark.parametrize(
+    "constructor",
+    [
+        "async constructor() {}",
+        "*constructor() {}",
+        "get constructor() { return ''; }",
+        "set constructor(value: string) {}",
+    ],
+)
+def test_mixed_decorator_cannot_certify_unsupported_instance_constructor_shapes(
+    tmp_path: Path,
+    constructor: str,
+) -> None:
+    source = f"class Endpoint {{ {constructor} @Get() run() {{}} }}"
+    syntax = parse("src/main.ts", source.encode())
+    assert syntax.first_error is None
+    assert syntax.definitions[0].members_complete is False
+    graph = _graph_from_source_facts(_collected(tmp_path, source), ("src",))
+    assert compare_graphs(graph, _target((), kind="attribute")).status == "UNKNOWN"
+
+
+@pytest.mark.parametrize(
     "names,status",
     [
         (("run", "plain"), "PASS"),

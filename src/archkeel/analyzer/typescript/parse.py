@@ -584,10 +584,17 @@ def _members_complete(body: Node | None) -> bool:
                 continue
             if name is None or name.type == "computed_property_name":
                 return False
-            if child.type == "method_definition" and _text(name) == "constructor":
+            if child.type in {
+                "method_definition",
+                "method_signature",
+            } and not _valid_unicode_member_name(name):
+                return False
+            if _instance_constructor(child):
+                if any(token.type in {"async", "*", "get", "set"} for token in child.children):
+                    return False
                 parameters = child.child_by_field_name("parameters")
                 if parameters is not None and any(
-                    _modifiers(parameter) & {"public", "private", "protected"}
+                    _modifiers(parameter) & {"public", "private", "protected", "readonly"}
                     for parameter in parameters.named_children
                 ):
                     return False
