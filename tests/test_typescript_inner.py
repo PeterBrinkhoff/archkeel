@@ -193,11 +193,14 @@ def test_identifier_const_keeps_value_space_separate_from_same_name_type_alias(
     )
     comparison = compare_graphs(observed, target)
     assert {item.subject_id: item.status for item in comparison.assessments} == {
-        "expected-type": "UNKNOWN",
-        "expected-value": "UNKNOWN",
+        "expected-type": "PASS",
+        "expected-value": "PASS",
     }
-    assert all(item.change == "ambiguous" for item in comparison.assessments)
-    assert not any(item.status == "FAIL" for item in comparison.assessments)
+    assert {item.target_id: item.observed_ids for item in comparison.correspondences} == {
+        "expected-type": (next(record.id for record in symbols if record.kind == "type_alias"),),
+        "expected-value": (constant.id,),
+    }
+    assert all(item.change == "matched" for item in comparison.assessments)
 
 
 def test_identifier_const_alias_does_not_prove_call_or_constructor_dispatch(tmp_path: Path) -> None:

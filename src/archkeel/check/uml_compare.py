@@ -46,6 +46,16 @@ def _result(
 
 def _matches(graph: ArchitectureGraph, wanted: Entity) -> tuple[Entity, ...]:
     namespace = wanted.kind in {"module", "package"}
+    type_only = {"interface", "type_alias"}
+    value_only = {"method", "function", "attribute", "constant", "binding", "enum_literal"}
+    # Classes, enums and opaque kinds can occupy both namespaces; never pick by kind alone.
+    excluded = (
+        value_only
+        if wanted.language == "typescript" and wanted.kind in type_only
+        else type_only
+        if wanted.language == "typescript" and wanted.kind in value_only
+        else ()
+    )
     matches = tuple(
         item
         for item in graph.entities
@@ -53,6 +63,7 @@ def _matches(graph: ArchitectureGraph, wanted: Entity) -> tuple[Entity, ...]:
         and item.language == wanted.language
         and (item.presence == "defined" or wanted.presence == "referenced")
         and (item.kind == wanted.kind if namespace else item.kind not in {"module", "package"})
+        and item.kind not in excluded
     )
     if wanted.kind == "enum_literal":
         # A physical field or value binding alone does not prove enum membership.

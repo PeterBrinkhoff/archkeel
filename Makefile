@@ -39,6 +39,7 @@ pr-test:
 		tests/test_partial_member_inventory.py \
 		tests/test_report_recorded_unknowns.py \
 		tests/test_scoped_dependency_proof.py \
+		tests/test_typescript_namespace_identities.py \
 		tests/test_result_schema.py \
 		tests/test_dart_parse.py tests/test_dart_snapshot.py tests/test_dart_resolve.py \
 		tests/test_dart_sdk_free.py tests/test_dart_inner_collect.py tests/test_dart_target.py \
@@ -149,6 +150,7 @@ typescript-compiler-check:
 typescript-native:
 	$(UV) run --locked python -m pytest -q tests/test_typescript_parse.py \
 		tests/test_typescript_inner.py tests/test_typescript_uml_acceptance.py \
+		tests/test_typescript_namespace_identities.py \
 		tests/test_typescript_collect.py tests/test_typescript_config.py \
 		tests/test_typescript_config_reference.py \
 		tests/test_typescript_resolve.py tests/test_typescript_provenance.py \

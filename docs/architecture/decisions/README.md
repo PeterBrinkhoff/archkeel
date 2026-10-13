@@ -237,3 +237,4 @@ For current behavior, use the [contract](../../../architecture-contract.json), s
 | AD-227 | [Scoped dependency proof](ad-227-scoped-dependency-proof.md) |
 | AD-228 | [Canonical Dart constructor identities](ad-228-dart-constructor-identities.md) |
 | AD-229 | [Complete direct members retain local source proof](ad-229-local-member-inventory-proof.md) |
+| AD-233 | [TypeScript namespace identities](ad-233-typescript-namespace-identities.md) |
