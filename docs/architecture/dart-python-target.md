@@ -38,6 +38,10 @@ imports/exports, parts and proven local relationships. Resolve prefixes, combina
 lexical shadowing and local inheritance from source evidence. A constructor must
 exist before a construction resolves. Field-formal and inherited constructor
 parameters require a unique source declaration; otherwise keep them incomplete.
+Named constructors and factories use `module.Class.named`; unnamed constructors
+retain `module.Class.Class`. Their canonical identity keeps the source's lexical
+owner once, while parsed member spelling and source spans remain intact
+([AD-228](decisions/ad-228-dart-constructor-identities.md)).
 Dynamic dispatch, missing external packages, ambiguous bindings, unsupported syntax
 and incomplete inventories remain UNKNOWN. Never use a global short-name match or
 turn a parse error into an empty, complete file.

@@ -526,7 +526,7 @@ def test_compass_target_tracks_source_constructor_signatures_and_visibility() ->
         == "Future<Result>"
     )
     share_constructor = signature(
-        "compass.domain.use_cases.booking.booking_share_use_case.BookingShareUseCase.BookingShareUseCase._"
+        "compass.domain.use_cases.booking.booking_share_use_case.BookingShareUseCase._"
     )
     assert [
         (parameter.name, parameter.annotation, parameter.kind)
@@ -589,8 +589,8 @@ def test_compass_target_tracks_source_constructor_signatures_and_visibility() ->
         "compass.data.services.api.model.user.user_api_model._$UserApiModel",
         "compass.domain.use_cases.booking.booking_create_use_case.BookingCreateUseCase._fetchDestination",
         "compass.utils.command.Command._execute",
-        "compass.utils.result.Ok.Ok._",
-        "compass.utils.result.Error.Error._",
+        "compass.utils.result.Ok._",
+        "compass.utils.result.Error._",
     ):
         assert entities[name].visibility.kind == "private"
         assert entities[name].visibility.spelling == name.rsplit(".", 1)[-1]
@@ -612,19 +612,19 @@ def test_compass_closed_api_inventory_uses_canonical_constructor_identities() ->
 
     share = "compass.domain.use_cases.booking.booking_share_use_case.BookingShareUseCase"
     assert members(share) == {
-        f"{share}.BookingShareUseCase._",
-        f"{share}.BookingShareUseCase.custom",
-        f"{share}.BookingShareUseCase.withSharePlus",
+        f"{share}._",
+        f"{share}.custom",
+        f"{share}.withSharePlus",
         f"{share}._share",
         f"{share}._log",
         f"{share}.shareBooking",
     }
     result = "compass.utils.result.Result"
-    assert members(result) == {f"{result}.Result", f"{result}.Result.ok", f"{result}.Result.error"}
+    assert members(result) == {f"{result}.Result", f"{result}.ok", f"{result}.error"}
     ok = "compass.utils.result.Ok"
     error = "compass.utils.result.Error"
-    assert members(ok) == {f"{ok}.Ok._", f"{ok}.value", f"{ok}.toString"}
-    assert members(error) == {f"{error}.Error._", f"{error}.error", f"{error}.toString"}
+    assert members(ok) == {f"{ok}._", f"{ok}.value", f"{ok}.toString"}
+    assert members(error) == {f"{error}._", f"{error}.error", f"{error}.toString"}
 
 
 def test_compass_freezed_mixin_inventory_matches_pinned_generated_api() -> None:

@@ -12,6 +12,12 @@ Required dependencies follow imports in the pinned source. Root edges include lo
 
 Source input digest: `c6c1b8fe62fbc950af3b3dc4a033cac300bdeec2564e563909504a69df753e72` (111 Dart files; `pubspec.yaml` is configuration, not a module).
 
+Named constructors use `module.Class.named`, while unnamed constructors retain
+`module.Class.Class`. AD-228 normalizes seven former duplicated-owner names for
+`BookingShareUseCase`, `Result`, `Ok` and `Error`. Their entity IDs, parents,
+signatures, permissions and responsibilities remain unchanged; this migrates the
+representation of the existing Target intent.
+
 ## Required module paths
 
 The Target links the app entry points and provider wiring to navigation, each principal screen to its ViewModel, and auth/search/results/activities/booking state through repository ports to local or remote adapters. Booking creation also links its use case to the repository ports and the remote/local booking implementations to their respective data services. These are selected source-backed paths; module import scopes remain open, so this is not a complete import inventory.
@@ -43,4 +49,4 @@ graph TD
     n_3 --> n_4
 ```
 
-Target bundle SHA-256: `47e9644d744777c0acab7c76df551924eaa395a9bc391aa32a97367364bdc566`
+Target bundle SHA-256: `4f6fb239818ff66ae963ce5a4ffe43d319b6d21cbeaf76d262d9cbf670a33a67`

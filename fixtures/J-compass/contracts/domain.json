@@ -2472,7 +2472,7 @@
         {
           "id": "method-compass-domain-use-cases-booking-booking-share-use-case-bookingshareusecase",
           "kind": "method",
-          "qualified_name": "compass.domain.use_cases.booking.booking_share_use_case.BookingShareUseCase.BookingShareUseCase._",
+          "qualified_name": "compass.domain.use_cases.booking.booking_share_use_case.BookingShareUseCase._",
           "parent_id": "class-compass-domain-use-cases-booking-booking-share-use-case-bookingshareusecase",
           "language": "dart",
           "presence": "planned",
@@ -2501,7 +2501,7 @@
         {
           "id": "method-compass-domain-use-cases-booking-booking-share-use-case-bookingshareusecase-withshareplus",
           "kind": "method",
-          "qualified_name": "compass.domain.use_cases.booking.booking_share_use_case.BookingShareUseCase.BookingShareUseCase.withSharePlus",
+          "qualified_name": "compass.domain.use_cases.booking.booking_share_use_case.BookingShareUseCase.withSharePlus",
           "parent_id": "class-compass-domain-use-cases-booking-booking-share-use-case-bookingshareusecase",
           "language": "dart",
           "presence": "planned",
@@ -2523,7 +2523,7 @@
         {
           "id": "method-compass-domain-use-cases-booking-booking-share-use-case-bookingshareusecase-custom",
           "kind": "method",
-          "qualified_name": "compass.domain.use_cases.booking.booking_share_use_case.BookingShareUseCase.BookingShareUseCase.custom",
+          "qualified_name": "compass.domain.use_cases.booking.booking_share_use_case.BookingShareUseCase.custom",
           "parent_id": "class-compass-domain-use-cases-booking-booking-share-use-case-bookingshareusecase",
           "language": "dart",
           "presence": "planned",

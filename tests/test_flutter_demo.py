@@ -396,7 +396,7 @@ def test_flutter_target_pins_journey_signatures_member_scopes_and_flutter_inheri
     }
 
     assert "shop.domain.cart.cart.Cart.totalCents::getter" in names
-    assert "shop.domain.orders.order.Order.Order.fromCart" in names
+    assert "shop.domain.orders.order.Order.fromCart" in names
     assert "shop.presentation.shopping.catalog.catalog_page.CatalogPage._catalogBody" in names
     assert "shop.data.services.demo_backend.DemoBackend._checkRequest" in names
     assert "shop.data.services.demo_backend.DemoBackend.DemoBackend" not in names

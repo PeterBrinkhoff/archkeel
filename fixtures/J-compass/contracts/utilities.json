@@ -570,7 +570,7 @@
         {
           "id": "method-compass-utils-result-result-ok",
           "kind": "method",
-          "qualified_name": "compass.utils.result.Result.Result.ok",
+          "qualified_name": "compass.utils.result.Result.ok",
           "parent_id": "class-compass-utils-result-result",
           "language": "dart",
           "presence": "planned",
@@ -599,7 +599,7 @@
         {
           "id": "method-compass-utils-result-result-error",
           "kind": "method",
-          "qualified_name": "compass.utils.result.Result.Result.error",
+          "qualified_name": "compass.utils.result.Result.error",
           "parent_id": "class-compass-utils-result-result",
           "language": "dart",
           "presence": "planned",
@@ -648,7 +648,7 @@
         {
           "id": "method-compass-utils-result-ok-ok",
           "kind": "method",
-          "qualified_name": "compass.utils.result.Ok.Ok._",
+          "qualified_name": "compass.utils.result.Ok._",
           "parent_id": "class-compass-utils-result-ok",
           "language": "dart",
           "presence": "planned",
@@ -720,7 +720,7 @@
         {
           "id": "method-compass-utils-result-error-error",
           "kind": "method",
-          "qualified_name": "compass.utils.result.Error.Error._",
+          "qualified_name": "compass.utils.result.Error._",
           "parent_id": "class-compass-utils-result-error",
           "language": "dart",
           "presence": "planned",
