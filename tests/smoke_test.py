@@ -27,6 +27,7 @@ def main() -> None:
         "architecture-command.schema.json",
         "architecture-command-2.0.schema.json",
         "command-result-7.0.schema.json",
+        "command-result-8.0.schema.json",
     ):
         assert json.loads(schemas.joinpath(name).read_text(encoding="utf-8"))["$id"]
     with TemporaryDirectory(prefix="archkeel-smoke-") as temporary:

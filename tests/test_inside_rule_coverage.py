@@ -822,7 +822,7 @@ def test_missing_inside_does_not_suppress_valid_sibling_violation(
         len(sibling_violations),
     ) == (
         2,
-        "UNKNOWN",
+        "FAIL",
         True,
         1,
     )
@@ -1198,7 +1198,7 @@ def test_complete_and_incomplete_nested_scopes_preserve_outer_violation_in_cli_r
     artifact = parse_observation(decode_canonical_model(json.loads(output.read_text())))
 
     assert code == 2, json.dumps(payload, indent=2)
-    assert payload["declared_rules"] == "UNKNOWN"
+    assert payload["declared_rules"] == "FAIL"
     assert any(
         item.kind == "forbidden_dependency" and item.rule_ids == ("OUTER-BLOCK",)
         for item in artifact.records("violations") or ()

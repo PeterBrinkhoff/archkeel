@@ -191,7 +191,25 @@ def test_nest_realworld_catalog_and_reports_preserve_full_target_with_partial_co
         assert actual_exit == REPORT_CASES[f"uml-{variant.id}"][1] == 2
         assert validate["exit_code"] == report_summary["exit_code"] == actual_exit
         assert report_summary["observation_complete"] == "UNKNOWN"
-        assert report_summary["declared_rules"] == "UNKNOWN"
+        assert report_summary["declared_rules"] == (
+            "FAIL"
+            if variant.id in {"nest-realworld-forbidden-edge", "nest-realworld-signature-fail"}
+            else "UNKNOWN"
+        )
+        requires = {
+            row["id"]: row["status"]
+            for row in report_summary["rule_assessments"]
+            if row["kind"] == "complete_requires"
+        }
+        assert requires == {
+            "API composition:REQUIRES-COMPLETE": "PASS",
+            "Account and authentication:REQUIRES-COMPLETE": "PASS",
+            "Article and comment publishing:REQUIRES-COMPLETE": "PASS",
+            "Persistence and schema lifecycle:REQUIRES-COMPLETE": "UNKNOWN",
+            "REQUIRES-COMPLETE": "FAIL"
+            if variant.id == "nest-realworld-forbidden-edge"
+            else "UNKNOWN",
+        }
         for summary in (validate, report_summary):
             coverage = summary["coverage"]
             assert coverage["files_discovered"] == 41

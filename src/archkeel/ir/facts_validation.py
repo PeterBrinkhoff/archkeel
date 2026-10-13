@@ -7,6 +7,7 @@ from collections.abc import Collection, Iterable, Mapping
 from pathlib import PurePosixPath
 
 from .facts import (
+    SOURCE_RESOLUTION_GAP_KIND,
     BuiltinTarget,
     ConstructSupport,
     Evidence,
@@ -390,11 +391,16 @@ def validate_source_bindings(
     import_ids: Collection[str],
     selected_inputs: Collection[str],
     allow_part_evidence: bool = False,
+    source_records: Mapping[str, Record] | None = None,
 ) -> None:
     """Bind source records and their evidence to the same observed module."""
     _unique(module_paths.values(), "module path")
     modules_by_path = {path: module for module, path in module_paths.items()}
     for record in records:
+        if record.kind == SOURCE_RESOLUTION_GAP_KIND:
+            if _resolution_gap_module(record, module_paths, evidence, source_records or {}) is None:
+                raise ValueError("source resolution gap has no bound resolution dimension")
+            continue
         source_module = (
             record.data.get("qualified_name")
             if record.kind == "module"
@@ -431,6 +437,57 @@ def validate_source_bindings(
             for item in record.evidence_ids
         ):
             raise ValueError("source record evidence disagrees with its module")
+
+
+def _resolution_gap_module(
+    gap: Record,
+    module_paths: Mapping[str, str],
+    evidence: Mapping[str, Evidence],
+    records: Mapping[str, Record],
+) -> str | None:
+    """Read only explicitly bound dependency/signature uncertainty; legacy gaps prove no scope."""
+    module = gap.data.get("source_module", gap.data.get("module"))
+    dimension = gap.data.get("resolution_dimension")
+    if (
+        gap.kind != SOURCE_RESOLUTION_GAP_KIND
+        or gap.evidence_class != EvidenceClass.UNKNOWN
+        or dimension not in {"imports", "signature"}
+        or not isinstance(module, str)
+        or gap.data.get("source_module", module) != module
+        or gap.data.get("module", module) != module
+        or gap.subjects != (module,)
+        or module not in module_paths
+        or not gap.evidence_ids
+        or any(
+            identity not in evidence or evidence[identity].file != module_paths[module]
+            for identity in gap.evidence_ids
+        )
+        or gap.data.get("file", module_paths[module]) != module_paths[module]
+    ):
+        return None
+    if dimension == "signature":
+        if len(gap.fact_ids) != 1:
+            return None
+        method = records.get(gap.fact_ids[0])
+        if (
+            method is None
+            or method.kind != "method"
+            or method.data.get("module") != module
+            or method.data.get("signature_complete") is not False
+            or method.data.get("method_kind") != "constructor"
+            or module_paths[module][-5:] != ".dart"
+            or not isinstance(parameters := method.data.get("parameters"), tuple)
+            or not any(
+                isinstance(parameter, RecordData)
+                and parameter.get("super_formal") is True
+                and parameter.get("annotation") is None
+                and parameter.get("default_known") is False
+                and parameter.get("evidence_ids") == gap.evidence_ids
+                for parameter in parameters
+            )
+        ):
+            return None
+    return module
 
 
 def validate_source_facts(facts: SourceFacts) -> None:

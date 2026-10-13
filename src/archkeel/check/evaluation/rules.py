@@ -1622,6 +1622,7 @@ def rule_violations(
     ancestor_contracts: Sequence[ArchitectureContract] = (),
     cycle_scan_roots: tuple[str, ...] = (),
     cycle_namespace: str | None = None,
+    receipt_scan_roots: tuple[str, ...] | None = None,
 ) -> tuple[list[RawRecord], list[RawRecord]]:
     """Evaluate every declared contract rule and return the sorted violation records."""
     components = tuple(
@@ -1689,7 +1690,12 @@ def rule_violations(
                     ),
                 )
             )
-            or _scan_covers_packages(package_scopes, modules, profile, cycle_scan_roots)
+            or _scan_covers_packages(
+                package_scopes,
+                modules,
+                profile,
+                receipt_scan_roots if receipt_scan_roots is not None else cycle_scan_roots,
+            )
         )
         and _scan_covers_exact_modules(
             tuple(
@@ -1704,7 +1710,7 @@ def rule_violations(
                 )
             ),
             modules,
-            cycle_scan_roots,
+            receipt_scan_roots if receipt_scan_roots is not None else cycle_scan_roots,
         ),
         cycle_scope_complete=(
             len(cycle_graph_components) == len(contract.components) and bool(contract.components)

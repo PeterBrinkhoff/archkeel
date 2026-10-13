@@ -54,7 +54,7 @@ VARIANTS: tuple[Variant, ...] = (
         expected_codes=(),
         expected_kinds=("parse_error",),
         fixture=NEST_REALWORLD_FIXTURE_DIR,
-        expected_declared_rules="UNKNOWN",
+        expected_declared_rules="FAIL",
     ),
     Variant(
         id="nest-realworld-signature-fail",
@@ -72,7 +72,7 @@ VARIANTS: tuple[Variant, ...] = (
         expected_codes=(),
         expected_kinds=("parse_error",),
         fixture=NEST_REALWORLD_FIXTURE_DIR,
-        expected_declared_rules="UNKNOWN",
+        expected_declared_rules="FAIL",
     ),
     Variant(
         id="nest-realworld-dynamic-unknown",
