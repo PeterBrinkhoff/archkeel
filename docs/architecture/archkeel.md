@@ -66,6 +66,9 @@ omitted pairs retain their undecided status ([AD-225](decisions/ad-225-compact-v
 The TypeScript frontend is packaged in Python at
 [`archkeel.analyzer.typescript`](../../src/archkeel/analyzer/typescript/); it remains a
 process collector and does not execute project code. Missing source evidence remains UNKNOWN.
+Module-level TypeScript array declarations retain constant identities without evaluating
+their elements or claiming complete inventories
+([AD-232](decisions/ad-232-module-array-constant-identities.md)).
 Complete dependency scopes can retain an authenticated requires receipt alongside
 unrelated source resolution gaps ([AD-227](decisions/ad-227-scoped-dependency-proof.md)).
 Coverage and cycle closure remain conservative.
