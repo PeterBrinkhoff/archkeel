@@ -250,6 +250,51 @@ def test_invalid_unicode_member_names_cannot_close_a_decorated_inventory(
 
 
 @pytest.mark.parametrize(
+    "spelling",
+    [
+        r"constr\u{20}uctor",
+        r"constr\u0020uctor",
+        r"constr\u{D800}uctor",
+        r"\u{30}ctor",
+        r"constr\u{30}uctor",
+    ],
+)
+def test_unvalidated_escaped_identifiers_keep_decorated_inventory_unknown(
+    tmp_path: Path,
+    spelling: str,
+) -> None:
+    source = f"class Endpoint {{ @Get() {spelling}() {{}} }}"
+    syntax = parse("src/main.ts", source.encode())
+    assert syntax.first_error is None
+    assert syntax.definitions[0].members_complete is False
+    graph = _graph_from_source_facts(_collected(tmp_path, source), ("src",))
+    assert compare_graphs(graph, _target((spelling,))).status == "UNKNOWN"
+
+
+@pytest.mark.parametrize(
+    "spelling",
+    [
+        r'"constr\u{20}uctor"',
+        r'"constr\u0020uctor"',
+        r'"constr\u{D800}uctor"',
+        r'"\u{30}ctor"',
+        r'"constr\u{30}uctor"',
+    ],
+)
+def test_quoted_string_names_retain_their_distinct_unicode_character_rules(
+    tmp_path: Path,
+    spelling: str,
+) -> None:
+    source = f"class Endpoint {{ @Get() {spelling}() {{}} }}"
+    syntax = parse("src/main.ts", source.encode())
+    assert syntax.first_error is None
+    assert syntax.definitions[0].members_complete is True
+    assert syntax.definitions[1].decorators is True
+    graph = _graph_from_source_facts(_collected(tmp_path, source), ("src",))
+    assert compare_graphs(graph, _target((spelling,))).status == "PASS"
+
+
+@pytest.mark.parametrize(
     "names,status",
     [
         (("run", "plain"), "PASS"),

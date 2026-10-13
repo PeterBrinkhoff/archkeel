@@ -622,13 +622,13 @@ def _decorated_member(node: Node) -> Node | None:
 
 
 def _valid_unicode_member_name(name: Node) -> bool:
-    """Parser-accepted brace escapes still need a valid Unicode code point."""
-    escapes = (
-        [_text(child) for child in name.named_children if child.type == "escape_sequence"]
-        if name.type == "string"
-        else re.findall(r"\\u\{[0-9a-fA-F]+\}", _text(name))
-    )
-    for escape in escapes:
+    """String names allow code points that unvalidated escaped identifiers cannot prove."""
+    if name.type != "string":
+        return "\\" not in _text(name)
+    for child in name.named_children:
+        if child.type != "escape_sequence":
+            continue
+        escape = _text(child)
         if escape.startswith("\\u{"):
             hexadecimal = escape[3:-1].lstrip("0") or "0"
             if len(hexadecimal) > 6 or int(hexadecimal, 16) > 0x10FFFF:
