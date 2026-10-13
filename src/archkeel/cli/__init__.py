@@ -197,6 +197,9 @@ def build_parser() -> _Parser:
             "where a page draws one, the marked target graph against the edges the contract\n"
             "permits. Run it after every contract edit; --write-graph first rewrites each\n"
             "marked graph's edges, leaving the rest of the page untouched.\n\n"
+            "JSON includes every open component pair by default. --compact-open-decisions\n"
+            "lists observed undecided crossings and reports the exact total; omitted pairs\n"
+            "remain undecided, and validation verdicts and diagnostics are unchanged.\n\n"
             "A contract that states the target architecture is violated by the code that\n"
             "has yet to reach it. --baseline names a file of those known violations and\n"
             "contract-selected measurement values. The run fails when either drifts.\n"
@@ -213,6 +216,7 @@ def build_parser() -> _Parser:
             "Examples:\n"
             "  archkeel validate\n"
             "  archkeel validate --json\n"
+            "  archkeel validate --compact-open-decisions --json\n"
             "  archkeel validate --write-graph\n"
             "  archkeel validate --baseline known-violations.json --write-baseline\n"
             "  archkeel validate --baseline known-violations.json --write-baseline --accept-new\n"
@@ -231,12 +235,19 @@ def build_parser() -> _Parser:
         ),
     )
     _observing(validate, None)
-    validate.add_argument(
-        "--write-graph",
-        action="store_true",
-        help="Rewrite the edges of each marked graph - the component graph from observed "
-        "imports, the target graph from the edges the contract permits - then validate.",
-    )
+    for option, help_text in (
+        (
+            "--compact-open-decisions",
+            "List observed undecided crossings with the exact open-pair total and completeness. "
+            "Omitted pairs remain undecided. Default: include every open pair.",
+        ),
+        (
+            "--write-graph",
+            "Rewrite the edges of each marked graph - the component graph from observed "
+            "imports, the target graph from the edges the contract permits - then validate.",
+        ),
+    ):
+        validate.add_argument(option, action="store_true", help=help_text)
     validate.add_argument(
         "--baseline",
         type=Path,
@@ -581,6 +592,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                         tsconfig=config.tsconfig or "tsconfig.json",
                     ),
                     write_graph=args.write_graph,
+                    compact_open_decisions=args.compact_open_decisions,
                     # AD-103: run_validate reads both relative to --root, like the contract.
                     baseline=args.baseline,
                     write_baseline=args.write_baseline,

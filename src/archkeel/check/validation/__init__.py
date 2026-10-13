@@ -36,6 +36,7 @@ from archkeel.ir.codec import (
 )
 from archkeel.ir.decisions import (
     agent_decisions,
+    open_decision_summary,
     open_decisions,
     review_claims,
     rule_assessments,
@@ -273,6 +274,7 @@ def _observed_result(
     interface_budgets: tuple[InterfaceBudgetResult, ...] | None = None,
     widenings: tuple[WideningFinding, ...] | None = None,
     amendment_status: Literal["valid", "stale"] | None = None,
+    compact_open_decisions: bool = False,
 ) -> RunResult:
     """The validate result once a complete observation has produced its diagnostics.
 
@@ -293,7 +295,11 @@ def _observed_result(
         )
         measurements = None
         declared = "UNKNOWN"
-    decisions = open_decisions(observation)
+    if compact_open_decisions:
+        decisions, decision_count = open_decision_summary(observation)
+    else:
+        decisions = open_decisions(observation)
+        decision_count = len(decisions)
     counts = agent_decisions(observation)
     # AD-51: a rejected run is where the breakdown is read, so it carries it too.
     counted = violation_counts(observation)
@@ -313,6 +319,8 @@ def _observed_result(
         baseline_new=baseline_new,
         baseline_resolved=baseline_resolved,
         open_decisions=decisions,
+        open_decision_count=decision_count,
+        open_decisions_complete=len(decisions) == decision_count,
         agent_decisions=counts,
         claims=review_claims(observation) if measurements is not None else None,
         rule_assessments=(
@@ -993,6 +1001,7 @@ def run_validate(
     analyzer: Analyzer,
     *,
     write_graph: bool = False,
+    compact_open_decisions: bool = False,
     baseline: Path | None = None,
     write_baseline: bool = False,
     accept_new: bool = False,
@@ -1007,6 +1016,9 @@ def run_validate(
 
     AD-46/AD-57: with `write_graph`, every rewritten graph page comes back for the caller to
     write, the way `run_init` returns its files.
+
+    AD-225: `compact_open_decisions` lists observed undecided crossings with the exact total.
+    Omitted pairs remain open; full retrieval is the default and neither mode changes verdicts.
 
     AD-52/AD-77: with `baseline`, the violations that file already states are known debt, and
     only the difference is reported - as `failures` with exit 1. A missing baseline may be
@@ -1188,6 +1200,7 @@ def run_validate(
         baseline_new=baseline_new if baseline is not None else None,
         baseline_resolved=baseline_resolved if baseline is not None else None,
         interface_budgets=budget_results or None,
+        compact_open_decisions=compact_open_decisions,
     )
     # Diagnostics decide artifact eligibility; widening failures can only change exit 0 to 1.
     files, artifact, amendment_written = _artifact_files(

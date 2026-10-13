@@ -61,6 +61,8 @@ Caller-supplied `--host-records` require caller authentication.
 Component `layer` values are contract intent; `layer_order` checks declared permissions
 ([AD-201](decisions/ad-201-layers-assess-declared-permissions.md)). A `requires` permission
 does not prove structural Protocol conformance.
+Validation can list observed undecided crossings with an exact open-pair total;
+omitted pairs retain their undecided status ([AD-225](decisions/ad-225-compact-validation-decisions.md)).
 The TypeScript frontend is packaged in Python at
 [`archkeel.analyzer.typescript`](../../src/archkeel/analyzer/typescript/); it remains a
 process collector and does not execute project code. Missing source evidence remains UNKNOWN.

@@ -9,7 +9,7 @@ from collections import Counter
 from collections.abc import Iterable
 from typing import TypeVar
 
-from archkeel.ir.decisions import open_decisions
+from archkeel.ir.decisions import open_decision_summary
 from archkeel.ir.model import (
     AllowedDependencyRule,
     ArchitectureContract,
@@ -92,14 +92,14 @@ def _pair_diagnostics(
 
 
 def _open_decision_diagnostics(observation: Observation) -> list[Diagnostic]:
-    decisions = open_decisions(observation)
-    if not decisions:
+    _, count = open_decision_summary(observation)
+    if not count:
         return []
     return [
         _diagnostic(
             "decision.open",
             "/components",
-            f"{len(decisions)} open dependency decision{'s' if len(decisions) != 1 else ''}",
+            f"{count} open dependency decision{'s' if count != 1 else ''}",
             "Component dependency directions remain undecided.",
             "Review open_decisions. Add each allowed component to its owner's requires list "
             "with a rationale and decided_by; add one complete_requires rule with a unique id, "
