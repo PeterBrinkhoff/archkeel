@@ -550,7 +550,7 @@ def _definition(
 
 
 def _supported_constructor(node: Node) -> bool:
-    name = node.child_by_field_name("name")
+    name = Node.child_by_field_name(node, "name")
     previous = node.prev_named_sibling
     while previous is not None and previous.type == "comment":
         previous = previous.prev_named_sibling
@@ -574,7 +574,7 @@ def _static_member_name(raw: str) -> str | None:
 def _parameter_properties(node: Node) -> tuple[Node, ...] | None:
     if node.type not in {"method_definition", "method_signature"}:
         return ()
-    parameters = node.child_by_field_name("parameters")
+    parameters = Node.child_by_field_name(node, "parameters")
     properties = (
         tuple(
             item
@@ -585,11 +585,13 @@ def _parameter_properties(node: Node) -> tuple[Node, ...] | None:
         else ()
     )
     if properties and (
-        not _supported_constructor(node) or node.child_by_field_name("body") is None
+        not _supported_constructor(node) or Node.child_by_field_name(node, "body") is None
     ):
         return None
     for item in properties:
-        pattern = item.child_by_field_name("pattern") or item.child_by_field_name("name")
+        pattern = Node.child_by_field_name(item, "pattern") or Node.child_by_field_name(
+            item, "name"
+        )
         if (
             item.has_error
             or item.type not in {"required_parameter", "optional_parameter"}
@@ -677,9 +679,9 @@ def _members_complete(body: Node | None) -> bool:
                 ):
                     return False
                 for parameter in properties:
-                    pattern = parameter.child_by_field_name(
-                        "pattern"
-                    ) or parameter.child_by_field_name("name")
+                    pattern = Node.child_by_field_name(
+                        parameter, "pattern"
+                    ) or Node.child_by_field_name(parameter, "name")
                     if pattern is None or _text(pattern) in attributes:
                         return False
                     attributes.add(_text(pattern))
@@ -796,7 +798,7 @@ def _class_member(node: Node) -> bool:
 def _member(node: Node, source: _Source) -> Member | None:
     name_node = (
         node.child_by_field_name("name")
-        or node.child_by_field_name("pattern")
+        or Node.child_by_field_name(node, "pattern")
         or (node if node.type in {"property_identifier", "identifier"} else None)
     )
     if name_node is None or name_node.type == "computed_property_name":
