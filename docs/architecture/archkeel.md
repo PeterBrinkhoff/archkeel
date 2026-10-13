@@ -69,6 +69,9 @@ process collector and does not execute project code. Missing source evidence rem
 Module-level TypeScript array declarations retain constant identities without evaluating
 their elements or claiming complete inventories
 ([AD-232](decisions/ad-232-module-array-constant-identities.md)).
+TypeScript decorators retain the direct lexical declarations they annotate;
+inventories do not infer generated API
+([AD-231](decisions/ad-231-typescript-decorated-inventories.md)).
 Complete dependency scopes can retain an authenticated requires receipt alongside
 unrelated source resolution gaps ([AD-227](decisions/ad-227-scoped-dependency-proof.md)).
 Coverage and cycle closure remain conservative.

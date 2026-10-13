@@ -118,6 +118,7 @@ class Member:
     visibility: str | None
     static: bool
     literal: str | None = None
+    decorator_sources: tuple[tuple[str, Span], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -150,6 +151,7 @@ class Definition:
     parent_line: int | None = None
     parent_column: int | None = None
     is_async: bool = False
+    decorator_sources: tuple[tuple[str, Span], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -531,7 +533,7 @@ def _definition(
         _type(node.child_by_field_name("return_type")),
         tuple(bases),
         tuple(members),
-        any(child.type == "decorator" for child in node.children),
+        bool(_decorators(node)),
         "abstract" in _modifiers(node),
         _members_complete(body),
         node.child_by_field_name("body") is None,
@@ -548,11 +550,12 @@ def _definition(
         parent_location.line if parent_location else None,
         parent_location.column if parent_location else None,
         is_async=any(child.type == "async" for child in node.children),
+        decorator_sources=tuple((_text(item), source.span(item)) for item in _decorators(node)),
     )
 
 
 def _members_complete(body: Node | None) -> bool:
-    if body is None:
+    if body is None or body.has_error:
         return False
     supported = {
         "public_field_definition",
@@ -565,6 +568,8 @@ def _members_complete(body: Node | None) -> bool:
         "comment",
     }
     for child in body.named_children:
+        if child.type == "decorator" and _decorated_member(child) is not None:
+            continue
         if child.type not in supported:
             return False
         if child.type in {
@@ -587,6 +592,51 @@ def _members_complete(body: Node | None) -> bool:
                 ):
                     return False
     return True
+
+
+def _decorated_member(node: Node) -> Node | None:
+    """A body-level decorator belongs only to the next supported lexical member."""
+    candidate = node.next_named_sibling
+    while candidate is not None and candidate.type in {"decorator", "comment"}:
+        candidate = candidate.next_named_sibling
+    if (
+        candidate is None
+        or candidate.has_error
+        or candidate.type
+        not in {
+            "method_definition",
+            "method_signature",
+            "public_field_definition",
+        }
+    ):
+        return None
+    name = candidate.child_by_field_name("name")
+    return (
+        candidate
+        if name is not None
+        and name.type != "computed_property_name"
+        and _text(name) != "constructor"
+        else None
+    )
+
+
+def _decorators(node: Node) -> tuple[Node, ...]:
+    """Read attached decorators and the class body's contiguous sibling decorators."""
+    attached = tuple(child for child in node.named_children if child.type == "decorator")
+    parent = node.parent
+    if parent is not None and parent.type == "export_statement":
+        attached = (
+            tuple(child for child in parent.named_children if child.type == "decorator") + attached
+        )
+    if not _class_member(node):
+        return attached
+    previous = node.prev_named_sibling
+    preceding = []
+    while previous is not None and previous.type in {"decorator", "comment"}:
+        if previous.type == "decorator" and _decorated_member(previous) == node:
+            preceding.append(previous)
+        previous = previous.prev_named_sibling
+    return (*reversed(preceding), *attached)
 
 
 def _class_member(node: Node) -> bool:
@@ -620,6 +670,7 @@ def _member(node: Node, source: _Source) -> Member | None:
         "static" in _modifiers(node)
         or node.type in {"enum_assignment", "property_identifier", "identifier"},
         literal,
+        tuple((_text(item), source.span(item)) for item in _decorators(node)),
     )
 
 
