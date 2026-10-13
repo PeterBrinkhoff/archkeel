@@ -41,6 +41,7 @@ pr-test:
 		tests/test_uml_comparison.py tests/test_saved_report.py tests/test_cli.py \
 		tests/test_partial_member_inventory.py \
 		tests/test_report_recorded_unknowns.py \
+		tests/test_report_agent_json.py \
 		tests/test_scoped_dependency_proof.py \
 		tests/test_typescript_namespace_identities.py \
 		tests/test_result_schema.py \

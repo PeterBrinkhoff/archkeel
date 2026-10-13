@@ -145,7 +145,7 @@ def test_architecture_json_full_empty_and_unavailable_details_are_distinct(
     assert list(current_validator.iter_errors(leaked_details))
     assert not list(current_validator.iter_errors(compact_measured_payload))
 
-    broken_root = _root(tmp_path / "broken", "class-a-forbidden-dependency-pair")
+    broken_root = _root(tmp_path / "broken", "clean")
     (broken_root / "shop/app/broken.py").write_text("def broken(:\n")
     unavailable, _ = run_report(
         broken_root,
@@ -155,6 +155,9 @@ def test_architecture_json_full_empty_and_unavailable_details_are_distinct(
         full_architecture=True,
     )
     unavailable_payload = result_payload(unavailable)
+    assert unavailable_payload["observation_complete"] == "UNKNOWN"
+    assert unavailable_payload["declared_rules"] == "UNKNOWN"
+    assert unavailable_payload["exit_code"] == 2
     assert unavailable.filtered_violations is None
     assert unavailable_payload["filtered_violations"] is None
     assert unavailable_payload["filtered_violation_count"] is None
@@ -171,6 +174,48 @@ def test_architecture_json_full_empty_and_unavailable_details_are_distinct(
     assert compact_unavailable_payload["filtered_violation_count"] is None
     assert compact_unavailable_payload["violation_details_included"] is False
     assert not list(current_validator.iter_errors(compact_unavailable_payload))
+
+
+@pytest.mark.parametrize("full_architecture", [False, True])
+def test_partial_architecture_json_preserves_known_forbidden_dependency(
+    tmp_path, current_validator, full_architecture
+):
+    root = _root(tmp_path, "class-a-forbidden-dependency-pair")
+    known, _ = run_report(
+        root, config=CONFIG, analyzer=observe, only_architecture=True, full_architecture=True
+    )
+    assert known.filtered_violations is not None
+    (violation,) = known.filtered_violations
+    assert violation.record.rule_ids == ("DEP-RENDER-NO-STORE",)
+    expected_ids = {violation.record.id}
+    (root / "shop/app/broken.py").write_text("def broken(:\n")
+
+    partial, _ = run_report(
+        root,
+        config=CONFIG,
+        analyzer=observe,
+        only_architecture=True,
+        full_architecture=full_architecture,
+    )
+    payload = result_payload(partial)
+    assert payload["observation_complete"] == "UNKNOWN"
+    assert payload["declared_rules"] == "FAIL"
+    assert payload["exit_code"] == 2
+    assert partial.filtered_violations is not None
+    assert {item.record.id for item in partial.filtered_violations} == expected_ids
+    assert payload["filtered_violation_count"] == 1
+    assert payload["violation_details_included"] is full_architecture
+    if full_architecture:
+        assert {item["id"] for item in payload["filtered_violations"]} == expected_ids
+        assert payload["filtered_violations"][0]["rule_ids"] == ["DEP-RENDER-NO-STORE"]
+        assert expected_ids <= {
+            identity
+            for component in payload["architecture_projection"]["components"]
+            for identity in component.get("finding_ids", [])
+        }
+    else:
+        assert "filtered_violations" not in payload
+    assert not list(current_validator.iter_errors(payload))
 
 
 def test_nested_architecture_json_compact_and_full_schema_variants(tmp_path, current_validator):
@@ -551,7 +596,7 @@ def test_dangling_source_evidence_still_fails_closed(tmp_path, current_validator
 def test_failed_filtered_report_keeps_unmeasured_rows_null(
     tmp_path, current_validator, facet, failure
 ):
-    root = _root(tmp_path, "class-a-forbidden-dependency-pair")
+    root = _root(tmp_path, "clean" if failure == "parse" else "class-a-forbidden-dependency-pair")
     if failure == "parse":
         (root / "shop/app/broken.py").write_text("def broken(:\n")
 
@@ -566,5 +611,6 @@ def test_failed_filtered_report_keeps_unmeasured_rows_null(
     result, _ = run_report(root, config=CONFIG, analyzer=analyzer, **facet)
     payload = result_payload(result)
     assert result.exit_code == 2 and result.observation_complete == "UNKNOWN"
+    assert result.declared_rules == "UNKNOWN"
     assert payload["filtered_calls"] is None and payload["filtered_violations"] is None
     assert not list(current_validator.iter_errors(payload))
