@@ -14,6 +14,11 @@ value, so they do not prove a constant attribute initializer.
 Ordinary parameters, inherited members and assignments in constructor bodies do
 not become direct attributes. Reject destructured/rest or malformed property
 patterns and properties on overload signatures without an implementation body.
+Supported plain quoted instance constructors use semantic constructor identity;
+their source span, parent and parameter signature remain intact. Static constructor
+names and ordinary/accessor/async/generator methods never produce parameter fields.
+Escaped names remain partial. Simple quoted field names compare semantically for
+duplicate detection while their existing raw identities are preserved.
 Duplicate declaration names and multiple constructor sites keep inventories partial;
 do not emit duplicate parameter-property attributes. Computed and other unsupported
 members, including standalone decorators, remain partial in this separate change.

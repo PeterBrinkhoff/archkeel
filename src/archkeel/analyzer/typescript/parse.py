@@ -297,6 +297,8 @@ def _inner(source: _Source) -> tuple[tuple[Definition, ...], tuple[Site, ...]]:
             continue
         name_node = node.child_by_field_name("name")
         name = _text(name_node) if name_node else ""
+        if _supported_constructor(node):
+            name = "constructor"
         if not name or name_node is None or name_node.type == "computed_property_name":
             continue
         if node.type in ("method_definition", "method_signature") and not _class_member(node):
@@ -547,13 +549,30 @@ def _definition(
     )
 
 
-def _parameter_properties(node: Node) -> tuple[Node, ...] | None:
+def _supported_constructor(node: Node) -> bool:
     name = node.child_by_field_name("name")
-    if (
-        node.type not in {"method_definition", "method_signature"}
-        or name is None
-        or _text(name) != "constructor"
-    ):
+    previous = node.prev_named_sibling
+    while previous is not None and previous.type == "comment":
+        previous = previous.prev_named_sibling
+    return (
+        _instance_constructor(node)
+        and name is not None
+        and _static_member_name(_text(name)) == "constructor"
+        and not any(
+            child.type in {"get", "set", "async", "*", "decorator"} for child in node.children
+        )
+        and (previous is None or previous.type != "decorator")
+    )
+
+
+def _static_member_name(raw: str) -> str | None:
+    if "\\" in raw:
+        return None
+    return raw[1:-1] if raw[:1] in {"'", '"'} else raw
+
+
+def _parameter_properties(node: Node) -> tuple[Node, ...] | None:
+    if node.type not in {"method_definition", "method_signature"}:
         return ()
     parameters = node.child_by_field_name("parameters")
     properties = (
@@ -565,7 +584,9 @@ def _parameter_properties(node: Node) -> tuple[Node, ...] | None:
         if parameters is not None
         else ()
     )
-    if properties and node.child_by_field_name("body") is None:
+    if properties and (
+        not _supported_constructor(node) or node.child_by_field_name("body") is None
+    ):
         return None
     for item in properties:
         pattern = item.child_by_field_name("pattern") or item.child_by_field_name("name")
@@ -574,6 +595,7 @@ def _parameter_properties(node: Node) -> tuple[Node, ...] | None:
             or item.type not in {"required_parameter", "optional_parameter"}
             or pattern is None
             or pattern.type != "identifier"
+            or _static_member_name(_text(pattern)) is None
             or len(_modifiers(item) & {"public", "private", "protected"}) > 1
         ):
             return None
@@ -595,7 +617,10 @@ def _declared_members(body: Node, kind: DefinitionKind, source: _Source) -> list
                 member = _member(parameter, source)
                 if member is not None:
                     properties.append(replace(member, literal=None))
-    names = _Counter(member.name for member in (*members, *properties))
+    keys = [_static_member_name(member.name) for member in members]
+    if None in keys:
+        return members
+    names = _Counter((*keys, *(member.name for member in properties)))
     return members + [member for member in properties if names[member.name] == 1]
 
 
@@ -636,17 +661,23 @@ def _members_complete(body: Node | None) -> bool:
                 "method_signature",
             } and not _valid_unicode_member_name(name):
                 return False
+            key = _static_member_name(_text(name))
+            if key is None:
+                return False
             if child.type in {"public_field_definition", "property_signature"}:
-                if _text(name) in attributes:
+                if key in attributes:
                     return False
-                attributes.add(_text(name))
-            if (
-                child.type in {"method_definition", "method_signature"}
-                and _text(name) == "constructor"
-            ):
-                constructors += 1
+                attributes.add(key)
+            if child.type in {"method_definition", "method_signature"}:
                 properties = _parameter_properties(child)
-                if constructors > 1 or properties is None:
+                constructor = _instance_constructor(child)
+                constructors += constructor
+                if (
+                    constructors > 1
+                    or properties is None
+                    or constructor
+                    and not _supported_constructor(child)
+                ):
                     return False
                 for parameter in properties:
                     pattern = parameter.child_by_field_name(

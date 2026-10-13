@@ -87,6 +87,55 @@ def test_other_unsupported_members_do_not_become_complete(extra):
     assert owner.members_complete is False
 
 
+def test_static_constructor_name_is_not_an_instance_constructor():
+    syntax = parse(
+        "main.ts",
+        b"class Store { constructor(private repo: string) {} "
+        b"static constructor(ordinary: number) {} }",
+    )
+    owner = next(d for d in syntax.definitions if d.kind == "class")
+    assert [m.name for m in owner.members] == ["repo"]
+    assert owner.members_complete
+
+
+@pytest.mark.parametrize("method", ["static constructor", "read"])
+def test_parameter_property_modifiers_on_ordinary_methods_stay_unsupported(method):
+    syntax = parse("main.ts", f"class Store {{ {method}(readonly repo: string) {{}} }}".encode())
+    owner = next(d for d in syntax.definitions if d.kind == "class")
+    assert not owner.members
+    assert owner.members_complete is False
+
+
+@pytest.mark.parametrize("spelling", ["'constructor'", '"constructor"'])
+def test_quoted_instance_constructor_collects_named_properties(spelling):
+    syntax = parse("main.ts", f"class Store {{ {spelling}(private repo: string) {{}} }}".encode())
+    owner = next(d for d in syntax.definitions if d.kind == "class")
+    method = next(d for d in syntax.definitions if d.kind == "method")
+    assert [m.name for m in owner.members] == ["repo"]
+    assert owner.members_complete
+    assert method.name == "constructor"
+    assert method.parameters[0].name == "repo"
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        r'"repo": string; constructor(private repo: string) {}',
+        r'"r\u0065po": string; constructor(private repo: string) {}',
+        r"r\u0065po: string; constructor(private repo: string) {}",
+        r"constructor(private repo: string, private r\u0065po: string) {}",
+        r"constructor(private r\u{65}po: string, private repo: string) {}",
+        r'"constr\u0075ctor"(readonly repo: string) {}',
+        r"constr\u0075ctor(readonly repo: string) {}",
+    ],
+)
+def test_escaped_or_colliding_static_names_never_claim_complete_inventory(body):
+    syntax = parse("main.ts", f"class Store {{ {body} }}".encode())
+    owner = next(d for d in syntax.definitions if d.kind == "class")
+    assert owner.members_complete is False
+    assert not any(m.name == "repo" for m in owner.members)
+
+
 def test_parameter_properties_use_existing_bound_source_attribute_facts(tmp_path: Path):
     source = (
         "export class Store { constructor(\n"
@@ -110,10 +159,10 @@ def test_parameter_properties_use_existing_bound_source_attribute_facts(tmp_path
     )
 
 
-def _target(root: Path, expected: str):
+def _target(root: Path, expected: str, spelling="constructor", methods=False):
     root, config = _project(root, matching=True)
     (root / "src/main.ts").write_text(
-        "export class Store { constructor(readonly repo: string, ordinary: number) {} }\n"
+        f"export class Store {{ {spelling}(readonly repo: string, ordinary: number) {{}} }}\n"
     )
     contract_path = root / "architecture-contract.json"
     contract = json.loads(contract_path.read_bytes())
@@ -151,13 +200,40 @@ def _target(root: Path, expected: str):
                 "annotation": "string",
             }
         )
+    if methods:
+        entities.append(
+            {
+                **declaration,
+                "id": "ctor",
+                "kind": "method",
+                "qualified_name": "demo.src.main_x2e_ts.Store.constructor",
+                "parent_id": "store",
+                "signature": {
+                    "parameters": [
+                        {
+                            "name": "repo",
+                            "annotation": "string",
+                            "kind": "positional",
+                            "default_known": True,
+                        },
+                        {
+                            "name": "ordinary",
+                            "annotation": "number",
+                            "kind": "positional",
+                            "default_known": True,
+                        },
+                    ],
+                    "returns": None,
+                },
+            }
+        )
     uml = contract["declarations"]["uml"]
     uml["schema_version"] = "1.1.0"
     uml["entities"] = entities
     uml["scopes"] = [
         {
             "scope_id": "store",
-            "entity_kinds": ["attribute"],
+            "entity_kinds": ["attribute", "method"] if methods else ["attribute"],
             "mode": "closed",
             "rationale": "Only declared direct fields.",
             "provenance": ["docs/target.md"],
@@ -187,3 +263,13 @@ def test_readonly_only_property_matches_native_and_saved_reports(tmp_path, expec
     replay = run_saved_report(saved)
     assert replay.declared_rules == result.declared_rules
     assert replay.rule_assessments == result.rule_assessments
+
+
+@pytest.mark.parametrize("spelling", ["'constructor'", '"constructor"'])
+def test_quoted_constructor_matches_closed_field_and_method_target(tmp_path, spelling):
+    root, config = _target(tmp_path / "project", "repo", spelling, methods=True)
+    result, encoded = run_report(root, config=config, analyzer=Observer(_TypeScriptCollector()))
+    assert result.declared_rules == "PASS"
+    path = root / "saved.json"
+    path.write_bytes(encoded)
+    assert run_saved_report(path).rule_assessments == result.rule_assessments
