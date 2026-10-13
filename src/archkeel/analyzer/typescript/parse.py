@@ -630,7 +630,7 @@ def _valid_unicode_member_name(name: Node) -> bool:
             continue
         escape = _text(child)
         if escape[:3] == "\\u{":
-            hexadecimal = str.lstrip(escape[3:-1], "0") or "0"
+            hexadecimal = re.sub("^0*", "", escape[3:-1]) or "0"
             if len(hexadecimal) > 6 or int(hexadecimal, 16) > 0x10FFFF:
                 return False
     return True
