@@ -28,9 +28,15 @@ maps, project references and constructs its grammar cannot parse. See
 [hidden-loader](../../fixtures/typescript-hidden-loaders.json) acceptance catalogs.
 
 `make typescript-differential` compares the frontend with the 576-case frozen reference
-captured from the old Node collector (504 equivalent, 72 conservative, 0 defects). Each
+captured from the old Node collector (507 equivalent, 69 conservative, 0 defects). Each
 conservative case has a reason in `fixtures/typescript-differential-allowlist.json`; unexpected
 differences fail. The low-resolution real-world corpus remains a limit of this evidence.
+
+Core's aggregate UNKNOWN to FAIL is equivalent only when every individual rule status
+matches and at least one already reports FAIL. This preserves known failures under partial
+coverage ([AD-227](decisions/ad-227-scoped-dependency-proof.md)); it adds no frontend certainty.
+PASS promotions, individual rule changes and other metadata differences remain strict.
+Frozen producer metadata, input fingerprints and frontend facts remain unchanged.
 
 [The demo](typescript-demo.md) replays import-rule and revision cases. Process,
 collector and snapshot tests cover executable replacement, malformed facts,

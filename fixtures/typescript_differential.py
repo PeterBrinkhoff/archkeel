@@ -510,6 +510,9 @@ def _verdicts(
     if case.variant is None:
         return [], [], 0
     new = _statuses(run_variant(workspace / "core-new", case.variant))
+    old_rules = {rule: status for rule, status in old.items() if not rule.startswith("<")}
+    new_rules = {rule: status for rule, status in new.items() if not rule.startswith("<")}
+    known_failure = old_rules == new_rules and "FAIL" in old_rules.values()
     findings, rules = [], []
     for rule in sorted(old.keys() | new.keys()):
         before, after = old.get(rule, "absent"), new.get(rule, "absent")
@@ -522,6 +525,13 @@ def _verdicts(
                 else "defect"
             )
             klass = "equivalent" if rule == "<exit>" and klass != "defect" else klass
+            if (
+                rule == "<declared_rules>"
+                and before == "UNKNOWN"
+                and after == "FAIL"
+                and known_failure
+            ):
+                klass = "equivalent"
         elif after == "UNKNOWN":
             klass = "more_conservative"
             rules.append((rule, before, after))
