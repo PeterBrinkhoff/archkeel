@@ -377,13 +377,17 @@ def test_pointer_selection_keeps_card_under_second_tap(self_observation: Observa
         canvas = page.locator(".flow-canvas")
         scroll_before = canvas.evaluate("node => [node.scrollLeft, node.scrollTop]")
         point = (bounds["x"] + bounds["width"] / 2, bounds["y"] + bounds["height"] / 2)
+        # Freeze trusted pointer timestamps and timers after layout is ready.
+        page.clock.pause_at("2100-01-01")
         page.mouse.click(*point)
+        page.clock.run_for(100)
         after = card.bounding_box()
         assert after is not None
         assert after["x"] <= point[0] <= after["x"] + after["width"]
         assert after["y"] <= point[1] <= after["y"] + after["height"]
         assert canvas.evaluate("node => [node.scrollLeft, node.scrollTop]") == scroll_before
         page.mouse.click(*point)
+        page.clock.resume()
         _wait_for_layout(page)
         assert "ir [component]" in page.locator(".flow-breadcrumb").inner_text()
         assert page.locator('.flow-nodes [data-label="governance"]').count() == 1
