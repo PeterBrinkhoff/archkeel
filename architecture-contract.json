@@ -577,11 +577,15 @@
         "any_annotation"
       ],
       "allowed_sources": [
-        "archkeel.ir.codec",
         "archkeel.analyzer.python",
         "archkeel.analyzer.dart"
       ],
       "exact_sources": [
+        "archkeel.ir.codec_wire._raw_object",
+        "archkeel.ir.codec_wire._raw_value",
+        "archkeel.ir.codec_observation.encode_canonical_model.rows_by_section",
+        "archkeel.ir.codec_observation.encode_canonical_model.intern",
+        "archkeel.ir.codec_observation.decode_canonical_model.expand",
         "archkeel.ir.widening._DataclassInstance.__dataclass_fields__",
         "archkeel.check.observation"
       ],

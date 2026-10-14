@@ -35,8 +35,8 @@ def test_a_function_used_only_as_a_value_is_not_a_candidate(self_observation: Ob
     names = {candidate.name for candidate in result.candidates}
 
     assert result.status == "SUPPORTED"
-    assert "archkeel.ir.codec._parse_sibling_isolation" not in names
-    assert "archkeel.ir.codec._parse_forbidden_dependency" not in names
+    assert "archkeel.ir.codec_contract._parse_sibling_isolation" not in names
+    assert "archkeel.ir.codec_contract._parse_forbidden_dependency" not in names
     assert "archkeel.cli._sha" not in names
 
 

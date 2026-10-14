@@ -246,3 +246,4 @@ For current behavior, use the [contract](../../../architecture-contract.json), s
 | AD-236 | [Demand-driven report exploration](ad-236-demand-driven-report-exploration.md) |
 | AD-237 | [Shared dependency proof binding](ad-237-shared-dependency-proof-binding.md) |
 | AD-238 | [Command-view preparation](ad-238-command-view-preparation.md) |
+| AD-239 | [Codec format owners](ad-239-codec-format-owners.md) |
