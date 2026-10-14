@@ -59,7 +59,7 @@ def _page(model):
     ).decode()
 
 
-def test_atlas_oversized_review_uses_shared_claim_and_canonical_component_route(tmp_path):
+def test_atlas_structure_overview_retains_canonical_component_route(tmp_path):
     model = _sample(
         tmp_path,
         extra_files={
@@ -74,10 +74,10 @@ def test_atlas_oversized_review_uses_shared_claim_and_canonical_component_route(
         if item.scope == "core"
     )
 
-    assert '<details class="report-section report-evidence atlas-review-claim">' in page
-    assert "Review question · components larger than their level · 1 candidate" in page
-    assert "Comparison basis at the top level" in page
-    assert "review questions, not violations" in page
+    assert '<details class="report-section report-evidence atlas-structure-overview">' in page
+    assert "<summary>Structure overview</summary>" in page
+    assert "Top-level context" in page
+    assert "Architecture boundaries require authored decisions" in page
     assert (
         f'<a href="?component={component_id}" data-atlas-component-route="{component_id}">core</a>'
     ) in page

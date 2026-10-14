@@ -46,6 +46,9 @@ flowchart LR
 ```
 
 Graphs do not prove complete Target conformance. Read the native report's coverage and UNKNOWNs.
+The report's Structure overview shows every measured component's module and edge
+counts without size-derived review candidates or boundary recommendations
+([AD-235](decisions/ad-235-neutral-report-structure-overview.md)).
 
 ## Host evidence
 
