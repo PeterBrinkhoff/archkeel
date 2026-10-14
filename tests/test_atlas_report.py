@@ -1250,12 +1250,11 @@ def test_long_atlas_paths_fit_mobile_on_initial_view_and_after_resize(tmp_path):
             if lens != "Target":
                 modules = page.locator(".atlas-module-list")
                 modules.locator("summary").click()
-                assert (
-                    page.locator(".atlas-module-list")
-                    .get_by_role("link", name="remove_none_or_empty_element_converter.py")
-                    .count()
-                    == 1
-                )
+                api.expect(
+                    page.locator(".atlas-module-list").get_by_role(
+                        "link", name="remove_none_or_empty_element_converter.py"
+                    )
+                ).to_have_count(1)
             assert_visible_links_fit()
             page.locator(".flow-details-toggle").click()
             assert_visible_links_fit()
@@ -1266,12 +1265,11 @@ def test_long_atlas_paths_fit_mobile_on_initial_view_and_after_resize(tmp_path):
         page.set_viewport_size({"width": 375, "height": 900})
         _open_health_check(page)
         page.locator(".atlas-module-list summary").click()
-        assert (
-            page.locator(".atlas-module-list")
-            .get_by_role("link", name="remove_none_or_empty_element_converter.py")
-            .count()
-            == 1
-        )
+        api.expect(
+            page.locator(".atlas-module-list").get_by_role(
+                "link", name="remove_none_or_empty_element_converter.py"
+            )
+        ).to_have_count(1)
         assert_visible_links_fit()
         assert not errors
     finally:
@@ -1611,6 +1609,7 @@ def test_matrix_renders_each_core_status_and_axis_groups(tmp_path):
     errors = []
     playwright, browser, page = _browser_page(api, html, errors=errors)
     try:
+        _open_health_check(page)
         assert page.locator(".matrix-cell.fail").count() == 1
         assert page.locator(".matrix-cell.pass").count() == 1
         assert page.locator(".matrix-cell.unknown").count() == 1
