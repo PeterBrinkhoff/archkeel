@@ -28,6 +28,7 @@ from archkeel.ir.baseline import (
     canonical_fingerprint,
     violation_name,
 )
+from archkeel.ir.command_view import ArchitectureComponentView, architecture_command_envelope
 from archkeel.ir.facts import RuntimeRequirementState
 from archkeel.ir.graph_codec import parse_target
 from archkeel.ir.lock import LOCK_SCHEMA_VERSION, AcceptedLock, LockError
@@ -128,7 +129,6 @@ from archkeel.ir.model import (
     RawJson as RawJson,
 )
 from archkeel.ir.profiles import Profile, profile_for
-from archkeel.ir.report_projection import ArchitectureComponentView, architecture_command_envelope
 from archkeel.ir.target_graph import declared_graph, scoped_target
 from archkeel.ir.widening import AMENDMENT_SCHEMA_VERSION, Amendment
 

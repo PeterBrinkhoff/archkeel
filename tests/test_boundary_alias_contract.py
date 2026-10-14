@@ -243,6 +243,9 @@ def _hash(value):
 
 def test_absent_binding_preserves_prechange_contracts_payloads_repr_ids_and_observation():
     pinned = json.loads((ROOT / "tests/boundary_alias_legacy.json").read_bytes())
+    # Fixed inputs only: the focused UML case was pinned against pre-refactor 465f099.
+    # Full live-policy fingerprints are retired; test_contract_model.py retains
+    # schema, reference and round-trip checks for current repository contracts.
     for path, expected in pinned.items():
         if path.endswith("sha256"):
             continue

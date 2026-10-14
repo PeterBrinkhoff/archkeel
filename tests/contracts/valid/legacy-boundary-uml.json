@@ -1,0 +1,123 @@
+{
+  "schema_version": "2.3.0",
+  "components": [
+    {
+      "id": "CORE",
+      "label": "core",
+      "role": "component",
+      "packages": ["sample.core"],
+      "responsibilities": ["Own the API."],
+      "forbidden_responsibilities": [],
+      "provenance": ["docs/target.md"],
+      "public": ["sample.core.api:Service"]
+    }
+  ],
+  "rules": [
+    {
+      "id": "BOUNDARY",
+      "kind": "boundary_types",
+      "source": "sample.core",
+      "rationale": "Keep reviewed legacy allowances stable.",
+      "provenance": ["docs/target.md"],
+      "decided_by": "architect",
+      "allowed_positions": [
+        {
+          "qualified_name": "sample.core.api.Service.run",
+          "position": "request",
+          "annotation": "Mapping[str, bytes] | None"
+        },
+        {
+          "qualified_name": "sample.core.api.Service.run",
+          "position": "return",
+          "field_path": "",
+          "annotation": "dict[str, bytes]"
+        },
+        {
+          "qualified_name": "sample.core.api.Service.run",
+          "position": "return",
+          "field_path": "payload.value",
+          "annotation": "object"
+        },
+        {
+          "qualified_name": "sample.core.api.Service.run",
+          "position": "return",
+          "annotation": "Mapping[str, list[dict[str, object]]]",
+          "container_depth": 3,
+          "mapping_depth": 2
+        }
+      ]
+    },
+    {
+      "id": "NO-ALLOWANCES",
+      "kind": "boundary_types",
+      "source": "sample.core",
+      "rationale": "Omitted allowances remain omitted.",
+      "provenance": ["docs/target.md"],
+      "decided_by": "architect"
+    }
+  ],
+  "declarations": {
+    "uml": {
+      "schema_version": "1.1.0",
+      "entities": [
+        {
+          "id": "SERVICE",
+          "kind": "class",
+          "qualified_name": "sample.core.api.Service",
+          "language": "python",
+          "parent_id": "CORE",
+          "presence": "planned",
+          "responsibilities": ["Implement the API."],
+          "provenance": ["docs/target.md"]
+        },
+        {
+          "id": "RUN",
+          "kind": "method",
+          "qualified_name": "sample.core.api.Service.run",
+          "language": "python",
+          "parent_id": "SERVICE",
+          "presence": "planned",
+          "responsibilities": ["Handle a request."],
+          "provenance": ["docs/target.md"],
+          "signature": {
+            "parameters": [
+              {"name": "self", "default_known": true},
+              {"name": "request", "annotation": null, "default": null},
+              {"name": "context"}
+            ],
+            "returns": "Result"
+          }
+        },
+        {
+          "id": "PORT",
+          "kind": "interface",
+          "qualified_name": "sample.core.api.Port",
+          "language": "python",
+          "parent_id": "CORE",
+          "presence": "planned",
+          "responsibilities": ["Declare the API."],
+          "provenance": ["docs/target.md"]
+        }
+      ],
+      "relationships": [
+        {
+          "id": "IMPLEMENTS",
+          "kind": "realizes",
+          "source_id": "SERVICE",
+          "target_id": "PORT",
+          "provenance": ["docs/target.md"]
+        }
+      ],
+      "scopes": [
+        {
+          "scope_id": "CORE",
+          "mode": "closed",
+          "rationale": "Keep the declared API closed.",
+          "provenance": ["docs/target.md"],
+          "entity_kinds": ["class", "method", "interface"],
+          "relationship_kinds": ["realizes"]
+        }
+      ]
+    }
+  }
+}
