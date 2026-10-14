@@ -852,7 +852,7 @@ def test_python_realworld_module_overview_uses_actual_edges_and_keeps_isolated_r
                         module_list = page.locator("details.atlas-module-list")
                         assert module_list.locator("summary").inner_text() == "Modules and UML · 72"
                         module_list.locator("summary").click()
-                        assert module_list.locator("li").count() == 72
+                        api.expect(module_list.locator("li")).to_have_count(72)
                         page.get_by_role("button", name="Health check", exact=True).click()
                     degree = {module: 0 for module in expected_modules}
                     for source, target in actual_edges:
