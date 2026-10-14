@@ -9,8 +9,9 @@ Move the command DTOs and preparation helpers together to `ir.command_view`,
 inside the existing governance component. It consumes shared projection and
 result values; it does not construct reports or evaluate architecture policy.
 `ir.report_projection` retains explicit aliases to the same classes, type
-aliases and functions. `ir.codec` keeps its existing imports and owns JSON
-serialization. Runtime annotations remain resolvable in eager import orders.
+aliases and public functions. `ir.codec` imports the focused command owner directly
+and owns JSON serialization. Private helpers stay private to their implementation.
+Runtime annotations remain resolvable in eager import orders.
 
 Rejected: putting command envelopes in the shared projection vocabulary, which
 would mix presentation into shared values; wrappers or another interface, which

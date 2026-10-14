@@ -186,7 +186,7 @@ from typing import get_type_hints
 
 first = sys.argv[1]
 importlib.import_module("archkeel.ir." + first)
-if first == "command_view":
+if first in {"command_view", "codec"}:
     assert "archkeel.ir.report_projection" not in sys.modules
     assert "archkeel.ir.report_graph" not in sys.modules
 from archkeel.ir import command_view, report_projection
@@ -195,7 +195,7 @@ names = (
     "PermissionGroup", "ScopeCount", "UnknownGroups", "ArchitectureComponentView",
     "PermissionContextView", "RequiredRelationshipSummary", "ArchitectureCommandView",
     "ArchitectureCommandEnvelope", "short_selector", "grouped_selectors", "unknown_groups",
-    "_reason_index", "_permission_groups", "_command_component", "architecture_command_envelope",
+    "architecture_command_envelope",
 )
 for name in names:
     current = getattr(command_view, name)

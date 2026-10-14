@@ -58,15 +58,6 @@ from archkeel.ir.command_view import (
     UnknownGroups as UnknownGroups,
 )
 from archkeel.ir.command_view import (
-    _command_component as _command_component,
-)
-from archkeel.ir.command_view import (
-    _permission_groups as _permission_groups,
-)
-from archkeel.ir.command_view import (
-    _reason_index as _reason_index,
-)
-from archkeel.ir.command_view import (
     architecture_command_envelope as architecture_command_envelope,
 )
 from archkeel.ir.command_view import (
