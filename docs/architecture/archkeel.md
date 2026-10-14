@@ -47,6 +47,12 @@ flowchart LR
 
 Graphs do not prove complete Target conformance. Read the native report's coverage and UNKNOWNs.
 
+Boundary permissions appear as neutral counts in the unselected fact sheet.
+Selected scopes show declared and applied groups for their recorded identities;
+the root audit retains unmapped records. Native disclosures build record lists
+in batches and full evidence when opened. Exact hashes retain direct access to
+every record ([AD-234](decisions/ad-234-contextual-boundary-permission-disclosures.md)).
+
 ## Host evidence
 
 The packaged CLI injects the GitLab [Host adapter](../../src/archkeel/host/gitlab.py).
