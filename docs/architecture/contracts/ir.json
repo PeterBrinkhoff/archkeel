@@ -164,6 +164,7 @@
         "archkeel.ir.widening",
         "archkeel.ir.architecture_projection",
         "archkeel.ir.report_projection",
+        "archkeel.ir.command_view",
         "archkeel.ir.architecture_graph",
         "archkeel.ir.graph_codec",
         "archkeel.ir.source_graph",

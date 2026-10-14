@@ -12,7 +12,8 @@ the existing governance component owns all of them.
 Wire operations depend only on immutable values. Governance adds measurements,
 locks, baselines and amendments. Contract grammar uses governance budget names;
 inside linking uses contract grammar. Delta metadata uses observation parsers.
-Results compose observation, delta, rule and existing command-view payloads.
+Results compose observation, delta, rule and existing command-view payloads,
+importing their command-view owner directly.
 No implementation imports the facade, and existing API/CLI imports retain it.
 The existing whole-module codec publication stays unchanged. A literal
 `__all__` names the same 38 public facade bindings: ordinary Python modules

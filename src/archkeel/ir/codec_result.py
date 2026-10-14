@@ -13,9 +13,9 @@ from archkeel.ir.codec_contract import _rule_payload
 from archkeel.ir.codec_delta import delta_payload
 from archkeel.ir.codec_observation import _coverage_payload, observation_payload
 from archkeel.ir.codec_wire import _raw_object, _record_payload, canonical_json_bytes
+from archkeel.ir.command_view import ArchitectureComponentView, architecture_command_envelope
 from archkeel.ir.model import FilteredViolation, OpenDecision, ReportFilter, RunResult
 from archkeel.ir.model import RawJson as RawJson
-from archkeel.ir.report_projection import ArchitectureComponentView, architecture_command_envelope
 
 
 def _open_decision_payload(decision: OpenDecision) -> dict[str, RawJson]:
