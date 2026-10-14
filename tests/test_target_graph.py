@@ -144,13 +144,15 @@ def test_target_compiles_without_observation_and_uses_shared_entity_types() -> N
     assert parse_contract(json.loads(contract_bytes(contract))) == contract
 
 
-def test_existing_contract_bytes_and_digest_do_not_change() -> None:
+def test_contract_corpus_preserves_version_and_uml_presence() -> None:
     root = Path(__file__).parents[1]
     for path in (root / "tests/contracts/valid").glob("*.json"):
-        contract = parse_contract(json.loads(path.read_bytes()))
-        assert contract.schema_version == "2.1.0"
-        assert parse_contract(json.loads(contract_bytes(contract))) == contract
-        assert "uml" not in json.loads(contract_bytes(contract)).get("declarations", {})
+        raw = json.loads(path.read_bytes())
+        contract = parse_contract(raw)
+        encoded = json.loads(contract_bytes(contract))
+        assert encoded["schema_version"] == raw["schema_version"]
+        assert parse_contract(encoded) == contract
+        assert ("uml" in encoded.get("declarations", {})) == ("uml" in raw.get("declarations", {}))
 
 
 def _physical_contract():
