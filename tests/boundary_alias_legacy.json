@@ -104,67 +104,6 @@
     "declarations_sha256": "9d348502ec244bd818f5a2a92280f7c377d05265f30feb44d1645caf6a871c70",
     "module_references_sha256": "1e137168cd49ca4ab0440dc59a969da7c594f26a00604d2f265c564f1b56bc04"
   },
-  "docs/architecture/contracts/analyzer.json": {
-    "contract_sha256": "ff4d4243b5ce27fa6b008a59dcec783afd7a98e7e3fb91e62f4ed672249f3420",
-    "rule_payload_sha256": "0eb18176ff322ea9d5ed56ecf2584eb8743e29c40dd06f6e2afc3a2429526ae8",
-    "allowance_reprs": [],
-    "declarations_sha256": "fab8e9a45d8c340a1881857146bc81b6979895dfcddd3c0022f3f458997f3539",
-    "module_references_sha256": "7a72a56122ff065acd33ed1591e368b9ecab3913d6d2b266a8aa1041d375d7fe"
-  },
-  "docs/architecture/contracts/check.json": {
-    "contract_sha256": "5b11383b913ddfb2b800bf433c662c209b10cefd2faad8a7d093b5b41de3901b",
-    "rule_payload_sha256": "2eb9961ed7572c8a4930921abb90dcc947d1b6b32cd0ced82d26c22642110e4d",
-    "allowance_reprs": [],
-    "declarations_sha256": "10e37872def1fc76436119a2f10add9d5f8387290b51ee247aaf5628e78e69a0",
-    "module_references_sha256": "9456aba9f7b1dc634256af6ba1a72934aaa809aa416314f781b107c25585bc76"
-  },
-  "docs/architecture/contracts/dart.json": {
-    "contract_sha256": "68aa5dcad101e380d7cd646ef7ce8e9657eaf913c516c71543246f8cc47b139d",
-    "rule_payload_sha256": "307c292320bbebfa23f0c432503e1bcc7e918a1d744767da1f59aacc5f16c631",
-    "allowance_reprs": [],
-    "declarations_sha256": "2df5625d40990307f8c6a30e9ea870f745a3a3cf02c98a73a8d461ac0d79a04f",
-    "module_references_sha256": "8b581717626e4ca796410aa6f8cb119a172f7bd493ee3abbc97a21000bf6956e"
-  },
-  "docs/architecture/contracts/ir.json": {
-    "contract_sha256": "17402f54004fad16f2a70b46414336339ed22a04e935d8e78b142af2cb5b71e4",
-    "rule_payload_sha256": "e52b26bf4c1475d440ee15a66f0c1813ad8ae610290dea0152c7415553f2ce79",
-    "allowance_reprs": [],
-    "declarations_sha256": "d383955ade5d684db9ec9b85c72bb3449a050882d1ca51c6be6f9885430ee681",
-    "module_references_sha256": "77d6bbe23a0ebad6958d43d81c54cd25d4ca0a72392e3ac6ee3fc2b65a3cd75e"
-  },
-  "docs/architecture/contracts/python.json": {
-    "contract_sha256": "7cf14a6897c5af3cc21d2cfce3a11d882c621141a03848f84476bb9a64988e3f",
-    "rule_payload_sha256": "a1096b0b29bfebf525915d64694dd1c6d1350e2c6d9beb56ad03d11311133bcb",
-    "allowance_reprs": [],
-    "declarations_sha256": "02a69b355a39a32608100d2f34ab4f85656ec5fe03c95b9db940494183719daa",
-    "module_references_sha256": "9ee8ec2f7e9bc54b80ca40d70fd79ebe4440639862354d68b7a56b568f56a57f"
-  },
-  "docs/architecture/contracts/render.json": {
-    "contract_sha256": "19253ac03fac0eb96c911033f19b26fe06eaa803d0d81f8cf26b603c05261a4a",
-    "rule_payload_sha256": "a37b5611877009e3b69737e687afc40964e4eaf4a8cbe4be14d8899e3277bf23",
-    "allowance_reprs": [],
-    "declarations_sha256": "c6c891c9b7c51ea70e9c12f9cf9c9b1644a35554a0f42dd97f78a2ac31ab0ed0",
-    "module_references_sha256": "2f41e898b2b8d6190353dac3b451adc0ee681cb9c6721a944872c0824048e504"
-  },
-  "docs/architecture/contracts/typescript.json": {
-    "contract_sha256": "6f049563720bff75a7277281da30593b0b8de91ed7382d2a43d45e2a04382657",
-    "rule_payload_sha256": "a86cb866d65eced87a07d031f6d59e4a41404cc4dc8461d5699e2690a5b21c2f",
-    "allowance_reprs": [],
-    "declarations_sha256": "a25efbe5888c8097a8ed59cff47fe6f5d1c965a99e6eb01852493ebbdf6efab2",
-    "module_references_sha256": "6ce9d1f8438e0adea811ea7d7b4aab8926c053d9ce0e08958fa2eae95c04f710"
-  },
-  "architecture-contract.json": {
-    "contract_sha256": "1372fe89270b28d0c230f475278eb1d358ea8dcbea4255afd010925e8087c8f4",
-    "rule_payload_sha256": "97cefe538d3fcb7a8f7e4cb5cd6a1568c9105ecae623caed215f885919a6d97f",
-    "allowance_reprs": [
-      "BoundaryTypeAllowance(qualified_name='archkeel.check.ports.FilesToWrite.__init__', position='files', field_path='', annotation='Mapping[str, bytes] | None', container_depth=None)",
-      "BoundaryTypeAllowance(qualified_name='archkeel.check.ports.Host.__call__', position='environ', field_path='', annotation='Mapping[str, str]', container_depth=None)",
-      "BoundaryTypeAllowance(qualified_name='archkeel.check.run.run_check', position='environ', field_path='', annotation='Mapping[str, str]', container_depth=None)",
-      "BoundaryTypeAllowance(qualified_name='archkeel.render.html.render_architecture_details', position='return', field_path='', annotation='dict[str, bytes]', container_depth=None)"
-    ],
-    "declarations_sha256": "99235f0c9378291250815e054745f91cd01e24febd890eb890638fc5de5c5747",
-    "module_references_sha256": "9fb31b5854dece8b26a26efd082cdcbdef23f7a6bb001b841dd3b71117d99b67"
-  },
   "observation_sha256": "f3c805cd069a0d2f8fe0da5bac2cbedf7a0b320b2b6e08d6c1532f324c5ae11c",
   "wire_sha256": "459228ecbdb393e0a45d8cd37e71fc4a0adb7b8bd8a32062c1def8658b97efa5",
   "legacy-2.1.0": {
@@ -194,5 +133,17 @@
     "declarations_sha256": "32bed08136bab112385b7ac5baee819c6ec2fc4f8f7b1e8d39bc15383e367f1b",
     "module_references_sha256": "6b978e4ed727e46f5d74af1c1cf8f19f34050a5e6e28e4a4b31bb52363129eca"
   },
-  "legacy_schema_sha256": "89afa6b50880493bfdaded18c5dc7714dc2395ace0a47ab98c616f9eadc59bc0"
+  "legacy_schema_sha256": "89afa6b50880493bfdaded18c5dc7714dc2395ace0a47ab98c616f9eadc59bc0",
+  "tests/contracts/valid/legacy-boundary-uml.json": {
+    "contract_sha256": "319de2f29fe32af2fd80695c09f5e2cb34c2fbcc6a500799aa6534363040b526",
+    "rule_payload_sha256": "a7f763e66f33d34d1c5558fe7f174a0cdf3b02f50d2f89699fcc7a84d839d78c",
+    "allowance_reprs": [
+      "BoundaryTypeAllowance(qualified_name='sample.core.api.Service.run', position='request', field_path='', annotation='Mapping[str, bytes] | None', container_depth=None)",
+      "BoundaryTypeAllowance(qualified_name='sample.core.api.Service.run', position='return', field_path='', annotation='dict[str, bytes]', container_depth=None)",
+      "BoundaryTypeAllowance(qualified_name='sample.core.api.Service.run', position='return', field_path='payload.value', annotation='object', container_depth=None)",
+      "BoundaryTypeAllowance(qualified_name='sample.core.api.Service.run', position='return', field_path='', annotation='Mapping[str, list[dict[str, object]]]', container_depth=3, mapping_depth=2)"
+    ],
+    "declarations_sha256": "c3b12e943d2c2ba1bae14dacb28b7873cd6252d2094475545ae5e762b4fe5bc1",
+    "module_references_sha256": "50b82ea41334df6b7aa7cf9ab0f00034e3936b598521681bcf65fb16af999a14"
+  }
 }
