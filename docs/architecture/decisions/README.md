@@ -244,3 +244,4 @@ For current behavior, use the [contract](../../../architecture-contract.json), s
 | AD-234 | [Contextual boundary permission disclosures](ad-234-contextual-boundary-permission-disclosures.md) |
 | AD-235 | [Neutral report structure overview](ad-235-neutral-report-structure-overview.md) |
 | AD-236 | [Demand-driven report exploration](ad-236-demand-driven-report-exploration.md) |
+| AD-238 | [Command-view preparation](ad-238-command-view-preparation.md) |

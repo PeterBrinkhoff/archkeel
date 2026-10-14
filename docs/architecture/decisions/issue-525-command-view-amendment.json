@@ -1,0 +1,9 @@
+{
+  "after_baseline_digest": "db744d2e4a0149b30bbdab94d3589ba8ad2c7719352a55eb3cbb2bdee956531b",
+  "after_digest": "4249eeaaf2698dacfca25e3b7fe4a4d96544f5df780abf7f324fd70ffb39c421",
+  "before_baseline_digest": "db744d2e4a0149b30bbdab94d3589ba8ad2c7719352a55eb3cbb2bdee956531b",
+  "before_digest": "bdbf823108f813a260811651b8271e07e49412f4cfade1989540e4193bad0584",
+  "decided_by": "ake2l (implementing the user-approved issue #525 refactor)",
+  "rationale": "Assign extracted archkeel.ir.command_view to the existing IR governance owner for issue #525. The fail-closed classifier treats its required packages entry as an ownership widening. Public interfaces, requires, through selectors, Any permissions, rule semantics, budgets and baseline debt remain unchanged.",
+  "schema_version": "2.0.0"
+}

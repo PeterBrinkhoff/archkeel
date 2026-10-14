@@ -104,3 +104,4 @@ Proposed contract extensions are tracked in [#356](https://github.com/rapiddwell
 | Decision | Renderer behavior |
 | --- | --- |
 | [AD-236](decisions/ad-236-demand-driven-report-exploration.md) | Build the module matrix on Health check open and module links on native list expansion. |
+| [AD-238](decisions/ad-238-command-view-preparation.md) | Prepare compact command views in a focused governance module while retaining legacy imports and wire output. |
