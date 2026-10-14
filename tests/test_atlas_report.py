@@ -2692,6 +2692,34 @@ def test_boundary_permissions_shared_saved_cli_payload(tmp_path):
     assert opaque["id"] not in {row["id"] for row in detail["findings"]}
 
 
+def _open_permission_records(page):
+    """Open the bounded permission lists without eagerly opening record bodies."""
+    _open_details(page)
+    if page.locator(".flow-canvas").is_visible():
+        _wait_for_layout(page)
+    audit = page.locator("[data-boundary-audit]")
+    if audit.count() and audit.get_attribute("open") is None:
+        audit.locator(":scope > summary").click()
+        page.locator("[data-boundary-audit][data-boundary-loaded]").wait_for(state="attached")
+    for group in page.locator("[data-boundary-group]").all():
+        if group.get_attribute("open") is None:
+            group.locator(":scope > summary").click()
+            group.locator("[data-boundary-permission]").first.wait_for(state="attached")
+        while group.locator("[data-boundary-more]").count():
+            group.locator("[data-boundary-more]").click()
+
+
+def _open_permission_record(entry):
+    entry.locator("summary").click()
+    entry.locator("dl").wait_for(state="attached")
+
+
+def _open_permission_bodies(entries):
+    entries.evaluate_all("rows => rows.forEach(row => row.open = true)")
+    for entry in entries.all():
+        entry.locator("dl").wait_for(state="attached")
+
+
 @pytest.mark.parametrize("callable_name", ["read", "BaseLiteralGenerator.generate"])
 def test_boundary_permissions_offline_lenses_and_member_routes(tmp_path, callable_name):
     api = pytest.importorskip("playwright.sync_api")
@@ -2701,7 +2729,7 @@ def test_boundary_permissions_offline_lenses_and_member_routes(tmp_path, callabl
     playwright, browser, page = _browser_page(api, index.read_text(), errors=errors)
     try:
         page.goto(index.as_uri())
-        _open_details(page)
+        _open_permission_records(page)
         assert (
             "applied boundary permissions" in page.locator(".flow-inspector").inner_text().lower()
         )
@@ -2709,25 +2737,29 @@ def test_boundary_permissions_offline_lenses_and_member_routes(tmp_path, callabl
         assert "boundary permissions" not in page.locator(".flow-inspector").inner_text().lower()
         page.goto(index.as_uri())
         page.get_by_role("button", name="Target", exact=True).click()
-        _open_details(page)
+        _open_permission_records(page)
         inspector = page.locator(".flow-inspector")
         assert "declared boundary permissions" in inspector.inner_text().lower()
         assert "sample.app.unused" in inspector.inner_text()
         assert "Accepted opacity" not in inspector.inner_text()
         page.get_by_role("button", name="As-Is", exact=True).click()
-        _open_details(page)
-        inspector.locator("[data-boundary-permission]").filter(
-            has_text=f"sample.app.{callable_name}"
-        ).locator("summary").click()
+        _open_permission_records(page)
+        _open_permission_record(
+            inspector.locator("[data-boundary-permission]").filter(
+                has_text=f"sample.app.{callable_name}"
+            )
+        )
         inspector.locator("[data-boundary-permission]").filter(
             has_text=f"sample.app.{callable_name}"
         ).get_by_role("link", name=f"sample.app.impl.{callable_name}", exact=True).click()
         page.wait_for_url("**/*.detail.html?*")
-        _open_details(page)
+        _open_permission_records(page)
         assert "applied boundary permissions" in inspector.inner_text().lower()
-        inspector.locator("[data-boundary-permission]").filter(
-            has_text=f"sample.app.{callable_name}"
-        ).locator("summary").click()
+        _open_permission_record(
+            inspector.locator("[data-boundary-permission]").filter(
+                has_text=f"sample.app.{callable_name}"
+            )
+        )
         assert "Accepted opacity; type closure remains unproven." in inspector.inner_text()
         fact_entry = inspector.locator("[data-boundary-permission]").filter(
             has_text=f"sample.app.{callable_name}"
@@ -2739,7 +2771,7 @@ def test_boundary_permissions_offline_lenses_and_member_routes(tmp_path, callabl
         )
         fact_entry.get_by_role("link", name=declaration_id, exact=True).click()
         page.wait_for_url(lambda url: "view=target" in str(url))
-        _open_details(page)
+        _open_permission_records(page)
         assert (
             inspector.locator(f'[data-boundary-permission="{declaration_id}"]').get_attribute(
                 "open"
@@ -2752,12 +2784,12 @@ def test_boundary_permissions_offline_lenses_and_member_routes(tmp_path, callabl
         assert page.evaluate("({url: location.href, length: history.length})") == history
         page.go_back()
         page.reload()
-        _open_details(page)
+        _open_permission_records(page)
         assert f"sample.app.{callable_name}" in inspector.inner_text()
         page.go_back()
         assert page.url.startswith(index.as_uri())
         page.get_by_role("button", name="Diff", exact=True).click()
-        _open_details(page)
+        _open_permission_records(page)
         assert "declared boundary permissions" in inspector.inner_text().lower()
         assert "applied boundary permissions" in inspector.inner_text().lower()
         assert not errors
@@ -2886,11 +2918,11 @@ def test_boundary_permissions_offline_security_audit_and_old_payload(tmp_path):
     errors = []
     playwright, browser, page = _browser_page(api, edited, errors=errors)
     try:
-        _open_details(page)
+        _open_permission_records(page)
         inspector = page.locator(".flow-inspector")
         assert "unmapped boundary permission audit" in inspector.inner_text().lower()
         entry = inspector.locator("[data-boundary-permission]").filter(has_text=malicious)
-        entry.locator("summary").click()
+        _open_permission_record(entry)
         assert malicious in entry.inner_text()
         assert not inspector.locator("img, script, [onerror], a[href^='javascript:']").count()
         page.locator('.flow-nodes [data-uml-id="COMP-OTHER"]').click()
@@ -2900,7 +2932,7 @@ def test_boundary_permissions_offline_security_audit_and_old_payload(tmp_path):
             html[: match.start(1)] + json.dumps(data).replace("<", "\\u003c") + html[match.end(1) :]
         )
         page.set_content(old)
-        _open_details(page)
+        _open_permission_records(page)
         assert "boundary permissions" not in inspector.inner_text().lower()
         assert not errors
     finally:
@@ -2917,16 +2949,16 @@ def test_boundary_permissions_target_member_without_module_route(tmp_path):
     try:
         page.goto(index.as_uri())
         page.get_by_role("button", name="Target", exact=True).click()
-        _open_details(page)
+        _open_permission_records(page)
         entry = page.locator("[data-boundary-permission]").filter(
             has_text="sample.app.BaseLiteralGenerator.generate"
         )
-        entry.locator("summary").click()
+        _open_permission_record(entry)
         entry.get_by_role(
             "link", name="sample.app.BaseLiteralGenerator.generate", exact=True
         ).click()
         page.wait_for_url("**/*.detail.html?*")
-        _open_details(page)
+        _open_permission_records(page)
         assert "Requested scope" not in page.locator(".flow-inspector").inner_text()
         assert (
             "sample.app.BaseLiteralGenerator.generate"
@@ -2934,7 +2966,7 @@ def test_boundary_permissions_target_member_without_module_route(tmp_path):
         )
         assert "selected=literal-generate" in page.url
         page.reload()
-        _open_details(page)
+        _open_permission_records(page)
         assert (
             "sample.app.BaseLiteralGenerator.generate"
             in page.locator(".flow-inspector").inner_text()
@@ -2946,7 +2978,7 @@ def test_boundary_permissions_target_member_without_module_route(tmp_path):
                 output.with_suffix(".detail.html").as_uri()
                 + f"?component={component}&origin=declared&scope={scope}&view=target"
             )
-            _open_details(page)
+            _open_permission_records(page)
             assert (
                 "No content is inferred for the rejected scope."
                 in page.locator(".flow-inspector").inner_text()
@@ -3069,7 +3101,7 @@ def test_boundary_permissions_offline_module_and_diff_member_selection(tmp_path)
         page.goto(
             index.as_uri() + f"?scope=COMP-APP&selected={module['id']}&view=diagram&content=modules"
         )
-        _open_details(page)
+        _open_permission_records(page)
         inspector = page.locator(".flow-inspector")
         assert "applied boundary permissions" in inspector.inner_text().lower()
         page.goto(
@@ -3077,7 +3109,7 @@ def test_boundary_permissions_offline_module_and_diff_member_selection(tmp_path)
             + f"?component=COMP-APP&module={route['module_id']}&scope={route['scope_id']}"
             + f"&selected={route['entity_id']}&origin=observed&view=diff"
         )
-        _open_details(page)
+        _open_permission_records(page)
         assert "applied boundary permissions" in inspector.inner_text().lower()
         assert "declared boundary permissions" in inspector.inner_text().lower()
         assert "sample.app.unused" not in inspector.inner_text()
@@ -3255,9 +3287,9 @@ def test_bound_alias_malformed_saved_audit_never_borrows_rationale(tmp_path, bin
     errors = []
     playwright, browser, page = _browser_page(api, _page(model), errors=errors)
     try:
-        _open_details(page)
+        _open_permission_records(page)
         entry = page.locator(f'[data-boundary-permission="{fact["id"]}"]')
-        entry.locator("summary").click()
+        _open_permission_record(entry)
         assert "Unavailable or ambiguous" in entry.inner_text()
         assert "Rationale unavailable" in entry.inner_text()
         assert "fact-own-provenance" in entry.inner_text()
@@ -3286,9 +3318,9 @@ def test_bound_alias_saved_body_origin_and_presence_match_in_browser(tmp_path, a
     errors = []
     playwright, browser, page = _browser_page(api, _page(model), errors=errors)
     try:
-        _open_details(page)
+        _open_permission_records(page)
         entry = page.locator(f'[data-boundary-permission="{fact["id"]}"]')
-        entry.locator("summary").click()
+        _open_permission_record(entry)
         assert ("Unavailable or ambiguous" not in entry.inner_text()) is joined
         assert ("Rationale unavailable" not in entry.inner_text()) is joined
         assert "fact-own-provenance" in entry.inner_text() and not errors
@@ -3346,9 +3378,9 @@ def test_bound_alias_real_offline_navigation_and_target_purity(tmp_path, facade)
     playwright, browser, page = _browser_page(api, index.read_text(), errors=errors)
     try:
         page.goto(index.as_uri())
-        _open_details(page)
+        _open_permission_records(page)
         entry = page.locator(f'[data-boundary-permission="{opaque["id"]}"]')
-        entry.locator("summary").click()
+        _open_permission_record(entry)
         assert _ALIAS_PAIR["origin"] in entry.inner_text()
         assert _ALIAS_PAIR["shape"] in entry.inner_text()
         assert "Accepted opacity; type closure remains unproven." in entry.inner_text()
@@ -3359,18 +3391,14 @@ def test_bound_alias_real_offline_navigation_and_target_purity(tmp_path, facade)
         )
         entry.get_by_role("link", name=route["label"], exact=True).click()
         page.wait_for_url("**/*.detail.html?*")
-        _open_details(page)
-        page.locator("[data-boundary-permission]").evaluate_all(
-            "rows => rows.forEach(row => row.open = true)"
-        )
+        _open_permission_records(page)
+        _open_permission_bodies(page.locator("[data-boundary-permission]"))
         assert f"selected={route['entity_id']}" in page.url
         assert "Requested scope" not in page.locator(".flow-inspector").inner_text()
         assert _ALIAS_PAIR["shape"] in page.locator(".flow-inspector").inner_text()
         page.reload()
-        _open_details(page)
-        page.locator("[data-boundary-permission]").evaluate_all(
-            "rows => rows.forEach(row => row.open = true)"
-        )
+        _open_permission_records(page)
+        _open_permission_bodies(page.locator("[data-boundary-permission]"))
         assert _ALIAS_PAIR["origin"] in page.locator(".flow-inspector").inner_text()
         implementation = tmp_path / "sample/app/impl.py"
         implementation.write_text(
@@ -3385,10 +3413,8 @@ def test_bound_alias_real_offline_navigation_and_target_purity(tmp_path, facade)
         )
         assert changed_payload["boundary_permissions"]["applied"] == []
         page.goto(changed.with_suffix(".report.html").as_uri() + "?view=target")
-        _open_details(page)
-        page.locator("[data-boundary-permission]").evaluate_all(
-            "rows => rows.forEach(row => row.open = true)"
-        )
+        _open_permission_records(page)
+        _open_permission_bodies(page.locator("[data-boundary-permission]"))
         text = page.locator(".flow-inspector").inner_text()
         assert _ALIAS_PAIR["shape"] in text
         assert "applied boundary permissions" not in text.lower()
@@ -3419,7 +3445,7 @@ def test_bound_alias_offline_rows_are_complete_escaped_and_lens_specific(tmp_pat
     errors = []
     playwright, browser, page = _browser_page(api, html, errors=errors)
     try:
-        _open_details(page)
+        _open_permission_records(page)
         inspector = page.locator(".flow-inspector")
         for lens, declared, applied in [
             ("As-Is", False, True),
@@ -3427,9 +3453,9 @@ def test_bound_alias_offline_rows_are_complete_escaped_and_lens_specific(tmp_pat
             ("Diff", True, True),
         ]:
             page.get_by_role("button", name=lens, exact=True).click()
-            _open_details(page)
+            _open_permission_records(page)
             entries = inspector.locator("[data-boundary-permission]")
-            entries.evaluate_all("rows => rows.forEach(row => row.open = true)")
+            _open_permission_bodies(entries)
             text = inspector.inner_text()
             assert ("declared boundary permissions" in text.lower()) is declared
             assert ("applied boundary permissions" in text.lower()) is applied
@@ -3537,10 +3563,10 @@ def test_both_alias_permission_pairs_are_complete_escaped_and_lens_specific(tmp_
         page.goto(saved.as_uri())
         for lens, applied in [("As-Is", True), ("Target", False), ("Diff", True)]:
             page.get_by_role("button", name=lens, exact=True).click()
-            _open_details(page)
+            _open_permission_records(page)
             row = payload["applied" if applied else "declared"][0]
             entry = page.locator(f'[data-boundary-permission="{row["id"]}"]')
-            entry.locator("summary").click()
+            _open_permission_record(entry)
             text = entry.inner_text()
             for name, binding in [("alias_body", root), ("key_alias_body", key)]:
                 for field, value in binding.items():
@@ -3652,9 +3678,9 @@ def test_typed_union_real_offline_entry_preserves_both_bindings_and_routes(tmp_p
     playwright, browser, page = _browser_page(api, index.read_text(), errors=errors)
     try:
         page.goto(index.as_uri())
-        _open_details(page)
+        _open_permission_records(page)
         entry = page.locator(f'[data-boundary-permission="{fact["id"]}"]')
-        entry.locator("summary").click()
+        _open_permission_record(entry)
         for binding in ("alias_body", "key_alias_body"):
             for field, value in fact["data"][binding].items():
                 assert f"{binding}.{field}" in entry.inner_text() and value in entry.inner_text()
@@ -3662,7 +3688,7 @@ def test_typed_union_real_offline_entry_preserves_both_bindings_and_routes(tmp_p
             assert location["file"] in entry.inner_text()
         entry.get_by_role("link", name=declaration["id"], exact=True).click()
         page.wait_for_url("**/*.detail.html?*view=target*#*")
-        _open_details(page)
+        _open_permission_records(page)
         declared_entry = page.locator(f'[data-boundary-permission="{declaration["id"]}"]')
         assert declared_entry.get_attribute("open") is not None
         for binding in ("alias_body", "key_alias_body"):
