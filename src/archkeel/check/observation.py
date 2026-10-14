@@ -17,6 +17,7 @@ from archkeel.ir.codec import (
     load_inside_contract_tree,
     parse_observation,
 )
+from archkeel.ir.decisions import dependency_binding_id
 from archkeel.ir.digest import package_digest
 from archkeel.ir.facts import SourceFacts, dart_module_name
 from archkeel.ir.facts_codec import (
@@ -34,6 +35,7 @@ from archkeel.ir.model import (
     EvidenceClass,
     LayerOrderRule,
     Observation,
+    Section,
     contract_relative_path,
     stable_id,
 )
@@ -636,35 +638,18 @@ def _layer_order_evidence(
 
 
 def _dependency_binding_id(scan: ScanResult, declarations: list[RawRecord]) -> str:
-    bound = [
-        parse_record(record)
-        for values in (
-            scan.modules,
-            scan.imports,
-            scan.symbols,
-            scan.coverage["failures"],
-            [
-                item
-                for item in declarations
-                if item["kind"]
-                in {
-                    "component_responsibility",
-                    "inside_component_responsibility",
-                    "complete_requires",
-                }
-            ],
-        )
-        for record in values
-    ]
-    evidence = [parse_evidence(item) for item in scan.evidence]
-    return stable_id(
-        "DEPENDENCY-PROOF",
-        repr(
-            (
-                tuple(sorted(bound, key=lambda item: item.id)),
-                tuple(sorted(evidence, key=lambda item: item.id)),
+    return dependency_binding_id(
+        (
+            Section(name, tuple(parse_record(item) for item in records))
+            for name, records in (
+                ("modules", scan.modules),
+                ("imports", scan.imports),
+                ("symbols", scan.symbols),
+                ("declarations", declarations),
             )
         ),
+        (parse_record(item) for item in scan.coverage["failures"]),
+        (parse_evidence(item) for item in scan.evidence),
     )
 
 

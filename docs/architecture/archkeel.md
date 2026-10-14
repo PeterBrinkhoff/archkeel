@@ -103,4 +103,5 @@ Proposed contract extensions are tracked in [#356](https://github.com/rapiddwell
 
 | Decision | Renderer behavior |
 | --- | --- |
+| [AD-237](decisions/ad-237-shared-dependency-proof-binding.md) | Dependency proof issuance and replay share the existing typed fingerprint recipe. |
 | [AD-236](decisions/ad-236-demand-driven-report-exploration.md) | Build the module matrix on Health check open and module links on native list expansion. |
