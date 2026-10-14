@@ -1,4 +1,4 @@
-# ArchKeel 3.0.0 — Scoped proof and quieter reports
+# ArchKeel 3.0.1 — Scoped proof and quieter reports
 
 Check the rules whose evidence is complete, while keeping real analysis limits visible.
 
@@ -31,6 +31,14 @@ Check the rules whose evidence is complete, while keeping real analysis limits v
   definition. Command-view preparation is separate from authenticated projection;
   seven focused format owners back the compatible codec facade. Historical
   full-policy test copies are replaced by a small fixed compatibility fixture.
+
+## Release verification
+
+The 3.0.0 tag was not published to PyPI: the full release gate caught an older
+corpus test that assumed every valid contract was version 2.1 without UML. The
+check now preserves each input version, UML presence and semantic round trip,
+and runs in the required Core sample. Product parsers, schemas and policy remain
+unchanged by this correction.
 
 ## Upgrade from 2.0.0
 

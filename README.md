@@ -109,7 +109,7 @@ A clean graph does not prove a good design.
 Dart and TypeScript rules use complete evidence for their own scopes. An unrelated
 resolution gap can coexist with a proven rule PASS; a confirmed violation remains FAIL
 alongside incomplete observation. Strict JSON consumers should use command-result schema 8.
-See the [3.0.0 upgrade notes](https://github.com/rapiddweller/archkeel/blob/main/RELEASE_NOTES.md#upgrade-from-200)
+See the [3.0.1 upgrade notes](https://github.com/rapiddweller/archkeel/blob/main/RELEASE_NOTES.md#upgrade-from-200)
 for the format change.
 
 ## Start with a forbidden import

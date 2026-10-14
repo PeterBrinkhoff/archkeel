@@ -29,9 +29,9 @@ Dart snapshots; see the [1.1.0 upgrade notes](../RELEASE_NOTES.md#upgrade-from-1
 Stable does not mean complete language analysis. Unsupported or ambiguous evidence
 stays UNKNOWN; language limits remain part of the documented result.
 
-Version 3.0.0 introduces command-result schema 8 for confirmed FAIL alongside an
+Version 3.0.1 introduces command-result schema 8 for confirmed FAIL alongside an
 incomplete report. Strict consumers must update their schema; version 6/7 readers
-remain supported. See the [3.0.0 upgrade notes](../RELEASE_NOTES.md#upgrade-from-200).
+remain supported. See the [3.0.1 upgrade notes](../RELEASE_NOTES.md#upgrade-from-200).
 
 ## Configuration
 
