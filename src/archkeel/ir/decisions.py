@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import re
 from collections import Counter as _Counter
+from collections.abc import Iterable as _Iterable
 from collections.abc import Mapping as _Mapping
 from dataclasses import dataclass
 from pathlib import PurePosixPath as _PurePosixPath
@@ -29,6 +30,7 @@ from .model import (
     ComparisonStatus,
     ComponentOwnership,
     ComponentOwnershipInput,
+    Evidence,
     EvidenceClass,
     ForbiddenDependencyRule,
     JsonValue,
@@ -40,6 +42,7 @@ from .model import (
     RuleAssessment,
     RuleAssessmentStatus,
     RuntimeInfo,
+    Section,
     ViolationCounts,
     declared_package_pair,
     in_scope,
@@ -802,10 +805,13 @@ def _dependency_receipt_ownership(
     )
 
 
-def _dependency_binding_id(observation: Observation) -> str:
+def dependency_binding_id(
+    sections: _Iterable[Section], failures: _Iterable[Record], evidence: _Iterable[Evidence]
+) -> str:
+    """Bind dependency proof content identically at issuance and replay (AD-237)."""
     bound = [
         record
-        for section in observation.sections
+        for section in sections
         for record in section.records
         if section.name in {"modules", "imports", "symbols"}
         or section.name == "declarations"
@@ -816,13 +822,13 @@ def _dependency_binding_id(observation: Observation) -> str:
             "complete_requires",
         }
     ]
-    bound.extend(observation.coverage.failures)
+    bound.extend(failures)
     return stable_id(
         "DEPENDENCY-PROOF",
         repr(
             (
                 tuple(sorted(bound, key=lambda item: item.id)),
-                tuple(sorted(observation.evidence, key=lambda item: item.id)),
+                tuple(sorted(evidence, key=lambda item: item.id)),
             )
         ),
     )
@@ -895,7 +901,8 @@ def _scoped_dependency_receipt(
         or coverage.rules != "PASS"
         or proof.get("source_digest") != observation.source.source_digest
         or proof.get("contract_digest") != observation.contract.digest
-        or proof.get("binding_id") != _dependency_binding_id(observation)
+        or proof.get("binding_id")
+        != dependency_binding_id(observation.sections, coverage.failures, observation.evidence)
         or proof.get("runtime")
         != RecordData(
             (

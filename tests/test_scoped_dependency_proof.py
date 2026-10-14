@@ -19,6 +19,7 @@ from archkeel.check.ports import ScanConfig
 from archkeel.check.report import run_report, run_saved_report
 from archkeel.ir.codec import decode_canonical_model, parse_observation, result_payload
 from archkeel.ir.decisions import rule_assessments, rule_uncertainty_evidence
+from archkeel.ir.model import Evidence, EvidenceClass, Record, RecordData, Section
 from archkeel.ir.module_explore import module_exploration
 
 
@@ -115,6 +116,140 @@ def _report(root: Path, **options):
 
 def _rows(model):
     return {row.id: row for row in rule_assessments(model, undecided_by_rule={}, complete=False)}
+
+
+@pytest.fixture
+def dependency_binding_inputs():
+    def record(identifier: str, kind: str) -> Record:
+        return Record(
+            identifier,
+            EvidenceClass.FACT,
+            "structure",
+            kind,
+            identifier,
+            (),
+            (),
+            (),
+            (),
+            (),
+            RecordData((("value", identifier),)),
+        )
+
+    sections = (
+        Section("modules", (record("MODULE-2", "module"), record("MODULE-1", "module"))),
+        Section("imports", (record("IMPORT", "import"),)),
+        Section("symbols", (record("SYMBOL", "function"),)),
+        Section(
+            "declarations",
+            (
+                record("COMPONENT", "component_responsibility"),
+                record("INSIDE", "inside_component_responsibility"),
+                record("REQUIRES", "complete_requires"),
+                record("OTHER-RULE", "forbidden_dependency"),
+            ),
+        ),
+        Section("calls", (record("CALL", "call"),)),
+        Section("unknowns", (record("UNRELATED", "complete_requires"),)),
+    )
+    failures = (record("GAP-2", "source_resolution_gap"), record("GAP-1", "source_resolution_gap"))
+    evidence = (
+        Evidence("EVIDENCE-2", "src/b.ts", 2, 2, 1, "export {};"),
+        Evidence("EVIDENCE-1", "src/a.ts", 1, 1, 1, "import './b';"),
+    )
+    return sections, failures, evidence
+
+
+def test_dependency_binding_preserves_recorded_ids_and_input_order(dependency_binding_inputs):
+    from archkeel.ir.decisions import dependency_binding_id
+
+    sections, failures, evidence = dependency_binding_inputs
+    expected = "DEPENDENCY-PROOF-ed404729928d4d64"
+    assert dependency_binding_id(sections, failures, evidence) == expected
+    reordered = tuple(
+        replace(section, records=tuple(reversed(section.records))) for section in reversed(sections)
+    )
+    assert (
+        dependency_binding_id(iter(reordered), reversed(failures), reversed(evidence)) == expected
+    )
+    assert dependency_binding_id((*sections, sections[0]), failures, evidence) == (
+        "DEPENDENCY-PROOF-f6f238c546f4d253"
+    )
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        "module",
+        "import",
+        "function",
+        "component_responsibility",
+        "inside_component_responsibility",
+        "complete_requires",
+        "failure",
+        "evidence",
+    ],
+)
+def test_dependency_binding_invalidates_changed_bound_content(
+    dependency_binding_inputs, change: str
+):
+    from archkeel.ir.decisions import dependency_binding_id
+
+    sections, failures, evidence = dependency_binding_inputs
+    original = dependency_binding_id(sections, failures, evidence)
+    if change == "failure":
+        failures = (replace(failures[0], title="Changed failure"), *failures[1:])
+    elif change == "evidence":
+        evidence = (replace(evidence[0], excerpt="Changed evidence"), *evidence[1:])
+    else:
+        sections = tuple(
+            replace(
+                section,
+                records=tuple(
+                    replace(record, title="Changed record") if record.kind == change else record
+                    for record in section.records
+                ),
+            )
+            for section in sections
+        )
+    assert dependency_binding_id(sections, failures, evidence) != original
+
+
+def test_dependency_binding_excludes_unrelated_sections_and_declarations(dependency_binding_inputs):
+    from archkeel.ir.decisions import dependency_binding_id
+
+    sections, failures, evidence = dependency_binding_inputs
+    changed = tuple(
+        replace(
+            section,
+            records=tuple(
+                replace(record, title="Unrelated change")
+                if section.name in {"calls", "unknowns"} or record.kind == "forbidden_dependency"
+                else record
+                for record in section.records
+            ),
+        )
+        for section in sections
+    )
+    assert dependency_binding_id(changed, failures, evidence) == dependency_binding_id(
+        sections, failures, evidence
+    )
+
+
+def test_dependency_binding_matches_core_issued_proof(tmp_path: Path):
+    from archkeel.ir.decisions import dependency_binding_id
+
+    _, _, model = _report(tmp_path / "project")
+    receipt = next(
+        record
+        for record in model.records("scope_observations")
+        if record.data.get("dependency_scope_proof")
+    )
+    assert receipt.data.get("dependency_scope_proof").get("binding_id") == (
+        "DEPENDENCY-PROOF-e7455e745c3a5c89"
+    )
+    assert dependency_binding_id(model.sections, model.coverage.failures, model.evidence) == (
+        "DEPENDENCY-PROOF-e7455e745c3a5c89"
+    )
 
 
 def test_unaffected_nested_requires_passes_with_partial_global_coverage(tmp_path: Path):
