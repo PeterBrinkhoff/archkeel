@@ -18,6 +18,92 @@ from fixtures.demo_catalog_typescript import VARIANTS
 CATALOGS = Path(differential.FIXTURES)
 
 
+def _verdict_findings(monkeypatch, old, new):
+    case = differential.Case(
+        "unit/core-aggregate",
+        "variant",
+        Path("."),
+        differential.request_for(Path("."), ("src",), "app"),
+        variant=VARIANTS[0],
+    )
+    monkeypatch.setattr(differential, "run_variant", lambda *_: new)
+    monkeypatch.setattr(differential, "_statuses", lambda outcome: outcome)
+    return differential._verdicts(old, case, Path("."))
+
+
+@pytest.mark.parametrize(
+    "old_rules,new_rules,aggregate,klass",
+    [
+        ({"FAILURE": "FAIL", "UNCERTAIN": "UNKNOWN"}, None, "FAIL", "equivalent"),
+        ({"FAILURE": "FAIL", "PASSING": "PASS"}, None, "FAIL", "equivalent"),
+        ({"FAILURE": "FAIL"}, None, "PASS", "defect"),
+        ({"PASSING": "PASS", "UNCERTAIN": "UNKNOWN"}, None, "FAIL", "defect"),
+        ({}, None, "FAIL", "defect"),
+        ({"<diagnostics>": "FAIL", "UNCERTAIN": "UNKNOWN"}, None, "FAIL", "defect"),
+        ({"<observation_complete>": "FAIL"}, None, "FAIL", "defect"),
+        ({"FAILURE": "FAIL"}, {"FAILURE": "PASS"}, "FAIL", "defect"),
+        (
+            {"FAILURE": "FAIL", "OTHER": "PASS"},
+            {"FAILURE": "FAIL", "OTHER": "FAIL"},
+            "FAIL",
+            "defect",
+        ),
+        (
+            {"FAILURE": "FAIL", "OTHER": "UNKNOWN"},
+            {"FAILURE": "FAIL", "OTHER": "FAIL"},
+            "FAIL",
+            "defect",
+        ),
+        ({"FAILURE": "FAIL"}, {}, "FAIL", "defect"),
+        ({"FAILURE": "FAIL", "OTHER": "PASS"}, {"FAILURE": "FAIL"}, "FAIL", "defect"),
+        ({"FAILURE": "FAIL"}, {"FAILURE": "FAIL", "EXTRA": "PASS"}, "FAIL", "defect"),
+        ({"FAILURE": "FAIL"}, {"FAILURE": "FAIL", "EXTRA": "FAIL"}, "FAIL", "defect"),
+    ],
+)
+def test_core_aggregate_failure_requires_identical_known_failed_rules(
+    monkeypatch, old_rules, new_rules, aggregate, klass
+):
+    old = {"<declared_rules>": "UNKNOWN", **old_rules}
+    new = {"<declared_rules>": aggregate, **(old_rules if new_rules is None else new_rules)}
+    findings, rules, compared = _verdict_findings(monkeypatch, old, new)
+    finding = next(item for item in findings if item.subject == "Core verdict <declared_rules>")
+    assert finding.klass == klass
+    assert compared == len(old.keys() | new.keys())
+    if klass == "equivalent":
+        assert findings == [finding] and rules == []
+
+
+@pytest.mark.parametrize("before", ["PASS", "absent"])
+def test_other_aggregate_fail_transitions_remain_defects(monkeypatch, before):
+    old = {"FAILURE": "FAIL"}
+    if before != "absent":
+        old["<declared_rules>"] = before
+    new = {"<declared_rules>": "FAIL", "FAILURE": "FAIL"}
+    findings, _, _ = _verdict_findings(monkeypatch, old, new)
+    assert findings[0].klass == "defect"
+
+
+@pytest.mark.parametrize(
+    "metadata,before,after,klass",
+    [
+        ("<diagnostics>", "parse_error", "", "defect"),
+        ("<exit>", "2", "1", "defect"),
+        ("<observation_complete>", "UNKNOWN", "PASS", "defect"),
+        ("<observation_complete>", "PASS", "UNKNOWN", "more_conservative"),
+    ],
+)
+def test_aggregate_equivalence_does_not_mask_other_metadata_changes(
+    monkeypatch, metadata, before, after, klass
+):
+    old = {"<declared_rules>": "UNKNOWN", "FAILURE": "FAIL", metadata: before}
+    new = {**old, "<declared_rules>": "FAIL", metadata: after}
+    findings, _, _ = _verdict_findings(monkeypatch, old, new)
+    assert {item.subject: item.klass for item in findings} == {
+        "Core verdict <declared_rules>": "equivalent",
+        f"Core verdict {metadata}": klass,
+    }
+
+
 @pytest.fixture(scope="module")
 def judged(tmp_path_factory: pytest.TempPathFactory) -> differential.Verdict:
     results = differential.run(tmp_path_factory.mktemp("differential"))
@@ -67,7 +153,7 @@ def test_core_verdicts_never_gain_a_pass_or_a_fail_the_oracle_lacked(
         for item in case["findings"]
         if item["subject"].startswith("Core verdict") and item["class"] != "equivalent"
     ]
-    # Every Core difference is a verdict that became UNKNOWN; none became PASS or FAIL.
+    # Non-equivalent changes only become UNKNOWN; aggregate equivalence requires prior FAIL.
     assert all(item["frontend"] == "UNKNOWN" for item in changed)
     assert judged.report["core_statuses_compared"] > 400
 
