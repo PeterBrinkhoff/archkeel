@@ -190,10 +190,15 @@ Migration shims remain visible work.
 
 ## Class D: review claims
 
-Unreferenced symbols, unread bindings, repeated logic, oversized components and
-type fan-in are review candidates, never verdicts or scores. Missing signals mean
-UNKNOWN, not zero. Outside consumers and runtime dispatch can invalidate a
+Unreferenced symbols, unread bindings, repeated logic and type fan-in are review
+candidates, never verdicts or scores. Missing signals mean UNKNOWN, not zero.
+Outside consumers and runtime dispatch can invalidate a
 candidate. Inspect evidence before deleting code or adding boundaries.
+
+The report shows component sizes separately as a neutral Structure overview,
+including every measured component and explicit unavailable values. Module and
+edge counts alone establish no boundary defect or split recommendation. Existing
+canonical size claims remain available for compatibility.
 
 <a id="migrating-from-1-1-0"></a>
 

@@ -23,6 +23,15 @@ Atlas component positions are shared across As-Is, Target and Diff within a
 report snapshot; changed source relationships may change that shared layout.
 Target edges, labels and statuses remain authored-only.
 
+Structure overview shows every measured component's module, internal-edge,
+incoming, outgoing and unresolved-call counts, with links to its canonical route.
+Top-level component and cross-component edge counts provide separate context.
+Size alone supplies no review candidate, boundary recommendation or verdict.
+Missing edge evidence is `n/a`; known module counts remain visible. The legacy
+evidence report also retains package measurements. Canonical recorded size claims
+remain compatible. Separate Used elsewhere/Hub hint calibration remains open in
+[#384](https://github.com/rapiddweller/archkeel/issues/384).
+
 Show verdict word, symbol and reason; color alone is insufficient. Baselined
 violations remain visibly FAIL with known-debt status. Filters and Focus retain
 complete counts and evidence. An empty graph says no matching edges at this level

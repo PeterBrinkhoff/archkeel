@@ -362,7 +362,7 @@
     const body = [h("h2", {}, "Health check"),
       h("p", {}, `Whole-run rules: ${A.declared_rules} · Source observation: ${A.observation_complete}`), summary];
     if (explore) { explore.hidden = false; body.push(explore); }
-    overviewEvidence = [...document.querySelectorAll(".report-shell > .atlas-review-claim, .report-shell > .atlas-source")];
+    overviewEvidence = [...document.querySelectorAll(".report-shell > .atlas-structure-overview, .report-shell > .atlas-source")];
     body.push(...overviewEvidence);
     return body;
   }
