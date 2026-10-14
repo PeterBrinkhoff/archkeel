@@ -241,3 +241,4 @@ For current behavior, use the [contract](../../../architecture-contract.json), s
 | AD-231 | [TypeScript decorated member inventories](ad-231-typescript-decorated-inventories.md) |
 | AD-232 | [Module array constant identities](ad-232-module-array-constant-identities.md) |
 | AD-233 | [TypeScript namespace identities](ad-233-typescript-namespace-identities.md) |
+| AD-236 | [Demand-driven report exploration](ad-236-demand-driven-report-exploration.md) |

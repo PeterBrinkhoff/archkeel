@@ -2343,6 +2343,13 @@
     return content;
   }
 
+  let atlasExploreOpen = false, atlasExploreModules = [];
+
+  function setAtlasExploreOpen(open) {
+    atlasExploreOpen = open;
+    if (open) atlasMatrix(atlasLevel(), atlasExploreModules);
+  }
+
   function atlasExplore(level) {
     const explore = root.querySelector(".flow-explore");
     if (viewMode === "target") {
@@ -2351,7 +2358,7 @@
     }
     const componentOrder = new Map(renderedScene.nodes.slice().sort((a, b) => positions[a.id].y - positions[b.id].y
       || positions[a.id].x - positions[b.id].x).map((node, index) => [node.id, index]));
-    const modules = REPORT_SCENE.atlasModules(level, viewMode)
+    const modules = atlasExploreModules = REPORT_SCENE.atlasModules(level, viewMode)
       .sort((a, b) => (componentOrder.get(a.component_id) ?? componentOrder.size) - (componentOrder.get(b.component_id) ?? componentOrder.size)
         || (a.rank ?? Infinity) - (b.rank ?? Infinity) || a.name.localeCompare(b.name));
     const shown = atlasAllHints ? level.questions : level.questions.slice(0, 5);
@@ -2374,15 +2381,32 @@
       Module permission is never inferred from a declared requires edge.</p>
       <p class="atlas-coverage">${esc(level.import_status)}: ${esc(level.import_reason)}</p>
       <div class="flow-matrix" role="region" aria-label="Module import matrix" tabindex="0"></div>
-      <details class="atlas-module-list"><summary>Modules and UML · ${modules.length}</summary>${atlasModuleList(level)}</details>`;
+      <details class="atlas-module-list"><summary>Modules and UML · ${modules.length}</summary></details>`;
     if (!level.questions.length) {
       explore.querySelector(".atlas-explore-heading").remove();
       explore.querySelector(".atlas-questions").previousElementSibling.remove();
       explore.querySelector(".atlas-questions").remove();
     }
+    const list = explore.querySelector("details.atlas-module-list");
+    list.addEventListener("toggle", () => {
+      if (list.open && !list.querySelector("section")) list.insertAdjacentHTML("beforeend", atlasModuleList(level));
+    });
+    explore.querySelectorAll("[data-copy-question]").forEach((button) => button.onclick = () => copyAtlasQuestion(ATLAS.questions[Number(button.dataset.copyQuestion)], button));
+    explore.querySelectorAll("[data-show-question]").forEach((button) => button.onclick = () => {
+      atlasHint = Number(button.dataset.showQuestion); atlasModule = ATLAS.questions[atlasHint].module_ids[0]; atlasCell = null;
+      setTargetDetails(true); syncRoute(); atlasSheet(level);
+      root.dispatchEvent(new CustomEvent("archkeel:findings"));
+      atlasHighlightQuestion();
+      explore.querySelector(".flow-matrix").focus();
+    });
+    const more = explore.querySelector("[data-all-questions]");
+    if (more) more.onclick = () => { atlasAllHints = !atlasAllHints; atlasExplore(level); };
+    if (atlasExploreOpen) atlasMatrix(level, modules);
+  }
+
+  function atlasMatrixGeometry(matrix, modules) {
     const n = modules.length, requestedSize = Math.max(2.4, Math.min(16, 720 / Math.max(1, n)));
     const size = requestedSize >= 9 && requestedSize < 12 ? 12 : requestedSize;
-    const indexes = new Map(modules.map((module, index) => [module.id, index]));
     const groups = [];
     for (let start = 0; start < n;) {
       let end = start + 1;
@@ -2391,9 +2415,6 @@
         ? `${REPORT_SCENE.atlasComponent(modules[start].component_id)?.label || "Component"} · inside` : "Root" });
       start = end;
     }
-    const matrix = el("svg", {
-      role: "img", "aria-label": `${REPORT_SCENE.countLabel(n, "module")}. A row imports a column.` });
-    explore.querySelector(".flow-matrix").appendChild(matrix);
     const probe = el("text", { class: "matrix-group-label" });
     matrix.appendChild(probe);
     measureText.font = getComputedStyle(probe).font;
@@ -2412,6 +2433,17 @@
     const bandHeight = 28 + groups.length * 14, gridTop = margin + bandHeight;
     matrix.setAttribute("width", String(Math.max(margin + n * size + 12, margin + labelWidth * 2 + 20)));
     matrix.setAttribute("height", String(gridTop + n * size + 12));
+    return { size, groups, margin, labelWidth, gridTop };
+  }
+
+  function atlasMatrix(level, modules) {
+    const region = root.querySelector(".flow-matrix");
+    if (!region || region.firstChild) return;
+    const matrix = el("svg", {
+      role: "img", "aria-label": `${REPORT_SCENE.countLabel(modules.length, "module")}. A row imports a column.` });
+    region.appendChild(matrix);
+    const { size, groups, margin, labelWidth, gridTop } = atlasMatrixGeometry(matrix, modules);
+    const indexes = new Map(modules.map((module, index) => [module.id, index]));
     const columnHeading = el("text", { class: "matrix-axis-heading", x: String(margin), y: "14" });
     columnHeading.textContent = "Column groups · left to right"; matrix.appendChild(columnHeading);
     const rowHeading = el("text", { class: "matrix-axis-heading", x: String(margin + labelWidth + 20), y: "14" });
@@ -2439,12 +2471,11 @@
         matrix.appendChild(label);
       }
     });
-    const highlighted = atlasHint === null ? [] : ATLAS.questions[atlasHint].module_ids;
     for (const index of level.cells) {
       const cell = ATLAS.cells[index], row = indexes.get(cell.source_id), column = indexes.get(cell.target_id);
       if (row === undefined || column === undefined) continue;
       const state = cell.status === "FAIL" ? "fail" : cell.status === "UNKNOWN" ? "unknown" : "pass";
-      const rect = el("rect", { class: `matrix-cell ${state}${viewMode === "diff" && cell.status !== "FAIL" ? " quiet" : ""}${highlighted.includes(cell.source_id) || highlighted.includes(cell.target_id) ? " highlighted" : ""}`,
+      const rect = el("rect", { class: `matrix-cell ${state}${viewMode === "diff" && cell.status !== "FAIL" ? " quiet" : ""}`,
         "data-cell": String(index), tabindex: "0", role: "button",
         "aria-label": `${modules[row].name} imports ${modules[column].name}: ${REPORT_SCENE.countLabel(cell.import_sites, "site")}; Core ${cell.status}; permission ${cell.permission}`,
         x: String(margin + column * size), y: String(gridTop + row * size), width: String(Math.max(2.4, size - 1)), height: String(Math.max(2.4, size - 1)) });
@@ -2458,15 +2489,16 @@
       setTargetDetails(true); syncRoute(); atlasSheet(level);
     };
     matrix.addEventListener("click", choose);
-    explore.querySelector(".atlas-module-list")?.addEventListener("click", choose);
     matrix.addEventListener("keydown", (event) => { if (["Enter", " "].includes(event.key)) { event.preventDefault(); choose(event); } });
-    explore.querySelectorAll("[data-copy-question]").forEach((button) => button.onclick = () => copyAtlasQuestion(ATLAS.questions[Number(button.dataset.copyQuestion)], button));
-    explore.querySelectorAll("[data-show-question]").forEach((button) => button.onclick = () => {
-      atlasHint = Number(button.dataset.showQuestion); atlasModule = ATLAS.questions[atlasHint].module_ids[0]; atlasCell = null;
-      setTargetDetails(true); atlasExplore(level); atlasSheet(level);
+    atlasHighlightQuestion();
+  }
+
+  function atlasHighlightQuestion() {
+    const highlighted = new Set(atlasHint === null ? [] : ATLAS.questions[atlasHint].module_ids);
+    root.querySelectorAll(".matrix-cell").forEach((rect) => {
+      const cell = ATLAS.cells[Number(rect.dataset.cell)];
+      rect.classList.toggle("highlighted", highlighted.has(cell.source_id) || highlighted.has(cell.target_id));
     });
-    const more = explore.querySelector("[data-all-questions]");
-    if (more) more.onclick = () => { atlasAllHints = !atlasAllHints; atlasExplore(level); };
   }
 
   async function renderAtlas() {
@@ -2936,6 +2968,7 @@
       selectArchitectureSubject("node", id);
     },
     moduleHref: atlasDetailsHref,
+    setExploreOpen: setAtlasExploreOpen,
     openRule: (rule) => {
       openAtlasComponent(rule.scope_id || null);
       setTargetDetails(true);

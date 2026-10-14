@@ -335,6 +335,7 @@
   function closeDrawer() {
     const restoreFocus = drawer?.contains(document.activeElement);
     const trigger = drawerName && rail.querySelector(`[data-drawer="${drawerName}"]`);
+    if (drawerName === "overview") F.setExploreOpen(false);
     if (drawerName === "overview" && explore && exploreHome) exploreHome.append(explore);
     if (drawerName === "overview") {
       root.prepend(summary);
@@ -353,6 +354,7 @@
     drawerName = name;
     drawer = h("aside", { class: "ak-drawer", "aria-label": name }, build());
     root.append(drawer);
+    if (name === "overview") F.setExploreOpen(true);
     F.syncExpansionInert();
     rail.querySelector(`[data-drawer="${name}"]`)?.setAttribute("aria-expanded", "true");
   }

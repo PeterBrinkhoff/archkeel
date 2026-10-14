@@ -26,6 +26,13 @@ The offline browser assets have separate responsibilities:
 - `report-scene.js`: report indexes and scene projection; preserves Core facts.
 - `report-layout.js`: ELK placement, geometry validation and manual routing.
 - `flow.js`: card measurement, DOM, input, navigation and layout lifetime.
+- `report-canvas.js`: Explorer controls and drawer lifetime through the Flow seam.
+
+Health check creates its module matrix when opened; its module list creates
+links on native expansion. Counts, findings and recorded status remain
+available beforehand. Closing and reopening reuse the current matrix;
+question selection changes highlights without replacing it. A scene change
+invalidates exploration DOM ([AD-236](decisions/ad-236-demand-driven-report-exploration.md)).
 
 Scene and layout accept explicit inputs without reading Explorer state. Browser
 tests exercise these boundaries and the integrated report. The Python collector

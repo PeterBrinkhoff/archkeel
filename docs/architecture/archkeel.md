@@ -91,3 +91,7 @@ Proposed contract extensions are tracked in [#356](https://github.com/rapiddwell
 ## Decisions
 
 [Internal decision archive](decisions/README.md). Read individual records when reviewing a specific change.
+
+| Decision | Renderer behavior |
+| --- | --- |
+| [AD-236](decisions/ad-236-demand-driven-report-exploration.md) | Build the module matrix on Health check open and module links on native list expansion. |
