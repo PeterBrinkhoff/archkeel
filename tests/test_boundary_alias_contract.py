@@ -243,20 +243,16 @@ def _hash(value):
 
 def test_absent_binding_preserves_prechange_contracts_payloads_repr_ids_and_observation():
     pinned = json.loads((ROOT / "tests/boundary_alias_legacy.json").read_bytes())
-    # Historical inputs from 465f099f49d6115d0b245de35d67b0777fe6ffc4 retain the
-    # original wire controls while the live policy tracks current module ownership.
-    historical = ROOT / "tests/boundary_alias_legacy_sources"
-    sources = {
-        "architecture-contract.json": historical / "architecture-contract.json",
-        "docs/architecture/contracts/ir.json": historical / "ir.json",
-    }
+    # Fixed inputs only: the focused UML case was pinned against pre-refactor 465f099.
+    # Full live-policy fingerprints are retired; test_contract_model.py retains
+    # schema, reference and round-trip checks for current repository contracts.
     for path, expected in pinned.items():
         if path.endswith("sha256"):
             continue
         if path.startswith("legacy-"):
             contract = parse_contract(_document(path.removeprefix("legacy-"), container_depth=3))
         else:
-            contract = parse_contract(json.loads(sources.get(path, ROOT / path).read_bytes()))
+            contract = parse_contract(json.loads((ROOT / path).read_bytes()))
         assert (
             hashlib.sha256(contract_bytes(contract)).hexdigest() == expected["contract_sha256"]
         ), path
