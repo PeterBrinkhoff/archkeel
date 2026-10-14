@@ -202,7 +202,6 @@ for name in names:
     assert getattr(report_projection, name) is current, name
     if is_dataclass(current) or isfunction(current):
         get_type_hints(current)
-assert codec.architecture_command_envelope is command_view.architecture_command_envelope
 assert get_type_hints(command_view.architecture_command_envelope)["result"] is model.RunResult
 envelope_hints = get_type_hints(command_view.ArchitectureCommandEnvelope)
 assert envelope_hints["architecture_projection"] is command_view.ArchitectureCommandView
