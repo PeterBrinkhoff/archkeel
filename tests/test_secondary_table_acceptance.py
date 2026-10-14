@@ -10,14 +10,12 @@ from archkeel.ir.bindings import BindingReads, UnreadBinding
 from archkeel.ir.codec import parse_observation
 from archkeel.ir.duplication import OwnedLogic, RepeatedLogic
 from archkeel.ir.references import SymbolReferences, UnreferencedSymbol
-from archkeel.ir.structure import InsideSizes, OversizedInside
 from archkeel.ir.type_fanin import TypeCrossing, TypeFanin
 from archkeel.render.html import (
     _binding_claim_body,
     _claim_body,
     _document,
     _fanin_claim_body,
-    _inside_claim_body,
     _repetition_claim_body,
     _structure,
 )
@@ -65,13 +63,7 @@ CASES = (
         "Component pairs",
         "2",
     ),
-    (
-        "inside sizes",
-        _inside_claim_body(InsideSizes("SUPPORTED", 1, 1, (OversizedInside(NAME, 12, 23),))),
-        "Edges inside",
-        "23",
-    ),
-    ("size and coupling", _structure(OBSERVATION), "Unresolved calls", "no calls"),
+    ("structure overview", _structure(OBSERVATION), "Unresolved calls", "no calls"),
 )
 
 

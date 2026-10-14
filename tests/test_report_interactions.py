@@ -204,7 +204,7 @@ def test_target_navigation_exposes_physical_inventories_at_every_level(
         playwright.stop()
 
 
-def test_atlas_labels_count_scopes_and_oversized_evidence_without_losing_route_state(tmp_path):
+def test_atlas_structure_measurements_keep_unavailable_edges_and_route_state(tmp_path):
     api = pytest.importorskip("playwright.sync_api")
     positive = _sample(
         tmp_path / "positive",
@@ -226,11 +226,11 @@ def test_atlas_labels_count_scopes_and_oversized_evidence_without_losing_route_s
     ).decode()
     assert "oversized_insides" not in _atlas(unavailable)
     cases = (
-        (_atlas_page(positive), "1 candidate", "core\t3\t0"),
-        (_atlas_page(empty), "no candidates measured", None),
-        (unavailable, "UNKNOWN", None),
+        (_atlas_page(positive), ["core", "component", "3", "0", "1", "0", "no calls"]),
+        (_atlas_page(empty), ["core", "component", "1", "0", "1", "0", "no calls"]),
+        (unavailable, ["core", "component", "1", "n/a", "n/a", "n/a", "no calls"]),
     )
-    for index, (html, claim_label, measurement) in enumerate(cases):
+    for index, (html, measurement) in enumerate(cases):
         report = tmp_path / f"atlas-{index}.report.html"
         report.write_text(html)
         errors = []
@@ -242,27 +242,29 @@ def test_atlas_labels_count_scopes_and_oversized_evidence_without_losing_route_s
             summary = page.locator(".atlas-summary").inner_text()
             assert "Current level: 2 components" in summary
             assert "agent-authored contract entries (authorship only): 0/2 components" in summary
-            claim = page.locator(".atlas-review-claim")
-            assert claim.locator("summary").inner_text().endswith(claim_label)
-            claim.locator("summary").click()
-            if measurement:
-                assert measurement in claim.inner_text()
-                link = claim.get_by_role("link", name="core")
-                link.click()
-                query = parse_qs(urlsplit(page.url).query)
-                assert query["selected"] == ["core"]
-                assert "scope" not in query
-                assert (
-                    page.locator('.flow-nodes [aria-pressed="true"]').get_attribute("data-uml-id")
-                    == "core"
-                )
-                assert "core" in page.locator(".flow-inspector-content").inner_text()
-                assert page.locator('.flow-scope-notice[role="status"]').count() == 0
-                assert query["view"] == ["target"]
-                assert query["theme"] == ["dark"]
-                assert page.locator("html").get_attribute("data-theme") == "dark"
-            else:
-                assert claim.locator("table").count() == 0
+            structure = page.locator(".atlas-structure-overview")
+            assert structure.locator("summary").inner_text() == "Structure overview"
+            structure.locator("summary").click()
+            assert structure.locator("tbody tr").count() == 2
+            row = structure.locator("tbody tr").filter(
+                has=page.get_by_role("link", name="core", exact=True)
+            )
+            assert row.locator("td").all_inner_texts() == measurement
+            if html == unavailable:
+                assert "Not available:" in structure.inner_text()
+            structure.get_by_role("link", name="core").click()
+            query = parse_qs(urlsplit(page.url).query)
+            assert query["selected"] == ["core"]
+            assert "scope" not in query
+            assert (
+                page.locator('.flow-nodes [aria-pressed="true"]').get_attribute("data-uml-id")
+                == "core"
+            )
+            assert "core" in page.locator(".flow-inspector-content").inner_text()
+            assert page.locator('.flow-scope-notice[role="status"]').count() == 0
+            assert query["view"] == ["target"]
+            assert query["theme"] == ["dark"]
+            assert page.locator("html").get_attribute("data-theme") == "dark"
             assert not errors
         finally:
             browser.close()

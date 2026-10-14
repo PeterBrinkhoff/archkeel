@@ -298,7 +298,7 @@ def test_only_violations_hides_every_other_section(tmp_path: Path) -> None:
     assert "<h2>Component dependencies" not in page
     assert "<h2>Cross-component imports" not in page
     assert "Known unknowns" not in page
-    assert "Size and coupling" not in page
+    assert "Structure overview" not in page
     assert "Review claim" not in page
     # The escape hatch to the complete evidence stays, filter or not.
     assert "Complete scan inventory" in page

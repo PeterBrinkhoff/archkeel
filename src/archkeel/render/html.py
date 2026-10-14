@@ -44,7 +44,6 @@ from archkeel.ir.module_explore import ModuleExploreLevel, module_exploration
 from archkeel.ir.references import SymbolReferences, unreferenced_symbols
 from archkeel.ir.report_graph import architecture_report
 from archkeel.ir.structure import (
-    InsideSizes,
     StructureMetric,
     oversized_insides,
     structure_metrics,
@@ -761,27 +760,18 @@ def _atlas_rule_status_cards(result: RunResult) -> str:
     return "".join(cards)
 
 
-def _atlas_review_claims(
+def _atlas_structure_overview(
     observation: Observation, projection: ArchitectureProjection | None
 ) -> str:
-    claim = oversized_insides(observation)
     component_ids = (
         {item.label: item.id for item in projection.components if item.parent_id is None}
         if projection is not None
         else {}
     )
-    label = (
-        "Review question · components larger than their level · UNKNOWN"
-        if claim.status == "UNKNOWN"
-        else f"Review question · components larger than their level · {len(claim.candidates)} "
-        f"candidate{'s' if len(claim.candidates) != 1 else ''}"
-        if claim.candidates
-        else "Review question · components larger than their level · no candidates measured"
-    )
     return (
-        '<details class="report-section report-evidence atlas-review-claim">'
-        f"<summary>{_text(label)}</summary>"
-        f"{_inside_claim_body(claim, component_ids=component_ids)}</details>"
+        '<details class="report-section report-evidence atlas-structure-overview">'
+        "<summary>Structure overview</summary>"
+        f"{_structure_overview_body(observation, component_ids=component_ids)}</details>"
     )
 
 
@@ -836,7 +826,11 @@ def _atlas_content(
       </section>
       {status_header}
       {_atlas_section(data)}
-      {_atlas_review_claims(observation, result.architecture_projection) if not detail_page else ""}
+      {
+        _atlas_structure_overview(observation, result.architecture_projection)
+        if not detail_page
+        else ""
+    }
       <details class="atlas-source"><summary>Snapshot and audit</summary>
       <p>Source digest <code>{_text(observation.source.source_digest)}</code>
       · Dirty {_text(observation.source.dirty)}.</p>
@@ -1547,7 +1541,12 @@ def render_check_html(result: RunResult, *, repository: str, result_href: str) -
     )
 
 
-def _structure_row(metric: StructureMetric) -> str:
+def _structure_row(
+    metric: StructureMetric,
+    *,
+    component_ids: dict[str, str] | None = None,
+    edges_available: bool = True,
+) -> str:
     share = (
         "n/a"
         if metric.calls is None or metric.unresolved is None
@@ -1555,12 +1554,25 @@ def _structure_row(metric: StructureMetric) -> str:
         if metric.calls
         else "no calls"
     )
+    component_id = component_ids.get(metric.scope) if component_ids is not None else None
+    scope = (
+        f'<a href="?component={_text(component_id)}" '
+        f'data-atlas-component-route="{_text(component_id)}">{_text(metric.scope)}</a>'
+        if component_id is not None
+        else f"<code>{_text(metric.scope)}</code>"
+    )
+    counts = "".join(
+        f'<td class="numeric">{value}</td>'
+        for value in (
+            metric.modules,
+            metric.inner_edges if edges_available else "n/a",
+            metric.fan_in if edges_available else "n/a",
+            metric.fan_out if edges_available else "n/a",
+        )
+    )
     return (
-        f"<tr><td><code>{_text(metric.scope)}</code></td><td>{_text(metric.level)}</td>"
-        f'<td class="numeric">{metric.modules}</td>'
-        f'<td class="numeric">{metric.inner_edges}</td>'
-        f'<td class="numeric">{metric.fan_in}</td>'
-        f'<td class="numeric">{metric.fan_out}</td>'
+        f"<tr><td>{scope}</td><td>{_text(metric.level)}</td>"
+        f"{counts}"
         f'<td class="numeric">{_text(share)}</td></tr>'
     )
 
@@ -1686,36 +1698,52 @@ def _fanin_claim_body(claim: TypeFanin) -> str:
 """
 
 
-def _inside_claim_body(claim: InsideSizes, *, component_ids: dict[str, str] | None = None) -> str:
-    if claim.status == "UNKNOWN":
-        return (
-            "<p>UNKNOWN: this observation records no modules or no dependency edges, so no "
-            "inside can be measured against the level that holds it.</p>"
-        )
-    scale = (
-        f"Comparison basis at the top level: {claim.components} components and "
-        f"{claim.component_edges} observed cross-component edges."
+def _structure_overview_body(
+    observation: Observation,
+    *,
+    component_ids: dict[str, str] | None = None,
+    packages: bool = False,
+) -> str:
+    sizes = oversized_insides(observation)
+    components = len(component_owners(observation))
+    context = (
+        f"Top-level context: {components} declared components and "
+        f"{sizes.component_edges} observed cross-component "
+        f"edge{'s' if sizes.component_edges != 1 else ''}."
+        if sizes.status != "UNKNOWN"
+        else f"Top-level context: {components} declared components; "
+        "observed cross-component edges: n/a."
     )
-    if not claim.candidates:
-        return f"<p>None: no component holds more than the level containing it. {scale}</p>"
-    rows = ""
-    for item in claim.candidates:
-        component_id = component_ids.get(item.scope) if component_ids is not None else None
-        scope = (
-            f'<a href="?component={_text(component_id)}" '
-            f'data-atlas-component-route="{_text(component_id)}">{_text(item.scope)}</a>'
-            if component_id is not None
-            else _text(item.scope)
-        )
-        rows += f"<tr><td>{scope}</td><td>{item.modules}</td><td>{item.inner_edges}</td></tr>"
+    if observation.records("modules") is None:
+        return f"<p>{context}</p><p>Not available: this observation records no modules.</p>"
+    edges_available = observation.records("dependency_edges") is not None
+    unavailable = (
+        ""
+        if edges_available
+        else "<p>Not available: this observation records no dependency edges; "
+        "inside, incoming and outgoing edge counts are n/a.</p>"
+    )
+    metrics = tuple(
+        metric
+        for metric in structure_metrics(observation)
+        if packages or metric.level == "component"
+    )
+    if not metrics:
+        return f"<p>{context}</p>{unavailable}<p>No owned modules measured in this observation.</p>"
+    rows = "".join(
+        _structure_row(metric, component_ids=component_ids, edges_available=edges_available)
+        for metric in metrics
+    )
     return f"""
-      <p>{len(claim.candidates)} components hold more modules than the contract has components,
-      or more edges among their modules than it has component edges. {scale} Naming a size is
-      evidence; giving one of them a level of its own is a decision (AD-20, AD-33). These are
-      review questions, not violations or proof that a component should split.</p>
+      <p>{context} Cross-component edges count distinct directed component pairs.</p>
+      <p>Observed module and import counts describe this snapshot. Incoming and outgoing
+      count module edges crossing each scope; unresolved calls retain analyzed call totals.
+      Architecture boundaries require authored decisions.</p>
+      {unavailable}
       <div class="table-wrap">
-      <table class="data-table"><thead><tr><th>Component</th><th>Modules</th>
-      <th>Edges inside</th></tr></thead><tbody>{rows}</tbody></table></div>
+      <table class="data-table"><thead><tr><th>Scope</th><th>Level</th><th>Modules</th>
+      <th>Edges inside</th><th>Incoming</th><th>Outgoing</th><th>Unresolved calls</th></tr></thead>
+      <tbody>{rows}</tbody></table></div>
 """
 
 
@@ -1725,10 +1753,6 @@ def _claims(observation: Observation) -> str:
     <section class="report-section">
       <h2>Review claim: symbols nobody references</h2>
       {_claim_body(unreferenced_symbols(observation), observation)}
-    </section>
-    <section class="report-section">
-      <h2>Review claim: components larger than their level</h2>
-      {_inside_claim_body(oversized_insides(observation))}
     </section>
     <section class="report-section">
       <h2>Review candidates: unread parameters and locals</h2>
@@ -1747,20 +1771,10 @@ def _claims(observation: Observation) -> str:
 
 def _structure(observation: Observation) -> str:
     """AD-21: size and coupling per scope, shown and never gated on."""
-    metrics = structure_metrics(observation)
-    if not metrics:
-        return ""
-    rows = "".join(_structure_row(metric) for metric in metrics)
     return f"""
     <section class="report-section">
-      <h2>Size and coupling</h2>
-      <p>Measured per component and per package: how many modules a scope holds, how many
-      imports stay inside it, how many cross its edge, and how many of its calls the analyzer
-      could not resolve. These numbers are shown, never gated on.</p>
-      <div class="table-wrap">
-      <table class="data-table"><thead><tr><th>Scope</th><th>Level</th><th>Modules</th>
-      <th>Inside</th><th>Incoming</th><th>Outgoing</th><th>Unresolved calls</th></tr></thead>
-      <tbody>{rows}</tbody></table></div>
+      <h2>Structure overview</h2>
+      {_structure_overview_body(observation, packages=True)}
     </section>
 """
 
