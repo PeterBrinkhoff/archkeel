@@ -5,6 +5,8 @@
 | Set up a repository | [Onboarding](onboarding.md) |
 | Fix architecture violations | [Target-first workflow](target-first.md) |
 | Use the CLI or read a report | [Reference](reference.md) |
+| Explore report evidence | [Report guide](report-visual-system.md) |
+| Upgrade to the current release | [Release notes](../RELEASE_NOTES.md) |
 | Define a constraint | [Rules](rules.md) |
 | Understand missing evidence | [Known limits](known-limits.md) |
 

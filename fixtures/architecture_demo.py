@@ -302,8 +302,11 @@ facts remain UNKNOWN.
 
 Nest/Mikro adds the pinned RealWorld application with 41 prepared build inputs and source-only
 dependency, `ArticleService.findFeed` signature, and `UserService.create` constructor variants.
-Computed ORM imports, module/export aliases, framework decorators/DI, partial member and
-parameter-property inventory, and `EntityManager` type/value identity ambiguity remain UNKNOWN.
+Named constructor parameter properties, supported decorated direct-member inventories,
+module-level array constants and distinct type/value namespaces now retain lexical proof.
+Computed ORM imports, runtime decorator/DI effects, unsupported members and ambiguous
+same-namespace bindings remain UNKNOWN. Unrelated resolution gaps do not invalidate a
+complete, authenticated dependency or direct-member scope; global coverage stays incomplete.
 
 | Variant | Expected evidence |
 |---|---|

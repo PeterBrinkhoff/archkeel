@@ -1,3 +1,62 @@
+# ArchKeel 3.0.0 — Scoped proof and quieter reports
+
+Check the rules whose evidence is complete, while keeping real analysis limits visible.
+
+## Highlights
+
+- **Scoped Dart and TypeScript rule proof.** An unrelated source-resolution gap no
+  longer makes every `complete_requires` rule UNKNOWN. Complete, authenticated
+  dependency scopes can PASS; unresolved imports still block their owning scopes
+  and affected ancestors. Known violations remain FAIL even when the observation
+  is incomplete. Global coverage and exit codes retain their uncertainty.
+- **More precise native declarations.** Dart named constructors use their lexical
+  owner once, matching the independent Compass Target. Complete direct-member
+  inventories retain local proof despite unrelated gaps. TypeScript now observes
+  named constructor parameter properties, supported decorated member inventories
+  and module-level array constants, and distinguishes type/value namespaces.
+  Runtime-generated members, dynamic imports and ambiguous bindings remain UNKNOWN.
+- **Quieter report inspection.** The unselected fact sheet summarizes boundary
+  permissions; selecting a component or member shows its relevant records. The
+  complete audit stays available, grouped by rule and revealed in batches of 20.
+  Structure overview replaces size-based review questions with neutral measurements.
+- **Less rendering work before interaction.** Health check builds its module matrix
+  when opened, and closed module lists defer their links. Permission details are
+  constructed on demand. Evidence, canonical JSON, offline links and verdicts stay
+  available without rendering every detail up front.
+- **Smaller agent responses when requested.** `validate --compact-open-decisions
+  --json` returns observed undecided crossings with exact total/completeness fields.
+  Default validation output retains every open pair. Large collector replies can
+  use the explicit `collector_output_limit_bytes` setting; the default stays 64 MiB.
+- **Clearer internal ownership.** Proof issuance and replay share one binding
+  definition. Command-view preparation is separate from authenticated projection;
+  seven focused format owners back the compatible codec facade. Historical
+  full-policy test copies are replaced by a small fixed compatibility fixture.
+
+## Upgrade from 2.0.0
+
+```sh
+uv tool upgrade archkeel
+```
+
+Pin strict command-JSON consumers to the bundled **command-result 8.0.0** schema.
+It accepts existing version 6/7 results and adds traceable FAIL for an incomplete
+report, including filtered views that retain the global verdict. Version 6/7
+schemas remain unchanged and reject that newly permitted combination. This
+consumer-visible format change is why this release uses a new package major.
+Exit 2 still means the observation cannot certify complete evidence; it can coexist
+with a confirmed violation and must not be treated as PASS.
+
+CLI options, configuration, `archkeel.api`, supported contract versions,
+SourceFacts and ArchitectureIR/Delta formats retain their interfaces. Analyzer
+corrections change recorded identities and findings: re-observe both revisions
+before comparing snapshots. Existing saved reports retain their recorded evidence;
+they do not acquire missing native proofs by being opened with the new CLI.
+
+Compass and Nest demos retain source gaps and dynamic behavior as UNKNOWN. The
+release does not establish compiler parity, runtime correctness or complete UML
+conformance. See [known limits](docs/known-limits.md), the
+[report guide](docs/report-visual-system.md) and [demo catalog](docs/architecture-demo.md).
+
 # ArchKeel 2.0.0 — ArchQ Explorer and exact permissions
 
 Architecture checks for coding agents.

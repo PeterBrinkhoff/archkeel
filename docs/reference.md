@@ -3,7 +3,9 @@
 Use `archkeel <command> --help` for exact options. [Onboarding](onboarding.md)
 sets up policy; [target-first](target-first.md) maintains it.
 
-## Compatibility in 1.x
+<a id="compatibility-in-1x"></a>
+
+## Compatibility
 
 The documented CLI commands, options, exit-code meanings, configuration and
 `archkeel.api` exports are the stable interface. Removing or incompatibly changing
@@ -26,6 +28,10 @@ Dart snapshots; see the [1.1.0 upgrade notes](../RELEASE_NOTES.md#upgrade-from-1
 
 Stable does not mean complete language analysis. Unsupported or ambiguous evidence
 stays UNKNOWN; language limits remain part of the documented result.
+
+Version 3.0.0 introduces command-result schema 8 for confirmed FAIL alongside an
+incomplete report. Strict consumers must update their schema; version 6/7 readers
+remain supported. See the [3.0.0 upgrade notes](../RELEASE_NOTES.md#upgrade-from-200).
 
 ## Configuration
 
@@ -72,7 +78,7 @@ SourceFacts 3.0.0 adds neutral list type syntax for explicit callback arguments.
 Readers retain byte-compatible 1.0.0/2.0.0 packets; those versions reject the new
 list vocabulary, including nested shapes. Runtime `requirement_state` remains
 required from SourceFacts 2.0.0 onward. ArchitectureIR/Delta stay 2.0.0;
-command-result stays 7.0.0. New requests name protocol 3.0.0; pin collectors,
+command-result uses 8.0.0. New requests name protocol 3.0.0; pin collectors,
 Core and strict schemas together. See [AD-223](architecture/decisions/ad-223-explicit-callable-boundaries.md).
 
 

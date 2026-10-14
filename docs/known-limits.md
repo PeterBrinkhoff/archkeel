@@ -23,6 +23,12 @@ Ordinary parameters and runtime assignments do not declare that inventory. Compu
 malformed and ambiguous members still prevent completeness
 ([AD-230](architecture/decisions/ad-230-typescript-parameter-properties.md)).
 
+Complete native Dart/TypeScript direct-member inventories can retain certified
+local proof despite an unrelated resolution gap. Local gaps, unsupported members,
+ambiguous owners and missing native proof still prevent complete inventories.
+This does not certify inherited/runtime members, signatures, whole-Target UML or
+global coverage ([AD-229](architecture/decisions/ad-229-local-member-inventory-proof.md)).
+
 The bundled collector has a 300-second deadline. Timeout exits 2 without a complete
 observation. An older report file is not fresh evidence. Match the analyzed project's
 Python runtime to avoid `runtime_mismatch`.
@@ -73,7 +79,7 @@ See [adapter limits](architecture/typescript-foundation-proposal.md#evidence-and
 
 ## Dart profile
 
-The native Analyzer records declarations, classifier members, syntax signatures,
+The Python-hosted Dart collector records declarations, classifier members, syntax signatures,
 and resolved bases, calls, references, constructions and local bindings. It does
 not prove runtime dispatch, live object identity, or exhaustive call-site coverage.
 Dynamic dispatch, missing resolver inputs, malformed units and unsupported
