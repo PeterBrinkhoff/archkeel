@@ -1,0 +1,9 @@
+{
+  "after_baseline_digest": "db744d2e4a0149b30bbdab94d3589ba8ad2c7719352a55eb3cbb2bdee956531b",
+  "after_digest": "0ce6241fa72e87da99aee9e2de4c6da66c76879391e3c58a59b5831af96e8b66",
+  "before_baseline_digest": "db744d2e4a0149b30bbdab94d3589ba8ad2c7719352a55eb3cbb2bdee956531b",
+  "before_digest": "bdbf823108f813a260811651b8271e07e49412f4cfade1989540e4193bad0584",
+  "decided_by": "ake2l (requested compatible codec refactor); Codex implementation and independent policy review",
+  "rationale": "Bind the compatible responsibility extraction requested in issue #526: assign seven flat codec owners to existing governance, retain the original codec publication and relocate the seven existing Any annotations to five exact scopes while removing the recursive codec permission. Independent review compared all annotation signals and unchanged function ASTs. No added Any-bearing operation, external through permission, measurement ceiling, baseline entry or suppression. AD-239 records the owner map and compatibility evidence.",
+  "schema_version": "2.0.0"
+}

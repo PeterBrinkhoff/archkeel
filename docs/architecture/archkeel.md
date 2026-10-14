@@ -104,3 +104,4 @@ Proposed contract extensions are tracked in [#356](https://github.com/rapiddwell
 | Decision | Renderer behavior |
 | --- | --- |
 | [AD-236](decisions/ad-236-demand-driven-report-exploration.md) | Build the module matrix on Health check open and module links on native list expansion. |
+| [AD-239](decisions/ad-239-codec-format-owners.md) | Keep the codec facade while separate format owners preserve parsing and wire bytes. |
