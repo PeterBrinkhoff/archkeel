@@ -98,9 +98,19 @@ It opens inside the report. **Fullscreen** expands the same Explorer;
 Objects and perspectives help navigate the recorded evidence.
 Folders help navigation; they do not establish ownership or runtime behavior.
 
+The fact sheet summarizes boundary permissions until you select a scope. Its complete
+audit remains available on demand. Health check builds the import matrix when opened;
+Structure overview shows neutral component measurements without size-based recommendations.
+
 `PASS` means the required rules have complete evidence and no decided violation.
 `UNKNOWN` means evidence is missing. A rule can fail and still have undecided positions.
 A clean graph does not prove a good design.
+
+Dart and TypeScript rules use complete evidence for their own scopes. An unrelated
+resolution gap can coexist with a proven rule PASS; a confirmed violation remains FAIL
+alongside incomplete observation. Strict JSON consumers should use command-result schema 8.
+See the [3.0.0 upgrade notes](https://github.com/rapiddweller/archkeel/blob/main/RELEASE_NOTES.md#upgrade-from-200)
+for the format change.
 
 ## Start with a forbidden import
 

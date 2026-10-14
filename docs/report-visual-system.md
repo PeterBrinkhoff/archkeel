@@ -23,6 +23,18 @@ Atlas component positions are shared across As-Is, Target and Diff within a
 report snapshot; changed source relationships may change that shared layout.
 Target edges, labels and statuses remain authored-only.
 
+The unselected fact sheet summarizes declared and applied boundary permissions.
+Selecting a component, module or member shows the relevant records for that scope.
+The complete audit groups records by rule and builds summaries in batches of 20;
+opening a record reveals its selector, rationale, provenance and source navigation.
+Deep links open the exact record even beyond the first batch. These disclosures
+leave the complete canonical audit unchanged; permission counts do not imply PASS.
+
+Health check constructs the module matrix on first open and reuses it until the
+scene changes. Native module lists construct links when expanded. Collapsed
+disclosures defer DOM work while keeping counts, verdicts and offline navigation.
+Opening a large matrix still builds all its cells; it is not virtualized.
+
 Structure overview shows every measured component's module, internal-edge,
 incoming, outgoing and unresolved-call counts, with links to its canonical route.
 Top-level component and cross-component edge counts provide separate context.
