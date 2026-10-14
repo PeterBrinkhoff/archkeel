@@ -8,6 +8,7 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
+from test_result_schema import current_validator as current_validator
 from test_result_schema import validator as validator
 from test_source_evaluation import _facts
 
@@ -234,7 +235,7 @@ def test_native_violation_filter_rejects_unknown_selectors(recorded_native, face
 
 @pytest.mark.parametrize("partial", [False, True])
 def test_recorded_native_live_and_saved_filters_have_exact_parity(
-    recorded_native, monkeypatch, partial
+    recorded_native, monkeypatch, partial, current_validator
 ):
     root, observed, packet = recorded_native(partial=partial)
     monkeypatch.setattr(
@@ -253,22 +254,33 @@ def test_recorded_native_live_and_saved_filters_have_exact_parity(
     assert result_bytes(saved) == result_bytes(live)
     assert canonical == packet.read_bytes()
     assert saved.exit_code == (2 if partial else 0)
+    assert saved.observation_complete == ("UNKNOWN" if partial else "PASS")
+    assert saved.coverage.status == ("FAIL" if partial else "PASS")
+    assert saved.declared_rules == "FAIL"
+    layout = next(
+        row for row in observed.observation.records("violations") if row.kind == "root_layout"
+    )
+    (selected,) = saved.filtered_violations
+    assert selected.record.id == layout.id
+    assert selected.record.kind == "root_layout" and selected.record.rule_ids == ("LAYOUT",)
+    assert [(location.path, location.line) for location in selected.locations] == [
+        ("src/app.py", 1)
+    ]
+    (assessment,) = saved.rule_assessments
+    assert assessment.id == "LAYOUT" and assessment.status == "FAIL" and assessment.count == 1
+    assert assessment.evaluation_proven is (not partial)
     if partial:
-        assert saved.filtered_violations is None
-        assert saved.observation_complete == "UNKNOWN"
         assert saved.architecture_projection.unknowns
-    else:
-        assert [row.record.kind for row in saved.filtered_violations] == ["root_layout"]
+    current_validator.validate(json.loads(result_bytes(saved)))
 
 
 @pytest.mark.parametrize("selector", [None, "app", "app:UNIT", "app:app"])
 def test_incomplete_native_violation_facet_keeps_unmeasured_rows_null(
-    recorded_native, monkeypatch, selector
+    recorded_native, monkeypatch, selector, current_validator
 ):
     root, observed, packet = recorded_native(partial=True)
-    assert any(
-        row.evidence_class == EvidenceClass.VIOLATION
-        for row in observed.observation.records("violations")
+    layout = next(
+        row for row in observed.observation.records("violations") if row.kind == "root_layout"
     )
     monkeypatch.setattr(
         "archkeel.check.report.observe_repository", lambda *args, **kwargs: observed
@@ -286,13 +298,56 @@ def test_incomplete_native_violation_facet_keeps_unmeasured_rows_null(
     assert result_bytes(saved) == result_bytes(live)
     assert canonical == packet.read_bytes()
     assert saved.exit_code == 2 and saved.observation_complete == "UNKNOWN"
-    assert saved.filtered_violations is saved.filtered_calls is saved.measurements is None
+    assert saved.coverage.status == "FAIL" and saved.declared_rules == "FAIL"
+    (selected,) = saved.filtered_violations
+    assert selected.record.id == layout.id
+    assert selected.record.kind == "root_layout" and selected.record.rule_ids == ("LAYOUT",)
+    assert [(location.path, location.line) for location in selected.locations] == [
+        ("src/app.py", 1)
+    ]
+    assert saved.filtered_calls is saved.measurements is None
     assert saved.violations_by_rule is saved.violations_by_component_pair is None
     assert saved.architecture_projection.unknowns
-    assert saved.rule_assessments and all(
-        not row.evaluation_proven and row.status in {"FAIL", "UNKNOWN"}
-        for row in saved.rule_assessments
+    (assessment,) = saved.rule_assessments
+    assert assessment.id == "LAYOUT" and assessment.status == "FAIL" and assessment.count == 1
+    assert not assessment.evaluation_proven
+    current_validator.validate(json.loads(result_bytes(saved)))
+
+
+def test_partial_native_filter_without_known_findings_keeps_details_unavailable(
+    recorded_native, monkeypatch, current_validator
+):
+    root, _, _ = recorded_native()
+    path = root / "contract.json"
+    contract = json.loads(path.read_bytes())
+    contract["rules"] = [
+        {**contract["rules"][0], "allowed_children": ["project.app", "project.store"]}
+    ]
+    path.write_text(json.dumps(contract))
+    _, observed, packet = recorded_native(partial=True)
+    assert observed.observation.records("violations") == ()
+    monkeypatch.setattr(
+        "archkeel.check.report.observe_repository", lambda *args, **kwargs: observed
     )
+    config = ScanConfig(("src",), "project", "contract.json", "recorded-native")
+    live, canonical = run_report(
+        root,
+        config=config,
+        analyzer=lambda *args, **kwargs: observed,
+        only_violations=True,
+        rule="LAYOUT",
+    )
+    saved = run_saved_report(packet, only_violations=True, rule="LAYOUT")
+    assert result_bytes(saved) == result_bytes(live)
+    assert canonical == packet.read_bytes()
+    assert saved.exit_code == 2 and saved.observation_complete == "UNKNOWN"
+    assert saved.coverage.status == "FAIL" and saved.declared_rules == "UNKNOWN"
+    assert saved.filtered_violations is saved.filtered_calls is saved.measurements is None
+    assert saved.violations_by_rule is saved.violations_by_component_pair is None
+    (assessment,) = saved.rule_assessments
+    assert assessment.id == "LAYOUT" and assessment.status == "UNKNOWN" and assessment.count == 0
+    assert not assessment.evaluation_proven
+    current_validator.validate(json.loads(result_bytes(saved)))
 
 
 @pytest.mark.parametrize("collision", ["label", "id-scope"])
