@@ -1,9 +1,9 @@
 {
   "after_baseline_digest": "20fbda3c02a345942fa751b9aaa529f3f8cf27a64d87594a9c8a832e96680b0b",
-  "after_digest": "e85acf34ecdbb1776123dee8984c9e00ffe02ed727da1d212cb451ca615808f6",
+  "after_digest": "6776cbb0e8692316449952d7816242909dca1f61042d4c98b2471b24ba42844e",
   "before_baseline_digest": "c7345d5fbcfd8083fe3a618d23a806dea1eee1c1083aa3e163d59b5e260fa2ed",
-  "before_digest": "b56f35345d71344674517d21bbc238172dfea8936252f37df9861827351c5c50",
+  "before_digest": "236db237688182a255a00832b3a60483eea02144304482ac5b12bb7ded873f32",
   "decided_by": "ake2l (explicit parser/protocol typing request); Codex implementation, independent Astra review before merge",
-  "rationale": "Typed TypeScript compiler options, resolver modes and owned grammar; 17 independent API Target entities, native whole-module guards and named component ports. Lower calls_unresolved from 919 to measured 918; no increased limit, allowance or accepted debt.",
+  "rationale": "Typed TypeScript compiler options and resolver modes, owned grammar classifiers, 18 independent API Target entities, whole-module native comparison guards and named component ports including open JSON field presence. Preserve inherited State and module-object grant intent; lower calls_unresolved from 919 to measured 918 without increased limits, allowances or accepted debt. Remaining TypeScript syntax and prefix grammar are explicitly listed under issue 542.",
   "schema_version": "2.0.0"
 }
