@@ -34,6 +34,7 @@ from archkeel.ir.interfaces import (
     interface_profile,
     owner_of,
 )
+from archkeel.ir.measurements import MeasurementResolution as _MeasurementResolution
 from archkeel.ir.measurements import Measurements
 from archkeel.ir.model import (
     BaselineViolationComparison,
@@ -1000,7 +1001,8 @@ def _measurements(measurements: Measurements | None) -> str:
     )
     ratio = (
         "n/a"
-        if measurements.resolution == "n/a" or measurements.scalars.calls_unresolved is None
+        if measurements.resolution is _MeasurementResolution.NOT_APPLICABLE
+        or measurements.scalars.calls_unresolved is None
         else f"{measurements.scalars.calls_unresolved}/{measurements.calls_total}"
     )
     total = "n/a" if measurements.scalars.calls_unresolved is None else measurements.calls_total
