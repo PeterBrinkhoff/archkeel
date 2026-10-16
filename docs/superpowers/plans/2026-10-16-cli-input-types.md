@@ -32,7 +32,7 @@
 - [x] Implement the bounded typed Namespace, converters and enum-driven dispatch; preserve serialized CLI names and errors.
 - [x] Author the lower-level Target independently, pinning the real namespace fields and parser return signature.
 - [x] Observe actual source with native whole-CLI string-control guard; mutate literal equality, membership, match and Final controls and an annotation, with Target bytes unchanged.
-- [ ] Run CLI/skill/config/native controls, mypy, Ruff, hygiene and unchanged-budget own validation on the real shared-Language dependency overlay.
+- [x] Run CLI/skill/config/native controls, mypy, Ruff, hygiene and non-increasing-budget own validation on the real shared-Language dependency overlay.
 - [ ] Deliver a clean intended ref with exact files and hosted check evidence for independent Astra review.
 
 ## Verified design ruling
@@ -50,4 +50,7 @@ Only cross-component entries belong in a child's public list. Composition's main
 
 The independent local-needle mutation exposed a bounded missing Observer capability. PR #557 supplies the independently verified direct single-assignment local str/bytes observation; the CLI retains its permanent integration control. No arbitrary alias or runtime-namespace guarantee is claimed.
 
-The final CLI source is based on PR #557 at fe9d2ef80ba66c39579e8e3fb6c684a120adca14, which also preserves the Wire browser assertion correction. Native controls and compatibility/static checks are green on byte-identical source. A measured calls_unresolved reduction from918 to917 requires a stricter generated baseline; receipt generation and final no-write verification against this exact predecessor remain required before merge.
+The final CLI source is based on PR #557 at fe9d2ef80ba66c39579e8e3fb6c684a120adca14, which also preserves the Wire browser assertion correction. Native controls and compatibility/static checks are green on byte-identical source. A measured calls_unresolved reduction from 918 to 917 requires a stricter generated baseline; receipt generation and final no-write verification against this exact predecessor remain required before merge.
+
+
+[Integrated source verification](https://github.com/rapiddweller/archkeel/actions/runs/38950295603/job/117139686116) passed 154 CLI/installer/config tests, 15 native CLI controls, 151 Observer/wire controls, strict mypy for 139 files, Ruff and all 11 hygiene checks. Every command help remained byte-identical. Actual own validation exited 0 with 917 unresolved calls, 52 typing positions, 58 UNKNOWN positions and zero violations. The generated baseline changes only the calls_unresolved ceiling from 918 to 917; no allowances or accepted debt are added. The normal amendment was generated and verified through the real CLI against the source-equivalent Observer parent 56236a2. Final no-write verification against the actual final predecessor fe9d2ef remains required before merge.
