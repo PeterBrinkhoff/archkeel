@@ -252,10 +252,10 @@ class _Node:
     def __init__(self, raw: RawNode, tree: _Tree) -> None:
         self._raw = raw
         self._tree = tree
-        self.start_byte = raw.start_byte
-        self.end_byte = raw.end_byte
-        self.is_error = raw.is_error
-        self.is_missing = raw.is_missing
+        self.start_byte: int = raw.start_byte
+        self.end_byte: int = raw.end_byte
+        self.is_error: bool = raw.is_error
+        self.is_missing: bool = raw.is_missing
         try:
             self.kind: _NodeKind | None = _NodeKind(raw.type)
         except ValueError:
