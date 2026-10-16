@@ -266,9 +266,7 @@ def test_native_profile_receipt_group_type_uses_fixed_authored_intent(tmp_path, 
         "IR-MODULE-OBJECT-Profile",
         "IR-PROFILE-optional_section_groups",
     }
-    entities = [
-        row for row in declared["declarations"]["uml"]["entities"] if row["id"] in wanted
-    ]
+    entities = [row for row in declared["declarations"]["uml"]["entities"] if row["id"] in wanted]
     contract = {
         "schema_version": declared["schema_version"],
         "components": [component],
