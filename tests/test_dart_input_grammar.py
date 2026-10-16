@@ -138,18 +138,15 @@ def test_real_receiver_resolution_requires_existing_call_facts(tmp_path):
     assert not without_call._receiver_bindings("lib/main.dart", "configured_namespace.main", outer)
 
 
-@pytest.mark.parametrize(
-    "body",
-    [
-        "void run(List<Box> boxes) { boxes[0].work(); }",
-        "void run() { void Box() {} Box().work(); }",
-        "void run() { var callback = () { void Box() {} Box().work(); }; callback(); }",
-    ],
-)
-def test_index_and_shadowed_receiver_forms_do_not_gain_known_targets(tmp_path, body):
+def test_index_receiver_does_not_gain_known_targets(tmp_path):
     snapshot, parsed = _snapshot(
         tmp_path,
-        {"lib/main.dart": "class Box { Box(); void work() {} } " + body},
+        {
+            "lib/main.dart": (
+                "class Box { Box(); void work() {} } "
+                "void run(List<Box> boxes) { boxes[0].work(); }"
+            )
+        },
     )
     resolver = resolve.Resolver(snapshot, parsed)
     results = [

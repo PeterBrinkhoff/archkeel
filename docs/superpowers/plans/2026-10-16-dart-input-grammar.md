@@ -47,10 +47,10 @@ No import edge is added: parse -> syntax, resolve -> syntax + snapshot, collect 
 
 ## Task 2: Minimal owned grammar and authored ports
 
-- [ ] Publish new Visibility ingress/derived binding field in the existing Dart Target before implementing them; actual source-widening mutations must fail under unchanged authored intent.
-- [ ] Implement the four owner changes without extra state, reader-side private-name parsing, duplicate enum/string inventories or an AST framework.
+- [x] Publish new Visibility ingress/derived binding field in the existing Dart Target before implementing them; actual source-widening mutations must fail under unchanged authored intent.
+- [x] Implement the four owner changes without extra state, reader-side private-name parsing, duplicate enum/string inventories or an AST framework.
 - [ ] Run new and existing Dart parser/resolver/directive/snapshot/SDK-free/partial-UML/false-positive/differential controls, Ruff, formatter and strict mypy.
-- [ ] Prove all five existing whole-module Python guards pass under the real prefix observer and injected raw literal/Final/prefix/suffix controls remain trace-valid FAIL.
+- [x] Prove all five existing whole-module Python guards pass under the real prefix observer and injected raw literal/Final/prefix/suffix controls remain trace-valid FAIL.
 
 ## Task 3: Freeze and independent review
 
@@ -67,3 +67,9 @@ Root approved removal of the redundant receiver.endswith precheck in favor of th
 ## Execution ledger
 
 Actual RED 38973308034/job117216624183: 11 expected failures and 6 controls passed against unchanged Dart source. Missing owned Visibility ingress/field and the real lowercase constance() false-positive are reproduced. An initial probe used the wrong parser signature; that probe was corrected before this authoritative RED and no product code was written in between. Native job117216623885 reports the same 31 trace-valid existing prefix/suffix violations under the explicit f624 observer overlay. Actual tracked constructor inventory shows nine existing resolver producers and no earlier direct test constructor uses; HRC nevertheless explicitly exports the seven-field DTO, so compatibility is retained.
+
+Native comparison 38975669351/job117224390415 runs the same frozen f624 observer on real clean revisions 0e3 and 47633: all 31 Dart predicate violations disappear, all five existing Dart guards are evaluation-proven PASS, unresolved calls 865 -> 840, typing 52 -> 52, selected UNKNOWNs 58 -> 58. Complete kind/subjects/rule_ids/data projections agree for all 30 positions, 20 routes and 8 UML unknowns. The 20 remaining violations belong to the independently owned TypeScript input migration; no global PASS is claimed.
+
+Complete canonical Fact wire already agrees under the same runtime for H-uml-dart (226636 bytes) and Compass (10669901 bytes). The initial stronger whole-Syntax comparison exposed constructor visibility fields where the old parser disagreed with the already-existing collector wire. Final verification must prove each actual constructor/name/span and old wire metadata rather than whitelist a count.
+
+The new receiver controls separately exposed the pre-existing local function shadowing defect #570. Identical unchanged-source tests on real 0e3 and 1f have exactly the same two failures and one passing index control (38976296732). Shadowing assertions and its future fix move to an independent issue/branch; this migration retains the index and missing-real-CALL controls and does not accept the false resolution.
