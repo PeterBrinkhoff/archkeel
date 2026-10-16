@@ -140,6 +140,7 @@ class _NodeKind(StrEnum):
     LIBRARY_EXPORT = "library_export"
     LIBRARY_IMPORT = "library_import"
     LIBRARY_NAME = "library_name"
+    LOCAL_FUNCTION_DECLARATION = "local_function_declaration"
     LOCAL_VARIABLE_DECLARATION = "local_variable_declaration"
     METADATA = "metadata"
     METHOD_DECLARATION = "method_declaration"
@@ -1745,6 +1746,26 @@ def _binding_sites(
     root: _Node,
 ) -> tuple[Site, ...]:
     scope, scope_span, scope_depth = context
+    if node.kind == _NodeKind.LOCAL_FUNCTION_DECLARATION:
+        signature = next(
+            (child for child in _walk(node) if child.kind == _NodeKind.FUNCTION_SIGNATURE),
+            None,
+        )
+        name = _callable_decl_name(signature) if signature is not None else None
+        if name is None or scope_span is None:
+            return ()
+        return (
+            Site(
+                SiteKind.BINDING,
+                source.text(node),
+                source.span(node),
+                source.text(name),
+                assigned_name=source.text(name),
+                scope=scope,
+                scope_span=scope_span,
+                scope_depth=scope_depth,
+            ),
+        )
     if node.kind == _NodeKind.LOCAL_VARIABLE_DECLARATION:
         return tuple(
             Site(
