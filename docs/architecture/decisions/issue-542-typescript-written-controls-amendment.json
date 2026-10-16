@@ -1,0 +1,9 @@
+{
+  "after_baseline_digest": "cf0039b474b7e526e611cb2d4e3aab005314e8d4367b54787c7455cc9ccf98a3",
+  "after_digest": "aaad64fe438f65b82b623ceaf704e0dbf4847971a1ec9b15407b5fa5a0bfbc34",
+  "before_baseline_digest": "cf0039b474b7e526e611cb2d4e3aab005314e8d4367b54787c7455cc9ccf98a3",
+  "before_digest": "e0e33dc3d55e89aa085a18f9b37f4f5f7e40032098459713164dd1dcd4eb8170",
+  "decided_by": "ake2l (explicit parser/protocol control request); Codex implementation, independent Astra review before merge",
+  "rationale": "Observe only actual written TypeScript/JavaScript equality and switch literals through the existing syntax port, canonical construct kind and PARTIAL capability. Independent optional construct receipts preserve legacy null and the atomic UML group. Add authored lexical DTO and receipt-group field intent, with native source mutations. Actual source retains 913 unresolved calls, 52 typing and all 58 semantic UNKNOWN positions/routes; no budget increase, allowance, cast or new analysis authority.",
+  "schema_version": "2.0.0"
+}

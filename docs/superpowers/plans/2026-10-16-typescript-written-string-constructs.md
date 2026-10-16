@@ -36,7 +36,7 @@ Produces: syntax.StringComparison(span: Span, scope: str | None); Syntax.string_
 - [x] Preserve the independently authored fixed HRC contract and original 38956449624 RED (25 expected failures, 44 controls).
 - [x] Extend native JS callback/IIFE, comment-unwrapping and UTF-16 probes; run on untouched fa37 and inspect expected missing-feature/registry failures.
 - [x] Implement the smallest producer/DTO/profile/registry change; keep enum vocabulary private and derived from consumed AST kinds.
-- [ ] Run focused native tests, legacy/profile replay, Ruff and strict mypy; correct implementation failures, then commit.
+- [x] Run focused native tests, legacy/profile replay, Ruff and strict mypy; correct implementation failures, then commit.
 
 ## Task 2: Authored API intent and native type mutations
 
@@ -45,13 +45,13 @@ Consumes: the actual new syntax port and independent typed Profile receipt group
 Produces: named public lexical port plus authored Span/sequence/receipt-group annotations and genuine source-widening rejection.
 
 - [x] Add actual source-widening probes against unchanged current Target; observe the missing new field guard.
-- [ ] Author the smallest independent Target intent and include tests in normal TypeScript/PR commands.
-- [ ] Prove normal real source PASS and changed Span/sequence/group types trace-valid FAIL without changing intent during each mutation.
+- [x] Author the smallest independent Target intent and include tests in normal TypeScript/PR commands.
+- [x] Prove normal real source PASS and changed Span/sequence/group types trace-valid FAIL without changing intent during each mutation.
 
 ## Task 3: Freeze, full verification and independent review
 
 - [ ] Run TypeScript native/differential, pinned compiler, all legacy DTO/byte controls, repository hygiene and complete project suite.
-- [ ] Measure own native validation against exact fa37; preserve UNKNOWN positions/routes and tighten or retain every budget.
+- [x] Measure own native validation against exact fa37; preserve UNKNOWN positions/routes and tighten or retain every budget.
 - [ ] Generate the ordinary baseline/amendment receipt, freeze clean source, and rerun the committed exact no-write gate.
 - [ ] Send the clean source and precise evidence for independent final Astra review, address actual Important findings, then create a Part of #542 PR; Root controls integration.
 
@@ -73,3 +73,5 @@ Task 2: 38967417001 focused controls passed 86 tests, including actual Profile s
 Task 3: 38967417001/job117197234917 compared actual fa37 and a0ea source with the same observer: both measured 913 unresolved, 52 typing, 58 UNKNOWN and 0 violations. All 58 selected semantic records matched exactly (30 positions, 20 routes, 8 UML scopes); no unresolved call was introduced.
 Task 3: clean source c8b2f2b02898c0f509c4e5dc21c5ef7f138c6f11; 38967823008/job117198576836 passed old H-UML and Nest fact-wire byte comparison (28339 / 1441469 canonical bytes) after projecting only the newly advertised construct receipt, 6 schema/native-JS revision checks, Ruff, 10 formatter inputs and mypy 133 files. Full project suite and ordinary amendment generation are still running.
 Code cost before generated receipt: 147 net production lines across six existing owners (parser +65, syntax +9, producer +43, receipt profile +8, codec -1, registry +23). The TypeScript-only decoded schema restriction loses 3 lines. No AST framework, parser cache, new dependency, duplicated state vocabulary or committed historical snapshot fixture is added.
+
+Task 3: ordinary generator 38968083861/job117199434141 exited 0 with no failures or diagnostics: actual 913/52/58/0. The rewritten baseline is byte-identical, including both policy digests cf0039b4; no new debt was accepted. The new standard 2.0 amendment binds exact fa37 contract digest e0e33dc3 to authored aaad64fe; only human rationale spacing was polished before commitment. An exact committed no-write replay is next.
