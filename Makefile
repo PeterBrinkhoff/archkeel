@@ -36,7 +36,7 @@ pr-test:
 		tests/test_contract_model.py tests/test_typed_contract_rule_grammar.py tests/test_typed_contract_rule_native.py tests/test_contract_version_types.py tests/test_dependency_selectors.py tests/test_requires_symbol_ports.py tests/test_typed_dependency_api.py tests/test_dependency_api_target.py tests/test_module_object_grants.py tests/test_dependency_typed_control.py tests/test_typed_state_protocol.py tests/test_typed_graph_vocabulary.py tests/test_typed_amendment_artifact.py tests/test_typed_python_properties.py tests/test_state_facts.py tests/test_boundary_type_nested_mapping.py tests/test_decisions.py \
 		tests/test_target_graph.py::test_contract_corpus_preserves_version_and_uml_presence \
 		tests/test_collection_protocol.py tests/test_typed_collector_protocol.py tests/test_typed_collector_native.py tests/test_source_trust_boundary.py \
-		tests/test_typescript_owned_types.py tests/test_typescript_json_fields.py tests/test_typescript_string_constructs.py tests/test_typescript_control_target.py \
+		tests/test_typescript_source_input.py tests/test_typescript_owned_types.py tests/test_typescript_json_fields.py tests/test_typescript_string_constructs.py tests/test_typescript_control_target.py \
 		tests/test_analyzer.py tests/test_typescript_config.py tests/test_typescript_resolve.py \
 		tests/test_typescript_array_constants.py \
 		tests/test_typescript_decorated_inventory.py \
@@ -71,7 +71,8 @@ pr-test:
 		tests/test_unknown_positions.py tests/test_inside_rule_coverage.py tests/test_report_159_160.py \
 		tests/test_target_navigation_graph.py \
 		tests/test_absent_import_namespace.py tests/test_string_comparison_observation.py tests/test_shared_runtime_bootstrap.py \
-		tests/test_cli_input_target.py tests/test_core_command_result.py tests/test_cli_typed_inputs.py tests/test_dart_typed_controls.py tests/test_local_string_comparisons.py tests/test_python_source_evidence_lines.py tests/test_summary_badge_target.py tests/test_summary_badge_types.py tests/test_typed_diagnostic_owner.py tests/test_typed_python_bindings.py tests/test_typed_python_receivers.py tests/test_typed_method_descriptors.py tests/test_typescript_syntax_compatibility.py tests/test_typescript_syntax_types.py
+		tests/test_cli_input_target.py tests/test_core_command_result.py tests/test_cli_typed_inputs.py tests/test_dart_input_grammar.py tests/test_dart_typed_controls.py tests/test_local_string_comparisons.py tests/test_python_source_evidence_lines.py tests/test_summary_badge_target.py tests/test_summary_badge_types.py tests/test_typed_diagnostic_owner.py tests/test_typed_python_bindings.py tests/test_typed_python_receivers.py tests/test_typed_method_descriptors.py tests/test_typescript_syntax_compatibility.py tests/test_typescript_syntax_types.py \
+		tests/test_string_predicate_observation.py tests/test_python_string_predicate_target.py
 
 pr-report-test:
 	$(UV) run --locked --with playwright==$(PLAYWRIGHT_VERSION) python -m pytest -n 2 --dist=loadfile --max-worker-restart=0 -q \
@@ -163,7 +164,7 @@ typescript-native:
 	$(UV) run --locked python -m pytest -q tests/test_typescript_parse.py \
 		tests/test_typescript_inner.py tests/test_typescript_uml_acceptance.py \
 		tests/test_typescript_namespace_identities.py \
-		tests/test_typescript_collect.py tests/test_typescript_owned_types.py \
+		tests/test_typescript_collect.py tests/test_typescript_source_input.py tests/test_typescript_owned_types.py \
 		tests/test_typescript_json_fields.py tests/test_typescript_string_constructs.py tests/test_typescript_control_target.py tests/test_typescript_config.py \
 		tests/test_typescript_config_reference.py \
 		tests/test_typescript_resolve.py tests/test_typescript_provenance.py \
