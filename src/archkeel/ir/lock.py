@@ -5,6 +5,8 @@
 
 from dataclasses import dataclass
 
+from archkeel.ir.model import DiagnosticKind as _DiagnosticKind
+
 from .measurements import Measurements
 from .model import Diagnostic, DiagnosticError
 
@@ -18,7 +20,7 @@ class LockError(DiagnosticError):
     ) -> None:
         super().__init__(
             Diagnostic(
-                "parse_error",
+                _DiagnosticKind.PARSE_ERROR,
                 subject,
                 f"The accepted reference cannot be verified: {message}",
                 "Restore the valid CI lock and its bound inputs; "

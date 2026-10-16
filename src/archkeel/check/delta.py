@@ -35,6 +35,7 @@ from archkeel.ir.model import (
     identity_is_known,
     stable_id,
 )
+from archkeel.ir.model import DiagnosticKind as _DiagnosticKind
 from archkeel.ir.profiles import delta_dimension_applicable, profile_for
 
 from .python_profile import crossing_imports
@@ -406,7 +407,7 @@ def require_comparable_runtime(
     if profile.analyzer != profile_for(head_profile).analyzer:
         raise DiagnosticError(
             Diagnostic(
-                "incomparable_runtime",
+                _DiagnosticKind.INCOMPARABLE_RUNTIME,
                 f"analyzer profile: {baseline_profile} -> {head_profile}",
                 "Observations from different language profiles cannot be compared.",
                 "Reobserve both revisions with the same registered analyzer profile.",
@@ -481,7 +482,7 @@ def require_comparable_runtime(
     if not comparable:
         raise DiagnosticError(
             Diagnostic(
-                "incomparable_runtime",
+                _DiagnosticKind.INCOMPARABLE_RUNTIME,
                 detail,
                 message,
                 recommendation,

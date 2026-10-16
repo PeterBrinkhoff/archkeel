@@ -65,6 +65,7 @@ from archkeel.ir.model import (
     WideningFinding,
     text_value,
 )
+from archkeel.ir.model import DiagnosticCode as _DiagnosticCode
 from archkeel.ir.renames import Renamed, module_layouts, observed_names, renames_since
 from archkeel.ir.widening import (
     Amendment,
@@ -208,7 +209,7 @@ def invalid_result(subject: str, error: Exception, pointer: str = "") -> RunResu
         2,
         diagnostics=(
             _diagnostic(
-                "contract.invalid",
+                _DiagnosticCode.CONTRACT_INVALID,
                 pointer,
                 subject,
                 f"The architecture contract cannot be validated: {error}",
@@ -287,7 +288,7 @@ def _observed_result(
     except ValueError as error:
         diagnostics.append(
             _diagnostic(
-                "observation.incomplete",
+                _DiagnosticCode.OBSERVATION_INCOMPLETE,
                 "",
                 "observation",
                 f"The observation is incomplete: {error}",
@@ -416,7 +417,7 @@ def _baseline_invalid(path: Path, error: Exception, remedy: str) -> RunResult:
         2,
         diagnostics=(
             _diagnostic(
-                "baseline.invalid",
+                _DiagnosticCode.BASELINE_INVALID,
                 "",
                 str(path),
                 f"The validation baseline cannot be read: {error}",
@@ -432,7 +433,7 @@ def _budget_baseline_missing() -> RunResult:
         2,
         diagnostics=(
             _diagnostic(
-                "baseline.invalid",
+                _DiagnosticCode.BASELINE_INVALID,
                 "/declarations/measurement_budgets",
                 "measurement_budgets",
                 "The contract selects measurement budgets but --baseline was not supplied.",
@@ -451,7 +452,7 @@ def _against_invalid(against: str, error: Exception) -> RunResult:
         2,
         diagnostics=(
             _diagnostic(
-                "against.invalid",
+                _DiagnosticCode.AGAINST_INVALID,
                 pointer,
                 subject,
                 f"The compared revision cannot be read: {error}",
@@ -468,7 +469,7 @@ def _amendment_invalid(path: Path, error: Exception) -> RunResult:
         2,
         diagnostics=(
             _diagnostic(
-                "amendment.invalid",
+                _DiagnosticCode.AMENDMENT_INVALID,
                 "",
                 str(path),
                 f"The contract-widening amendment cannot be read: {error}",
@@ -489,7 +490,7 @@ def _parse_contract_or_invalid(root: Path, config: ScanConfig) -> ArchitectureCo
             2,
             diagnostics=(
                 _diagnostic(
-                    "contract.schema_version",
+                    _DiagnosticCode.CONTRACT_SCHEMA_VERSION,
                     "/schema_version",
                     config.contract,
                     f"Contract schema {error.actual} cannot be validated as "
@@ -1131,7 +1132,7 @@ def run_validate(
         diagnostics = [
             *diagnostics,
             _diagnostic(
-                "amendment.invalid",
+                _DiagnosticCode.AMENDMENT_INVALID,
                 "",
                 str(amendment),
                 "The amendment destination is also the baseline file.",
@@ -1143,7 +1144,7 @@ def run_validate(
     except RatchetError as error:
         diagnostics.append(
             _diagnostic(
-                "observation.incomplete",
+                _DiagnosticCode.OBSERVATION_INCOMPLETE,
                 "",
                 "measurement_budgets",
                 f"The measurement budgets cannot be decided: {error}",
