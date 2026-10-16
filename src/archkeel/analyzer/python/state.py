@@ -61,7 +61,7 @@ def _field(name: str, frozen: bool, evidence_ids: tuple[str, ...] = ()) -> Field
         BindingState.UNKNOWN,
         ReferentMutability.UNKNOWN,
         ObjectMutability.OBJECT_IMMUTABLE if frozen else ObjectMutability.UNKNOWN,
-        evidence_ids
+        evidence_ids,
     )
 
 
@@ -148,12 +148,9 @@ def _class_state(
                 ):
                     mutable.add(receiver.attr)
     for name, has_setter in properties.items():
-        fields[name] = replace(
-            fields.get(name, _field(name, False)),
-            property_assignment=(
-                PropertyAssignment.AVAILABLE if has_setter else PropertyAssignment.UNAVAILABLE
-            ),
-        )
+        field = fields.get(name, _field(name, False))
+        assignment = PropertyAssignment.AVAILABLE if has_setter else PropertyAssignment.UNAVAILABLE
+        fields[name] = replace(field, property_assignment=assignment)
     for name in mutable:
         fields[name] = replace(fields[name], mutability=ObjectMutability.MUTABLE)
     evidence.update(local_evidence)
@@ -196,7 +193,11 @@ def _function_events(
             if rooted is None:
                 continue
             binding, path = rooted
-            access = StateAccess.WRITE if isinstance(node.ctx, (ast.Store, ast.Del)) else StateAccess.READ
+            access = (
+                StateAccess.WRITE
+                if isinstance(node.ctx, (ast.Store, ast.Del))
+                else StateAccess.READ
+            )
             evidence_node: ast.AST = node
             if (
                 isinstance(parent, ast.Call)

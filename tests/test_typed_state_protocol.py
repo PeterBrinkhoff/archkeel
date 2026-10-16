@@ -35,30 +35,67 @@ FIELD_TYPES = {
 
 def _wire():
     return {
-        "classes": [{
-            "qualified_name": "sample.Bag", "module": "sample", "frozen": False,
-            "protocol": False, "methods": [], "evidence_ids": ["e"],
-            "fields": [{
-                "name": "value", "annotation": "str", "binding": "non_reassignable",
-                "referent_mutability": "mutable_container", "mutability": "mutable",
-                "evidence_ids": ["e"], "property_assignment": "unavailable",
-            }],
-        }],
-        "functions": [{
-            "scope": "sample.run", "module": "sample", "class_owner": None,
-            "receiver": None, "parameters": [],
-            "events": [
-                {"kind": "assignment", "targets": ["ctx"], "constructor": "Bag",
-                 "annotation": None, "alias": None},
-                {"kind": "attribute", "binding": "ctx", "path": ["value"],
-                 "access": "read", "evidence_id": "e"},
-                {"kind": "attribute", "binding": "ctx", "path": ["value"],
-                 "access": "write", "evidence_id": "e"},
-                {"kind": "attribute", "binding": "ctx", "path": ["value", "append"],
-                 "access": "mutation", "evidence_id": "e"},
-                {"kind": "pass", "binding": "ctx", "target": "consume", "evidence_id": "e"},
-            ],
-        }],
+        "classes": [
+            {
+                "qualified_name": "sample.Bag",
+                "module": "sample",
+                "frozen": False,
+                "protocol": False,
+                "methods": [],
+                "evidence_ids": ["e"],
+                "fields": [
+                    {
+                        "name": "value",
+                        "annotation": "str",
+                        "binding": "non_reassignable",
+                        "referent_mutability": "mutable_container",
+                        "mutability": "mutable",
+                        "evidence_ids": ["e"],
+                        "property_assignment": "unavailable",
+                    }
+                ],
+            }
+        ],
+        "functions": [
+            {
+                "scope": "sample.run",
+                "module": "sample",
+                "class_owner": None,
+                "receiver": None,
+                "parameters": [],
+                "events": [
+                    {
+                        "kind": "assignment",
+                        "targets": ["ctx"],
+                        "constructor": "Bag",
+                        "annotation": None,
+                        "alias": None,
+                    },
+                    {
+                        "kind": "attribute",
+                        "binding": "ctx",
+                        "path": ["value"],
+                        "access": "read",
+                        "evidence_id": "e",
+                    },
+                    {
+                        "kind": "attribute",
+                        "binding": "ctx",
+                        "path": ["value"],
+                        "access": "write",
+                        "evidence_id": "e",
+                    },
+                    {
+                        "kind": "attribute",
+                        "binding": "ctx",
+                        "path": ["value", "append"],
+                        "access": "mutation",
+                        "evidence_id": "e",
+                    },
+                    {"kind": "pass", "binding": "ctx", "target": "consume", "evidence_id": "e"},
+                ],
+            }
+        ],
     }
 
 
@@ -71,7 +108,9 @@ def test_state_wire_decodes_to_nominal_controls_without_changing_bytes_or_order(
     for event in facts.functions[0].events[1:4]:
         assert isinstance(event.access, StrEnum)
     assert thaw_data(state_data(facts)) == raw
-    assert json.dumps(thaw_data(state_data(facts)), sort_keys=True) == json.dumps(raw, sort_keys=True)
+    assert json.dumps(thaw_data(state_data(facts)), sort_keys=True) == json.dumps(
+        raw, sort_keys=True
+    )
     before = asdict(facts)
     assert parse_state_data(state_data(facts)) == facts
     assert asdict(facts) == before
@@ -107,7 +146,9 @@ def test_state_parser_rejects_unknown_or_nontext_event_tags(invalid):
         parse_state_data(freeze_data(raw))
 
 
-@pytest.mark.parametrize("path,access", [([], "read"), (["append"], "mutation"), (["x"], "invalid")])
+@pytest.mark.parametrize(
+    "path,access", [([], "read"), (["append"], "mutation"), (["x"], "invalid")]
+)
 def test_state_parser_keeps_access_path_constraints(path, access):
     raw = _wire()
     raw["functions"][0]["events"][1].update(path=path, access=access)
@@ -120,7 +161,8 @@ def _state_contract():
     contract.pop("$schema", None)
     contract["rules"] = []
     contract["declarations"]["uml"]["entities"] = [
-        entity for entity in contract["declarations"]["uml"]["entities"]
+        entity
+        for entity in contract["declarations"]["uml"]["entities"]
         if entity["id"].startswith("IR-STATE-")
     ]
     contract["declarations"]["uml"]["relationships"] = []
@@ -137,7 +179,8 @@ def _state_repository(tmp_path):
         + _source_members("src/archkeel/ir/facts.py", {"RecordData", "JsonValue"})
     )
     files = {
-        "archkeel/__init__.py": "", "archkeel/ir/__init__.py": "",
+        "archkeel/__init__.py": "",
+        "archkeel/ir/__init__.py": "",
         "archkeel/ir/facts.py": facts,
         "archkeel/ir/state_facts.py": (ROOT / "src/archkeel/ir/state_facts.py").read_text(),
         "archkeel/ir/state_codec.py": (ROOT / "src/archkeel/ir/state_codec.py").read_text(),
@@ -174,35 +217,51 @@ def test_native_state_control_widening_fails_with_unchanged_target(tmp_path):
     contract = (root / "contract.json").read_bytes()
     model = _model(root, config)
     comparison = _comparison(model)
-    assert any(row.aspect == "annotation" and row.status == "FAIL" for row in comparison.assessments)
+    assert any(
+        row.aspect == "annotation" and row.status == "FAIL" for row in comparison.assessments
+    )
     assert trace_valid_violations(model)
     assert (root / "contract.json").read_bytes() == contract
 
 
-@pytest.mark.parametrize("probe", [
-    'def _probe(value):\n    return value == "assignment"\n',
-    'def _probe(value):\n    return value in ("assignment", "attribute")\n',
-    ('def _probe(value):\n    match value:\n        case "assignment":\n'
-     "            return True\n        case _:\n            return False\n"),
-    ('from typing import Final\nASSIGNMENT: Final[str] = "assignment"\n'
-     "\ndef _probe(value):\n    return value == ASSIGNMENT\n"),
-], ids=["equality", "membership", "match", "final-string"])
+@pytest.mark.parametrize(
+    "probe",
+    [
+        'def _probe(value):\n    return value == "assignment"\n',
+        'def _probe(value):\n    return value in ("assignment", "attribute")\n',
+        (
+            'def _probe(value):\n    match value:\n        case "assignment":\n'
+            "            return True\n        case _:\n            return False\n"
+        ),
+        (
+            'from typing import Final\nASSIGNMENT: Final[str] = "assignment"\n'
+            "\ndef _probe(value):\n    return value == ASSIGNMENT\n"
+        ),
+    ],
+    ids=["equality", "membership", "match", "final-string"],
+)
 def test_native_state_parser_rejects_string_dispatch_without_parser_exemption(tmp_path, probe):
     root, config = _state_repository(tmp_path)
     path = root / "archkeel/ir/state_codec.py"
     path.write_text(path.read_text() + "\n" + probe)
     model = _model(root, config)
     violations = [row for row in trace_valid_violations(model) if GUARDS[1] in row.rule_ids]
-    assert violations and all(row.data.get("construct") == "string_literal_compare" for row in violations)
+    assert violations and all(
+        row.data.get("construct") == "string_literal_compare" for row in violations
+    )
 
 
 def test_own_native_state_guards_cover_domain_and_codec(self_observation):
     assessments = {row.id: row for row in rule_assessments(self_observation, undecided_by_rule={})}
     for identifier in GUARDS:
-        assert assessments[identifier].status == "PASS" and assessments[identifier].evaluation_proven
+        assert (
+            assessments[identifier].status == "PASS" and assessments[identifier].evaluation_proven
+        )
     assert not [
-        row for row in self_observation.records("constructs")
-        if row.kind == "string_literal_compare" and any(
+        row
+        for row in self_observation.records("constructs")
+        if row.kind == "string_literal_compare"
+        and any(
             row.data.get("owner", "").startswith(module)
             for module in ("archkeel.ir.state_facts", "archkeel.ir.state_codec")
         )

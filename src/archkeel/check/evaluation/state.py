@@ -295,7 +295,11 @@ def _access_observations(
                 if bound is None:
                     continue
                 field_path = event.path[:-1] if event.access is StateAccess.MUTATION else event.path
-                kind = "writes" if event.access in {StateAccess.WRITE, StateAccess.MUTATION} else "reads"
+                kind = (
+                    "writes"
+                    if event.access in {StateAccess.WRITE, StateAccess.MUTATION}
+                    else "reads"
+                )
                 observations[bound][kind].append(
                     {
                         "source": trace.scope,

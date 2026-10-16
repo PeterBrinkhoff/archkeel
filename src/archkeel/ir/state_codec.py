@@ -27,6 +27,7 @@ from .state_facts import (
     StateParameter,
 )
 
+
 class _EventKind(StrEnum):
     ASSIGNMENT = "assignment"
     ATTRIBUTE = "attribute"
@@ -59,7 +60,7 @@ def _event_data(event: StateEvent) -> RecordData:
             kind=_EventKind.PASS.value,
             binding=event.binding,
             target=event.target,
-            evidence_id=event.evidence_id
+            evidence_id=event.evidence_id,
         )
     assert_never(event)
 
