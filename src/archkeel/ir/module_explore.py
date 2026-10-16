@@ -112,7 +112,10 @@ def _forbidden_rule_applies(
     target_selector = text_value(declaration.data.get("target"))
     source_exact = declaration.data.get("source_match") == "exact"
     target_exact = declaration.data.get("target_match") == "exact"
-    component_labels = not (source_exact or target_exact)
+    component_labels = (
+        not (source_exact or target_exact)
+        and declaration.data.get("target_kind", "module") == "module"
+    )
     source_match = (
         source == source_selector
         if source_exact
