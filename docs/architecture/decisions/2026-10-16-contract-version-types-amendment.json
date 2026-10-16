@@ -1,0 +1,9 @@
+{
+  "after_baseline_digest": "cf6163c6f1f29d9d30733a11f24464591114e417fef6a1bc2f02a6027deb2714",
+  "after_digest": "2bcce4f73946b6cd3ab103560a2f253216a535b57beed330f67c50fc46887066",
+  "before_baseline_digest": "cf6163c6f1f29d9d30733a11f24464591114e417fef6a1bc2f02a6027deb2714",
+  "before_digest": "a99efdb99e83f97bb0444bec8edf310f1b7e92d9496dea3d2042b37ea9b9cd7f",
+  "decided_by": "ake2l",
+  "rationale": "Own nominal contract versions and one direct typed feature policy while preserving merged graph corrections, wire compatibility and measured debt.",
+  "schema_version": "2.0.0"
+}
