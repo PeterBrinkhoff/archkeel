@@ -771,9 +771,11 @@
         "archkeel.ir.architecture_graph",
         "archkeel.ir.dependency",
         "archkeel.ir.state_facts",
-        "archkeel.ir.state_codec"
+        "archkeel.ir.state_codec",
+        "archkeel.analyzer.typescript.config",
+        "archkeel.analyzer.typescript.resolve"
       ],
-      "rationale": "Each shared vocabulary belongs to its domain model; state_facts owns state controls and state_codec owns its private wire event tag.",
+      "rationale": "Each vocabulary belongs to its domain owner: source/graph/dependency models, state_facts state controls, state_codec private event tags, and TypeScript configuration/resolver APIs.",
       "provenance": [
         "docs/architecture/archkeel.md"
       ],
