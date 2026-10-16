@@ -29,7 +29,7 @@ from archkeel.ir.codec_wire import (
     _strings,
 )
 from archkeel.ir.contract_version import CONTRACT_SCHEMA_VERSION as CONTRACT_SCHEMA_VERSION
-from archkeel.ir.contract_version import ContractFeature, ContractVersion
+from archkeel.ir.contract_version import ContractFeature, ContractVersion, supports_feature
 from archkeel.ir.facts_codec import record_payload
 from archkeel.ir.graph_codec import parse_target
 from archkeel.ir.model import (
@@ -257,47 +257,47 @@ def parse_contract(raw: object) -> ArchitectureContract:
     )
     if modules is not None and len({item.path for item in modules}) != len(modules):
         raise ValueError("contract.declarations.modules repeats a path")
-    if "uml" in declarations and not version.supports(ContractFeature.UML):
+    if "uml" in declarations and not supports_feature(version, ContractFeature.UML):
         raise ValueError("UML declarations require contract schema_version 2.2.0")
     uml = parse_target(declarations["uml"]) if "uml" in declarations else None
-    if not version.supports(ContractFeature.LAYERS):
+    if not supports_feature(version, ContractFeature.LAYERS):
         for raw in rules_raw:
             rule_data: dict[str, RawJson] = _object(raw, "rule")
             if rule_data.get("kind") == "layer_order":
                 raise ValueError("layer_order requires contract schema_version 2.3.0")
-    if not version.supports(ContractFeature.MODULE_SELECTORS) and any(
+    if not supports_feature(version, ContractFeature.MODULE_SELECTORS) and any(
         "source_match" in _object(value, "rule") or "target_match" in _object(value, "rule")
         for value in rules_raw
     ):
         raise ValueError("dependency module selectors require contract schema_version 3.4.0")
-    if not version.supports(ContractFeature.IMPORT_NAMESPACES) and any(
+    if not supports_feature(version, ContractFeature.IMPORT_NAMESPACES) and any(
         "target_kind" in _object(value, "rule") for value in rules_raw
     ):
         raise ValueError("import namespace targets require contract schema_version 3.5.0")
-    if not version.supports(ContractFeature.MODULE_OBJECT_GRANTS) and any(
+    if not supports_feature(version, ContractFeature.MODULE_OBJECT_GRANTS) and any(
         "module_object_grants" in _object(value, "rule") for value in rules_raw
     ):
         raise ValueError("module_object_grants require contract schema_version 3.6.0")
     rules = tuple(_parse_rule(value, f"rules[{index}]") for index, value in enumerate(rules_raw))
-    if not version.supports(ContractFeature.ALIAS_BODY) and any(
+    if not supports_feature(version, ContractFeature.ALIAS_BODY) and any(
         isinstance(rule, BoundaryTypesRule)
         and any(item.alias_body is not None for item in rule.allowed_positions)
         for rule in rules
     ):
         raise ValueError("alias_body requires contract schema_version 3.0.0")
-    if not version.supports(ContractFeature.KEY_ALIAS_BODY) and any(
+    if not supports_feature(version, ContractFeature.KEY_ALIAS_BODY) and any(
         isinstance(rule, BoundaryTypesRule)
         and any(item.key_alias_body is not None for item in rule.allowed_positions)
         for rule in rules
     ):
         raise ValueError("key_alias_body requires contract schema_version 3.1.0")
-    if not version.supports(ContractFeature.LITERAL_MAPPING_ARM) and any(
+    if not supports_feature(version, ContractFeature.LITERAL_MAPPING_ARM) and any(
         isinstance(rule, BoundaryTypesRule)
         and any(item.literal_mapping_arm is not None for item in rule.allowed_positions)
         for rule in rules
     ):
         raise ValueError("literal_mapping_arm requires contract schema_version 3.2.0")
-    if not version.supports(ContractFeature.NATIVE_MAPPING) and any(
+    if not supports_feature(version, ContractFeature.NATIVE_MAPPING) and any(
         isinstance(rule, BoundaryTypesRule)
         and any(
             item.native_mapping
@@ -386,35 +386,35 @@ def parse_contract(raw: object) -> ArchitectureContract:
 
 
 def _validate_encoding_version(contract: ArchitectureContract) -> None:
-    if not contract.schema_version.supports(ContractFeature.MODULE_OBJECT_GRANTS) and any(
+    if not supports_feature(contract.schema_version, ContractFeature.MODULE_OBJECT_GRANTS) and any(
         isinstance(rule, InterfaceBoundaryRule) and rule.module_object_grants is not None
         for rule in contract.rules
     ):
         raise ValueError("module_object_grants require contract schema_version 3.6.0")
-    if not contract.schema_version.supports(ContractFeature.LAYERS) and (
+    if not supports_feature(contract.schema_version, ContractFeature.LAYERS) and (
         any(component.layer is not None for component in contract.components)
         or any(isinstance(rule, LayerOrderRule) for rule in contract.rules)
     ):
         raise ValueError("layer and layer_order require contract schema_version 2.3.0")
-    if not contract.schema_version.supports(ContractFeature.ALIAS_BODY) and any(
+    if not supports_feature(contract.schema_version, ContractFeature.ALIAS_BODY) and any(
         isinstance(rule, BoundaryTypesRule)
         and any(item.alias_body is not None for item in rule.allowed_positions)
         for rule in contract.rules
     ):
         raise ValueError("alias_body requires contract schema_version 3.0.0")
-    if not contract.schema_version.supports(ContractFeature.KEY_ALIAS_BODY) and any(
+    if not supports_feature(contract.schema_version, ContractFeature.KEY_ALIAS_BODY) and any(
         isinstance(rule, BoundaryTypesRule)
         and any(item.key_alias_body is not None for item in rule.allowed_positions)
         for rule in contract.rules
     ):
         raise ValueError("key_alias_body requires contract schema_version 3.1.0")
-    if not contract.schema_version.supports(ContractFeature.LITERAL_MAPPING_ARM) and any(
+    if not supports_feature(contract.schema_version, ContractFeature.LITERAL_MAPPING_ARM) and any(
         isinstance(rule, BoundaryTypesRule)
         and any(item.literal_mapping_arm is not None for item in rule.allowed_positions)
         for rule in contract.rules
     ):
         raise ValueError("literal_mapping_arm requires contract schema_version 3.2.0")
-    if not contract.schema_version.supports(ContractFeature.NATIVE_MAPPING) and any(
+    if not supports_feature(contract.schema_version, ContractFeature.NATIVE_MAPPING) and any(
         isinstance(rule, BoundaryTypesRule)
         and any(
             item.native_mapping
@@ -426,7 +426,7 @@ def _validate_encoding_version(contract: ArchitectureContract) -> None:
         raise ValueError(
             "native_mapping and literal-arm object values require contract schema_version 3.3.0"
         )
-    if not contract.schema_version.supports(ContractFeature.MODULE_SELECTORS) and any(
+    if not supports_feature(contract.schema_version, ContractFeature.MODULE_SELECTORS) and any(
         isinstance(rule, ForbiddenDependencyRule)
         and (
             rule.source_match is not SelectorMatch.PREFIX
@@ -435,7 +435,7 @@ def _validate_encoding_version(contract: ArchitectureContract) -> None:
         for rule in contract.rules
     ):
         raise ValueError("dependency module selectors require contract schema_version 3.4.0")
-    if not contract.schema_version.supports(ContractFeature.IMPORT_NAMESPACES) and any(
+    if not supports_feature(contract.schema_version, ContractFeature.IMPORT_NAMESPACES) and any(
         isinstance(rule, ForbiddenDependencyRule)
         and rule.target_kind is not DependencyTargetKind.MODULE
         for rule in contract.rules
@@ -594,7 +594,7 @@ def _component_names(
 
 
 def _parse_component(raw: RawJson, label: str, *, version: ContractVersion) -> ContractComponent:
-    if "layer" in _object(raw, label) and not version.supports(ContractFeature.LAYERS):
+    if "layer" in _object(raw, label) and not supports_feature(version, ContractFeature.LAYERS):
         raise ValueError(f"{label}.layer requires contract schema_version 2.3.0")
     item, item_id, provenance = _contract_record(
         raw,

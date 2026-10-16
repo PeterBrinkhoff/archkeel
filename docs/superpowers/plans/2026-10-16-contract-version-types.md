@@ -29,3 +29,7 @@ JSON key identity, supplied selectors, paths and field grammar remain data. This
 ## Integrated verification
 
 Production was integrated with the canonical graph owner without replacing its DecisionMaker, AssessmentStatus, binary collector Verdict or module-object grant definitions. The 429-test version job in run38948588690 is green, as are Ruff, strict mypy, native validation and exact-predecessor normal amendment generation (918/52/58/0; unchanged baseline). The separate browser job in that run exposed a compact-label test expectation; the final Wire test correction passed real Chromium in run38949400359 (3 cases). No production browser change was needed. Independent final review, a no-write check and full combined regression remain merge gates.
+
+## Per-site API correction
+
+Run 38953726837 observed both actual source trees and found eighteen new partially resolved version.supports receivers, while UNKNOWN type positions and the unresolved total were unchanged. Replace that unreleased method API with the owner module's supports_feature(version: ContractVersion, feature: ContractFeature) -> bool port. Keep the same single policy expression and tables, target both nominal inputs, and rerun native site comparison, feature boundaries, fixed-intent mutation controls and the normal amendment. No new resolver inference or debt allowance.

@@ -7507,17 +7507,17 @@
         },
         {
           "id": "IR-VERSION-supports",
-          "kind": "method",
-          "qualified_name": "archkeel.ir.contract_version.ContractVersion.supports",
-          "parent_id": "IR-VERSION-ContractVersion",
+          "kind": "function",
+          "qualified_name": "archkeel.ir.contract_version.supports_feature",
+          "parent_id": "IR-VERSION-contract_version",
           "responsibilities": [
             "Answer feature availability using the common introduction table."
           ],
           "signature": {
             "parameters": [
               {
-                "name": "self",
-                "annotation": null,
+                "name": "version",
+                "annotation": "ContractVersion",
                 "kind": "positional",
                 "default": null,
                 "default_known": true

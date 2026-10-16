@@ -33,10 +33,6 @@ class ContractVersion(StrEnum):
     V3_5 = "3.5.0"
     V3_6 = "3.6.0"
 
-    def supports(self, feature: ContractFeature) -> bool:
-        """Read and write use the same feature introduction policy."""
-        return _VERSION_RANK[self] >= _VERSION_RANK[_FEATURE_START[feature]]
-
 
 # Declaration order is the supported contract evolution order.
 _VERSION_RANK: dict[ContractVersion, int] = {
@@ -53,3 +49,8 @@ _FEATURE_START: dict[ContractFeature, ContractVersion] = {
     ContractFeature.IMPORT_NAMESPACES: ContractVersion.V3_5,
     ContractFeature.MODULE_OBJECT_GRANTS: ContractVersion.V3_6,
 }
+
+
+def supports_feature(version: ContractVersion, feature: ContractFeature) -> bool:
+    """Read and write use the same feature introduction policy."""
+    return _VERSION_RANK[version] >= _VERSION_RANK[_FEATURE_START[feature]]

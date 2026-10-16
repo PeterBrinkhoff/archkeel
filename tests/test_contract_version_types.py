@@ -76,12 +76,12 @@ def test_parser_keeps_rejecting_unsupported_or_nontext_versions(invalid):
     ],
 )
 def test_feature_policy_keeps_each_existing_introduction_boundary(feature, before, first):
-    from archkeel.ir.contract_version import ContractFeature, ContractVersion
+    from archkeel.ir.contract_version import ContractFeature, ContractVersion, supports_feature
 
     choice = ContractFeature[feature]
-    assert not ContractVersion(before).supports(choice)
-    assert ContractVersion(first).supports(choice)
-    assert ContractVersion.V3_6.supports(choice)
+    assert not supports_feature(ContractVersion(before), choice)
+    assert supports_feature(ContractVersion(first), choice)
+    assert supports_feature(ContractVersion.V3_6, choice)
 
 
 def _version_repository(tmp_path):
@@ -147,6 +147,7 @@ def test_native_version_api_matches_independent_intent_and_guard(tmp_path):
     [
         ("model.py", "schema_version: ContractVersion", "schema_version: str"),
         ("contract_version.py", "feature: ContractFeature", "feature: str"),
+        ("contract_version.py", "version: ContractVersion", "version: str"),
         ("contract_version.py", ") -> bool:", ") -> str:"),
     ],
 )
