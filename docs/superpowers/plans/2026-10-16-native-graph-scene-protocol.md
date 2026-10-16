@@ -91,3 +91,16 @@ Source851 rejected the existing visible Actual/Structure/Review buttons because 
 1. Add real visible-button regression controls against the unchanged851 source and observe their causal RED.
 2. Close the actual six-valued public ViewMode domain, then map its three Evidence members explicitly to the existing Diagram projection. Keep ProjectionMode a precise three-member subset of that same nominal Enum, with no duplicated spelling catalog; reject unknown ingress values.
 3. Require actual consumer return/subset mutations, legacy defaults, all six views and visible buttons; regenerate committed protocol with the existing official compiler. Run strict Scene and existing Chromium controls, then independent Astra review of this exact delta. Preserve original wire/object identity, no extra graph walk or copy, no Publisher changes.
+
+
+## Final source freeze and required-gate evidence
+
+The reviewed production source is `43303448ba681991e21f8975f2c3302139041bb0`, compared to the pinned `d08dfaf6a2e6992153a434341465306a88d993a2` review predecessor. Independent Astra approved that exact source after the Evidence-view compatibility and canonical-owner CI corrections. This ledger update changes documentation only.
+
+- Actual public API RED: run 38978583933 / job 117233832671, all three existing Evidence views valid before and rejected by 851. Actual visible-button RED: run 38978975180 / job 117235096769, three corresponding failures.
+- Corrected real consumer, compiler mutations, ingress, defaults, identity and visible buttons: run 38979366897 / job 117236335652, 34 PASS; a second actual Chromium job 117236335816 adds 18 PASS. Legacy old/new Evidence JSON remains identical.
+- Required routing RED: run 38980587252 / job 117240264357, the actual Python Enum owner failed report classification. Correction GREEN: run 38980779299 / job 117240887586, 75 PASS, Ruff and mypy 145. Source artifact inputs and the real owner now trigger the required report path.
+- Final actual required entry on 43303448, run 38980693700 / job 117240613702: unmodified `make ci-pr-report-check` passes 71 tests in 312.07s, with strict generation/checkJs checks, then 86 CI/repository controls pass. Ruff reports 484 formatted files and all checks passing; mypy reports 145 source files clean. The runner verifies no generated asset, independent Target or generator mutation. Auxiliary commit `458add8b7432b41b8bfc3bad879ae570765176cd` differs from 43303448 only by its verification workflow.
+- The correction adds 433 bytes to the compiled protocol and 82 to the graph projection, without an extra graph copy, cache or repeated decode. Native written-literal evidence remains PARTIAL and never proves whole-browser absence.
+
+Integration remains separate: Publisher #568 must precede Scene #573; the real combined HTML must satisfy the unchanged 2MB/400KB guards. Root owns the exact composite native measurement, normal amendment and final integration gates. Atlas and UI protocols remain explicitly pending within #542. Superseded 851 and 32d3 must not be used as the final Scene source.
