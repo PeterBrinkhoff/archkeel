@@ -14,6 +14,7 @@ from test_dart_directives import dart_package
 from test_inside_publication import _child, _inside, _rule
 
 from archkeel.cli.observe import analyze_snapshot
+from archkeel.ir.architecture_graph import AssessmentStatus
 from tools import rule_yield
 from tools.rule_yield import _captured_analysis, _rule_measures, measure
 
@@ -775,11 +776,15 @@ def test_unbound_requires_imports_keep_counts_unavailable(
         model, calls = capture(root, arguments)
         changed = []
         for function, inputs, result in calls:
-            if function is rule_yield._requires_covers:
+            if function is rule_yield._requires_import_assessment:
                 if loss == "cover":
                     continue
                 if loss == "verdict":
-                    result = not result
+                    result = (
+                        AssessmentStatus.FAIL
+                        if result is AssessmentStatus.PASS
+                        else AssessmentStatus.PASS
+                    )
             if function is rule_yield.requires_violations:
                 if loss == "completion":
                     continue
