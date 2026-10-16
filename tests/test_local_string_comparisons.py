@@ -25,6 +25,11 @@ _RULE = {
         ('flag = "--json"', "value == flag", "compare"),
         ('flag = "--json"', "flag != value", "compare"),
         ('flag: str = "--json"', "flag in value", "membership"),
+        (
+            'from typing import Final\n    flag: Final[str] = "--json"',
+            "flag in value",
+            "membership",
+        ),
         ('flag = ""', "flag in value", "membership"),
         ('other = flag = "--json"', "flag in value", "membership"),
     ],
