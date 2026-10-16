@@ -1,0 +1,9 @@
+{
+  "after_baseline_digest": "c7345d5fbcfd8083fe3a618d23a806dea1eee1c1083aa3e163d59b5e260fa2ed",
+  "after_digest": "a60eb15d28b16f59c8576ab9c6a8c89851e9df54b038d0a1362a7ff4b0489b9a",
+  "before_baseline_digest": "c7345d5fbcfd8083fe3a618d23a806dea1eee1c1083aa3e163d59b5e260fa2ed",
+  "before_digest": "9886bb8ee49f1af6bbc718823ef067df9336c0e9495176e19ec6be9a537f294a",
+  "decided_by": "ake2l (requested typed APIs and component responsibilities); Codex implementation, independent Astra review before merge",
+  "rationale": "Issue #541 adds 38 independently authored dependency API Target entities and a narrow boundary_types rule. Intent requires selector enums and fields, nominal DependencyOwner identity/modules, typed selection APIs, legacy facade and adapter signatures, and record conversion. Native source mutations enforce type/API drift; legacy structural aliases remain outside the narrow deep boundary guarantee. The fail-closed classifier cannot enumerate UML intent changes. No publication, permission, baseline entry, ceiling or exception is widened. docs/architecture/dependency-selector-target.md records evidence and scope.",
+  "schema_version": "2.0.0"
+}
