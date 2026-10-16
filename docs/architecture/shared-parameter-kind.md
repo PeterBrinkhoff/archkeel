@@ -1,0 +1,7 @@
+# Shared source parameter calling convention
+
+Python signature collection and graph parameters describe the same six-value calling convention. The existing ParameterKind enum must have one definition in ir.facts, the source-fact boundary already consumed by collectors. architecture_graph explicitly reexports that identical object to preserve existing imports. No new package, DTO, enum members, parser or schema.
+
+The actual symbols._parameter input is ParameterKind and _function_signature writes its five observed members. ParameterKind.UNKNOWN remains the Graph default. Actual dictionary keys, JSON strings, member order, defaults and existing error behavior stay unchanged. Arbitrary names and annotations remain text. This does not close the other Python symbol grammars.
+
+Authored intent pins the canonical enum owner and the private producer input. Runtime producer tests, fixed-intent native signature mutations and the existing Facts guard protect the boundary. Moving the canonical enum also adds facts.py to required browser report routing because the browser vocabulary generator consumes its graph reexport. Final source/site/UNKNOWN/wire proof and independent Astra review precede merge.

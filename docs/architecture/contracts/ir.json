@@ -7159,15 +7159,15 @@
         {
           "id": "IR-GRAPH-ParameterKind",
           "kind": "enum",
-          "qualified_name": "archkeel.ir.architecture_graph.ParameterKind",
+          "qualified_name": "archkeel.ir.facts.ParameterKind",
           "language": "python",
-          "parent_id": "IR-UML-architecture_graph",
+          "parent_id": "archkeel.ir.facts",
           "presence": "planned",
           "responsibilities": [
-            "Own the closed ParameterKind vocabulary used by graph and UML responsibilities."
+            "Own the single calling-convention vocabulary shared by source producers and graph parameters."
           ],
           "provenance": [
-            "docs/architecture/typed-graph-vocabulary.md"
+            "docs/architecture/shared-parameter-kind.md"
           ],
           "visibility": {
             "kind": "public",

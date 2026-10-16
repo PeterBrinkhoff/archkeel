@@ -576,6 +576,68 @@
             ],
             "returns": "_StringPredicate | None"
           }
+        },
+        {
+          "id": "PYTHON-PARAMETER-SYMBOLS",
+          "kind": "module",
+          "qualified_name": "archkeel.analyzer.python.symbols",
+          "language": "python",
+          "parent_id": "TARGET-COLLECTORS",
+          "presence": "planned",
+          "responsibilities": [
+            "Collect source symbols and written function signatures without governance decisions."
+          ],
+          "provenance": [
+            "docs/architecture/shared-parameter-kind.md"
+          ]
+        },
+        {
+          "id": "PYTHON-PARAMETER-PRODUCER",
+          "kind": "function",
+          "qualified_name": "archkeel.analyzer.python.symbols._parameter",
+          "language": "python",
+          "parent_id": "PYTHON-PARAMETER-SYMBOLS",
+          "presence": "planned",
+          "responsibilities": [
+            "Write an existing source parameter record from a nominal shared calling convention."
+          ],
+          "provenance": [
+            "docs/architecture/shared-parameter-kind.md"
+          ],
+          "visibility": {
+            "kind": "private",
+            "basis": "declared"
+          },
+          "signature": {
+            "parameters": [
+              {
+                "name": "argument",
+                "kind": "positional",
+                "default_known": true,
+                "annotation": "ast.arg"
+              },
+              {
+                "name": "kind",
+                "kind": "positional",
+                "default_known": true,
+                "annotation": "ParameterKind"
+              },
+              {
+                "name": "default",
+                "kind": "positional",
+                "default_known": true,
+                "annotation": "ast.expr | None"
+              },
+              {
+                "name": "prefix",
+                "kind": "positional",
+                "default_known": true,
+                "annotation": "str",
+                "default": "''"
+              }
+            ],
+            "returns": "RecordData"
+          }
         }
       ],
       "relationships": [],
