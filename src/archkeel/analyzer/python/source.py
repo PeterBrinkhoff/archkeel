@@ -18,6 +18,8 @@ from typing import Final, Literal, Protocol, TypedDict
 
 from archkeel.ir.facts import (
     EvidenceClass,
+    MethodDescriptor,
+    MethodKind,
     PropertyBinding,
     PropertyOperation,
     PropertyOrigin,
@@ -28,7 +30,7 @@ from archkeel.ir.facts_codec import (
     RawEvidence,
     RawRecord,
     classified,
-    property_binding_data,
+    method_descriptor_data,
 )
 from archkeel.ir.facts_codec import (
     file_evidence as file_evidence,
@@ -738,8 +740,7 @@ def unproven_class_body(
             child.name in {"__init_subclass__", "__class_getitem__"}
             or (
                 child not in properties
-                and method_decorator_data(module, child, node)["signature_decorators_proven"]
-                is not True
+                and method_descriptor(module, child, node).signature_decorators_proven is not True
             )
         ):
             return True
@@ -881,44 +882,39 @@ def setter_local_references(module: ParsedModule) -> frozenset[ast.AST]:
     return frozenset(references)
 
 
-def method_decorator_data(
+_METHOD_DECORATORS: Final[dict[str, MethodKind | None]] = {
+    "staticmethod": MethodKind.STATIC,
+    "builtins.staticmethod": MethodKind.STATIC,
+    "classmethod": MethodKind.CLASS,
+    "builtins.classmethod": MethodKind.CLASS,
+    "property": MethodKind.INSTANCE,
+    "builtins.property": MethodKind.INSTANCE,
+    "typing.overload": None,
+    "typing_extensions.overload": None,
+    "abc.abstractmethod": None,
+}
+
+
+def method_descriptor(
     module: ParsedModule,
     node: ast.FunctionDef | ast.AsyncFunctionDef,
     parent: ast.ClassDef | None,
-) -> RecordData:
-    method_kind = "instance"
+) -> MethodDescriptor:
+    method_kind = MethodKind.INSTANCE
     signature_proven = True
     descriptor_count = 0
-    targets = frozenset(
-        {
-            "staticmethod",
-            "builtins.staticmethod",
-            "classmethod",
-            "builtins.classmethod",
-            "property",
-            "builtins.property",
-            "typing.overload",
-            "typing_extensions.overload",
-            "abc.abstractmethod",
-        }
-    )
+    targets = frozenset(_METHOD_DECORATORS)
     for decorator in node.decorator_list:
         proven = not isinstance(decorator, ast.Call) and is_proven_decorator(
             module, decorator, node, parent, targets
         )
         signature_proven = signature_proven and proven
         if proven:
-            resolved = resolve_static_name(module, decorator)
-            if resolved not in {
-                "typing.overload",
-                "typing_extensions.overload",
-                "abc.abstractmethod",
-            }:
+            effect = _METHOD_DECORATORS[resolve_static_name(module, decorator)]
+            if effect is not None:
                 descriptor_count += 1
-            if resolved in {"staticmethod", "builtins.staticmethod"}:
-                method_kind = "static"
-            elif resolved in {"classmethod", "builtins.classmethod"}:
-                method_kind = "class"
+                if effect in (MethodKind.STATIC, MethodKind.CLASS):
+                    method_kind = effect
     properties = property_bindings(module, parent) if parent is not None else {}
     binding = properties.get(node)
     if (
@@ -927,17 +923,26 @@ def method_decorator_data(
         and parent.name not in stable_direct_module_bindings(module)
     ):
         binding = None
-    return {
-        "method_kind": method_kind,
-        "signature_decorators_proven": signature_proven and descriptor_count <= 1,
-        "source_final_method_binding": not node.decorator_list
+    return MethodDescriptor(
+        method_kind,
+        signature_proven and descriptor_count <= 1,
+        not node.decorator_list
         and parent is not None
         and parent in module.tree.body
         and parent.name in stable_direct_module_bindings(module)
         and binding_may_exist_before(module, parent.body, node, node.name)
         and not binding_may_exist_before(module, tuple(reversed(parent.body)), node, node.name),
-        **({"property_binding": property_binding_data(binding)} if binding is not None else {}),
-    }
+        binding,
+    )
+
+
+def method_decorator_data(
+    module: ParsedModule,
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+    parent: ast.ClassDef | None,
+) -> RecordData:
+    """Retain the raw dict port for callers assembling source wire records."""
+    return method_descriptor_data(method_descriptor(module, node, parent))
 
 
 def explicit_provider_escapes(module: ParsedModule) -> frozenset[str]:
@@ -1000,9 +1005,11 @@ def _class_members_receive_owner(module: ParsedModule, owner: ast.ClassDef) -> b
         if exposes_dynamic_namespace(module, node, local_namespace=True):
             return True
         if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
-            if method_decorator_data(module, node, owner)[
-                "signature_decorators_proven"
-            ] is not True and node not in property_bindings(module, owner):
+            if method_descriptor(
+                module, node, owner
+            ).signature_decorators_proven is not True and node not in property_bindings(
+                module, owner
+            ):
                 return True
         elif isinstance(node, ast.ClassDef):
             if not class_header_static(node) or node.bases:
@@ -1107,7 +1114,7 @@ def _native_method_header_static(module: ParsedModule, node: FunctionNode) -> bo
         *(item for item in (node.args.vararg, node.args.kwarg) if item is not None),
     ]
     return (
-        method_decorator_data(module, node, None)["signature_decorators_proven"] is True
+        method_descriptor(module, node, None).signature_decorators_proven is True
         and all(
             _inert_creation_operand(value)
             for value in [
@@ -1549,8 +1556,7 @@ def _unproven_member_roots(
                 )
                 or isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
                 and node not in properties
-                and method_decorator_data(module, node, None)["signature_decorators_proven"]
-                is not True
+                and method_descriptor(module, node, None).signature_decorators_proven is not True
             )
         }
         if member_surface and include_creation_uncertainty

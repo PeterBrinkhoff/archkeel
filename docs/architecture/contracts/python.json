@@ -481,6 +481,47 @@
             ],
             "returns": "dict[FunctionNode, PropertyBinding]"
           }
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/typed-method-descriptors.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "PYTHON-METHOD-PRODUCER",
+          "kind": "function",
+          "qualified_name": "archkeel.analyzer.python.source.method_descriptor",
+          "parent_id": "PYTHON-PROPERTY-SOURCE",
+          "responsibilities": [
+            "Produce nominal method descriptors from existing provider proof and ordering."
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "module",
+                "kind": "positional",
+                "default_known": true,
+                "annotation": "ParsedModule"
+              },
+              {
+                "name": "node",
+                "kind": "positional",
+                "default_known": true,
+                "annotation": "ast.FunctionDef | ast.AsyncFunctionDef"
+              },
+              {
+                "name": "parent",
+                "kind": "positional",
+                "default_known": true,
+                "annotation": "ast.ClassDef | None"
+              }
+            ],
+            "returns": "MethodDescriptor"
+          }
         }
       ],
       "relationships": [],

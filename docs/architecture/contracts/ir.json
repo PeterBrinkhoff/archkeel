@@ -9548,6 +9548,179 @@
             ],
             "returns": "frozenset[ObservedSection]"
           }
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/typed-method-descriptors.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-METHOD-KIND",
+          "kind": "enum",
+          "qualified_name": "archkeel.ir.facts.MethodKind",
+          "parent_id": "archkeel.ir.facts",
+          "responsibilities": [
+            "Name the five existing shared method tags without deriving binding proof."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/typed-method-descriptors.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-METHOD-DESCRIPTOR",
+          "kind": "class",
+          "qualified_name": "archkeel.ir.facts.MethodDescriptor",
+          "parent_id": "archkeel.ir.facts",
+          "responsibilities": [
+            "Retain Python method classification and existing proof bits immutably."
+          ],
+          "modifiers": [
+            "frozen"
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/typed-method-descriptors.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-METHOD-DESCRIPTOR-method_kind",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.facts.MethodDescriptor.method_kind",
+          "parent_id": "IR-METHOD-DESCRIPTOR",
+          "responsibilities": [
+            "Carry the consumed typed method_kind without adding proof authority."
+          ],
+          "annotation": "MethodKind"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/typed-method-descriptors.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-METHOD-DESCRIPTOR-signature_decorators_proven",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.facts.MethodDescriptor.signature_decorators_proven",
+          "parent_id": "IR-METHOD-DESCRIPTOR",
+          "responsibilities": [
+            "Carry the consumed typed signature_decorators_proven without adding proof authority."
+          ],
+          "annotation": "bool"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/typed-method-descriptors.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-METHOD-DESCRIPTOR-source_final_method_binding",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.facts.MethodDescriptor.source_final_method_binding",
+          "parent_id": "IR-METHOD-DESCRIPTOR",
+          "responsibilities": [
+            "Carry the consumed typed source_final_method_binding without adding proof authority."
+          ],
+          "annotation": "bool"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/typed-method-descriptors.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-METHOD-DESCRIPTOR-property_binding",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.facts.MethodDescriptor.property_binding",
+          "parent_id": "IR-METHOD-DESCRIPTOR",
+          "responsibilities": [
+            "Carry the consumed typed property_binding without adding proof authority."
+          ],
+          "annotation": "PropertyBinding | None"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/typed-method-descriptors.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-METHOD-DECODE",
+          "kind": "function",
+          "qualified_name": "archkeel.ir.facts.parse_method_kind",
+          "parent_id": "archkeel.ir.facts",
+          "responsibilities": [
+            "Read supported method tags while keeping unrecognized input unclassified."
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "value",
+                "kind": "positional",
+                "default_known": true,
+                "annotation": "JsonValue | RawJson | MethodKind"
+              }
+            ],
+            "returns": "MethodKind | None"
+          }
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/typed-method-descriptors.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-METHOD-ENCODE",
+          "kind": "function",
+          "qualified_name": "archkeel.ir.facts_codec.method_descriptor_data",
+          "parent_id": "IR-PROPERTY-CODEC",
+          "responsibilities": [
+            "Write the unchanged raw method descriptor record."
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "descriptor",
+                "kind": "positional",
+                "default_known": true,
+                "annotation": "MethodDescriptor"
+              }
+            ],
+            "returns": "RawData"
+          }
         }
       ],
       "relationships": [
