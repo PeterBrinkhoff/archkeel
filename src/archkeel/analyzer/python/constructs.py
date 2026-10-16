@@ -288,8 +288,31 @@ class _LiteralComparisons:
             return False
         return resolved in {"enum.Enum", "enum.StrEnum"}
 
+    def _local_scalar(self, node: ast.Name) -> bool:
+        """One preceding literal write in the same function is written syntax evidence."""
+        binding = self.scopes.lookup(node, node.id)
+        owner = binding.owner
+        if (
+            binding.uncertain
+            or owner is None
+            or owner is not self.scopes.by_node[node]
+            or not isinstance(owner.node, ast.FunctionDef | ast.AsyncFunctionDef)
+        ):
+            return False
+        sites = owner.bindings.get(node.id, [])
+        if len(sites) != 1:
+            return False
+        assignment = self.scopes.parents.get(sites[0])
+        return (
+            isinstance(assignment, ast.Assign | ast.AnnAssign)
+            and self.scopes.parents.get(assignment) is owner.node
+            and (assignment.lineno, assignment.col_offset) < (node.lineno, node.col_offset)
+            and assignment.value is not None
+            and _is_str(assignment.value)
+        )
+
     def scalar(self, node: ast.expr) -> bool:
-        if _is_str(node):
+        if _is_str(node) or (isinstance(node, ast.Name) and self._local_scalar(node)):
             return True
         if not self._module_name(node):
             return False
@@ -325,27 +348,25 @@ class _LiteralComparisons:
             isinstance(node, ast.Name) and node.id in self.collections and self._module_name(node)
         )
 
+    def comparison_form(self, node: ast.Compare) -> str | None:
+        operands = [node.left, *node.comparators]
+        for operator, left, right in zip(node.ops, operands[:-1], operands[1:], strict=True):
+            if isinstance(operator, ast.Eq | ast.NotEq) and (
+                self.scalar(left) or self.scalar(right)
+            ):
+                return "compare"
+            if isinstance(operator, ast.In | ast.NotIn) and (
+                self.scalar(left) or self.collection(right)
+            ):
+                return "membership"
+        return None
 
-def _comparison_form(literals: _LiteralComparisons, node: ast.Compare) -> str | None:
-    operands = [node.left, *node.comparators]
-    for operator, left, right in zip(node.ops, operands[:-1], operands[1:], strict=True):
-        if isinstance(operator, ast.Eq | ast.NotEq) and (
-            literals.scalar(left) or literals.scalar(right)
-        ):
-            return "compare"
-        if isinstance(operator, ast.In | ast.NotIn) and (
-            literals.scalar(left) or literals.collection(right)
-        ):
-            return "membership"
-    return None
-
-
-def _matches_literal(literals: _LiteralComparisons, node: ast.Match) -> bool:
-    return any(
-        isinstance(pattern, ast.MatchValue) and literals.scalar(pattern.value)
-        for case in node.cases
-        for pattern in ast.walk(case.pattern)
-    )
+    def matches_literal(self, node: ast.Match) -> bool:
+        return any(
+            isinstance(pattern, ast.MatchValue) and self.scalar(pattern.value)
+            for case in node.cases
+            for pattern in ast.walk(case.pattern)
+        )
 
 
 def _handled_types(caught: ast.expr) -> list[str]:
@@ -423,7 +444,7 @@ class ConstructCollector(ast.NodeVisitor):
         self.generic_visit(node)
 
     def visit_Compare(self, node: ast.Compare) -> None:
-        form = _comparison_form(self.comparisons, node)
+        form = self.comparisons.comparison_form(node)
         if form is not None:
             self._record(
                 node,
@@ -435,7 +456,7 @@ class ConstructCollector(ast.NodeVisitor):
         self.generic_visit(node)
 
     def visit_Match(self, node: ast.Match) -> None:
-        if _matches_literal(self.comparisons, node):
+        if self.comparisons.matches_literal(node):
             self._record(
                 node,
                 kind="string_literal_compare",
