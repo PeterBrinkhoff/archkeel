@@ -38,3 +38,16 @@ read more than once; once-per-node caching is not required by the architecture c
 A runtime and Python-allocation comparison records the cost of both nominal variants.
 The original unmerged cached candidate's method-name candidates are not treated as proven
 receiver types or semantic improvements when native call counts are compared.
+
+The [controlled comparison](https://github.com/rapiddweller/archkeel/actions/runs/38958337346)
+preserves all 72 parser DTO projections and the exact strictly decoded H/Nest SourceFacts
+wire bytes against both 8eb and 3ba. Counted UNKNOWN record identities are unchanged:
+30 type positions, 20 routes and 8 other records. Native unresolved calls move from the
+actual predecessor's 917 to 913; moved existing calls are named individually.
+
+On the same Python 3.11.12 runner, seven alternating rounds measured median parser cost
+for 72 files / 105,335 bytes: original 0.415 s, cached candidate 0.676 s, direct decoder
+0.642 s. Peak Python-tracked allocation was 2.05 / 3.03 / 2.06 MB respectively.
+The direct version saves cache state and about 5% of parser time versus the cached trial;
+it still costs about 0.227 s more than the original string-based parser on that corpus.
+These are runner measurements, not portable limits or a performance claim versus 8eb.
