@@ -1,0 +1,9 @@
+{
+  "after_baseline_digest": "ce0214aa53088d46512d9c71a8fe5fe51597afadb50bd8e5b6629be012533ef7",
+  "after_digest": "e511bf0a90cf0bbbe76e46d486426071b05a6fb3724aeb737c7844ffe2a587e9",
+  "before_baseline_digest": "ce0214aa53088d46512d9c71a8fe5fe51597afadb50bd8e5b6629be012533ef7",
+  "before_digest": "ffc87f3a95f0117bf80c9a4875b1d15da4779b5dfbc3629b15e552651991bcca",
+  "decided_by": "ake2l",
+  "rationale": "Give existing property binding facts one immutable typed owner and preserve the legacy wire and constructor ports.",
+  "schema_version": "2.0.0"
+}
