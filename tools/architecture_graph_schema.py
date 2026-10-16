@@ -120,12 +120,13 @@ def _schema(root: type, name: str, title: str) -> dict[str, object]:
         raise TypeError(f"unsupported schema type: {annotation}")
 
     reference = shape(root)
-    versions = get_type_hints(root)["schema_version"]
-    version = (
-        next(iter(versions)).value
-        if isinstance(versions, type) and issubclass(versions, StrEnum)
-        else get_args(versions)[0]
+    version_type = get_type_hints(root)["schema_version"]
+    versions = (
+        tuple(version_type)
+        if isinstance(version_type, type) and issubclass(version_type, StrEnum)
+        else get_args(version_type)
     )
+    version = versions[0]
     return {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "$id": f"urn:archkeel:{name}:{version}",
