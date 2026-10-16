@@ -1,0 +1,9 @@
+{
+  "after_baseline_digest": "cf6163c6f1f29d9d30733a11f24464591114e417fef6a1bc2f02a6027deb2714",
+  "after_digest": "195f8110956b6ad81ccc0467d1161470817c16656b68cfd0dfd16bcf449040d5",
+  "before_baseline_digest": "02279ca79283191bc1137034db4191abc1850cf3f290e974ec1caed594f95600",
+  "before_digest": "d1aee80c1e2d237db77dbbdb981c22eef471bdc4f6de9dd9b87b7ef9b7e54bb0",
+  "decided_by": "ake2l",
+  "rationale": "Own CLI input vocabularies at argparse and installation boundaries; preserve existing help and wire values, declare the actual nominal API and enforce the whole CLI input owners without increased evidence debt.",
+  "schema_version": "2.0.0"
+}
