@@ -69,19 +69,25 @@
       "label": "summary",
       "role": "projection",
       "exact_modules": [
-        "archkeel.render.summary"
+        "archkeel.render.summary",
+        "archkeel.render.summary_badges"
       ],
       "public": [
-        "archkeel.render.summary"
+        "archkeel.render.summary",
+        "archkeel.render.summary_badges:BadgeState",
+        "archkeel.render.summary_badges:Badge",
+        "archkeel.render.summary_badges:badge"
       ],
       "responsibilities": [
-        "Explain Core results consistently for HTML and terminal output."
+        "Explain Core results consistently for HTML and terminal output.",
+        "Own the nominal display Badge and project Core verdicts without redefining their domains."
       ],
       "forbidden_responsibilities": [
         "Architecture policy, source parsing and persistence."
       ],
       "provenance": [
-        "docs/architecture/decisions/ad-179-reports-render-one-graph-boundary.md"
+        "docs/architecture/decisions/ad-179-reports-render-one-graph-boundary.md",
+        "docs/architecture/summary-badges.md"
       ],
       "decided_by": "agent",
       "requires": [],
@@ -154,11 +160,24 @@
         "docs/architecture/decisions/ad-179-reports-render-one-graph-boundary.md"
       ],
       "decided_by": "agent"
+    },
+    {
+      "id": "RENDER-BADGE-TYPED-CONTROL",
+      "kind": "forbidden_construct",
+      "source": "archkeel.render.summary_badges",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "The actual Badge model and derivation use owned display states and canonical Core verdict types, including conversion at the input boundary.",
+      "provenance": [
+        "docs/architecture/summary-badges.md"
+      ],
+      "decided_by": "architect"
     }
   ],
   "declarations": {
     "uml": {
-      "schema_version": "1.0.0",
+      "schema_version": "1.2.0",
       "entities": [
         {
           "id": "RENDER-UML-html",
@@ -370,6 +389,118 @@
           "provenance": [
             "docs/architecture/render-target.md"
           ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/summary-badges.md"
+          ],
+          "id": "RENDER-BADGE-module",
+          "kind": "module",
+          "qualified_name": "archkeel.render.summary_badges",
+          "parent_id": "RENDER-SUMMARY",
+          "responsibilities": [
+            "Own the actual display value, valid-input normalization and verdict-to-badge derivation."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/summary-badges.md"
+          ],
+          "id": "RENDER-BADGE-BadgeState",
+          "kind": "enum",
+          "qualified_name": "archkeel.render.summary_badges.BadgeState",
+          "parent_id": "RENDER-BADGE-module",
+          "responsibilities": [
+            "Name the four display states independently from Core verdict domains."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/summary-badges.md"
+          ],
+          "id": "RENDER-BADGE-Badge",
+          "kind": "class",
+          "qualified_name": "archkeel.render.summary_badges.Badge",
+          "parent_id": "RENDER-BADGE-module",
+          "responsibilities": [
+            "Carry one immutable, normalized presentation badge."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/summary-badges.md"
+          ],
+          "id": "RENDER-BADGE-Badge.state",
+          "kind": "attribute",
+          "qualified_name": "archkeel.render.summary_badges.Badge.state",
+          "parent_id": "RENDER-BADGE-Badge",
+          "responsibilities": [
+            "Retain the owned display state."
+          ],
+          "annotation": "BadgeState"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/summary-badges.md"
+          ],
+          "id": "RENDER-BADGE-Badge.symbol",
+          "kind": "attribute",
+          "qualified_name": "archkeel.render.summary_badges.Badge.symbol",
+          "parent_id": "RENDER-BADGE-Badge",
+          "responsibilities": [
+            "Retain a display symbol as output data."
+          ],
+          "annotation": "str"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/summary-badges.md"
+          ],
+          "id": "RENDER-BADGE-Badge.label",
+          "kind": "attribute",
+          "qualified_name": "archkeel.render.summary_badges.Badge.label",
+          "parent_id": "RENDER-BADGE-Badge",
+          "responsibilities": [
+            "Retain a display label as output data."
+          ],
+          "annotation": "str"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/summary-badges.md"
+          ],
+          "id": "RENDER-BADGE-badge",
+          "kind": "function",
+          "qualified_name": "archkeel.render.summary_badges.badge",
+          "parent_id": "RENDER-BADGE-module",
+          "responsibilities": [
+            "Project recognized Core verdict text or a not-applicable marker into the display value."
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "value",
+                "kind": "positional",
+                "annotation": "str",
+                "default_known": true
+              }
+            ],
+            "returns": "Badge"
+          }
         }
       ],
       "relationships": [
@@ -476,6 +607,10 @@
       {
         "path": "src/archkeel/render/atlas.py",
         "responsibility": "Prepare compact Atlas display payloads from authenticated Core values."
+      },
+      {
+        "path": "src/archkeel/render/summary_badges.py",
+        "responsibility": "Own the normalized Badge value and verdict-to-display projection."
       }
     ]
   }
