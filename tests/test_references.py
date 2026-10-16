@@ -212,3 +212,17 @@ def test_wildcard_import_disables_enum_member_evidence_for_the_module(
     ]
 
     assert all(item.data.get("targets") != ("sample.State",) for item in member_references)
+
+
+def test_construct_queries_have_direct_native_references(
+    self_observation: Observation,
+) -> None:
+    targets = {
+        target
+        for record in self_observation.records("calls") or ()
+        for target in record.data.get("targets", ())
+    }
+    assert {
+        "archkeel.analyzer.python.constructs._comparison_form",
+        "archkeel.analyzer.python.constructs._matches_literal",
+    } <= targets
