@@ -30,10 +30,10 @@
 Files: new tests/test_boundary_reason_types.py; docs/architecture/contracts/check.json; this plan and spec.
 Interfaces: consume actual _Position and _unresolvable_shape; authored Target requires _Position.undecidable: _UndecidableReason | None and function return _UndecidableReason.
 
-- [ ] Add nominal identity/legacy normalization/None/replace/frozen/invalid-input tests plus existing wire-view controls.
-- [ ] Add independent planned private field/return entities to the existing check Target before product edits.
-- [ ] Run actual source under the fixed Target: old str field/return must FAIL. Missing nominal/normalization controls must fail for the intended reason; baseline wire controls remain green.
-- [ ] Commit the plan, intent and tests before production.
+- [x] Add nominal identity/legacy normalization/None/replace/frozen/invalid-input tests plus existing wire-view controls.
+- [x] Add independent planned private field/return entities to the existing check Target before product edits.
+- [x] Run actual source under the fixed Target: old str field/return must FAIL. Missing nominal/normalization controls must fail for the intended reason; baseline wire controls remain green.
+- [x] Commit the plan, intent and tests before production.
 
 ## Task 2: Minimal existing-owner implementation and GREEN
 
@@ -67,3 +67,7 @@ Separate future work: Python AST contexts and IR graph contexts share kind/branc
 Plan and read-only inventory checkpoint. No production mutation or native success is claimed yet.
 
 Ruling (Root): keep the existing open wire-detail/aggregate path unchanged. A Reason decoder there would invent new reject/default authority for future wire text. Only the real private DTO is closed. Derive the legacy key view with str(reason), producing actual built-in strings. This overrides the earlier proposed decoder at the raw detail port and costs no additional framework.
+
+Authoritative RED 38981172657/job117242121662 runs unchanged f264 production with independent authored intent: 21 expected failures and three genuine compatibility controls pass (including future wire text). A separate native observation shows the real _Position.undecidable annotation FAIL and _unresolvable_shape signature FAIL, with source evidence and two trace-valid UML findings. Two widening tests wait for the actual nominal source ports. Initial test harnesses were corrected for declared-rule provenance, canonical report envelopes and Target responsibilities before production; their fixture failures are not counted as product RED. Production diff against f264 remained empty.
+
+Deferred Context/Parameter move also has an actual derived browser consumer: tools/browser_graph_protocol.py imports these enums through architecture_graph. A later canonical move to facts must move authored QNames and required Report-CI routing for facts.py together, preserve Graph facade identity, and keep AST/evidence DTOs distinct. No second registry is needed.
