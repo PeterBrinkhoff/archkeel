@@ -70,7 +70,7 @@ pr-test:
 		tests/test_onboarding_demo.py tests/test_pypi_description.py tests/test_typescript_onboarding.py \
 		tests/test_unknown_positions.py tests/test_inside_rule_coverage.py tests/test_report_159_160.py \
 		tests/test_target_navigation_graph.py \
-		tests/test_absent_import_namespace.py tests/test_string_comparison_observation.py
+		tests/test_absent_import_namespace.py tests/test_string_comparison_observation.py tests/test_local_string_comparisons.py
 
 pr-report-test:
 	$(UV) run --locked --with playwright==$(PLAYWRIGHT_VERSION) python -m pytest -n 2 --dist=loadfile --max-worker-restart=0 -q \
