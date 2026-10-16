@@ -3,7 +3,7 @@
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox syntax for tracking.
 
 **Goal:** Give the existing private boundary-position reason port one nominal owner and prove field/return intent natively.
-**Architecture:** _UndecidableReason replaces the existing twelve-item inventory beside _Position. Existing producers and consumers share it; plain-string wire/legacy views remain derived. No new source module, graph dependency, decoder framework or checker capability.
+**Architecture:** _Cause replaces the existing twelve-item inventory beside _Position. Existing producers and consumers share it; plain-string wire/legacy views remain derived. No new source module, graph dependency, decoder framework or checker capability.
 **Tech Stack:** Python 3.11, dataclasses/StrEnum, existing HRC observer and codec, hosted GitHub Actions.
 **Spec:** docs/architecture/boundary-reason-types.md
 
@@ -28,7 +28,7 @@
 ## Task 1: Checkpoint native RED and independent intent
 
 Files: new tests/test_boundary_reason_types.py; docs/architecture/contracts/check.json; this plan and spec.
-Interfaces: consume actual _Position and _unresolvable_shape; authored Target requires _Position.undecidable: _UndecidableReason | None and function return _UndecidableReason.
+Interfaces: consume actual _Position and _unresolvable_shape; authored Target requires _Position.undecidable: _Cause | None and function return _Cause.
 
 - [x] Add nominal identity/legacy normalization/None/replace/frozen/invalid-input tests plus existing wire-view controls.
 - [x] Add independent planned private field/return entities to the existing check Target before product edits.
@@ -38,7 +38,7 @@ Interfaces: consume actual _Position and _unresolvable_shape; authored Target re
 ## Task 2: Minimal existing-owner implementation and GREEN
 
 Files: only src/archkeel/check/evaluation/boundary_types.py for production.
-Interfaces: private _UndecidableReason(StrEnum); _Position.undecidable: _UndecidableReason | None; _unresolvable_shape(annotation: str) -> _UndecidableReason.
+Interfaces: private _Cause(StrEnum); _Position.undecidable: _Cause | None; _unresolvable_shape(annotation: str) -> _Cause.
 
 - [x] Replace the twelve-item inventory with the enum and a derived tuple of plain string values.
 - [x] Normalize the existing optional reason once in _Position.__post_init__, preserving frozen/slots and valid legacy input.
@@ -77,3 +77,7 @@ The first full native source comparison found the planned private enum missing f
 Focused GREEN38981913468/job117244486387 proves all26 private-port, ingress, legacy-wire and two actual field/return mutation controls; Ruff/format and strict mypy142 are green. Existing Boundary/PublicAPI/finding-ID/historical cases plus hygiene:2094PASS/24SKIP in38981565403/job117243382324. The fullsuite on the preceding policy declaration is still running; its real placement failure is not a claimed final success.
 
 Real separate runtime copies differing only in boundary_types.py produce exact all-field E/F/H-uml/K-python-realworld payloads except analyzer.code_digest (the real engine source hash); after replacing only that declared metadata value, canonical bytes match5572/145970/56632/1349592. Run38982078572/job117245003629, artifact12081243387. Findings/evidenceIDs/UNKNOWNs are exact. E-runtime retains its actual3.12-vs3.11 runtime diagnostic. Single ordered elapsed times are controls, not a benchmark or speedup claim.
+
+The formatted long enum qualifier initially pushed the existing80/79-line named/owned-type functions over the repository's80-line ceiling. No allowance was added. The new private vocabulary is now context-local _Cause; EXTERNAL and UNRESOLVED retain the same external_type/unresolved_name wire values. Removing formatter-only magic trailing commas restores both existing function lengths exactly, with no new helper, branch or DTO. Candidate38983828894/job117250560703 is green:28 native/legacy controls plus11hygiene checks, Ruff and strict mypy142. Production is now nine net lines in the same owner. This supersedes the earlier verbose private type spelling; no public wire schema changes.
+
+The previous source state's AST proof38983283184/job117248843746 paired all3394 unresolved/PARTIAL records, including360 in the moved owner, with exact targets/reasons/multiplicity and actual source_definition_id/evidence references mapped through real ParsedModule/LexicalScopes and structural AST paths; no whole-module filtering. Artifact12081642871 preserves all original records/citations plus those correspondences. The concise final source requires its own fresh observation and proof before final approval.

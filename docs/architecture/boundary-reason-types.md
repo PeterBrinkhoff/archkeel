@@ -4,7 +4,7 @@ The existing Core boundary_types evaluator owns the closed reasons for one annot
 
 The twelve wire spellings and report order remain missing_annotation, inherited_surface, forward_reference, dotted_name, generic, union, ambiguous_binding, ambiguous_facade, unresolved_name, external_type, nested_type and other. nested_type is currently a historical zero-count slot; retaining it claims no new capability.
 
-A private _UndecidableReason(StrEnum) lives beside _Position in boundary_types.py. The frozen _Position.undecidable field is _UndecidableReason | None; valid legacy string inputs normalize once at that DTO ingress, and unknown reasons fail closed. _unresolvable_shape returns the same owned type. Producers and the four existing consumers use owned members. The existing _UNDECIDABLE_KINDS facade derives plain built-in strings with str(reason) from that one owner for wire/legacy compatibility.
+A private _Cause(StrEnum) lives beside _Position in boundary_types.py. The frozen _Position.undecidable field is _Cause | None; valid legacy string inputs normalize once at that DTO ingress, and unknown reasons fail closed. _unresolvable_shape returns the same owned type. Producers and the four existing consumers use owned members. The existing _UNDECIDABLE_KINDS facade derives plain built-in strings with str(reason) from that one owner for wire/legacy compatibility.
 
 The evaluator's open diagnostic text, annotation/name/path data and other public API limit reasons remain distinct. ir.decisions stays a dynamic historical wire consumer and never imports check. This stage introduces no new analyzer/coverage authority, module-wide string guard, exemption or budget.
 
