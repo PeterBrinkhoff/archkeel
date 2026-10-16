@@ -49,14 +49,14 @@ No import edge is added: parse -> syntax, resolve -> syntax + snapshot, collect 
 
 - [x] Publish new Visibility ingress/derived binding field in the existing Dart Target before implementing them; actual source-widening mutations must fail under unchanged authored intent.
 - [x] Implement the four owner changes without extra state, reader-side private-name parsing, duplicate enum/string inventories or an AST framework.
-- [ ] Run new and existing Dart parser/resolver/directive/snapshot/SDK-free/partial-UML/false-positive/differential controls, Ruff, formatter and strict mypy.
+- [x] Run new and existing Dart parser/resolver/directive/snapshot/SDK-free/partial-UML/false-positive/differential controls, Ruff, formatter and strict mypy.
 - [x] Prove all five existing whole-module Python guards pass under the real prefix observer and injected raw literal/Final/prefix/suffix controls remain trace-valid FAIL.
 
 ## Task 3: Freeze and independent review
 
-- [ ] Compare complete actual Compass syntax/Facts/targets and relevant UNKNOWN semantics to the exact predecessor; explain any genuine corrections.
+- [x] Compare complete actual Compass syntax/Facts/targets and relevant UNKNOWN semantics to the exact predecessor; explain any genuine corrections.
 - [ ] Run Compass complete reports/browser acceptance, existing project suite and normal baseline/amendment/no-write with no increased budget.
-- [ ] Record exact product/Target/test costs and parser/resolver runtime; freeze clean source without workflows.
+- [x] Record exact product/Target/test costs and parser/resolver runtime; freeze clean source without workflows.
 - [ ] Hand source and genuine RED/GREEN evidence to Root for independent final Astra; create a Part of #542 PR only after approval, no self-merge.
 
 ## Decisions
@@ -81,3 +81,15 @@ Current focused controls84PASS; actual Compass reports including Chromium genera
 Three alternating full collection samples measured H0.08574s ->0.09103s (+6.17%) and Compass6.78348s ->7.43895s (+9.66%). This is a regression, not an improvement claim. Root approved actual profiling first; only if the removed punctuation precheck caused repeated file-wide CALL scans may a resolver-local index of those same real facts replace the scan without any new DTO, inference, semantics or authority. #570 remains independent.
 
 Actual cProfile38977608002/job117230695674 identifies repeated PurePosixPath allocation as the main regression: 57365 resolve_uri calls take1.87s before vs3.42s after under profiling; current _source_at has41975 calls and1.15s cumulative cost. Parser11.75s vs11.82s is nearly unchanged. Root approved a small instance-local cache of actual PurePosixPath values in the existing Resolver; lifetime follows one immutable source snapshot, path spellings remain open data, no resolved targets are cached and no receiver index is added. _module_path becomes a private Resolver method so it consumes that same cached ingress instead of allocating a second path representation.
+
+## Final frozen source and evidence
+
+Source/Target/tests are frozen at f31b4c1bdabbf81ec47aed71ac0f91cdb869909d, against 0e3b8a7f62b9b13417cda78e11b52d0de82986cd. Final run38978028432 has all five jobs GREEN:84 focused controls and actual Source mutations, Ruff,9 formats, strict mypy139;317 existing Dart tests;4 actual Compass reports including Chromium detail navigation; complete H226636B/Compass10669901B Fact wire and all per-constructor syntax/citation proofs; native real-source metrics and five guards. The focused selection excludes the unrelated global self-run fixture while the independent TypeScript20 predicates are not yet migrated. That fixture is not weakened, skipped in product tests or claimed green; Root owns the combined activation.
+
+Native frozen observer f624 runs on the actual clean revisions:51 ->20 violations (all31 Dart predicate violations removed, TypeScript20 remain),865 ->840 unresolved calls,52 ->52 typing,58 ->58 UNKNOWN,18692 ->18691 total calls. All five existing Dart whole-module rules are evaluation-proven PASS. Complete 30-position/20-route/8-UML kind/subjects/rule_ids/data projections agree, excluding IDs/citations. Artifact12079169365 contains both full observations. No whole-run PASS, per-call/PARTIAL identity equality or increased analysis capability is claimed.
+
+Exact production cost is +69 net lines across five existing owner files; authored Target +56, tests +228 net, spec +24, plan documentation additional. No source module or dependency is added. The private path cache is seven net lines beyond the earlier migration, does not cache resolutions, and has exactly one Resolver/snapshot lifetime.
+
+Final concrete cost run38978331605/job117233017290 loads all six actual Dart modules from original0e3, uncached252040 and cachedf31 into a common runtime on one runner. All three complete Compass10669901B Fact streams agree. Six balanced alternating samples give medians original6.81015s, uncached7.48177s, cached7.15162s: cache -4.41% against the exact uncached change, final still +5.01% against the original. This bounds a real regression and does not claim a speedup. The separate five-pair H measurement was +4.21%,1.83ms. No further performance infrastructure is proposed.
+
+Root received the clean source snapshot for the combined TypeScript input/prefix observer/Dart activation. Independent Astra review is queued; normal committed baseline amendment/receipt/no-write and final Main restack remain pending on that combined source. No baseline budget is changed in this branch. #570 remains the separate DraftPR572 with independent approval and its own source delta.
