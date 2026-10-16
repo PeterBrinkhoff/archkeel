@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import builtins
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -30,7 +31,7 @@ class Badge:
 
     def __post_init__(self) -> None:
         if not isinstance(self.state, BadgeState):
-            object.__setattr__(self, "state", BadgeState(self.state))
+            builtins.object.__setattr__(self, "state", BadgeState(self.state))
 
 
 def badge(value: str) -> Badge:

@@ -64,7 +64,12 @@ def test_legacy_summary_exports_are_the_same_owned_objects():
     assert summary.badge is summary_badges.badge
     assert summary.State is summary_badges.BadgeState
     assert summary.BadgeState is summary_badges.BadgeState
-    assert {state.value for state in summary_badges.BadgeState} == {"pass", "fail", "info", "unknown"}
+    assert {state.value for state in summary_badges.BadgeState} == {
+        "pass",
+        "fail",
+        "info",
+        "unknown",
+    }
     assert summary.Badge(summary_badges.BadgeState.INFO, "i", "DRAFT").state is (
         summary_badges.BadgeState.INFO
     )
