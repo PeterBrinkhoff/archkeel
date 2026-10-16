@@ -8,8 +8,8 @@ Use the existing immutable SiteKind.BINDING port for actual local function decla
 
 ## Steps
 
-- [ ] Checkpoint real direct/closure/function-valued-variable/parameter/forward-declaration RED and unshadowed/sibling-scope positives.
-- [ ] Inspect the pinned Dart grammar and existing Site BINDING fields; keep root/top-level function semantics unchanged.
+- [x] Checkpoint real direct/closure/function-valued-variable/parameter/forward-declaration RED and unshadowed/sibling-scope positives.
+- [x] Inspect the pinned Dart grammar and existing Site BINDING fields; keep root/top-level function semantics unchanged.
 - [ ] Implement the smallest parser producer and resolver consumers after RED.
 - [ ] Run native focused and existing parser/resolver/false-positive tests; no unsafe global-target expectations.
 - [ ] Compare actual Compass/H canonical Facts, classify any changed resolution evidence honestly and keep UNKNOWN conservative.
@@ -18,3 +18,5 @@ Use the existing immutable SiteKind.BINDING port for actual local function decla
 ## Constraints
 
 The branch starts from actual 0e3b8a7f62b9b13417cda78e11b52d0de82986cd, independently of #542 grammar changes. No borrowed Target/receipt/Source authority, casts, Any, ignores, exemptions or budgets. Auxiliary workflows stay only on verify refs.
+
+Actual expanded native RED38977191644/job117229372821:7 failed and4 unrelated-scope controls passed. The real pinned grammar reports local_function_declaration -> lambda_expression -> function_signature/function_body. Existing constructor and function-valued variable/parameter bindings are bypassed only by the chained construction path. Forward local callables remain lexical names throughout their written scope; the negative _has_lexical_binding check therefore does not require a preceding declaration, while _lexical_bindings retains its preceding-position requirement for positive binding claims.
