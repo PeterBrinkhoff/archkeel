@@ -183,12 +183,12 @@ def test_member_constructor_attribute_and_binding_visibility_keep_wire_semantics
         if section.name == "symbols"
         for record in section.records
     }
-    assert symbols["_Owner.named"].data.get("visibility").get("kind") == "public"
-    assert symbols["_Owner._hidden"].data.get("visibility").get("kind") == "private"
+    assert symbols["_Owner.named"].data.get("visibility_detail").get("kind") == "public"
+    assert symbols["_Owner._hidden"].data.get("visibility_detail").get("kind") == "private"
     attributes = {
         item.get("name"): item for item in symbols["_Owner"].data.get("attribute_declarations")
     }
     assert attributes["_field"].get("visibility").get("kind") == "private"
     assert attributes["field"].get("visibility").get("kind") == "public"
-    assert symbols["_local"].data.get("visibility").get("kind") == "private"
-    assert symbols["local"].data.get("visibility").get("kind") == "public"
+    assert symbols["_local"].data.get("visibility_detail").get("kind") == "private"
+    assert symbols["local"].data.get("visibility_detail").get("kind") == "public"
