@@ -20,6 +20,7 @@ _RULE = {
     [
         ('flag = "--json"', "flag in value", "membership"),
         ('flag = "--json"', "flag not in value", "membership"),
+        ('flag = "--json"; ready = True', "flag in value", "membership"),
         ('flag = b"--json"', "flag in value", "membership"),
         ('flag = "--json"', "value == flag", "compare"),
         ('flag = "--json"', "flag != value", "compare"),
