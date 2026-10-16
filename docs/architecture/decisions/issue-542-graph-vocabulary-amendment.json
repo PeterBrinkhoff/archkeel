@@ -1,0 +1,9 @@
+{
+  "after_baseline_digest": "cf6163c6f1f29d9d30733a11f24464591114e417fef6a1bc2f02a6027deb2714",
+  "after_digest": "a99efdb99e83f97bb0444bec8edf310f1b7e92d9496dea3d2042b37ea9b9cd7f",
+  "before_baseline_digest": "cf6163c6f1f29d9d30733a11f24464591114e417fef6a1bc2f02a6027deb2714",
+  "before_digest": "8aea00dcba2312ec6aadf842ec9a50ad252af4f2dab9cc3684dcdcc909c888e8",
+  "decided_by": "ake2l",
+  "rationale": "Use shared graph vocabularies with the reviewed proof, layout and repetition corrections while preserving merged physical source evidence and measured debt.",
+  "schema_version": "2.0.0"
+}
