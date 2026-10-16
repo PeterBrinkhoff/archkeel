@@ -774,9 +774,7 @@ class _Collection:
             "name": member.name,
             "annotation": member.annotation,
             "visibility": {
-                "kind": member.visibility.value
-                if member.visibility
-                else Visibility.PUBLIC.value,
+                "kind": member.visibility.value if member.visibility else Visibility.PUBLIC.value,
                 "basis": "language",
                 "spelling": member.name,
             },
@@ -795,7 +793,6 @@ class _Collection:
             ],
             "static": member.static,
         }
-
 
     def _base_record(
         self,

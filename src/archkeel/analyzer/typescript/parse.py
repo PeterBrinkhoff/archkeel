@@ -435,7 +435,11 @@ def _inner(source: _Source) -> tuple[tuple[Definition, ...], tuple[Site, ...]]:
         name = _text(name_node) if name_node else ""
         if _supported_constructor(node):
             name = "constructor"
-        if not name or name_node is None or name_node.kind in {None, _NodeKind.COMPUTED_PROPERTY_NAME}:
+        if (
+            not name
+            or name_node is None
+            or name_node.kind in {None, _NodeKind.COMPUTED_PROPERTY_NAME}
+        ):
             continue
         if node.kind in (
             _NodeKind.METHOD_DEFINITION,
@@ -1184,7 +1188,6 @@ def _constant_definition(
     )
 
 
-
 def _variables(
     source: _Source, scopes: list[tuple[_Node, str, int]], declarations: dict[_Node, DefinitionKind]
 ) -> list[Definition]:
@@ -1249,9 +1252,7 @@ def _variables(
     ]
 
 
-def _call_site(
-    node: _Node, source: _Source, scopes: list[tuple[_Node, str, int]]
-) -> Site | None:
+def _call_site(node: _Node, source: _Source, scopes: list[tuple[_Node, str, int]]) -> Site | None:
     target = node.child_by_field_name("function") or node.child_by_field_name("constructor")
     if target is None:
         return None
@@ -1279,7 +1280,6 @@ def _call_site(
         scope_ambiguous=ambiguous_scope,
         scope_column=source.span(scope).column if scope is not None else None,
     )
-
 
 
 def _sites(
