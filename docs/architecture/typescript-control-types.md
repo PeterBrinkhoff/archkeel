@@ -32,7 +32,9 @@ entry point has already been converted into a nominal domain.
 
 Remaining migration under #542 is explicit:
 
-- `config.py`: relative-parent detection in `is_outside`, relative `extends` input in
+- `config.py`: the `Snapshot.inputs` Role Literal still becomes the shared ResolutionRole
+  only at the collector boundary; carry that nominal input role from its source owner.
+  Also migrate relative-parent detection in `is_outside`, relative `extends` input in
   `_extended`, root-prefix parsing in `_base_path`, terminal deep-glob parsing in `_discover`,
   and source/extension classifiers in `_supported` and `_shadowed`.
 - `resolve.py`: reserved `node:` in `is_builtin`, scoped `@` names in `package_name` and
