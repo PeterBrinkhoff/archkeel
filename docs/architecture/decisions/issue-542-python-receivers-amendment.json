@@ -1,0 +1,9 @@
+{
+  "after_baseline_digest": "02279ca79283191bc1137034db4191abc1850cf3f290e974ec1caed594f95600",
+  "after_digest": "4b344cc5ff29389255d987b8f1d3203cb248287a956ddce893756480a30fcc12",
+  "before_baseline_digest": "02279ca79283191bc1137034db4191abc1850cf3f290e974ec1caed594f95600",
+  "before_digest": "bbaae178f9b1f8a24a223807e338d03efa7d9d2af69613e2480ca3569b6da120",
+  "decided_by": "ake2l",
+  "rationale": "Give existing Python receiver evidence one nominal origin owner while retaining legacy constructor inputs and conservative call resolution without additional allowances.",
+  "schema_version": "2.0.0"
+}
