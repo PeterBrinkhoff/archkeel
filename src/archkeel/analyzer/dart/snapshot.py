@@ -11,17 +11,43 @@ import re
 import stat
 import sys
 from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path, PurePosixPath
-from typing import Literal
 
-from archkeel.ir.facts import ResolutionInput, ResolutionRole, dart_module_name
+from archkeel.ir.facts import (
+    ResolutionInput,
+    ResolutionRole,
+    RuntimeRequirementState,
+    dart_module_name,
+)
 from archkeel.ir.protocol import CollectionRequest
+
+
+class SnapshotProblemKind(StrEnum):
+    SOURCE_LINK = "DartSourceLink"
+    READ_ERROR = "SnapshotError"
+    MODULE_ERROR = "DartModuleError"
+    SELECTED_ROOT = "SelectedRootError"
+    CONTAINMENT = "ContainmentError"
+    EXCLUDED_TREE = "ExcludedTreeError"
+    MODULE_COLLISION = "DartModuleCollision"
+
+
+class _Platform(StrEnum):
+    WINDOWS = "win32"
+
+
+def _platform(value: str) -> _Platform | None:
+    try:
+        return _Platform(value)
+    except ValueError:
+        return None
 
 
 @dataclass(frozen=True, slots=True)
 class SnapshotProblem:
     path: str
-    kind: str
+    kind: SnapshotProblemKind
     message: str
 
 
@@ -41,9 +67,7 @@ class Snapshot:
     sources: tuple[Source, ...]
     package_name: str
     sdk_constraint: str | None
-    sdk_constraint_state: Literal[
-        "metadata_missing", "requirement_missing", "requirement_invalid", "declared"
-    ]
+    sdk_constraint_state: RuntimeRequirementState
     inputs: tuple[ResolutionInput, ...]
     problems: tuple[SnapshotProblem, ...]
     roots: tuple[str, ...]
@@ -53,10 +77,9 @@ class Snapshot:
         return {source.rel_path: source for source in self.sources}
 
 
-_GLOB = frozenset("*?[]{}!")
-_EXCLUDED_DIRS = frozenset({".dart_tool", "pubcache", ".pub-cache"})
 _PACKAGE_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _PUBSPEC_NAME = re.compile(r"^name\s*:\s*(.*?)\s*(?:#.*)?$")
+_PUBSPEC_SDK = re.compile(r"sdk")
 
 
 def _roots(values: tuple[str, ...]) -> tuple[str, ...]:
@@ -64,16 +87,10 @@ def _roots(values: tuple[str, ...]) -> tuple[str, ...]:
         raise ValueError("Dart snapshot roots must not be empty")
     result: list[str] = []
     for value in values:
-        if (
-            not value
-            or "\x00" in value
-            or "\\" in value
-            or ":" in value
-            or any(char in value for char in _GLOB)
-        ):
+        if not value or re.search(r"[\x00\\\\:*?\[\]{}!]", value) is not None:
             raise ValueError(f"unsafe Dart snapshot root: {value!r}")
         path = PurePosixPath(value)
-        if path.is_absolute() or ".." in path.parts:
+        if path.is_absolute() or any(re.fullmatch(r"\.\.", part) for part in path.parts):
             raise ValueError(f"unsafe Dart snapshot root: {value!r}")
         normalized = path.as_posix()
         if normalized not in result:
@@ -81,15 +98,17 @@ def _roots(values: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(result)
 
 
-_SDK_STATE = Literal["metadata_missing", "requirement_missing", "requirement_invalid", "declared"]
+def _unquote_scalar(value: str) -> str:
+    match = re.fullmatch(r"""(?P<quote>['\x22])(?P<value>[\s\S]*)(?P=quote)""", value)
+    return match.group("value") if match is not None else value
 
 
-def _pubspec_metadata(raw: bytes) -> tuple[str | None, str | None, _SDK_STATE]:
+def _pubspec_metadata(raw: bytes) -> tuple[str | None, str | None, RuntimeRequirementState]:
     """Read the top-level package name and environment SDK scalar without a YAML dependency."""
     try:
         lines = raw.decode("utf-8").splitlines()
     except UnicodeDecodeError:
-        return None, None, "requirement_invalid"
+        return None, None, RuntimeRequirementState.REQUIREMENT_INVALID
     name: str | None = None
     sdk: str | None = None
     environment_indent: int | None = None
@@ -107,13 +126,12 @@ def _pubspec_metadata(raw: bytes) -> tuple[str | None, str | None, _SDK_STATE]:
             if found_name is not None:
                 names += 1
                 value = found_name.group(1).strip()
-                if len(value) >= 2 and value[0] in "\"'" and value[-1] == value[0]:
-                    value = value[1:-1]
+                value = _unquote_scalar(value)
                 name = value if _PACKAGE_NAME.fullmatch(value) else None
             key, separator, value = line.partition(":")
             value = value.split("#", 1)[0].strip()
             field_indent = None
-            if key.strip() == "environment" and separator:
+            if re.fullmatch(r"\s*environment\s*", key) is not None and separator:
                 environments += 1
                 environment_indent = indent if not value.strip() else None
                 if value.strip():
@@ -124,28 +142,29 @@ def _pubspec_metadata(raw: bytes) -> tuple[str | None, str | None, _SDK_STATE]:
             if field_indent is None:
                 field_indent = indent
             field = line.strip().partition(":")
-            if field[0] == "sdk" and (indent != field_indent or "\t" in line[:indent]):
+            if _PUBSPEC_SDK.fullmatch(field[0]) is not None and (
+                indent != field_indent or re.search(r"\t", line[:indent]) is not None
+            ):
                 invalid_sdk = True
                 continue
-            if field[0] == "sdk":
+            if _PUBSPEC_SDK.fullmatch(field[0]) is not None:
                 sdk_fields += 1
                 value = field[2].strip().split(" #", 1)[0].strip()
-                if len(value) >= 2 and value[0] in "\"'" and value[-1] == value[0]:
-                    value = value[1:-1]
-                if not field[1] or not value or any(char in value for char in "{}[]&*!|"):
+                value = _unquote_scalar(value)
+                if not field[1] or not value or re.search(r"[{}\[\]&*!|]", value) is not None:
                     invalid_sdk = True
                 else:
                     sdk = value
-    state: _SDK_STATE = (
-        "requirement_invalid"
+    state: RuntimeRequirementState = (
+        RuntimeRequirementState.REQUIREMENT_INVALID
         if invalid_sdk or environments > 1 or sdk_fields > 1
-        else "declared"
+        else RuntimeRequirementState.DECLARED
         if sdk_fields == 1
-        else "requirement_missing"
+        else RuntimeRequirementState.REQUIREMENT_MISSING
     )
     if names != 1:
         name = None
-    if state == "requirement_invalid":
+    if state == RuntimeRequirementState.REQUIREMENT_INVALID:
         sdk = None
     return name, sdk, state
 
@@ -162,18 +181,21 @@ def _real_snapshot_root(root: Path) -> Path:
     return real_root
 
 
+def _regular_opener(path: str, flags: int) -> int:
+    # open(..., "rb") supplies the host binary flag. POSIX safety flags remain
+    # additive; containment and inode identity are checked before consuming bytes.
+    if _platform(sys.platform) != _Platform.WINDOWS:
+        flags |= os.O_NOFOLLOW | os.O_NONBLOCK
+    return os.open(path, flags)
+
+
 def _read_regular(path: Path, real_root: Path) -> bytes:
     expected = path.lstat()
     if not stat.S_ISREG(expected.st_mode) or not path.resolve(strict=True).is_relative_to(
         real_root
     ):
         raise OSError("input is outside snapshot or not a regular file")
-    flags = os.O_RDONLY
-    if sys.platform == "win32":
-        flags |= os.O_BINARY
-    else:
-        flags |= os.O_NOFOLLOW | os.O_NONBLOCK
-    with os.fdopen(os.open(path, flags), "rb") as stream:
+    with open(path, "rb", opener=_regular_opener) as stream:
         opened = os.fstat(stream.fileno())
         # Check the opened object before consuming bytes; the pathname may have changed.
         if not stat.S_ISREG(opened.st_mode) or not os.path.samestat(expected, opened):
@@ -191,18 +213,22 @@ def _read_source_file(
 ) -> tuple[Source, ResolutionInput] | None:
     rel = path.relative_to(root).as_posix()
     if path.is_symlink():
-        problems.append(SnapshotProblem(rel, "DartSourceLink", "source file is a symlink"))
+        problems.append(
+            SnapshotProblem(rel, SnapshotProblemKind.SOURCE_LINK, "source file is a symlink")
+        )
         return None
     try:
         content = _read_regular(path, real_root)
     except OSError as error:
-        problems.append(SnapshotProblem(rel, "SnapshotError", str(error)))
+        problems.append(SnapshotProblem(rel, SnapshotProblemKind.READ_ERROR, str(error)))
         return None
     relative = PurePosixPath(rel).relative_to(PurePosixPath(source_root)).as_posix()
     short = dart_module_name(relative)
     if short is None:
         problems.append(
-            SnapshotProblem(rel, "DartModuleError", "path is not a Dart module identifier")
+            SnapshotProblem(
+                rel, SnapshotProblemKind.MODULE_ERROR, "path is not a Dart module identifier"
+            )
         )
         return None
     source = Source(rel, f"{namespace}.{short}", content)
@@ -220,23 +246,31 @@ def _read_source_root(
 ) -> list[tuple[Source, ResolutionInput]]:
     base = root / source_root
     if base.is_symlink():
-        problems.append(SnapshotProblem(source_root, "DartSourceLink", "source root is a symlink"))
+        problems.append(
+            SnapshotProblem(
+                source_root, SnapshotProblemKind.SOURCE_LINK, "source root is a symlink"
+            )
+        )
         return []
     if not base.exists() or not base.is_dir():
         problems.append(
             SnapshotProblem(
-                source_root, "SelectedRootError", "selected root is missing or not a directory"
+                source_root,
+                SnapshotProblemKind.SELECTED_ROOT,
+                "selected root is missing or not a directory",
             )
         )
         return []
     try:
         if not base.resolve(strict=True).is_relative_to(real_root):
             problems.append(
-                SnapshotProblem(source_root, "ContainmentError", "source root escapes snapshot")
+                SnapshotProblem(
+                    source_root, SnapshotProblemKind.CONTAINMENT, "source root escapes snapshot"
+                )
             )
             return []
     except OSError as error:
-        problems.append(SnapshotProblem(source_root, "SnapshotError", str(error)))
+        problems.append(SnapshotProblem(source_root, SnapshotProblemKind.READ_ERROR, str(error)))
         return []
 
     def on_walk_error(error: OSError) -> None:
@@ -245,7 +279,7 @@ def _read_source_root(
             rel = failed.relative_to(root).as_posix()
         except ValueError:
             rel = source_root
-        problems.append(SnapshotProblem(rel, "SnapshotError", str(error)))
+        problems.append(SnapshotProblem(rel, SnapshotProblemKind.READ_ERROR, str(error)))
 
     result: list[tuple[Source, ResolutionInput]] = []
     for directory, dirnames, filenames in os.walk(base, followlinks=False, onerror=on_walk_error):
@@ -269,16 +303,20 @@ def _safe_subdirectories(
     for name in sorted(dirnames):
         path = current / name
         rel = path.relative_to(root).as_posix()
-        if name in _EXCLUDED_DIRS:
+        if re.fullmatch(r"(?:\.dart_tool|pubcache|\.pub-cache)", name) is not None:
             problems.append(
                 SnapshotProblem(
                     rel,
-                    "ExcludedTreeError",
+                    SnapshotProblemKind.EXCLUDED_TREE,
                     "selected source tree contains excluded generated/cache files",
                 )
             )
         elif path.is_symlink():
-            problems.append(SnapshotProblem(rel, "DartSourceLink", "source directory is a symlink"))
+            problems.append(
+                SnapshotProblem(
+                    rel, SnapshotProblemKind.SOURCE_LINK, "source directory is a symlink"
+                )
+            )
         else:
             result.append(name)
     return result
@@ -286,7 +324,7 @@ def _safe_subdirectories(
 
 def _read_pubspec(
     root: Path, real_root: Path
-) -> tuple[str, str | None, _SDK_STATE, ResolutionInput]:
+) -> tuple[str, str | None, RuntimeRequirementState, ResolutionInput]:
     pubspec = root / "pubspec.yaml"
     if not os.path.lexists(pubspec) or pubspec.is_symlink():
         raise SnapshotError("regular pubspec.yaml is required inside the snapshot")
@@ -312,7 +350,9 @@ def _collision_problems(sources: list[Source], problems: list[SnapshotProblem]) 
             for rel in paths:
                 problems.append(
                     SnapshotProblem(
-                        rel, "DartModuleCollision", f"{module} maps from {', '.join(sorted(paths))}"
+                        rel,
+                        SnapshotProblemKind.MODULE_COLLISION,
+                        f"{module} maps from {', '.join(sorted(paths))}",
                     )
                 )
 

@@ -6,18 +6,16 @@
 from __future__ import annotations
 
 import ast
+import builtins
 import symtable
 import sys
 from dataclasses import dataclass, field
-from typing import Literal, TypeAlias
 
 from archkeel.ir.facts import stable_id
 
+from .binding_types import BindingKind as BindingKind
+from .binding_types import CompilerScopeKind, compiler_scope_kind, lexical_import_kind
 from .source import DefinitionNode, ParsedModule, control_flow_contexts, definition_id, location
-
-BindingKind: TypeAlias = Literal[
-    "unknown", "local", "unbound", "declaration", "module", "symbol", "mixed"
-]
 
 
 @dataclass(slots=True)
@@ -34,8 +32,11 @@ class Scope:
 class NameBinding:
     owner: Scope | None
     targets: tuple[str, ...] = ()
-    kind: BindingKind = "unknown"
+    kind: BindingKind = BindingKind.UNKNOWN
     uncertain: bool = False
+
+    def __post_init__(self) -> None:
+        builtins.object.__setattr__(self, "kind", BindingKind(self.kind))
 
 
 class LexicalScopes(ast.NodeVisitor):
@@ -80,7 +81,10 @@ class LexicalScopes(ast.NodeVisitor):
         while parent is not None:
             if parent.table is None:
                 return None
-            if parent.table.get_type() == "function":
+            kind = compiler_scope_kind(parent.table.get_type())
+            if kind is None:
+                return None
+            if kind is CompilerScopeKind.FUNCTION:
                 try:
                     binding = parent.table.lookup(name)
                 except KeyError:
@@ -241,17 +245,17 @@ class LexicalScopes(ast.NodeVisitor):
         for site in sites:
             if isinstance(site, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
                 targets.add(f"{owner.qualified_name}.{site.name}")
-                kinds.add("declaration")
+                kinds.add(BindingKind.DECLARATION)
             elif isinstance(site, ast.Import | ast.ImportFrom):
                 alias = self.module.import_aliases.get(site, {}).get(name)
                 if alias is not None:
                     targets.add(alias.target)
-                    kinds.add(alias.kind)
+                    kinds.add(lexical_import_kind(alias.kind))
         if targets:
             return NameBinding(
                 owner,
                 tuple(sorted(targets)),
-                next(iter(kinds)) if len(kinds) == 1 else "mixed",
+                next(iter(kinds)) if len(kinds) == 1 else BindingKind.MIXED,
                 len(sites) != 1
                 or len(targets) != 1
                 or any(control_flow_contexts(site, self.parents) for site in sites),
@@ -259,7 +263,7 @@ class LexicalScopes(ast.NodeVisitor):
         if sites or owner is not self.root:
             return NameBinding(
                 owner,
-                kind="local",
+                kind=BindingKind.LOCAL,
                 uncertain=len(sites) != 1
                 or any(control_flow_contexts(site, self.parents) for site in sites),
             )
@@ -269,7 +273,7 @@ class LexicalScopes(ast.NodeVisitor):
             for site in sites
         ):
             return NameBinding(owner)
-        return NameBinding(owner, kind="unbound")
+        return NameBinding(owner, kind=BindingKind.UNBOUND)
 
     def receiver_class(self, binding: NameBinding, name: str) -> str | None:
         owner = binding.owner

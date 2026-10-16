@@ -6,22 +6,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Final, Literal, TypeAlias
+from typing import Final, TypeAlias
 
 from archkeel.ir.measurements import compare_measurements
 from archkeel.ir.model import DraftedComponentSize, RunResult
 
-State: TypeAlias = Literal["pass", "fail", "info", "unknown"]
+from .summary_badges import Badge as Badge
+from .summary_badges import BadgeState as BadgeState
+from .summary_badges import badge as badge
+
+State: TypeAlias = BadgeState
 Comparison: TypeAlias = tuple[str, str, str, str]
 # AD-100: a rejected run names this many unresolved call sites; the JSON result names all.
 _CALL_SITES_SHOWN: Final = 5
-
-
-@dataclass(frozen=True, slots=True)
-class Badge:
-    state: State
-    symbol: str
-    label: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,18 +39,6 @@ class Summary:
     claims: str = ""
     # AD-100: a heading, then one line per unresolved call site; empty without failures.
     call_sites: tuple[str, ...] = ()
-
-
-def badge(value: str) -> Badge:
-    if value == "PASS":
-        return Badge("pass", "✓", "PASS")
-    if value == "FAIL":
-        return Badge("fail", "×", "FAIL")
-    if value == "UNKNOWN":
-        return Badge("unknown", "?", "UNKNOWN")
-    if value == "n/a":
-        return Badge("info", "i", "NOT APPLICABLE")
-    return Badge("unknown", "?", "NOT CHECKED")
 
 
 def report_violates_rules(result: RunResult) -> bool:
@@ -95,12 +80,16 @@ def _decision_badge(result: RunResult) -> Badge:
         and result.observation_complete == "PASS"
         and result.exit_code == 2
     ):
-        return badge("FAIL") if result.declared_rules == "FAIL" else Badge("fail", "×", "REJECT")
+        return (
+            badge("FAIL")
+            if result.declared_rules == "FAIL"
+            else Badge(BadgeState.FAIL, "×", "REJECT")
+        )
     if result.exit_code == 0:
-        return Badge("pass", "✓", "PASS")
+        return Badge(BadgeState.PASS, "✓", "PASS")
     if result.exit_code == 1:
-        return Badge("fail", "×", "REJECT")
-    return Badge("unknown", "?", "NOT CHECKED")
+        return Badge(BadgeState.FAIL, "×", "REJECT")
+    return Badge(BadgeState.UNKNOWN, "?", "NOT CHECKED")
 
 
 def _agent_decisions_line(result: RunResult) -> str:
@@ -370,7 +359,7 @@ def init_summary(result: RunResult) -> Summary:
                 f"\n\nObserved {cycle_edges} cycle edge position(s). Review these cycles; "
                 "init does not draft no_component_cycles when components already cycle."
             )
-    decision = Badge("info", "i", "DRAFT") if result.exit_code == 0 else report.decision
+    decision = Badge(BadgeState.INFO, "i", "DRAFT") if result.exit_code == 0 else report.decision
     return Summary(decision, sentence, report.verdicts[:1], ())
 
 

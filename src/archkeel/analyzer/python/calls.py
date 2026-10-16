@@ -13,7 +13,13 @@ from archkeel.ir.facts import EvidenceClass, stable_id
 from archkeel.ir.facts_codec import RawData as RecordData
 from archkeel.ir.facts_codec import RawEvidence, RawRecord, classified
 
-from .receiver_types import ReceiverType, annotation_receiver_type, literal_receiver_type
+from .binding_types import BindingKind
+from .receiver_types import (
+    ReceiverOrigin,
+    ReceiverType,
+    annotation_receiver_type,
+    literal_receiver_type,
+)
 from .resolve import SymbolIndex, call_result_type, dotted_expression, resolve_name
 from .scopes import LexicalScopes
 from .source import (
@@ -48,8 +54,8 @@ def _bind_receiver(
     if existing is None or candidate is None or existing.type_name != candidate.type_name:
         receivers[name] = None
         return
-    if existing.origin == "literal" or candidate.origin == "literal":
-        receivers[name] = ReceiverType(existing.type_name, "literal")
+    if existing.origin is ReceiverOrigin.LITERAL or candidate.origin is ReceiverOrigin.LITERAL:
+        receivers[name] = ReceiverType(existing.type_name, ReceiverOrigin.LITERAL)
 
 
 def _void_targets(receivers: dict[str, ReceiverType | None], target: ast.expr) -> None:
@@ -71,14 +77,14 @@ def _value_receiver_type(
     """Type an assigned value: a literal proves itself, a call result is documented (AD-40)."""
     literal_type = literal_receiver_type(value)
     if isinstance(value, ast.Call) and isinstance(value.func, ast.Name):
-        if scopes.lookup(value.func, value.func.id).kind != "unbound":
+        if scopes.lookup(value.func, value.func.id).kind is not BindingKind.UNBOUND:
             literal_type = None
     if literal_type:
-        return ReceiverType(literal_type, "literal")
+        return ReceiverType(literal_type, ReceiverOrigin.LITERAL)
     if isinstance(value, ast.Call):
         result_type = call_result_type(value, receiver_types=receivers, scopes=scopes)
         if result_type:
-            return ReceiverType(result_type, "documented")
+            return ReceiverType(result_type, ReceiverOrigin.DOCUMENTED)
     return None
 
 
@@ -93,7 +99,9 @@ def _local_receiver_types(node: FunctionNode, scopes: LexicalScopes) -> dict[str
     for argument in (*arguments.posonlyargs, *arguments.args, *arguments.kwonlyargs):
         type_name = annotation_receiver_type(annotation_text(argument.annotation))
         if type_name:
-            _bind_receiver(receivers, argument.arg, ReceiverType(type_name, "annotation"))
+            _bind_receiver(
+                receivers, argument.arg, ReceiverType(type_name, ReceiverOrigin.ANNOTATION)
+            )
     for statement in own_scope(node):
         scope = scopes.by_node.get(statement)
         if scope is None or scope.node is not node:
@@ -106,7 +114,11 @@ def _local_receiver_types(node: FunctionNode, scopes: LexicalScopes) -> dict[str
             )
             if candidate is None:
                 annotated_type = annotation_receiver_type(annotation_text(statement.annotation))
-                candidate = ReceiverType(annotated_type, "annotation") if annotated_type else None
+                candidate = (
+                    ReceiverType(annotated_type, ReceiverOrigin.ANNOTATION)
+                    if annotated_type
+                    else None
+                )
             _bind_receiver(receivers, statement.target.id, candidate)
         elif isinstance(statement, ast.Assign):
             candidate = _value_receiver_type(statement.value, receivers, scopes)
