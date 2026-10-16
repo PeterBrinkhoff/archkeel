@@ -102,9 +102,16 @@ def test_reader_retains_raw_and_frozen_nested_json_offshapes():
     raw = {"future": [None, False, 3.5, {"method_kind": "static"}]}
     for value in (raw, list(raw.values()), facts_codec.freeze_data(raw)):
         assert facts.parse_method_kind(value) is None
-    data = {"method_kind": raw, "receiver_parameter": "self", "name": "make",
-            "parameters": [{"name": "self", "annotation": "object"},
-                           {"name": "value", "annotation": "int"}], "returns": "str"}
+    data = {
+        "method_kind": raw,
+        "receiver_parameter": "self",
+        "name": "make",
+        "parameters": [
+            {"name": "self", "annotation": "object"},
+            {"name": "value", "annotation": "int"},
+        ],
+        "returns": "str",
+    }
     assert _method_signature_positions(data) == [("value", "int"), ("return", "str")]
 
 

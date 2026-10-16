@@ -1,6 +1,6 @@
 # Typed Method Descriptor Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Share nominal method kinds and Python descriptor proof without changing wire data or receiver semantics.
 
@@ -36,28 +36,28 @@
 
 **Interfaces:** MethodDescriptor.method_kind:MethodKind; signature_decorators_proven/source_final_method_binding:bool; property_binding:PropertyBinding|None. parse_method_kind(value:JsonValue | RawJson | MethodKind)->MethodKind|None; method_descriptor(module,node,parent)->MethodDescriptor; method_descriptor_data(descriptor:MethodDescriptor)->RawData.
 
-- [ ] Add independent Target entities for the DTO, fields, decoder, writer and actual Source return.
-- [ ] Add nominal Source/strict DTO/native annotation mutation RED tests and actual scoped dispatch observations.
-- [ ] Add baseline compatibility controls for decorator ordering, receiver selection, graph modifiers and opaque wire tags.
-- [ ] Run hosted RED; inspect expected assertions without collection/fixture errors, and commit.
+- [x] Add independent Target entities for the DTO, fields, decoder, writer and actual Source return.
+- [x] Add nominal Source/strict DTO/native annotation mutation RED tests and actual scoped dispatch observations.
+- [x] Add baseline compatibility controls for decorator ordering, receiver selection, graph modifiers and opaque wire tags.
+- [x] Run hosted RED; inspect expected assertions without collection/fixture errors, and commit.
 
 ### Task 2: Implement only descriptor controls
 
 **Files:** src/archkeel/ir/{facts,facts_codec,facts_validation,source_graph}.py; src/archkeel/analyzer/python/source.py; src/archkeel/check/evaluation/boundary_types.py.
 
-- [ ] Add nominal enum/DTO and conservative reader in facts without a codec import.
-- [ ] Add thin writer preserving property-field omission; keep old Source raw port as wrapper.
-- [ ] Convert Source proof consumers to descriptor fields and one provider identity table, retaining proof/order.
-- [ ] Convert only method-kind decisions in Core/graph/property/Dart validation to the same nominal reader.
-- [ ] Run new and existing method/property/protocol/native tests, exact wire checks, Ruff/mypy.
+- [x] Add nominal enum/DTO and conservative reader in facts without a codec import.
+- [x] Add thin writer preserving property-field omission; keep old Source raw port as wrapper.
+- [x] Convert Source proof consumers to descriptor fields and one provider identity table, retaining proof/order.
+- [x] Convert only method-kind decisions in Core/graph/property/Dart validation to the same nominal reader.
+- [x] Run new and existing method/property/protocol/native tests, exact wire checks, Ruff/mypy.
 
 ### Task 3: Freeze measured evidence for independent review
 
 **Files:** this plan's evidence; normally generated amendment, with only resolved baseline debt ratcheted if needed.
 
-- [ ] Run normal writer and NoWrite/replay without --accept-new or increased budgets.
-- [ ] Compare unresolved/PARTIAL sites, targets, multiplicity and full UNKNOWN payloads against the exact base.
-- [ ] Export/apply formatting; freeze a clean carrier without hosted verification workflows.
+- [ ] Run normal writer and NoWrite/replay without --accept-new or increased budgets. Normal writer and initial NoWrite are green; final receipt replay remains pending.
+- [x] Compare unresolved/PARTIAL sites, targets, multiplicity and full UNKNOWN payloads against the exact base.
+- [x] Export/apply formatting; freeze a clean carrier without hosted verification workflows.
 - [ ] Hand off exact SHA/blob/run evidence for independent Astra and parent full integration regression.
 
 ## Execution ledger
@@ -71,3 +71,31 @@ raw/frozen JSON value types plus MethodKind. Move the existing RawJson definitio
 facts and preserve facts_codec.RawJson as the identical public reexport. Add an
 independent Target parameter constraint and establish RED before this correction.
 No measurement policy, ceiling, wire validation or conservative None behavior changes.
+
+Verified evidence before clean freeze:
+- Original actual RED: 38975040658 / 117222331986, 42 expected failures,
+  30 compatibility controls and 227 existing proof/graph tests passed.
+- Honest JSON-port RED: 38976685328 / 117227707123, two expected failures
+  (missing upstream RawJson and mismatching authored parameter), 30 controls passed.
+- Corrected focused GREEN: 38976831326 / 117228178997, 984 passed / 5 skipped;
+  Ruff format/check and mypy 148 source files passed.
+- Native/writer: 38976852782 / 117228251144, NoWrite and normal writer exit0,
+  diagnostics/failures empty, widenings empty. Scalars 865 unresolved calls,
+  52 typing positions, 58 unknown positions, 0 violations. Baseline bytes unchanged.
+- Deep comparison: same run / 117228250734, complete Python/Dart/TypeScript wire
+  bytes equal after only adapter.code_digest normalization. Known Dart method tags
+  include constructor/factory as well as static/instance.
+- Full UNKNOWN identity/kind/subjects/rule_ids/data payloads: 77 unchanged.
+  Typing signal kind/subjects/data payloads: 56 unchanged.
+- Calls: total 18721→18736, resolved 15327→15343, PARTIAL 2529→2528,
+  unresolved 865 unchanged. Existing properties.get partial moves from old raw
+  producer to typed producer; one repeated graph data.get partial disappears.
+- References: total 7565→7596, resolved 6609→6638, PARTIAL 956→958.
+  The two new descriptor.property_binding references have the conservative
+  same-name candidate archkeel.ir.facts.property_binding; this is a function,
+  not proof of the DTO field. No resolver authority is added.
+- Counters retain target lists, status/reason and multiplicity; only synthetic
+  comprehension/lambda physical line suffixes are normalized for site comparison.
+- Only six production files change. The canonical RawJson alias moves unchanged
+  upstream and is explicitly reexported by the existing codec port. No historical
+  JSON, new component, converter framework, schema tightening or budget increase.

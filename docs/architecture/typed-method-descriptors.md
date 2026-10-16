@@ -34,3 +34,11 @@ reexports the same alias. This names both genuine input representations without 
 facts-to-codec cycle. Arbitrary non-JSON Python objects are not a promised input domain.
 The input annotation remains visible to normal typing measurements; no alias to object
 or measurement exception hides a new broad input position.
+
+Measured against the approved base, the implementation keeps 865 unresolved calls,
+52 typing positions and 58 unknown positions with no violations. All 77 complete
+UNKNOWN payloads are unchanged. The new wire writer has two PARTIAL property_binding
+references whose existing name-based candidate is the facts.property_binding function;
+that candidate does not prove a field target. The existing properties.get PARTIAL
+moves to the typed producer; graph projection removes one repeated get call. These
+limits remain explicit; this change makes no field-resolution or whole-Source claim.

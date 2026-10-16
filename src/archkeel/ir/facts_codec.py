@@ -33,7 +33,6 @@ from .facts import (
     LocalTarget,
     MethodDescriptor,
     PropertyBinding,
-    RawJson as RawJson,
     Record,
     RecordData,
     ResolutionInput,
@@ -47,6 +46,9 @@ from .facts import (
     UnresolvedTarget,
     parse_runtime_requirement_state,
     source_dirty,
+)
+from .facts import (
+    RawJson as RawJson,
 )
 from .facts_validation import validate_source_facts
 from .protocol import (
@@ -93,6 +95,7 @@ from .type_shapes import (
     TypeUnpack,
     UnresolvedType,
 )
+
 
 def property_binding_data(binding: PropertyBinding) -> RawData:
     """Write the unchanged JSON shape; the facts owner validates its meaning."""
