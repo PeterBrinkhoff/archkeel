@@ -1,9 +1,9 @@
 {
   "after_baseline_digest": "ce0214aa53088d46512d9c71a8fe5fe51597afadb50bd8e5b6629be012533ef7",
-  "after_digest": "39b8a7a0dd6fdd6a27a805ebadf546e5754d8c53b3d18e4caa66de7e9706427c",
-  "before_baseline_digest": "02279ca79283191bc1137034db4191abc1850cf3f290e974ec1caed594f95600",
-  "before_digest": "360d24c0e65e127f2296d95b8b78ec36dd0fea7acf0ffe2b89a8e3a8dfdb4baf",
+  "after_digest": "06d0723f43e983dcaa79484650947944b6f35e4b2791edeabdfbdb426e3d48d9",
+  "before_baseline_digest": "ce0214aa53088d46512d9c71a8fe5fe51597afadb50bd8e5b6629be012533ef7",
+  "before_digest": "4860ec833a0f8c237879a924f9689001a7a908a2c302861c77493f747a5a9656",
   "decided_by": "ake2l (explicit parser/protocol typing request); Codex implementation, independent Astra review before merge",
-  "rationale": "Own exact required import ports through the existing matcher, shared nominal assessments and actual source/native controls; preserve module permissions, conservative wildcard evidence and all budgets; docs/architecture/symbol-requires-ports.md.",
+  "rationale": "Integrate the independently reviewed exact Requires symbol policy while preserving current Amendment, Property, RuleGrammar and baseline owners; docs/architecture/symbol-requires-ports.md.",
   "schema_version": "2.0.0"
 }
