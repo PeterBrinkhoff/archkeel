@@ -401,9 +401,7 @@ def encode_canonical_model(model: dict[str, RawJson]) -> dict[str, RawJson]:
     profile = _observation_profile(model)
     _validate_profile_sections(model, profile)
     excluded = {*CLASSIFIED_SECTIONS, "evidence"}
-    encoded = {
-        key: value for key, value in model.items() if _field_selected(key, excluded)
-    }
+    encoded = {key: value for key, value in model.items() if _field_selected(key, excluded)}
     section_data_fields: dict[str, list[str]] = {}
     # AD-2: rows hold the non-JSON _MISSING_VALUE sentinel until intern writes "$m".
     rows_by_section: dict[str, list[list[Any]]] = {}
