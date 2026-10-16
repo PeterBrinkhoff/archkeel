@@ -1274,6 +1274,19 @@
         "docs/architecture/typed-amendment-artifact.md"
       ],
       "decided_by": "architect"
+    },
+    {
+      "id": "IR-CONTRACT-TYPED-CONTROL",
+      "kind": "forbidden_construct",
+      "source": "archkeel.ir.codec_contract",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "Decode closed contract grammar through canonical nominal types. JSON field names and arbitrary identities remain data.",
+      "provenance": [
+        "docs/architecture/contract-rule-grammar.md"
+      ],
+      "decided_by": "architect"
     }
   ]
 }
