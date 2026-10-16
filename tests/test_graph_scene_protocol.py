@@ -90,8 +90,25 @@ def test_scene_vocabulary_is_generated_from_canonical_owners():
             "@param {Context} context @param {Options} [options] @returns {Scene}",
             "@param {Context} context @param {Options} [options] @returns {object}",
         ),
+        (
+            "report-graph-protocol.ts",
+            "case ViewMode.REVIEW: return ViewMode.DIAGRAM;",
+            "case ViewMode.REVIEW: return ViewMode.REVIEW;",
+        ),
+        (
+            "report-graph-protocol.ts",
+            "export function projectViewMode(value: ViewMode): ProjectionMode {",
+            "export function projectViewMode(value: ViewMode): ViewMode {",
+        ),
     ],
-    ids=["raw-field", "same-spelling-wrong-domain", "field-widening", "return-widening"],
+    ids=[
+        "raw-field",
+        "same-spelling-wrong-domain",
+        "field-widening",
+        "return-widening",
+        "evidence-mode-leaked-into-projection",
+        "projection-mode-return-widening",
+    ],
 )
 def test_actual_scene_consumer_rejects_type_mutations(tmp_path, path, before, after):
     import shutil
@@ -347,9 +364,47 @@ def test_native_projection_preserves_legacy_default_options_and_rejects_invalid_
         )
         assert result == {
             "defaults": [True] * 4,
-            "modes": [True] * 3,
+            "modes": [True] * 6,
             "invalid": [True] * 4,
         }
+    finally:
+        browser.close()
+        playwright.stop()
+
+
+@pytest.mark.parametrize(
+    ("mode", "label", "heading"),
+    [
+        ("actual", "Actual", "Observed modules"),
+        ("structure", "Structure", "Architecture structure"),
+        ("review", "Review", "Recorded findings"),
+    ],
+)
+def test_visible_evidence_views_keep_the_observed_scene(tmp_path, mode, label, heading):
+    from browser_report_support import _browser_page
+    from test_uml_rendering import _uml_report
+
+    api = pytest.importorskip("playwright.sync_api")
+    html, _ = _uml_report(tmp_path)
+    errors = []
+    playwright, browser, page = _browser_page(api, html, errors=errors)
+    try:
+        button = page.locator("#flow").get_by_role("button", name=label, exact=True)
+        api.expect(button).to_be_visible()
+        button.click()
+        page.wait_for_function(
+            "view => document.querySelector('#flow').dataset.view === view", arg=mode
+        )
+        assert not errors, errors
+        api.expect(page.locator(".flow-alternative h2")).to_have_text(heading)
+        api.expect(page.locator(".flow-alternative")).to_be_visible()
+        assert page.locator(".flow-canvas").is_hidden()
+        page.locator('[data-flow-view="diagram"]').click()
+        page.wait_for_function(
+            "() => document.querySelector('#flow').dataset.layoutState === 'ready'"
+        )
+        api.expect(page.locator(".flow-canvas")).to_be_visible()
+        assert not errors, errors
     finally:
         browser.close()
         playwright.stop()
