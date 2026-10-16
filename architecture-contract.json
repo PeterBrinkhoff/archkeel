@@ -811,7 +811,8 @@
         "archkeel.analyzer.dart.snapshot",
         "archkeel.analyzer.dart.collect",
         "archkeel.ir.diagnostics",
-        "archkeel.render.summary_badges"
+        "archkeel.render.summary_badges",
+        "archkeel.analyzer.bootstrap"
       ],
       "rationale": "Closed vocabularies belong to their domain and wire boundaries. State and source facts own shared controls; codecs own private tags; contract_version owns versions and feature availability. Python binding and receiver models own lexical controls. TypeScript and Dart syntax ports own parser DTO controls, while collectors own private states. Consumers use the published nominal types.",
       "provenance": [
@@ -1187,6 +1188,58 @@
       "rationale": "The diagnostic owner normalizes kind and code once and uses nominal decisions; parser and protocol strings have no exception.",
       "provenance": [
         "docs/architecture/typed-diagnostic-owner.md"
+      ],
+      "decided_by": "architect"
+    },
+    {
+      "id": "BOOTSTRAP-TYPED-BOOTSTRAP",
+      "kind": "forbidden_construct",
+      "source": "archkeel.analyzer.bootstrap",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "The shared bootstrap owns nominal direct-start classification; language entries use its explicit decision port.",
+      "provenance": [
+        "docs/architecture/shared-runtime-bootstrap.md"
+      ],
+      "decided_by": "architect"
+    },
+    {
+      "id": "BOOTSTRAP-TYPED-PYTHON-ENTRY",
+      "kind": "forbidden_construct",
+      "source": "archkeel.analyzer.python.entry",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "The shared bootstrap owns nominal direct-start classification; language entries use its explicit decision port.",
+      "provenance": [
+        "docs/architecture/shared-runtime-bootstrap.md"
+      ],
+      "decided_by": "architect"
+    },
+    {
+      "id": "BOOTSTRAP-TYPED-DART-ENTRY",
+      "kind": "forbidden_construct",
+      "source": "archkeel.analyzer.dart.entry",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "The shared bootstrap owns nominal direct-start classification; language entries use its explicit decision port.",
+      "provenance": [
+        "docs/architecture/shared-runtime-bootstrap.md"
+      ],
+      "decided_by": "architect"
+    },
+    {
+      "id": "BOOTSTRAP-TYPED-TYPESCRIPT-ENTRY",
+      "kind": "forbidden_construct",
+      "source": "archkeel.analyzer.typescript.entry",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "The shared bootstrap owns nominal direct-start classification; language entries use its explicit decision port.",
+      "provenance": [
+        "docs/architecture/shared-runtime-bootstrap.md"
       ],
       "decided_by": "architect"
     }
