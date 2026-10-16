@@ -28,9 +28,9 @@
 **Files:** ir/state_facts.py, ir/state_codec.py, check/evaluation/state.py, analyzer/python/state.py and necessary producers; tests/test_typed_state_protocol.py; IR/root contracts, Makefile and docs.
 **Interfaces:** FieldState uses BindingState, ReferentMutability, ObjectMutability and PropertyAssignment; AttributeAccess.access uses StateAccess. Codec owns EventKind assignment/attribute/pass.
 
-- [ ] Add nominal API, exact wire, invalid-tag and native Target/guard mutation tests.
-- [ ] Run hosted RED on unchanged production.
-- [ ] Implement owned enums, enum constructor decoding, collector and evaluator changes; serialize exact values.
+- [x] Add nominal API, exact wire, invalid-tag and native Target/guard mutation tests.
+- [x] Run hosted RED on unchanged production.
+- [x] Implement owned enums, enum constructor decoding, collector and evaluator changes; serialize exact values.
 - [ ] Add type ports, independent Target field annotations and guard for state facts and codec.
-- [ ] Run focused native/state/collection tests, Ruff, mypy, hygiene and own baseline validation.
+- [x] Run focused native/state/collection tests, Ruff, mypy, hygiene and own baseline validation.
 - [ ] Hand clean file map and evidence to parent for independent Astra review and integration.
