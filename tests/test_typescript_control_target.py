@@ -255,16 +255,48 @@ def test_native_syntax_field_widening_fails_against_fixed_port_intent(tmp_path, 
     assert (root / "contract.json").read_bytes() == before
 
 
-@pytest.mark.parametrize("widened", [False, True], ids=["declared-group", "widened-group"])
-def test_native_profile_receipt_group_type_uses_fixed_authored_intent(tmp_path, widened):
+
+@pytest.mark.parametrize(
+    ("port", "old", "new", "aspect"),
+    [
+        (
+            "optional_sections",
+            "optional_sections: frozenset[ObservedSection]",
+            "optional_sections: frozenset[object]",
+            "annotation",
+        ),
+        (
+            "additional_optional_section_groups",
+            "additional_optional_section_groups: tuple[frozenset[ObservedSection], ...]",
+            "additional_optional_section_groups: tuple[object, ...]",
+            "annotation",
+        ),
+        (
+            "optional_section_groups",
+            "def optional_section_groups(self) -> tuple[frozenset[ObservedSection], ...]:",
+            "def optional_section_groups(self) -> tuple[object, ...]:",
+            "signature",
+        ),
+        (
+            "all_optional_sections",
+            "def all_optional_sections(self) -> frozenset[ObservedSection]:",
+            "def all_optional_sections(self) -> frozenset[object]:",
+            "signature",
+        ),
+    ],
+)
+@pytest.mark.parametrize("widened", [False, True], ids=["declared-port", "widened-port"])
+def test_native_profile_receipt_ports_use_fixed_authored_intent(
+    tmp_path, port, old, new, aspect, widened
+):
     declared = json.loads((ROOT / "docs/architecture/contracts/ir.json").read_text())
     component = next(row for row in declared["components"] if row["id"] == "TARGET-PROFILES")
-    # The fragment isolates the authored field, without claiming unrelated IR contracts.
+    # The fragment isolates the authored port, without claiming unrelated IR contracts.
     component.pop("requires")
     wanted = {
         "IR-MODULE-OBJECT-profiles",
         "IR-MODULE-OBJECT-Profile",
-        "IR-PROFILE-optional_section_groups",
+        f"IR-PROFILE-{port}",
     }
     entities = [row for row in declared["declarations"]["uml"]["entities"] if row["id"] in wanted]
     contract = {
@@ -276,10 +308,9 @@ def test_native_profile_receipt_group_type_uses_fixed_authored_intent(tmp_path, 
         },
     }
     source = (ROOT / "src/archkeel/ir/profiles.py").read_text()
-    annotation = "optional_section_groups: tuple[frozenset[ObservedSection], ...]"
-    assert annotation in source
+    assert old in source
     if widened:
-        source = source.replace(annotation, "optional_section_groups: tuple[object, ...]", 1)
+        source = source.replace(old, new, 1)
     paths = {
         "docs/architecture/language-adapter-target.md",
         "docs/architecture/module-object-grants.md",
@@ -299,12 +330,12 @@ def test_native_profile_receipt_group_type_uses_fixed_authored_intent(tmp_path, 
     model = _model(root, ScanConfig(("archkeel",), "archkeel", "contract.json", "0" * 64))
     comparison = architecture_report(model).comparison
     assert comparison is not None
-    field = [
+    assessments = [
         row
         for row in comparison.assessments
-        if row.subject_id == "IR-PROFILE-optional_section_groups" and row.aspect == "annotation"
+        if row.subject_id == f"IR-PROFILE-{port}" and row.aspect == aspect
     ]
-    assert len(field) == 1 and field[0].status == ("FAIL" if widened else "PASS")
+    assert len(assessments) == 1 and assessments[0].status == ("FAIL" if widened else "PASS")
     if widened:
         assert trace_valid_violations(model)
     assert (root / "contract.json").read_bytes() == before

@@ -434,9 +434,20 @@ def test_legacy_profile_constructor_keeps_its_atomic_group_and_codec(monkeypatch
     else:
         # Exact old positional order, including the three fields after optional_sections.
         profile = Profile(
-            TYPESCRIPT.analyzer, ".ts", frozenset(), True, True, False, False,
-            frozenset(), frozenset(), TYPESCRIPT.absent_sections, legacy,
-            frozenset({"stdlib"}), frozenset({"sdk"}), True,
+            TYPESCRIPT.analyzer,
+            ".ts",
+            frozenset(),
+            True,
+            True,
+            False,
+            False,
+            frozenset(),
+            frozenset(),
+            TYPESCRIPT.absent_sections,
+            legacy,
+            frozenset({"stdlib"}),
+            frozenset({"sdk"}),
+            True,
         )
     assert profile.optional_sections == legacy
     assert profile.optional_section_groups == (legacy,)
