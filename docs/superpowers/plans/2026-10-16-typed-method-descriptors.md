@@ -55,10 +55,10 @@
 
 **Files:** this plan's evidence; normally generated amendment, with only resolved baseline debt ratcheted if needed.
 
-- [ ] Run normal writer and NoWrite/replay without --accept-new or increased budgets. Normal writer and initial NoWrite are green; final receipt replay remains pending.
+- [x] Run normal writer and NoWrite/replay without --accept-new or increased budgets.
 - [x] Compare unresolved/PARTIAL sites, targets, multiplicity and full UNKNOWN payloads against the exact base.
 - [x] Export/apply formatting; freeze a clean carrier without hosted verification workflows.
-- [ ] Hand off exact SHA/blob/run evidence for independent Astra and parent full integration regression.
+- [x] Hand off exact SHA/blob/run evidence for independent Astra and parent full integration regression.
 
 ## Execution ledger
 
@@ -99,3 +99,16 @@ Verified evidence before clean freeze:
 - Only six production files change. The canonical RawJson alias moves unchanged
   upstream and is explicitly reexported by the existing codec port. No historical
   JSON, new component, converter framework, schema tightening or budget increase.
+
+Final frozen verification: run 38977434453 on auxiliary carrier
+58123fb3587dfc1c25d24744c3d8e849c97bf2ad, with all six production, two Target,
+new-test and receipt blobs identical to reviewed clean Source freeze 3bb8816683cf.
+- frozen-source job 117230148327: 105 descriptor/property tests passed, Ruff and mypy148 passed.
+- receipt-replay job 117230148154: exact NoWrite exit0, amendment_status valid,
+  diagnostics/failures/widenings empty; 865/52/58/0 and clean working-tree diff.
+- frozen-evidence job 117230148250: three exact canonical wire profiles equal;
+  77 full UNKNOWN payloads and 56 typing payloads unchanged; same documented
+  PARTIAL target/multiplicity deltas. Counter proof covers its explicit named
+  fields, not full AST or every possible Site record field.
+Independent Astra Source review approved 3bb8816683cf with no Critical/Important findings.
+Combined parent integration/full regression and merge remain separate gates.
