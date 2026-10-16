@@ -120,7 +120,7 @@
       "requires": [
         {
           "component": "evaluation",
-          "rationale": "Use the evaluator\u2019s public API type derivation when projecting declarations.",
+          "rationale": "Use the evaluator’s public API type derivation when projecting declarations.",
           "decided_by": "agent"
         }
       ],
@@ -429,6 +429,93 @@
           "provenance": [
             "docs/architecture/language-adapter-target.md"
           ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/boundary-reason-types.md"
+          ],
+          "id": "BOUNDARY-REASON-MODULE",
+          "kind": "module",
+          "qualified_name": "archkeel.check.evaluation.boundary_types",
+          "parent_id": "TARGET-EVALUATION",
+          "responsibilities": [
+            "Own the interpretation and diagnostic reasons of annotated boundary positions."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/boundary-reason-types.md"
+          ],
+          "id": "BOUNDARY-REASON-ENUM",
+          "kind": "enum",
+          "qualified_name": "archkeel.check.evaluation.boundary_types._UndecidableReason",
+          "parent_id": "BOUNDARY-REASON-MODULE",
+          "visibility": {
+            "kind": "private",
+            "basis": "declared"
+          }
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/boundary-reason-types.md"
+          ],
+          "id": "BOUNDARY-POSITION",
+          "kind": "class",
+          "qualified_name": "archkeel.check.evaluation.boundary_types._Position",
+          "parent_id": "BOUNDARY-REASON-MODULE",
+          "visibility": {
+            "kind": "private",
+            "basis": "declared"
+          }
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/boundary-reason-types.md"
+          ],
+          "id": "BOUNDARY-POSITION-REASON",
+          "kind": "attribute",
+          "qualified_name": "archkeel.check.evaluation.boundary_types._Position.undecidable",
+          "parent_id": "BOUNDARY-POSITION",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "annotation": "_UndecidableReason | None"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/boundary-reason-types.md"
+          ],
+          "id": "BOUNDARY-REASON-CLASSIFIER",
+          "kind": "function",
+          "qualified_name": "archkeel.check.evaluation.boundary_types._unresolvable_shape",
+          "parent_id": "BOUNDARY-REASON-MODULE",
+          "visibility": {
+            "kind": "private",
+            "basis": "declared"
+          },
+          "signature": {
+            "parameters": [
+              {
+                "name": "annotation",
+                "annotation": "str",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              }
+            ],
+            "returns": "_UndecidableReason"
+          }
         }
       ],
       "relationships": [

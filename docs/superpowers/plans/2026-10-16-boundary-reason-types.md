@@ -65,3 +65,5 @@ Separate future work: Python AST contexts and IR graph contexts share kind/branc
 ## Execution ledger
 
 Plan and read-only inventory checkpoint. No production mutation or native success is claimed yet.
+
+Ruling (Root): keep the existing open wire-detail/aggregate path unchanged. A Reason decoder there would invent new reject/default authority for future wire text. Only the real private DTO is closed. Derive the legacy key view with str(reason), producing actual built-in strings. This overrides the earlier proposed decoder at the raw detail port and costs no additional framework.
