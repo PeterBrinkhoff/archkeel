@@ -12,6 +12,7 @@ from archkeel.ir.facts import EvidenceClass, stable_id
 from archkeel.ir.facts_codec import RawData as RecordData
 from archkeel.ir.facts_codec import RawEvidence, RawRecord, classified
 
+from .scopes import LexicalScopes
 from .source import ParsedModule, add_evidence, body_is_empty, decorator_names, location
 
 _BROAD_NAMES = frozenset({"Exception", "BaseException"})
@@ -57,14 +58,20 @@ def _is_broad_type(node: ast.AST) -> bool:
 
 
 def _is_str(node: ast.expr) -> bool:
-    return isinstance(node, ast.Constant) and isinstance(node.value, str)
+    return isinstance(node, ast.Constant) and isinstance(node.value, str | bytes)
 
 
-def _str_value(node: ast.expr | None) -> str | None:
-    return node.value if isinstance(node, ast.Constant) and isinstance(node.value, str) else None
+def _str_value(node: ast.expr | None) -> str | bytes | None:
+    return (
+        node.value
+        if isinstance(node, ast.Constant) and isinstance(node.value, str | bytes)
+        else None
+    )
 
 
-def _bind_string(bindings: dict[str, str | None], name: str, value: str | None) -> None:
+def _bind_string(
+    bindings: dict[str, str | bytes | None], name: str, value: str | bytes | None
+) -> None:
     """Keep only one unambiguous binding; a second binding becomes undecidable."""
     bindings[name] = value if name not in bindings else None
 
@@ -96,7 +103,7 @@ def _is_enum_class(node: ast.ClassDef, module: ParsedModule) -> bool:
     return False
 
 
-def _unknown_assignments(node: ast.AST, values: dict[str, str | None]) -> None:
+def _unknown_assignments(node: ast.AST, values: dict[str, str | bytes | None]) -> None:
     """Mark nested assignments unknown, stopping at nested scopes."""
     for child in ast.iter_child_nodes(node):
         if isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef | ast.Lambda):
@@ -122,12 +129,12 @@ def _unknown_assignments(node: ast.AST, values: dict[str, str | None]) -> None:
 
 def _static_string_constants(
     module: ParsedModule,
-) -> tuple[dict[str, str | None], dict[str, dict[str, str | None]], set[str]]:
-    module_values: dict[str, str | None] = {}
-    class_values: dict[str, dict[str, str | None]] = {}
+) -> tuple[dict[str, str | bytes | None], dict[str, dict[str, str | bytes | None]], set[str]]:
+    module_values: dict[str, str | bytes | None] = {}
+    class_values: dict[str, dict[str, str | bytes | None]] = {}
     enum_classes: set[str] = set()
 
-    def collect(body: list[ast.stmt], prefix: str, values: dict[str, str | None]) -> None:
+    def collect(body: list[ast.stmt], prefix: str, values: dict[str, str | bytes | None]) -> None:
         for statement in body:
             if isinstance(statement, ast.Assign | ast.AnnAssign):
                 value = statement.value
@@ -176,95 +183,166 @@ def _static_string_constants(
     return module_values, class_values, enum_classes
 
 
-def _is_static_string(
-    node: ast.expr,
-    *,
-    module: ParsedModule,
-    module_values: dict[str, str | None],
-    class_values: dict[str, dict[str, str | None]],
-    enum_classes: set[str],
-) -> bool:
-    if _is_str(node):
-        return True
-    if isinstance(node, ast.Name):
-        return module_values.get(node.id) is not None
-    if not isinstance(node, ast.Attribute):
+def _literal_collections(module: ParsedModule, scopes: LexicalScopes) -> frozenset[str]:
+    """Name direct literal collections whose visible loads are only membership tests."""
+    candidates: set[str] = set()
+    for statement in module.tree.body:
+        if not isinstance(statement, ast.Assign | ast.AnnAssign):
+            continue
+        if isinstance(statement, ast.Assign) and len(statement.targets) != 1:
+            continue
+        value = statement.value
+        if not (
+            isinstance(value, ast.Tuple | ast.List | ast.Set)
+            and value.elts
+            and all(_is_str(item) for item in value.elts)
+        ):
+            continue
+        targets = statement.targets if isinstance(statement, ast.Assign) else [statement.target]
+        candidates.update(
+            target.id
+            for target in targets
+            if isinstance(target, ast.Name)
+            and module.scope_bound_names.count(target.id) == 1
+            and target.id not in module.global_names
+        )
+    parents = {
+        child: parent for parent in module.all_nodes for child in ast.iter_child_nodes(parent)
+    }
+    for node in module.all_nodes:
+        if not isinstance(node, ast.Name) or not isinstance(node.ctx, ast.Load):
+            continue
+        if node.id not in candidates or scopes.lookup(node, node.id).owner is not scopes.root:
+            continue
+        parent = parents[node]
+        if (
+            not isinstance(parent, ast.Compare)
+            or parent.comparators[-1] is not node
+            or not isinstance(parent.ops[-1], ast.In | ast.NotIn)
+        ):
+            candidates.discard(node.id)
+    return frozenset(candidates)
+
+
+def _literal_enum_body(node: ast.ClassDef) -> bool:
+    """Only ordinary literal members establish their written Enum value."""
+    for child in node.body:
+        if (
+            isinstance(child, ast.Assign)
+            and len(child.targets) == 1
+            and isinstance(child.targets[0], ast.Name)
+        ):
+            member_name: str = child.targets[0].id
+            if not member_name.startswith("_") and _is_str(child.value):
+                continue
+        if isinstance(child, ast.Pass):
+            continue
+        if (
+            isinstance(child, ast.Expr)
+            and isinstance(child.value, ast.Constant)
+            and isinstance(child.value.value, str)
+        ):
+            continue
         return False
-    attribute = node.attr
-    owner = _dotted_name(node.value)
-    if owner is None:
-        return False
-    class_name = f"{module.module}.{owner}"
-    if class_name not in class_values or class_name in enum_classes:
-        return False
-    return class_values[class_name].get(attribute) is not None
+    return True
 
 
-def _is_main_guard(node: ast.Compare) -> bool:
-    operands = (node.left, *node.comparators)
-    return (
-        len(node.ops) == 1
-        and isinstance(node.ops[0], ast.Eq)
-        and [operand.id for operand in operands if isinstance(operand, ast.Name)] == ["__name__"]
-        and [operand.value for operand in operands if isinstance(operand, ast.Constant)]
-        == ["__main__"]
-    )
+class _LiteralComparisons:
+    """Classify written literal vocabularies without adding runtime binding proof."""
+
+    def __init__(self, module: ParsedModule) -> None:
+        self.module = module
+        self.scopes = LexicalScopes(module)
+        self.module_values, self.class_values, self.enum_classes = _static_string_constants(module)
+        self.collections = _literal_collections(module, self.scopes)
+        self.enum_value_classes = frozenset(
+            f"{module.module}.{node.name}"
+            for node in module.tree.body
+            if isinstance(node, ast.ClassDef)
+            and len(node.bases) == 1
+            and self._enum_base(node.bases[0])
+            and not node.keywords
+            and not node.decorator_list
+            and _literal_enum_body(node)
+        )
+
+    def _module_name(self, node: ast.expr) -> bool:
+        root = node
+        while isinstance(root, ast.Attribute):
+            root = root.value
+        if not isinstance(root, ast.Name):
+            return False
+        binding = self.scopes.lookup(root, root.id)
+        return binding.owner is self.scopes.root and not binding.uncertain
+
+    def _enum_base(self, node: ast.expr) -> bool:
+        if not self._module_name(node):
+            return False
+        if isinstance(node, ast.Name):
+            binding = self.module.aliases.get(node.id)
+            resolved = binding.target if binding else None
+        elif isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
+            binding = self.module.aliases.get(node.value.id)
+            resolved = f"{binding.target}.{node.attr}" if binding else None
+        else:
+            return False
+        return resolved in {"enum.Enum", "enum.StrEnum"}
+
+    def scalar(self, node: ast.expr) -> bool:
+        if _is_str(node):
+            return True
+        if not self._module_name(node):
+            return False
+        if isinstance(node, ast.Name):
+            return self.module_values.get(node.id) is not None
+        if not isinstance(node, ast.Attribute):
+            return False
+        owner = _dotted_name(node.value)
+        if owner is None:
+            return False
+        class_name = f"{self.module.module}.{owner}"
+        if class_name in self.class_values and class_name not in self.enum_classes:
+            return self.class_values[class_name].get(node.attr) is not None
+        member = node.value
+        if (
+            node.attr != "value"
+            or not isinstance(member, ast.Attribute)
+            or not isinstance(member.value, ast.Name)
+        ):
+            return False
+        enum_class = f"{self.module.module}.{member.value.id}"
+        values = self.class_values.get(enum_class, {})
+        return (
+            enum_class in self.enum_value_classes
+            and "value" not in values
+            and values.get(member.attr) is not None
+        )
+
+    def collection(self, node: ast.expr) -> bool:
+        if isinstance(node, ast.Tuple | ast.List | ast.Set):
+            return bool(node.elts) and all(self.scalar(item) for item in node.elts)
+        return (
+            isinstance(node, ast.Name) and node.id in self.collections and self._module_name(node)
+        )
 
 
-def _compare_form(
-    node: ast.Compare,
-    *,
-    module: ParsedModule,
-    module_values: dict[str, str | None],
-    class_values: dict[str, dict[str, str | None]],
-    enum_classes: set[str],
-) -> str | None:
-    """Name how a comparison tests a value against literal-bound strings."""
-    # The interpreter's entry protocol, not a vocabulary an enum could replace.
-    if _is_main_guard(node):
-        return None
+def _comparison_form(literals: _LiteralComparisons, node: ast.Compare) -> str | None:
     operands = [node.left, *node.comparators]
     for operator, left, right in zip(node.ops, operands[:-1], operands[1:], strict=True):
         if isinstance(operator, ast.Eq | ast.NotEq) and (
-            _is_static_string(
-                left,
-                module=module,
-                module_values=module_values,
-                class_values=class_values,
-                enum_classes=enum_classes,
-            )
-            or _is_static_string(
-                right,
-                module=module,
-                module_values=module_values,
-                class_values=class_values,
-                enum_classes=enum_classes,
-            )
+            literals.scalar(left) or literals.scalar(right)
         ):
             return "compare"
-        if (
-            isinstance(operator, ast.In | ast.NotIn)
-            and isinstance(right, ast.Tuple | ast.List | ast.Set)
-            and right.elts
-            and all(
-                _is_static_string(
-                    element,
-                    module=module,
-                    module_values=module_values,
-                    class_values=class_values,
-                    enum_classes=enum_classes,
-                )
-                for element in right.elts
-            )
+        if isinstance(operator, ast.In | ast.NotIn) and (
+            literals.scalar(left) or literals.collection(right)
         ):
             return "membership"
     return None
 
 
-def _matches_str_literal(node: ast.Match) -> bool:
-    """A mapping key is structure, not a value pattern, so only `MatchValue` counts."""
+def _matches_literal(literals: _LiteralComparisons, node: ast.Match) -> bool:
     return any(
-        isinstance(pattern, ast.MatchValue) and _is_str(pattern.value)
+        isinstance(pattern, ast.MatchValue) and literals.scalar(pattern.value)
         for case in node.cases
         for pattern in ast.walk(case.pattern)
     )
@@ -283,7 +361,7 @@ class ConstructCollector(ast.NodeVisitor):
         self.evidence = evidence
         self.items: list[RawRecord] = []
         self.scope_stack: list[str] = [module.module]
-        self.module_values, self.class_values, self.enum_classes = _static_string_constants(module)
+        self.comparisons = _LiteralComparisons(module)
         self.inherits_stack: list[bool] = []
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
@@ -345,13 +423,7 @@ class ConstructCollector(ast.NodeVisitor):
         self.generic_visit(node)
 
     def visit_Compare(self, node: ast.Compare) -> None:
-        form = _compare_form(
-            node,
-            module=self.module,
-            module_values=self.module_values,
-            class_values=self.class_values,
-            enum_classes=self.enum_classes,
-        )
+        form = _comparison_form(self.comparisons, node)
         if form is not None:
             self._record(
                 node,
@@ -363,7 +435,7 @@ class ConstructCollector(ast.NodeVisitor):
         self.generic_visit(node)
 
     def visit_Match(self, node: ast.Match) -> None:
-        if _matches_str_literal(node):
+        if _matches_literal(self.comparisons, node):
             self._record(
                 node,
                 kind="string_literal_compare",
