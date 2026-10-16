@@ -101,6 +101,20 @@ expectations are n/a. Filtering and baseline display do not change canonical fac
 
 Exit 0 is not architecture approval. Exit 2 carries diagnostics with `kind`,
 `subject`, `unknown_claim` and `remedy`; inspected evidence may remain available.
+
+For components explicitly marked `decided_by: "architect"`, validation emits
+`responsibility.missing` when the responsibilities list has no substantive entry.
+Empty lists keep their existing diagnostic. Whole-entry `TODO`, `TBD` and
+`placeholder` markers also count as absent: matching ignores case and surrounding
+whitespace and permits a single trailing colon, such as `TODO:`. No other text is
+treated as a marker. A substantive entry, including prose such as "Handle TODO
+items" or "Placeholder resolution", keeps the list valid even alongside markers.
+This applies to root and mounted contracts; diagnostics name the component and
+carry its contract path and `/components/<index>/responsibilities` pointer.
+Otherwise valid architect contracts containing only these markers now exit 2
+instead of 0. Agent drafts and components without explicit architect attribution
+remain accepted; rule verdicts and rationale validation are unchanged.
+
 JSON null means unavailable/inapplicable; an empty list means measured empty.
 Pin CLI and [command schema](../schema/command-result-8.0.schema.json) together.
 Version 8 retains version 6/7 readers and permits an incomplete report to preserve

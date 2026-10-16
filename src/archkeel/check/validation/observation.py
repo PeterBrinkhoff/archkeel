@@ -19,7 +19,7 @@ from .closed_world import closed_world_diagnostics
 from .diagnostics import _diagnostic, _sorted
 from .graphs import graph_diagnostics
 from .public_api import compatibility_diagnostics, interface_diagnostics, public_api_diagnostics
-from .rationale import rationale_diagnostics
+from .rationale import _PLACEHOLDER_RATIONALE, rationale_diagnostics
 
 
 def _inside_pointers(contract: ArchitectureContract, observation: Observation) -> dict[str, str]:
@@ -65,15 +65,18 @@ def _responsibility_diagnostics(
     inside_tree: InsideContractTree | None,
     contract_path: str | None,
 ) -> list[Diagnostic]:
-    """Flag architect-decided components whose responsibility list is empty."""
+    """Flag architect-decided components with no substantive responsibility entry."""
     contracts: list[tuple[ArchitectureContract, str | None]] = [(contract, None)]
     if inside_tree is not None:
         contracts.extend((mount.contract, mount.path) for mount in inside_tree.mounts)
     diagnostics = []
     for reviewed_contract, path in contracts:
         for index, component in enumerate(reviewed_contract.components):
-            if component.decided_by != "architect" or any(
-                value.strip() for value in component.responsibilities
+            if component.decided_by != "architect":
+                continue
+            responsibilities = tuple(map(str.strip, component.responsibilities))
+            if any(
+                value and not _PLACEHOLDER_RATIONALE.fullmatch(value) for value in responsibilities
             ):
                 continue
             location = f" in {path}" if path is not None else ""
@@ -82,7 +85,11 @@ def _responsibility_diagnostics(
                     "responsibility.missing",
                     f"/components/{index}/responsibilities",
                     f"{component.label}{location}",
-                    "The architect-decided component has no responsibility declaration.",
+                    (
+                        "The architect-decided component has only placeholder responsibilities."
+                        if any(responsibilities)
+                        else "The architect-decided component has no responsibility declaration."
+                    ),
                     "Ask the architect to declare the component's intended responsibilities.",
                     contract_path=path or contract_path,
                 )
