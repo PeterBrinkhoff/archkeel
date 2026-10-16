@@ -1,6 +1,6 @@
 # Summary Badge Types Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Give the actual Badge value and display derivation one nominal Summary owner, preserving valid constructor and rendering behavior.
 **Architecture:** render.summary_badges owns BadgeState, Badge and badge; render.summary explicitly reexports existing objects. The existing Summary component owns both modules; terminal and HTML use the direct canonical owner.
@@ -30,18 +30,18 @@
 
 **Interfaces:** BadgeState(StrEnum): PASS=pass, FAIL=fail, INFO=info, UNKNOWN=unknown. Badge.state: BadgeState; symbol: str; label: str. badge(value: str) -> Badge. Existing summary Badge/badge names explicitly reexport the same objects; State remains a compatibility alias.
 
-- [ ] Write direct constructor/projection identity and legacy-wire tests; run unchanged production and observe assertion RED.
-- [ ] Author a bounded independent Badge Target plus complete-module guard; run actual unchanged source and observe native intent RED.
-- [ ] Implement the focused value, normalization and derivation using the canonical AssessmentStatus and a bounded private n/a projection marker.
-- [ ] Move real consumers to the direct owner; use canonical RuleAssessmentStatus.DECLARATION for its info presentation.
-- [ ] Observe actual source; mutate Badge.state and badge return to str and replace real factory control with literal equality, membership, match, Final and local aliases while intent bytes stay fixed.
-- [ ] Run compatibility, native mutations, strict mypy/Ruff and hierarchy/public-interface checks.
+- [x] Write direct constructor/projection identity and legacy-wire tests; run unchanged production and observe assertion RED.
+- [x] Author a bounded independent Badge Target plus complete-module guard; run actual unchanged source and observe native intent RED.
+- [x] Implement the focused value, normalization and derivation using the canonical AssessmentStatus and a bounded private n/a projection marker.
+- [x] Move real consumers to the direct owner; use canonical RuleAssessmentStatus.DECLARATION for its info presentation.
+- [x] Observe actual source; mutate Badge.state and badge return to str and replace real factory control with literal equality, membership, match, Final and local aliases while intent bytes stay fixed.
+- [x] Run compatibility, native mutations, strict mypy/Ruff and hierarchy/public-interface checks.
 
 ### Task 2: Verify presentation and freeze the independent increment
 
-- [ ] Compare real before/after HTML and terminal bytes for existing pass/fail/unknown/not-applicable and declaration cases; run affected Chromium checks.
-- [ ] Run native own validation and exact-parent normal amendment without extra allowances or budget increases; log actual measurements and uncertainty sites honestly.
-- [ ] Publish a clean feature-only PR, Part of #542, with explicit final dependency, source freeze and hosted receipts for independent Astra review.
+- [x] Compare real before/after HTML and terminal bytes for existing pass/fail/unknown/not-applicable and declaration cases; run affected Chromium checks.
+- [x] Run native own observation without extra allowances or budget increases and log actual measurements/sites. Root owns the fresh exact-parent normal amendment after targeted stack union.
+- [x] Deliver the frozen feature-only carrier, Part of #542, with explicit dependency and hosted receipts; Root owns final union, PR and normal amendment before independent Astra review.
 
 ## Pre-flight ruling
 
