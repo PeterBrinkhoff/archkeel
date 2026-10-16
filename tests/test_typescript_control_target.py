@@ -21,6 +21,9 @@ MODULE = "archkeel.analyzer.typescript"
 GUARDS = (
     "TARGET-TYPESCRIPT-CONFIG-TYPED-CONTROL",
     "TARGET-TYPESCRIPT-RESOLVE-TYPED-CONTROL",
+    "TARGET-TYPESCRIPT-PARSER-TYPED-CONTROL",
+    "TARGET-TYPESCRIPT-COLLECTOR-TYPED-CONTROL",
+    "TARGET-TYPESCRIPT-SYNTAX-TYPED-CONTROL",
 )
 
 
@@ -37,7 +40,7 @@ def _repository(tmp_path, *, changed=None):
         f"archkeel/analyzer/typescript/{name}.py": (
             ROOT / f"src/archkeel/analyzer/typescript/{name}.py"
         ).read_text()
-        for name in ("config", "resolve")
+        for name in ("config", "resolve", "parse", "collect", "syntax")
     }
     sources.update(changed or {})
     root = _prepare_repo(
@@ -50,6 +53,9 @@ def _repository(tmp_path, *, changed=None):
             "contract.json": json.dumps(_contract()),
             "docs/architecture/typescript-control-types.md": (
                 ROOT / "docs/architecture/typescript-control-types.md"
+            ).read_text(),
+            "docs/architecture/typescript-syntax-types.md": (
+                ROOT / "docs/architecture/typescript-syntax-types.md"
             ).read_text(),
             "docs/architecture/typescript-json-field-boundary.md": (
                 ROOT / "docs/architecture/typescript-json-field-boundary.md"
@@ -140,7 +146,7 @@ def test_native_source_type_widening_fails_with_fixed_intent(tmp_path, module, o
     assert (root / "contract.json").read_bytes() == before
 
 
-@pytest.mark.parametrize("module", ["config", "resolve"])
+@pytest.mark.parametrize("module", ["config", "resolve", "parse", "collect", "syntax"])
 @pytest.mark.parametrize(
     "probe",
     [
@@ -162,7 +168,7 @@ def test_native_parser_and_protocol_strings_fail_without_exceptions(tmp_path, mo
     )
     before = (root / "contract.json").read_bytes()
     model = _model(root, config)
-    guard = _rule(model, GUARDS[0 if module == "config" else 1])
+    guard = _rule(model, GUARDS[("config", "resolve", "parse", "collect", "syntax").index(module)])
     assert guard.status == "FAIL"
     assert any(guard.id in row.rule_ids for row in trace_valid_violations(model))
     assert (root / "contract.json").read_bytes() == before
@@ -179,7 +185,7 @@ def test_own_observation_proves_both_migrated_module_guards(self_observation):
         and any(
             row.data.get("owner") == f"{MODULE}.{module}"
             or row.data.get("owner", "").startswith(f"{MODULE}.{module}.")
-            for module in ("config", "resolve")
+            for module in ("config", "resolve", "parse", "collect", "syntax")
         )
     ]
 
@@ -187,7 +193,9 @@ def test_own_observation_proves_both_migrated_module_guards(self_observation):
 def test_guards_cover_whole_migrated_modules_without_allowances():
     for identity in GUARDS:
         rule = next(row for row in _contract()["rules"] if row["id"] == identity)
-        assert rule["source"] in {f"{MODULE}.config", f"{MODULE}.resolve"}
+        assert rule["source"] in {
+            f"{MODULE}.{name}" for name in ("config", "resolve", "parse", "collect", "syntax")
+        }
         assert rule["constructs"] == ["string_literal_compare"]
         assert not rule.get("allowed_sources") and not rule.get("exact_sources")
 
@@ -199,3 +207,41 @@ def test_native_configuration_crossing_must_use_its_named_public_api(tmp_path):
     )
     model = _model(root, config)
     assert any("TARGET-INTERFACE_BOUNDARY" in row.rule_ids for row in trace_valid_violations(model))
+
+
+@pytest.mark.parametrize("identity", GUARDS[2:])
+def test_native_parser_and_collector_guards_are_proven_without_exceptions(tmp_path, identity):
+    root, config = _repository(tmp_path)
+    model = _model(root, config)
+    rule = _rule(model, identity)
+    assert rule.status == "PASS" and rule.evaluation_proven, rule
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ("form: ReferenceForm", "form: str"),
+        ("kind: DefinitionKind", "kind: str"),
+        ("visibility: Visibility | None", "visibility: str | None"),
+        ("relationship: BaseRelationship", "relationship: str"),
+        ("kind: SiteKind", "kind: str"),
+        ("use: SiteUse", "use: str"),
+        ("receiver_kind: ReceiverKind", "receiver_kind: str"),
+    ],
+)
+def test_native_syntax_field_widening_fails_against_fixed_port_intent(tmp_path, old, new):
+    source = (ROOT / "src/archkeel/analyzer/typescript/syntax.py").read_text()
+    assert old in source
+    root, config = _repository(
+        tmp_path, changed={"archkeel/analyzer/typescript/syntax.py": source.replace(old, new, 1)}
+    )
+    before = (root / "contract.json").read_bytes()
+    model = _model(root, config)
+    comparison = architecture_report(model).comparison
+    assert comparison is not None and comparison.status == "FAIL", comparison
+    target = next(
+        row for row in rule_assessments(model, undecided_by_rule={}) if row.kind == "uml_target"
+    )
+    assert target.status == "FAIL"
+    assert any(target.id in row.rule_ids for row in trace_valid_violations(model))
+    assert (root / "contract.json").read_bytes() == before

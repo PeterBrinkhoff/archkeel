@@ -1,0 +1,9 @@
+{
+  "after_baseline_digest": "764661d77b21b53ff8b3fa71e88b72c30055a7237551c093e01c84504057a758",
+  "after_digest": "edb141f1c84195c984220327a1b132d29bd7ed409b547bd8404c6800a7f18545",
+  "before_baseline_digest": "cf6163c6f1f29d9d30733a11f24464591114e417fef6a1bc2f02a6027deb2714",
+  "before_digest": "8aea00dcba2312ec6aadf842ec9a50ad252af4f2dab9cc3684dcdcc909c888e8",
+  "decided_by": "ake2l (explicit parser/protocol typing request); Codex implementation, independent Astra review before merge",
+  "rationale": "Move existing TypeScript syntax DTOs into one nominal source port, decode parser kinds once, preserve conservative unknown grammar, and consume owned collector controls. Independent Target fields and whole-module native source guards require the typed APIs. Lower calls_unresolved from917 to measured864; no increased limit, allowance or accepted debt.",
+  "schema_version": "2.0.0"
+}
