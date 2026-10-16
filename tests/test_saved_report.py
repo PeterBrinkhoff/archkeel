@@ -359,7 +359,7 @@ def test_saved_typescript_query_matches_native_cli_without_collector_or_reposito
     assert list(query_root.iterdir()) == [] and saved.read_bytes() == packet
     raw = decode_canonical_model(json.loads(packet))
     assert raw["calls"] == [] and raw["symbols"] == []
-    assert raw["typing_signals"] is None and raw["constructs"] is None
+    assert raw["typing_signals"] is None and raw["constructs"] == []
 
 
 @pytest.mark.parametrize("kind", ["boundary_type_allowance", "type_ignore_allowance"])
