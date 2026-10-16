@@ -1,0 +1,9 @@
+{
+  "after_baseline_digest": "ce0214aa53088d46512d9c71a8fe5fe51597afadb50bd8e5b6629be012533ef7",
+  "after_digest": "07f60e751c97cc6557314cd4fc96294030ee7891d5aab902aa43622f1ee25232",
+  "before_baseline_digest": "ce0214aa53088d46512d9c71a8fe5fe51597afadb50bd8e5b6629be012533ef7",
+  "before_digest": "4860ec833a0f8c237879a924f9689001a7a908a2c302861c77493f747a5a9656",
+  "decided_by": "ake2l",
+  "rationale": "Preserve reviewed TypeScript native string observations, compatible profile construction and all existing typed owners without increased measured debt.",
+  "schema_version": "2.0.0"
+}
