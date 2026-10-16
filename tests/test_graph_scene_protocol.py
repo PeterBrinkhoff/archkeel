@@ -87,8 +87,8 @@ def test_scene_vocabulary_is_generated_from_canonical_owners():
         ),
         (
             "report-graph-scene.js",
-            "@param {Context} context @param {Options} options @returns {Scene}",
-            "@param {Context} context @param {Options} options @returns {object}",
+            "@param {Context} context @param {Options} [options] @returns {Scene}",
+            "@param {Context} context @param {Options} [options] @returns {object}",
         ),
     ],
     ids=["raw-field", "same-spelling-wrong-domain", "field-widening", "return-widening"],
