@@ -38,7 +38,7 @@ FIELDS = (
 )
 GUARDS = tuple(
     (f"DART-{name.upper()}-TYPED-CONTROL", f"archkeel.analyzer.dart.{name}")
-    for name in ("parse", "resolve", "snapshot", "collect")
+    for name in ("syntax", "parse", "resolve", "snapshot", "collect")
 )
 
 
@@ -143,7 +143,7 @@ def test_native_dart_control_guard_rejects_actual_source_string_dispatch(tmp_pat
 
 def test_native_dart_nominal_annotation_widening_fails_without_target_change(tmp_path):
     root, config = _repository(tmp_path)
-    path = root / "archkeel/analyzer/dart/parse.py"
+    path = root / "archkeel/analyzer/dart/syntax.py"
     source = path.read_text()
     assert "kind: ParameterKind" in source
     path.write_text(source.replace("kind: ParameterKind", "kind: str", 1))
@@ -153,3 +153,61 @@ def test_native_dart_nominal_annotation_widening_fails_without_target_change(tmp
         row.aspect == "annotation" and row.status == "FAIL" for row in comparison.assessments
     )
     assert (root / "contract.json").read_bytes() == before
+
+
+def test_parse_node_view_preserves_tree_identity_fields_and_unknown_children():
+    raw = parse._PARSER.parse(b"void main() { var value = 1; value = other; return value; }").root_node
+    tree = parse._Tree()
+    root = tree.wrap(raw)
+    assert tree.wrap(raw) is root
+    nodes = tuple(parse._walk(root))
+    assert any(node.kind is None and node.named_children for node in nodes)
+    assert any(
+        node.kind is None and any(child.kind == parse._NodeKind.IDENTIFIER for child in node.named_children)
+        for node in nodes
+    )
+    for node in nodes:
+        assert tree.wrap(node._raw) is node
+        if node.parent is not None:
+            assert node in node.parent.children
+        for field in (parse._NodeKind.NAME, parse._NodeKind.LEFT, parse._NodeKind.RIGHT, parse._NodeKind.VALUE):
+            raw_child = node._raw.child_by_field_name(field.value)
+            child = node.child_by_field_name(field)
+            assert (child is None) == (raw_child is None)
+            if raw_child is not None:
+                assert child is tree.wrap(raw_child)
+    assert any(node.child_by_field_name(parse._NodeKind.LEFT) is not None for node in nodes)
+    assert parse._Tree().wrap(raw) is not root
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("'simple'", "simple"),
+        ('"double"', "double"),
+        ("r'raw\\n'", "raw\\n"),
+        ("R'raw\\n'", "raw\\n"),
+        ("'''multi\nline'''", "multi\nline"),
+        ("'\\n\\r\\t\\b\\f\\v'", "\n\r\t\b\f\v"),
+        ("'\\x41\\u0042\\u{43}'", "ABC"),
+        ("'\\\\\\\'\\\"\\$'", "\\\'\"$"),
+        ("'$value'", None),
+        ("r'$value'", None),
+        ("'\\q'", None),
+        ("'\\x4'", None),
+        ("'\\u123'", None),
+        ("'\\u{}'", None),
+        ("'\\u{110000}'", None),
+        ("'''unclosed'", None),
+        ("'trailing\\'", None),
+    ],
+)
+def test_dart_string_decoder_preserves_delimiters_escape_grammar_and_rejections(raw, expected):
+    assert parse._decode_dart_string(raw) == expected
+
+
+def test_parse_compatibility_exports_are_the_canonical_syntax_types():
+    from archkeel.analyzer.dart import syntax
+
+    for name in ("Span", "Parameter", "Member", "Definition", "Directive", "Site", "Concern", "Syntax"):
+        assert getattr(parse, name) is getattr(syntax, name)

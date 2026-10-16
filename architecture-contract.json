@@ -771,9 +771,21 @@
         "archkeel.ir.architecture_graph",
         "archkeel.ir.dependency",
         "archkeel.ir.state_facts",
-        "archkeel.ir.state_codec"
+        "archkeel.ir.state_codec",
+        "archkeel.ir.protocol",
+        "archkeel.ir.facts_codec",
+        "archkeel.ir.codec_observation",
+        "archkeel.ir.profiles",
+        "archkeel.analyzer.runtime",
+        "archkeel.cli.config",
+        "archkeel.check.runtime",
+        "archkeel.analyzer.dart.syntax",
+        "archkeel.analyzer.dart.parse",
+        "archkeel.analyzer.dart.resolve",
+        "archkeel.analyzer.dart.snapshot",
+        "archkeel.analyzer.dart.collect"
       ],
-      "rationale": "Each shared vocabulary belongs to its domain model; state_facts owns state controls and state_codec owns its private wire event tag.",
+      "rationale": "Each closed vocabulary belongs to its domain or wire boundary: shared state and source facts own domain controls; codecs own private wire tags and consumers use published nominal types.",
       "provenance": [
         "docs/architecture/archkeel.md"
       ],
@@ -887,6 +899,162 @@
       "rationale": "State controls use their owned enums in the domain and parser; JSON conversion does not exempt protocol-string dispatch.",
       "provenance": [
         "docs/architecture/typed-state-protocol.md"
+      ],
+      "decided_by": "architect"
+    },
+    {
+      "id": "COLLECTOR-TYPED-IR-FACTS",
+      "kind": "forbidden_construct",
+      "source": "archkeel.ir.facts",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "Closed collector and runtime vocabulary is decoded into owned types before control flow; arbitrary identities and declarative schema labels remain data.",
+      "provenance": [
+        "docs/architecture/collector-wire-vocabulary.md"
+      ],
+      "decided_by": "architect"
+    },
+    {
+      "id": "COLLECTOR-TYPED-IR-PROTOCOL",
+      "kind": "forbidden_construct",
+      "source": "archkeel.ir.protocol",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "Closed collector and runtime vocabulary is decoded into owned types before control flow; arbitrary identities and declarative schema labels remain data.",
+      "provenance": [
+        "docs/architecture/collector-wire-vocabulary.md"
+      ],
+      "decided_by": "architect"
+    },
+    {
+      "id": "COLLECTOR-TYPED-IR-FACTS-CODEC",
+      "kind": "forbidden_construct",
+      "source": "archkeel.ir.facts_codec",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "Closed collector and runtime vocabulary is decoded into owned types before control flow; arbitrary identities and declarative schema labels remain data.",
+      "provenance": [
+        "docs/architecture/collector-wire-vocabulary.md"
+      ],
+      "decided_by": "architect"
+    },
+    {
+      "id": "COLLECTOR-TYPED-IR-TYPE-SHAPES",
+      "kind": "forbidden_construct",
+      "source": "archkeel.ir.type_shapes",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "Closed collector and runtime vocabulary is decoded into owned types before control flow; arbitrary identities and declarative schema labels remain data.",
+      "provenance": [
+        "docs/architecture/collector-wire-vocabulary.md"
+      ],
+      "decided_by": "architect"
+    },
+    {
+      "id": "COLLECTOR-TYPED-IR-CODEC-OBSERVATION",
+      "kind": "forbidden_construct",
+      "source": "archkeel.ir.codec_observation",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "Closed collector and runtime vocabulary is decoded into owned types before control flow; arbitrary identities and declarative schema labels remain data.",
+      "provenance": [
+        "docs/architecture/collector-wire-vocabulary.md"
+      ],
+      "decided_by": "architect"
+    },
+    {
+      "id": "COLLECTOR-TYPED-ANALYZER-RUNTIME",
+      "kind": "forbidden_construct",
+      "source": "archkeel.analyzer.runtime",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "Closed collector and runtime vocabulary is decoded into owned types before control flow; arbitrary identities and declarative schema labels remain data.",
+      "provenance": [
+        "docs/architecture/collector-wire-vocabulary.md"
+      ],
+      "decided_by": "architect"
+    },
+    {
+      "id": "COLLECTOR-TYPED-CHECK-RUNTIME",
+      "kind": "forbidden_construct",
+      "source": "archkeel.check.runtime",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "Closed collector and runtime vocabulary is decoded into owned types before control flow; arbitrary identities and declarative schema labels remain data.",
+      "provenance": [
+        "docs/architecture/collector-wire-vocabulary.md"
+      ],
+      "decided_by": "architect"
+    },
+    {
+      "id": "DART-SYNTAX-TYPED-CONTROL",
+      "kind": "forbidden_construct",
+      "source": "archkeel.analyzer.dart.syntax",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "Closed Dart implementation categories use their nominal owners; parser and metadata conversion do not exempt string dispatch.",
+      "provenance": [
+        "docs/architecture/dart-nominal-controls.md"
+      ],
+      "decided_by": "architect"
+    },
+    {
+      "id": "DART-PARSE-TYPED-CONTROL",
+      "kind": "forbidden_construct",
+      "source": "archkeel.analyzer.dart.parse",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "Closed Dart implementation categories use their nominal owners; parser and metadata conversion do not exempt string dispatch.",
+      "provenance": [
+        "docs/architecture/dart-nominal-controls.md"
+      ],
+      "decided_by": "architect"
+    },
+    {
+      "id": "DART-RESOLVE-TYPED-CONTROL",
+      "kind": "forbidden_construct",
+      "source": "archkeel.analyzer.dart.resolve",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "Closed Dart implementation categories use their nominal owners; parser and metadata conversion do not exempt string dispatch.",
+      "provenance": [
+        "docs/architecture/dart-nominal-controls.md"
+      ],
+      "decided_by": "architect"
+    },
+    {
+      "id": "DART-SNAPSHOT-TYPED-CONTROL",
+      "kind": "forbidden_construct",
+      "source": "archkeel.analyzer.dart.snapshot",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "Closed Dart implementation categories use their nominal owners; parser and metadata conversion do not exempt string dispatch.",
+      "provenance": [
+        "docs/architecture/dart-nominal-controls.md"
+      ],
+      "decided_by": "architect"
+    },
+    {
+      "id": "DART-COLLECT-TYPED-CONTROL",
+      "kind": "forbidden_construct",
+      "source": "archkeel.analyzer.dart.collect",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "Closed Dart implementation categories use their nominal owners; parser and metadata conversion do not exempt string dispatch.",
+      "provenance": [
+        "docs/architecture/dart-nominal-controls.md"
       ],
       "decided_by": "architect"
     }

@@ -45,7 +45,7 @@
         "Parser nodes, direct filesystem reads and rule verdicts."
       ],
       "public": [
-        "archkeel.analyzer.dart.collect"
+        "archkeel.analyzer.dart.collect:collect"
       ],
       "requires": [
         {
@@ -84,7 +84,11 @@
         "AST interpretation, symbol resolution and reading outside the snapshot."
       ],
       "public": [
-        "archkeel.analyzer.dart.snapshot"
+        "archkeel.analyzer.dart.snapshot:Snapshot",
+        "archkeel.analyzer.dart.snapshot:SnapshotError",
+        "archkeel.analyzer.dart.snapshot:SnapshotProblem",
+        "archkeel.analyzer.dart.snapshot:Source",
+        "archkeel.analyzer.dart.snapshot:read_snapshot"
       ],
       "requires": [],
       "provenance": [
@@ -97,7 +101,8 @@
       "label": "syntax",
       "role": "component",
       "exact_modules": [
-        "archkeel.analyzer.dart.parse"
+        "archkeel.analyzer.dart.parse",
+        "archkeel.analyzer.dart.syntax"
       ],
       "packages": [],
       "responsibilities": [
@@ -107,7 +112,25 @@
         "Filesystem reads, process execution, target contracts and inferred compiler semantics."
       ],
       "public": [
-        "archkeel.analyzer.dart.parse"
+        "archkeel.analyzer.dart.parse:parse",
+        "archkeel.analyzer.dart.syntax:ParameterKind",
+        "archkeel.analyzer.dart.syntax:Visibility",
+        "archkeel.analyzer.dart.syntax:MemberKind",
+        "archkeel.analyzer.dart.syntax:DefinitionKind",
+        "archkeel.analyzer.dart.syntax:DirectiveKind",
+        "archkeel.analyzer.dart.syntax:Combinator",
+        "archkeel.analyzer.dart.syntax:SiteKind",
+        "archkeel.analyzer.dart.syntax:SiteUse",
+        "archkeel.analyzer.dart.syntax:Modifier",
+        "archkeel.analyzer.dart.syntax:ConcernKind",
+        "archkeel.analyzer.dart.syntax:Span",
+        "archkeel.analyzer.dart.syntax:Parameter",
+        "archkeel.analyzer.dart.syntax:Member",
+        "archkeel.analyzer.dart.syntax:Definition",
+        "archkeel.analyzer.dart.syntax:Directive",
+        "archkeel.analyzer.dart.syntax:Site",
+        "archkeel.analyzer.dart.syntax:Concern",
+        "archkeel.analyzer.dart.syntax:Syntax"
       ],
       "requires": [],
       "provenance": [
@@ -130,7 +153,16 @@
         "Filesystem reads, parser nodes, runtime dispatch and policy."
       ],
       "public": [
-        "archkeel.analyzer.dart.resolve"
+        "archkeel.analyzer.dart.resolve:Resolver",
+        "archkeel.analyzer.dart.resolve:ResolutionProblem",
+        "archkeel.analyzer.dart.resolve:ResolvedTarget",
+        "archkeel.analyzer.dart.resolve:ResolvedBinding",
+        "archkeel.analyzer.dart.resolve:ResolvedSite",
+        "archkeel.analyzer.dart.resolve:ConstructionResolution",
+        "archkeel.analyzer.dart.resolve:ResolvedParameter",
+        "archkeel.analyzer.dart.resolve:ParameterResolution",
+        "archkeel.analyzer.dart.resolve:ResolutionStatus",
+        "archkeel.analyzer.dart.resolve:BindingRole"
       ],
       "requires": [
         {
@@ -554,9 +586,9 @@
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Span",
+          "id": "archkeel.analyzer.dart.syntax.Span",
           "kind": "class",
-          "qualified_name": "archkeel.analyzer.dart.parse.Span",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Span",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -575,9 +607,9 @@
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Span.line",
+          "id": "archkeel.analyzer.dart.syntax.Span.line",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Span.line",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Span.line",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -587,16 +619,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "int",
-          "parent_id": "archkeel.analyzer.dart.parse.Span",
+          "parent_id": "archkeel.analyzer.dart.syntax.Span",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Span.end_line",
+          "id": "archkeel.analyzer.dart.syntax.Span.end_line",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Span.end_line",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Span.end_line",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -606,16 +638,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "int",
-          "parent_id": "archkeel.analyzer.dart.parse.Span",
+          "parent_id": "archkeel.analyzer.dart.syntax.Span",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Span.column",
+          "id": "archkeel.analyzer.dart.syntax.Span.column",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Span.column",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Span.column",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -625,16 +657,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "int",
-          "parent_id": "archkeel.analyzer.dart.parse.Span",
+          "parent_id": "archkeel.analyzer.dart.syntax.Span",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Span.excerpt",
+          "id": "archkeel.analyzer.dart.syntax.Span.excerpt",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Span.excerpt",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Span.excerpt",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -644,16 +676,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "str",
-          "parent_id": "archkeel.analyzer.dart.parse.Span",
+          "parent_id": "archkeel.analyzer.dart.syntax.Span",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Syntax",
+          "id": "archkeel.analyzer.dart.syntax.Syntax",
           "kind": "class",
-          "qualified_name": "archkeel.analyzer.dart.parse.Syntax",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Syntax",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -672,9 +704,9 @@
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Syntax.definitions",
+          "id": "archkeel.analyzer.dart.syntax.Syntax.definitions",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Syntax.definitions",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Syntax.definitions",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -684,16 +716,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "tuple[Definition, ...]",
-          "parent_id": "archkeel.analyzer.dart.parse.Syntax",
+          "parent_id": "archkeel.analyzer.dart.syntax.Syntax",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Syntax.directives",
+          "id": "archkeel.analyzer.dart.syntax.Syntax.directives",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Syntax.directives",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Syntax.directives",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -703,16 +735,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "tuple[Directive, ...]",
-          "parent_id": "archkeel.analyzer.dart.parse.Syntax",
+          "parent_id": "archkeel.analyzer.dart.syntax.Syntax",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Syntax.sites",
+          "id": "archkeel.analyzer.dart.syntax.Syntax.sites",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Syntax.sites",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Syntax.sites",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -722,16 +754,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "tuple[Site, ...]",
-          "parent_id": "archkeel.analyzer.dart.parse.Syntax",
+          "parent_id": "archkeel.analyzer.dart.syntax.Syntax",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Syntax.concerns",
+          "id": "archkeel.analyzer.dart.syntax.Syntax.concerns",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Syntax.concerns",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Syntax.concerns",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -741,16 +773,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "tuple[Concern, ...]",
-          "parent_id": "archkeel.analyzer.dart.parse.Syntax",
+          "parent_id": "archkeel.analyzer.dart.syntax.Syntax",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Definition",
+          "id": "archkeel.analyzer.dart.syntax.Definition",
           "kind": "class",
-          "qualified_name": "archkeel.analyzer.dart.parse.Definition",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Definition",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -769,9 +801,9 @@
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Definition.name",
+          "id": "archkeel.analyzer.dart.syntax.Definition.name",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Definition.name",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Definition.name",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -781,16 +813,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "str",
-          "parent_id": "archkeel.analyzer.dart.parse.Definition",
+          "parent_id": "archkeel.analyzer.dart.syntax.Definition",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Definition.span",
+          "id": "archkeel.analyzer.dart.syntax.Definition.span",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Definition.span",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Definition.span",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -800,16 +832,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "Span",
-          "parent_id": "archkeel.analyzer.dart.parse.Definition",
+          "parent_id": "archkeel.analyzer.dart.syntax.Definition",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Directive",
+          "id": "archkeel.analyzer.dart.syntax.Directive",
           "kind": "class",
-          "qualified_name": "archkeel.analyzer.dart.parse.Directive",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Directive",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -828,9 +860,9 @@
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Directive.span",
+          "id": "archkeel.analyzer.dart.syntax.Directive.span",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Directive.span",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Directive.span",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -840,16 +872,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "Span",
-          "parent_id": "archkeel.analyzer.dart.parse.Directive",
+          "parent_id": "archkeel.analyzer.dart.syntax.Directive",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Site",
+          "id": "archkeel.analyzer.dart.syntax.Site",
           "kind": "class",
-          "qualified_name": "archkeel.analyzer.dart.parse.Site",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Site",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -868,9 +900,9 @@
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Site.expression",
+          "id": "archkeel.analyzer.dart.syntax.Site.expression",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Site.expression",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Site.expression",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -880,16 +912,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "str",
-          "parent_id": "archkeel.analyzer.dart.parse.Site",
+          "parent_id": "archkeel.analyzer.dart.syntax.Site",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Site.span",
+          "id": "archkeel.analyzer.dart.syntax.Site.span",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Site.span",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Site.span",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -899,16 +931,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "Span",
-          "parent_id": "archkeel.analyzer.dart.parse.Site",
+          "parent_id": "archkeel.analyzer.dart.syntax.Site",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Concern",
+          "id": "archkeel.analyzer.dart.syntax.Concern",
           "kind": "class",
-          "qualified_name": "archkeel.analyzer.dart.parse.Concern",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Concern",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -927,9 +959,9 @@
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Concern.kind",
+          "id": "archkeel.analyzer.dart.syntax.Concern.kind",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Concern.kind",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Concern.kind",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -938,17 +970,17 @@
           "provenance": [
             "docs/architecture/dart-python-target.md"
           ],
-          "annotation": "str",
-          "parent_id": "archkeel.analyzer.dart.parse.Concern",
+          "annotation": "ConcernKind",
+          "parent_id": "archkeel.analyzer.dart.syntax.Concern",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Concern.message",
+          "id": "archkeel.analyzer.dart.syntax.Concern.message",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Concern.message",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Concern.message",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -958,16 +990,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "str",
-          "parent_id": "archkeel.analyzer.dart.parse.Concern",
+          "parent_id": "archkeel.analyzer.dart.syntax.Concern",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Concern.span",
+          "id": "archkeel.analyzer.dart.syntax.Concern.span",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Concern.span",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Concern.span",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -977,7 +1009,7 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "Span",
-          "parent_id": "archkeel.analyzer.dart.parse.Concern",
+          "parent_id": "archkeel.analyzer.dart.syntax.Concern",
           "visibility": {
             "kind": "public",
             "basis": "declared"
@@ -1190,9 +1222,9 @@
           ]
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Span.start_byte",
+          "id": "archkeel.analyzer.dart.syntax.Span.start_byte",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Span.start_byte",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Span.start_byte",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -1202,16 +1234,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "int",
-          "parent_id": "archkeel.analyzer.dart.parse.Span",
+          "parent_id": "archkeel.analyzer.dart.syntax.Span",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Span.end_byte",
+          "id": "archkeel.analyzer.dart.syntax.Span.end_byte",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Span.end_byte",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Span.end_byte",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -1221,16 +1253,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "int",
-          "parent_id": "archkeel.analyzer.dart.parse.Span",
+          "parent_id": "archkeel.analyzer.dart.syntax.Span",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Syntax.first_error",
+          "id": "archkeel.analyzer.dart.syntax.Syntax.first_error",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Syntax.first_error",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Syntax.first_error",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -1240,16 +1272,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "Span | None",
-          "parent_id": "archkeel.analyzer.dart.parse.Syntax",
+          "parent_id": "archkeel.analyzer.dart.syntax.Syntax",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Syntax.complete",
+          "id": "archkeel.analyzer.dart.syntax.Syntax.complete",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Syntax.complete",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Syntax.complete",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -1259,16 +1291,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "bool",
-          "parent_id": "archkeel.analyzer.dart.parse.Syntax",
+          "parent_id": "archkeel.analyzer.dart.syntax.Syntax",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Syntax.language_version",
+          "id": "archkeel.analyzer.dart.syntax.Syntax.language_version",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Syntax.language_version",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Syntax.language_version",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -1278,16 +1310,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "str | None",
-          "parent_id": "archkeel.analyzer.dart.parse.Syntax",
+          "parent_id": "archkeel.analyzer.dart.syntax.Syntax",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Definition.kind",
+          "id": "archkeel.analyzer.dart.syntax.Definition.kind",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Definition.kind",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Definition.kind",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -1296,17 +1328,17 @@
           "provenance": [
             "docs/architecture/dart-python-target.md"
           ],
-          "annotation": "Literal['class', 'interface', 'mixin', 'enum', 'extension', 'extension_type', 'typedef', 'function', 'getter', 'setter', 'variable']",
-          "parent_id": "archkeel.analyzer.dart.parse.Definition",
+          "annotation": "DefinitionKind",
+          "parent_id": "archkeel.analyzer.dart.syntax.Definition",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Definition.visibility",
+          "id": "archkeel.analyzer.dart.syntax.Definition.visibility",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Definition.visibility",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Definition.visibility",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -1315,17 +1347,17 @@
           "provenance": [
             "docs/architecture/dart-python-target.md"
           ],
-          "annotation": "Literal['public', 'private']",
-          "parent_id": "archkeel.analyzer.dart.parse.Definition",
+          "annotation": "Visibility",
+          "parent_id": "archkeel.analyzer.dart.syntax.Definition",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Definition.type_parameters",
+          "id": "archkeel.analyzer.dart.syntax.Definition.type_parameters",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Definition.type_parameters",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Definition.type_parameters",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -1335,16 +1367,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "tuple[str, ...]",
-          "parent_id": "archkeel.analyzer.dart.parse.Definition",
+          "parent_id": "archkeel.analyzer.dart.syntax.Definition",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Definition.extends",
+          "id": "archkeel.analyzer.dart.syntax.Definition.extends",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Definition.extends",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Definition.extends",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -1354,16 +1386,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "tuple[str, ...]",
-          "parent_id": "archkeel.analyzer.dart.parse.Definition",
+          "parent_id": "archkeel.analyzer.dart.syntax.Definition",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Definition.with_types",
+          "id": "archkeel.analyzer.dart.syntax.Definition.with_types",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Definition.with_types",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Definition.with_types",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -1373,16 +1405,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "tuple[str, ...]",
-          "parent_id": "archkeel.analyzer.dart.parse.Definition",
+          "parent_id": "archkeel.analyzer.dart.syntax.Definition",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Definition.implements",
+          "id": "archkeel.analyzer.dart.syntax.Definition.implements",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Definition.implements",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Definition.implements",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -1392,16 +1424,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "tuple[str, ...]",
-          "parent_id": "archkeel.analyzer.dart.parse.Definition",
+          "parent_id": "archkeel.analyzer.dart.syntax.Definition",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Definition.alias",
+          "id": "archkeel.analyzer.dart.syntax.Definition.alias",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Definition.alias",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Definition.alias",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -1411,16 +1443,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "str | None",
-          "parent_id": "archkeel.analyzer.dart.parse.Definition",
+          "parent_id": "archkeel.analyzer.dart.syntax.Definition",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Definition.enum_members",
+          "id": "archkeel.analyzer.dart.syntax.Definition.enum_members",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Definition.enum_members",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Definition.enum_members",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -1430,16 +1462,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "tuple[str, ...]",
-          "parent_id": "archkeel.analyzer.dart.parse.Definition",
+          "parent_id": "archkeel.analyzer.dart.syntax.Definition",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Definition.members",
+          "id": "archkeel.analyzer.dart.syntax.Definition.members",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Definition.members",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Definition.members",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -1449,16 +1481,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "tuple[Member, ...]",
-          "parent_id": "archkeel.analyzer.dart.parse.Definition",
+          "parent_id": "archkeel.analyzer.dart.syntax.Definition",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Definition.parameters",
+          "id": "archkeel.analyzer.dart.syntax.Definition.parameters",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Definition.parameters",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Definition.parameters",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -1468,16 +1500,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "tuple[Parameter, ...]",
-          "parent_id": "archkeel.analyzer.dart.parse.Definition",
+          "parent_id": "archkeel.analyzer.dart.syntax.Definition",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Definition.return_type",
+          "id": "archkeel.analyzer.dart.syntax.Definition.return_type",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Definition.return_type",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Definition.return_type",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -1487,16 +1519,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "str | None",
-          "parent_id": "archkeel.analyzer.dart.parse.Definition",
+          "parent_id": "archkeel.analyzer.dart.syntax.Definition",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Definition.initializer",
+          "id": "archkeel.analyzer.dart.syntax.Definition.initializer",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Definition.initializer",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Definition.initializer",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -1506,16 +1538,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "str | None",
-          "parent_id": "archkeel.analyzer.dart.parse.Definition",
+          "parent_id": "archkeel.analyzer.dart.syntax.Definition",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Definition.literal",
+          "id": "archkeel.analyzer.dart.syntax.Definition.literal",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Definition.literal",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Definition.literal",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -1525,16 +1557,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "str | None",
-          "parent_id": "archkeel.analyzer.dart.parse.Definition",
+          "parent_id": "archkeel.analyzer.dart.syntax.Definition",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Definition.modifiers",
+          "id": "archkeel.analyzer.dart.syntax.Definition.modifiers",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Definition.modifiers",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Definition.modifiers",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -1543,17 +1575,17 @@
           "provenance": [
             "docs/architecture/dart-python-target.md"
           ],
-          "annotation": "tuple[str, ...]",
-          "parent_id": "archkeel.analyzer.dart.parse.Definition",
+          "annotation": "tuple[Modifier, ...]",
+          "parent_id": "archkeel.analyzer.dart.syntax.Definition",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Definition.constant",
+          "id": "archkeel.analyzer.dart.syntax.Definition.constant",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Definition.constant",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Definition.constant",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -1563,16 +1595,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "bool",
-          "parent_id": "archkeel.analyzer.dart.parse.Definition",
+          "parent_id": "archkeel.analyzer.dart.syntax.Definition",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Definition.final",
+          "id": "archkeel.analyzer.dart.syntax.Definition.final",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Definition.final",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Definition.final",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -1582,16 +1614,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "bool",
-          "parent_id": "archkeel.analyzer.dart.parse.Definition",
+          "parent_id": "archkeel.analyzer.dart.syntax.Definition",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Definition.late",
+          "id": "archkeel.analyzer.dart.syntax.Definition.late",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Definition.late",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Definition.late",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -1601,16 +1633,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "bool",
-          "parent_id": "archkeel.analyzer.dart.parse.Definition",
+          "parent_id": "archkeel.analyzer.dart.syntax.Definition",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Directive.kind",
+          "id": "archkeel.analyzer.dart.syntax.Directive.kind",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Directive.kind",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Directive.kind",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -1619,17 +1651,17 @@
           "provenance": [
             "docs/architecture/dart-python-target.md"
           ],
-          "annotation": "Literal['library', 'import', 'export', 'part', 'part_of']",
-          "parent_id": "archkeel.analyzer.dart.parse.Directive",
+          "annotation": "DirectiveKind",
+          "parent_id": "archkeel.analyzer.dart.syntax.Directive",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Directive.target",
+          "id": "archkeel.analyzer.dart.syntax.Directive.target",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Directive.target",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Directive.target",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -1639,16 +1671,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "str | None",
-          "parent_id": "archkeel.analyzer.dart.parse.Directive",
+          "parent_id": "archkeel.analyzer.dart.syntax.Directive",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Directive.prefix",
+          "id": "archkeel.analyzer.dart.syntax.Directive.prefix",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Directive.prefix",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Directive.prefix",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -1658,16 +1690,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "str | None",
-          "parent_id": "archkeel.analyzer.dart.parse.Directive",
+          "parent_id": "archkeel.analyzer.dart.syntax.Directive",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Directive.deferred",
+          "id": "archkeel.analyzer.dart.syntax.Directive.deferred",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Directive.deferred",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Directive.deferred",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -1677,16 +1709,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "bool",
-          "parent_id": "archkeel.analyzer.dart.parse.Directive",
+          "parent_id": "archkeel.analyzer.dart.syntax.Directive",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Directive.show",
+          "id": "archkeel.analyzer.dart.syntax.Directive.show",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Directive.show",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Directive.show",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -1696,16 +1728,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "tuple[str, ...]",
-          "parent_id": "archkeel.analyzer.dart.parse.Directive",
+          "parent_id": "archkeel.analyzer.dart.syntax.Directive",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Directive.hide",
+          "id": "archkeel.analyzer.dart.syntax.Directive.hide",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Directive.hide",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Directive.hide",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -1715,16 +1747,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "tuple[str, ...]",
-          "parent_id": "archkeel.analyzer.dart.parse.Directive",
+          "parent_id": "archkeel.analyzer.dart.syntax.Directive",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Directive.combinators",
+          "id": "archkeel.analyzer.dart.syntax.Directive.combinators",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Directive.combinators",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Directive.combinators",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -1733,17 +1765,17 @@
           "provenance": [
             "docs/architecture/dart-python-target.md"
           ],
-          "annotation": "tuple[tuple[str, tuple[str, ...]], ...]",
-          "parent_id": "archkeel.analyzer.dart.parse.Directive",
+          "annotation": "tuple[tuple[Combinator, tuple[str, ...]], ...]",
+          "parent_id": "archkeel.analyzer.dart.syntax.Directive",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Directive.alternatives",
+          "id": "archkeel.analyzer.dart.syntax.Directive.alternatives",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Directive.alternatives",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Directive.alternatives",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -1753,16 +1785,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "tuple[tuple[str, str], ...]",
-          "parent_id": "archkeel.analyzer.dart.parse.Directive",
+          "parent_id": "archkeel.analyzer.dart.syntax.Directive",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Site.kind",
+          "id": "archkeel.analyzer.dart.syntax.Site.kind",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Site.kind",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Site.kind",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -1771,17 +1803,17 @@
           "provenance": [
             "docs/architecture/dart-python-target.md"
           ],
-          "annotation": "Literal['reference', 'call', 'creation', 'type', 'extends', 'implements', 'with', 'field_formal', 'super_formal', 'binding', 'assignment']",
-          "parent_id": "archkeel.analyzer.dart.parse.Site",
+          "annotation": "SiteKind",
+          "parent_id": "archkeel.analyzer.dart.syntax.Site",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Site.name",
+          "id": "archkeel.analyzer.dart.syntax.Site.name",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Site.name",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Site.name",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -1791,16 +1823,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "str | None",
-          "parent_id": "archkeel.analyzer.dart.parse.Site",
+          "parent_id": "archkeel.analyzer.dart.syntax.Site",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Site.receiver",
+          "id": "archkeel.analyzer.dart.syntax.Site.receiver",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Site.receiver",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Site.receiver",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -1810,16 +1842,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "str | None",
-          "parent_id": "archkeel.analyzer.dart.parse.Site",
+          "parent_id": "archkeel.analyzer.dart.syntax.Site",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Site.scope",
+          "id": "archkeel.analyzer.dart.syntax.Site.scope",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Site.scope",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Site.scope",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -1829,16 +1861,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "str | None",
-          "parent_id": "archkeel.analyzer.dart.parse.Site",
+          "parent_id": "archkeel.analyzer.dart.syntax.Site",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Site.scope_span",
+          "id": "archkeel.analyzer.dart.syntax.Site.scope_span",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Site.scope_span",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Site.scope_span",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -1848,16 +1880,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "Span | None",
-          "parent_id": "archkeel.analyzer.dart.parse.Site",
+          "parent_id": "archkeel.analyzer.dart.syntax.Site",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Site.scope_depth",
+          "id": "archkeel.analyzer.dart.syntax.Site.scope_depth",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Site.scope_depth",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Site.scope_depth",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -1867,16 +1899,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "int",
-          "parent_id": "archkeel.analyzer.dart.parse.Site",
+          "parent_id": "archkeel.analyzer.dart.syntax.Site",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Site.arguments",
+          "id": "archkeel.analyzer.dart.syntax.Site.arguments",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Site.arguments",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Site.arguments",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -1886,16 +1918,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "tuple[str, ...]",
-          "parent_id": "archkeel.analyzer.dart.parse.Site",
+          "parent_id": "archkeel.analyzer.dart.syntax.Site",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Site.assigned_name",
+          "id": "archkeel.analyzer.dart.syntax.Site.assigned_name",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Site.assigned_name",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Site.assigned_name",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -1905,16 +1937,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "str | None",
-          "parent_id": "archkeel.analyzer.dart.parse.Site",
+          "parent_id": "archkeel.analyzer.dart.syntax.Site",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Site.assignment_annotation",
+          "id": "archkeel.analyzer.dart.syntax.Site.assignment_annotation",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Site.assignment_annotation",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Site.assignment_annotation",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -1924,16 +1956,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "str | None",
-          "parent_id": "archkeel.analyzer.dart.parse.Site",
+          "parent_id": "archkeel.analyzer.dart.syntax.Site",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Site.initializer",
+          "id": "archkeel.analyzer.dart.syntax.Site.initializer",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Site.initializer",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Site.initializer",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -1943,16 +1975,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "str | None",
-          "parent_id": "archkeel.analyzer.dart.parse.Site",
+          "parent_id": "archkeel.analyzer.dart.syntax.Site",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Site.use",
+          "id": "archkeel.analyzer.dart.syntax.Site.use",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Site.use",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Site.use",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -1961,17 +1993,17 @@
           "provenance": [
             "docs/architecture/dart-python-target.md"
           ],
-          "annotation": "Literal['type', 'read', 'write', 'read_write', 'value']",
-          "parent_id": "archkeel.analyzer.dart.parse.Site",
+          "annotation": "SiteUse",
+          "parent_id": "archkeel.analyzer.dart.syntax.Site",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Site.computed",
+          "id": "archkeel.analyzer.dart.syntax.Site.computed",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Site.computed",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Site.computed",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -1981,16 +2013,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "bool",
-          "parent_id": "archkeel.analyzer.dart.parse.Site",
+          "parent_id": "archkeel.analyzer.dart.syntax.Site",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Site.shadowed_names",
+          "id": "archkeel.analyzer.dart.syntax.Site.shadowed_names",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Site.shadowed_names",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Site.shadowed_names",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -2000,16 +2032,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "tuple[str, ...]",
-          "parent_id": "archkeel.analyzer.dart.parse.Site",
+          "parent_id": "archkeel.analyzer.dart.syntax.Site",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Site.closure_scope",
+          "id": "archkeel.analyzer.dart.syntax.Site.closure_scope",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Site.closure_scope",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Site.closure_scope",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -2019,16 +2051,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "bool",
-          "parent_id": "archkeel.analyzer.dart.parse.Site",
+          "parent_id": "archkeel.analyzer.dart.syntax.Site",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Member",
+          "id": "archkeel.analyzer.dart.syntax.Member",
           "kind": "class",
-          "qualified_name": "archkeel.analyzer.dart.parse.Member",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Member",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -2047,9 +2079,9 @@
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Member.name",
+          "id": "archkeel.analyzer.dart.syntax.Member.name",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Member.name",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Member.name",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -2059,16 +2091,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "str",
-          "parent_id": "archkeel.analyzer.dart.parse.Member",
+          "parent_id": "archkeel.analyzer.dart.syntax.Member",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Member.kind",
+          "id": "archkeel.analyzer.dart.syntax.Member.kind",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Member.kind",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Member.kind",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -2077,17 +2109,17 @@
           "provenance": [
             "docs/architecture/dart-python-target.md"
           ],
-          "annotation": "Literal['field', 'method', 'constructor', 'getter', 'setter', 'operator']",
-          "parent_id": "archkeel.analyzer.dart.parse.Member",
+          "annotation": "MemberKind",
+          "parent_id": "archkeel.analyzer.dart.syntax.Member",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Member.span",
+          "id": "archkeel.analyzer.dart.syntax.Member.span",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Member.span",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Member.span",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -2097,16 +2129,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "Span",
-          "parent_id": "archkeel.analyzer.dart.parse.Member",
+          "parent_id": "archkeel.analyzer.dart.syntax.Member",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Member.annotation",
+          "id": "archkeel.analyzer.dart.syntax.Member.annotation",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Member.annotation",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Member.annotation",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -2116,16 +2148,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "str | None",
-          "parent_id": "archkeel.analyzer.dart.parse.Member",
+          "parent_id": "archkeel.analyzer.dart.syntax.Member",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Member.return_type",
+          "id": "archkeel.analyzer.dart.syntax.Member.return_type",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Member.return_type",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Member.return_type",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -2135,16 +2167,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "str | None",
-          "parent_id": "archkeel.analyzer.dart.parse.Member",
+          "parent_id": "archkeel.analyzer.dart.syntax.Member",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Member.visibility",
+          "id": "archkeel.analyzer.dart.syntax.Member.visibility",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Member.visibility",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Member.visibility",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -2153,17 +2185,17 @@
           "provenance": [
             "docs/architecture/dart-python-target.md"
           ],
-          "annotation": "Literal['public', 'private']",
-          "parent_id": "archkeel.analyzer.dart.parse.Member",
+          "annotation": "Visibility",
+          "parent_id": "archkeel.analyzer.dart.syntax.Member",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Member.static",
+          "id": "archkeel.analyzer.dart.syntax.Member.static",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Member.static",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Member.static",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -2173,16 +2205,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "bool",
-          "parent_id": "archkeel.analyzer.dart.parse.Member",
+          "parent_id": "archkeel.analyzer.dart.syntax.Member",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Member.abstract",
+          "id": "archkeel.analyzer.dart.syntax.Member.abstract",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Member.abstract",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Member.abstract",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -2192,16 +2224,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "bool",
-          "parent_id": "archkeel.analyzer.dart.parse.Member",
+          "parent_id": "archkeel.analyzer.dart.syntax.Member",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Member.parameters",
+          "id": "archkeel.analyzer.dart.syntax.Member.parameters",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Member.parameters",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Member.parameters",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -2211,16 +2243,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "tuple[Parameter, ...]",
-          "parent_id": "archkeel.analyzer.dart.parse.Member",
+          "parent_id": "archkeel.analyzer.dart.syntax.Member",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Member.initializer",
+          "id": "archkeel.analyzer.dart.syntax.Member.initializer",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Member.initializer",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Member.initializer",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -2230,16 +2262,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "str | None",
-          "parent_id": "archkeel.analyzer.dart.parse.Member",
+          "parent_id": "archkeel.analyzer.dart.syntax.Member",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Member.literal",
+          "id": "archkeel.analyzer.dart.syntax.Member.literal",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Member.literal",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Member.literal",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -2249,16 +2281,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "str | None",
-          "parent_id": "archkeel.analyzer.dart.parse.Member",
+          "parent_id": "archkeel.analyzer.dart.syntax.Member",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Member.constructor_initializers",
+          "id": "archkeel.analyzer.dart.syntax.Member.constructor_initializers",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Member.constructor_initializers",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Member.constructor_initializers",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -2268,16 +2300,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "tuple[str, ...]",
-          "parent_id": "archkeel.analyzer.dart.parse.Member",
+          "parent_id": "archkeel.analyzer.dart.syntax.Member",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Member.redirect",
+          "id": "archkeel.analyzer.dart.syntax.Member.redirect",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Member.redirect",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Member.redirect",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -2287,16 +2319,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "str | None",
-          "parent_id": "archkeel.analyzer.dart.parse.Member",
+          "parent_id": "archkeel.analyzer.dart.syntax.Member",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Member.factory",
+          "id": "archkeel.analyzer.dart.syntax.Member.factory",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Member.factory",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Member.factory",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -2306,16 +2338,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "bool",
-          "parent_id": "archkeel.analyzer.dart.parse.Member",
+          "parent_id": "archkeel.analyzer.dart.syntax.Member",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Member.constant",
+          "id": "archkeel.analyzer.dart.syntax.Member.constant",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Member.constant",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Member.constant",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -2325,16 +2357,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "bool",
-          "parent_id": "archkeel.analyzer.dart.parse.Member",
+          "parent_id": "archkeel.analyzer.dart.syntax.Member",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Member.final",
+          "id": "archkeel.analyzer.dart.syntax.Member.final",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Member.final",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Member.final",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -2344,16 +2376,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "bool",
-          "parent_id": "archkeel.analyzer.dart.parse.Member",
+          "parent_id": "archkeel.analyzer.dart.syntax.Member",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Member.late",
+          "id": "archkeel.analyzer.dart.syntax.Member.late",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Member.late",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Member.late",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -2363,16 +2395,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "bool",
-          "parent_id": "archkeel.analyzer.dart.parse.Member",
+          "parent_id": "archkeel.analyzer.dart.syntax.Member",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Parameter",
+          "id": "archkeel.analyzer.dart.syntax.Parameter",
           "kind": "class",
-          "qualified_name": "archkeel.analyzer.dart.parse.Parameter",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Parameter",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -2391,9 +2423,9 @@
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Parameter.name",
+          "id": "archkeel.analyzer.dart.syntax.Parameter.name",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Parameter.name",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Parameter.name",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -2403,16 +2435,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "str",
-          "parent_id": "archkeel.analyzer.dart.parse.Parameter",
+          "parent_id": "archkeel.analyzer.dart.syntax.Parameter",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Parameter.annotation",
+          "id": "archkeel.analyzer.dart.syntax.Parameter.annotation",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Parameter.annotation",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Parameter.annotation",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -2422,16 +2454,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "str | None",
-          "parent_id": "archkeel.analyzer.dart.parse.Parameter",
+          "parent_id": "archkeel.analyzer.dart.syntax.Parameter",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Parameter.kind",
+          "id": "archkeel.analyzer.dart.syntax.Parameter.kind",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Parameter.kind",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Parameter.kind",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -2440,17 +2472,17 @@
           "provenance": [
             "docs/architecture/dart-python-target.md"
           ],
-          "annotation": "Literal['positional', 'named']",
-          "parent_id": "archkeel.analyzer.dart.parse.Parameter",
+          "annotation": "ParameterKind",
+          "parent_id": "archkeel.analyzer.dart.syntax.Parameter",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Parameter.default",
+          "id": "archkeel.analyzer.dart.syntax.Parameter.default",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Parameter.default",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Parameter.default",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -2460,16 +2492,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "str | None",
-          "parent_id": "archkeel.analyzer.dart.parse.Parameter",
+          "parent_id": "archkeel.analyzer.dart.syntax.Parameter",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Parameter.default_known",
+          "id": "archkeel.analyzer.dart.syntax.Parameter.default_known",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Parameter.default_known",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Parameter.default_known",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -2479,16 +2511,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "bool",
-          "parent_id": "archkeel.analyzer.dart.parse.Parameter",
+          "parent_id": "archkeel.analyzer.dart.syntax.Parameter",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Parameter.span",
+          "id": "archkeel.analyzer.dart.syntax.Parameter.span",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Parameter.span",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Parameter.span",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -2498,16 +2530,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "Span",
-          "parent_id": "archkeel.analyzer.dart.parse.Parameter",
+          "parent_id": "archkeel.analyzer.dart.syntax.Parameter",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Parameter.field_formal",
+          "id": "archkeel.analyzer.dart.syntax.Parameter.field_formal",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Parameter.field_formal",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Parameter.field_formal",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -2517,16 +2549,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "bool",
-          "parent_id": "archkeel.analyzer.dart.parse.Parameter",
+          "parent_id": "archkeel.analyzer.dart.syntax.Parameter",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Parameter.super_formal",
+          "id": "archkeel.analyzer.dart.syntax.Parameter.super_formal",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Parameter.super_formal",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Parameter.super_formal",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -2536,16 +2568,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "bool",
-          "parent_id": "archkeel.analyzer.dart.parse.Parameter",
+          "parent_id": "archkeel.analyzer.dart.syntax.Parameter",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Parameter.optional",
+          "id": "archkeel.analyzer.dart.syntax.Parameter.optional",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Parameter.optional",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Parameter.optional",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -2555,16 +2587,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "bool",
-          "parent_id": "archkeel.analyzer.dart.parse.Parameter",
+          "parent_id": "archkeel.analyzer.dart.syntax.Parameter",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Parameter.required",
+          "id": "archkeel.analyzer.dart.syntax.Parameter.required",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Parameter.required",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Parameter.required",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -2574,16 +2606,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "bool",
-          "parent_id": "archkeel.analyzer.dart.parse.Parameter",
+          "parent_id": "archkeel.analyzer.dart.syntax.Parameter",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Definition.enum_member_spans",
+          "id": "archkeel.analyzer.dart.syntax.Definition.enum_member_spans",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Definition.enum_member_spans",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Definition.enum_member_spans",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -2593,16 +2625,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "tuple[Span, ...]",
-          "parent_id": "archkeel.analyzer.dart.parse.Definition",
+          "parent_id": "archkeel.analyzer.dart.syntax.Definition",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Site.expression_source",
+          "id": "archkeel.analyzer.dart.syntax.Site.expression_source",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Site.expression_source",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Site.expression_source",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -2612,16 +2644,16 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "str | None",
-          "parent_id": "archkeel.analyzer.dart.parse.Site",
+          "parent_id": "archkeel.analyzer.dart.syntax.Site",
           "visibility": {
             "kind": "public",
             "basis": "declared"
           }
         },
         {
-          "id": "archkeel.analyzer.dart.parse.Site.initializer_source",
+          "id": "archkeel.analyzer.dart.syntax.Site.initializer_source",
           "kind": "attribute",
-          "qualified_name": "archkeel.analyzer.dart.parse.Site.initializer_source",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Site.initializer_source",
           "language": "python",
           "presence": "planned",
           "responsibilities": [
@@ -2631,10 +2663,951 @@
             "docs/architecture/dart-python-target.md"
           ],
           "annotation": "str | None",
-          "parent_id": "archkeel.analyzer.dart.parse.Site",
+          "parent_id": "archkeel.analyzer.dart.syntax.Site",
           "visibility": {
             "kind": "public",
             "basis": "declared"
+          }
+        },
+        {
+          "id": "archkeel.analyzer.dart.syntax",
+          "kind": "module",
+          "qualified_name": "archkeel.analyzer.dart.syntax",
+          "language": "python",
+          "presence": "planned",
+          "responsibilities": [
+            "Own immutable syntax values and their closed semantic vocabulary."
+          ],
+          "provenance": [
+            "docs/architecture/dart-nominal-controls.md"
+          ],
+          "parent_id": "DART-SYNTAX"
+        },
+        {
+          "id": "archkeel.analyzer.dart.syntax.ParameterKind",
+          "kind": "enum",
+          "qualified_name": "archkeel.analyzer.dart.syntax.ParameterKind",
+          "language": "python",
+          "presence": "planned",
+          "responsibilities": [
+            "Name the finite ParameterKind syntax category without raw string control."
+          ],
+          "provenance": [
+            "docs/architecture/dart-nominal-controls.md"
+          ],
+          "parent_id": "archkeel.analyzer.dart.syntax",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          }
+        },
+        {
+          "id": "archkeel.analyzer.dart.syntax.Visibility",
+          "kind": "enum",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Visibility",
+          "language": "python",
+          "presence": "planned",
+          "responsibilities": [
+            "Name the finite Visibility syntax category without raw string control."
+          ],
+          "provenance": [
+            "docs/architecture/dart-nominal-controls.md"
+          ],
+          "parent_id": "archkeel.analyzer.dart.syntax",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          }
+        },
+        {
+          "id": "archkeel.analyzer.dart.syntax.MemberKind",
+          "kind": "enum",
+          "qualified_name": "archkeel.analyzer.dart.syntax.MemberKind",
+          "language": "python",
+          "presence": "planned",
+          "responsibilities": [
+            "Name the finite MemberKind syntax category without raw string control."
+          ],
+          "provenance": [
+            "docs/architecture/dart-nominal-controls.md"
+          ],
+          "parent_id": "archkeel.analyzer.dart.syntax",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          }
+        },
+        {
+          "id": "archkeel.analyzer.dart.syntax.DefinitionKind",
+          "kind": "enum",
+          "qualified_name": "archkeel.analyzer.dart.syntax.DefinitionKind",
+          "language": "python",
+          "presence": "planned",
+          "responsibilities": [
+            "Name the finite DefinitionKind syntax category without raw string control."
+          ],
+          "provenance": [
+            "docs/architecture/dart-nominal-controls.md"
+          ],
+          "parent_id": "archkeel.analyzer.dart.syntax",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          }
+        },
+        {
+          "id": "archkeel.analyzer.dart.syntax.DirectiveKind",
+          "kind": "enum",
+          "qualified_name": "archkeel.analyzer.dart.syntax.DirectiveKind",
+          "language": "python",
+          "presence": "planned",
+          "responsibilities": [
+            "Name the finite DirectiveKind syntax category without raw string control."
+          ],
+          "provenance": [
+            "docs/architecture/dart-nominal-controls.md"
+          ],
+          "parent_id": "archkeel.analyzer.dart.syntax",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          }
+        },
+        {
+          "id": "archkeel.analyzer.dart.syntax.Combinator",
+          "kind": "enum",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Combinator",
+          "language": "python",
+          "presence": "planned",
+          "responsibilities": [
+            "Name the finite Combinator syntax category without raw string control."
+          ],
+          "provenance": [
+            "docs/architecture/dart-nominal-controls.md"
+          ],
+          "parent_id": "archkeel.analyzer.dart.syntax",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          }
+        },
+        {
+          "id": "archkeel.analyzer.dart.syntax.SiteKind",
+          "kind": "enum",
+          "qualified_name": "archkeel.analyzer.dart.syntax.SiteKind",
+          "language": "python",
+          "presence": "planned",
+          "responsibilities": [
+            "Name the finite SiteKind syntax category without raw string control."
+          ],
+          "provenance": [
+            "docs/architecture/dart-nominal-controls.md"
+          ],
+          "parent_id": "archkeel.analyzer.dart.syntax",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          }
+        },
+        {
+          "id": "archkeel.analyzer.dart.syntax.SiteUse",
+          "kind": "enum",
+          "qualified_name": "archkeel.analyzer.dart.syntax.SiteUse",
+          "language": "python",
+          "presence": "planned",
+          "responsibilities": [
+            "Name the finite SiteUse syntax category without raw string control."
+          ],
+          "provenance": [
+            "docs/architecture/dart-nominal-controls.md"
+          ],
+          "parent_id": "archkeel.analyzer.dart.syntax",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          }
+        },
+        {
+          "id": "archkeel.analyzer.dart.syntax.Modifier",
+          "kind": "enum",
+          "qualified_name": "archkeel.analyzer.dart.syntax.Modifier",
+          "language": "python",
+          "presence": "planned",
+          "responsibilities": [
+            "Name the finite Modifier syntax category without raw string control."
+          ],
+          "provenance": [
+            "docs/architecture/dart-nominal-controls.md"
+          ],
+          "parent_id": "archkeel.analyzer.dart.syntax",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          }
+        },
+        {
+          "id": "archkeel.analyzer.dart.syntax.ConcernKind",
+          "kind": "enum",
+          "qualified_name": "archkeel.analyzer.dart.syntax.ConcernKind",
+          "language": "python",
+          "presence": "planned",
+          "responsibilities": [
+            "Name the finite ConcernKind syntax category without raw string control."
+          ],
+          "provenance": [
+            "docs/architecture/dart-nominal-controls.md"
+          ],
+          "parent_id": "archkeel.analyzer.dart.syntax",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          }
+        },
+        {
+          "id": "archkeel.analyzer.dart.snapshot.Snapshot.sdk_constraint_state",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.dart.snapshot.Snapshot.sdk_constraint_state",
+          "language": "python",
+          "presence": "planned",
+          "responsibilities": [
+            "Carry the owned sdk_constraint_state value across the Dart API."
+          ],
+          "provenance": [
+            "docs/architecture/dart-nominal-controls.md"
+          ],
+          "parent_id": "archkeel.analyzer.dart.snapshot.Snapshot",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "annotation": "RuntimeRequirementState"
+        },
+        {
+          "id": "archkeel.analyzer.dart.resolve.ResolvedBinding",
+          "kind": "class",
+          "qualified_name": "archkeel.analyzer.dart.resolve.ResolvedBinding",
+          "language": "python",
+          "presence": "planned",
+          "responsibilities": [
+            "Own the immutable ResolvedBinding result of bounded Dart resolution."
+          ],
+          "provenance": [
+            "docs/architecture/dart-nominal-controls.md"
+          ],
+          "parent_id": "archkeel.analyzer.dart.resolve",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "modifiers": [
+            "frozen"
+          ]
+        },
+        {
+          "id": "archkeel.analyzer.dart.resolve.ResolvedBinding.module",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.dart.resolve.ResolvedBinding.module",
+          "language": "python",
+          "presence": "planned",
+          "responsibilities": [
+            "Carry the typed module resolution value."
+          ],
+          "provenance": [
+            "docs/architecture/dart-nominal-controls.md"
+          ],
+          "parent_id": "archkeel.analyzer.dart.resolve.ResolvedBinding",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "annotation": "str"
+        },
+        {
+          "id": "archkeel.analyzer.dart.resolve.ResolvedBinding.name",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.dart.resolve.ResolvedBinding.name",
+          "language": "python",
+          "presence": "planned",
+          "responsibilities": [
+            "Carry the typed name resolution value."
+          ],
+          "provenance": [
+            "docs/architecture/dart-nominal-controls.md"
+          ],
+          "parent_id": "archkeel.analyzer.dart.resolve.ResolvedBinding",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "annotation": "str"
+        },
+        {
+          "id": "archkeel.analyzer.dart.resolve.ResolvedBinding.kind",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.dart.resolve.ResolvedBinding.kind",
+          "language": "python",
+          "presence": "planned",
+          "responsibilities": [
+            "Carry the typed kind resolution value."
+          ],
+          "provenance": [
+            "docs/architecture/dart-nominal-controls.md"
+          ],
+          "parent_id": "archkeel.analyzer.dart.resolve.ResolvedBinding",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "annotation": "DefinitionKind | MemberKind | BindingRole"
+        },
+        {
+          "id": "archkeel.analyzer.dart.resolve.ResolvedBinding.via_prefix",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.dart.resolve.ResolvedBinding.via_prefix",
+          "language": "python",
+          "presence": "planned",
+          "responsibilities": [
+            "Carry the typed via_prefix resolution value."
+          ],
+          "provenance": [
+            "docs/architecture/dart-nominal-controls.md"
+          ],
+          "parent_id": "archkeel.analyzer.dart.resolve.ResolvedBinding",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "annotation": "str | None"
+        },
+        {
+          "id": "archkeel.analyzer.dart.resolve.ResolvedBinding.declaration_id",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.dart.resolve.ResolvedBinding.declaration_id",
+          "language": "python",
+          "presence": "planned",
+          "responsibilities": [
+            "Carry the typed declaration_id resolution value."
+          ],
+          "provenance": [
+            "docs/architecture/dart-nominal-controls.md"
+          ],
+          "parent_id": "archkeel.analyzer.dart.resolve.ResolvedBinding",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "annotation": "str"
+        },
+        {
+          "id": "archkeel.analyzer.dart.resolve.ResolvedBinding.rel_path",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.dart.resolve.ResolvedBinding.rel_path",
+          "language": "python",
+          "presence": "planned",
+          "responsibilities": [
+            "Carry the typed rel_path resolution value."
+          ],
+          "provenance": [
+            "docs/architecture/dart-nominal-controls.md"
+          ],
+          "parent_id": "archkeel.analyzer.dart.resolve.ResolvedBinding",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "annotation": "str"
+        },
+        {
+          "id": "archkeel.analyzer.dart.resolve.ResolvedBinding.span",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.dart.resolve.ResolvedBinding.span",
+          "language": "python",
+          "presence": "planned",
+          "responsibilities": [
+            "Carry the typed span resolution value."
+          ],
+          "provenance": [
+            "docs/architecture/dart-nominal-controls.md"
+          ],
+          "parent_id": "archkeel.analyzer.dart.resolve.ResolvedBinding",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "annotation": "Span"
+        },
+        {
+          "id": "archkeel.analyzer.dart.resolve.ResolvedSite",
+          "kind": "class",
+          "qualified_name": "archkeel.analyzer.dart.resolve.ResolvedSite",
+          "language": "python",
+          "presence": "planned",
+          "responsibilities": [
+            "Own the immutable ResolvedSite result of bounded Dart resolution."
+          ],
+          "provenance": [
+            "docs/architecture/dart-nominal-controls.md"
+          ],
+          "parent_id": "archkeel.analyzer.dart.resolve",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "modifiers": [
+            "frozen"
+          ]
+        },
+        {
+          "id": "archkeel.analyzer.dart.resolve.ResolvedSite.site",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.dart.resolve.ResolvedSite.site",
+          "language": "python",
+          "presence": "planned",
+          "responsibilities": [
+            "Carry the typed site resolution value."
+          ],
+          "provenance": [
+            "docs/architecture/dart-nominal-controls.md"
+          ],
+          "parent_id": "archkeel.analyzer.dart.resolve.ResolvedSite",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "annotation": "Site"
+        },
+        {
+          "id": "archkeel.analyzer.dart.resolve.ResolvedSite.status",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.dart.resolve.ResolvedSite.status",
+          "language": "python",
+          "presence": "planned",
+          "responsibilities": [
+            "Carry the typed status resolution value."
+          ],
+          "provenance": [
+            "docs/architecture/dart-nominal-controls.md"
+          ],
+          "parent_id": "archkeel.analyzer.dart.resolve.ResolvedSite",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "annotation": "ResolutionStatus"
+        },
+        {
+          "id": "archkeel.analyzer.dart.resolve.ResolvedSite.bindings",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.dart.resolve.ResolvedSite.bindings",
+          "language": "python",
+          "presence": "planned",
+          "responsibilities": [
+            "Carry the typed bindings resolution value."
+          ],
+          "provenance": [
+            "docs/architecture/dart-nominal-controls.md"
+          ],
+          "parent_id": "archkeel.analyzer.dart.resolve.ResolvedSite",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "annotation": "tuple[ResolvedBinding, ...]"
+        },
+        {
+          "id": "archkeel.analyzer.dart.resolve.ConstructionResolution",
+          "kind": "class",
+          "qualified_name": "archkeel.analyzer.dart.resolve.ConstructionResolution",
+          "language": "python",
+          "presence": "planned",
+          "responsibilities": [
+            "Own the immutable ConstructionResolution result of bounded Dart resolution."
+          ],
+          "provenance": [
+            "docs/architecture/dart-nominal-controls.md"
+          ],
+          "parent_id": "archkeel.analyzer.dart.resolve",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "modifiers": [
+            "frozen"
+          ]
+        },
+        {
+          "id": "archkeel.analyzer.dart.resolve.ConstructionResolution.status",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.dart.resolve.ConstructionResolution.status",
+          "language": "python",
+          "presence": "planned",
+          "responsibilities": [
+            "Carry the typed status resolution value."
+          ],
+          "provenance": [
+            "docs/architecture/dart-nominal-controls.md"
+          ],
+          "parent_id": "archkeel.analyzer.dart.resolve.ConstructionResolution",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "annotation": "ResolutionStatus"
+        },
+        {
+          "id": "archkeel.analyzer.dart.resolve.ConstructionResolution.binding",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.dart.resolve.ConstructionResolution.binding",
+          "language": "python",
+          "presence": "planned",
+          "responsibilities": [
+            "Carry the typed binding resolution value."
+          ],
+          "provenance": [
+            "docs/architecture/dart-nominal-controls.md"
+          ],
+          "parent_id": "archkeel.analyzer.dart.resolve.ConstructionResolution",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "annotation": "ResolvedBinding | None"
+        },
+        {
+          "id": "archkeel.analyzer.dart.resolve.ConstructionResolution.reason",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.dart.resolve.ConstructionResolution.reason",
+          "language": "python",
+          "presence": "planned",
+          "responsibilities": [
+            "Carry the typed reason resolution value."
+          ],
+          "provenance": [
+            "docs/architecture/dart-nominal-controls.md"
+          ],
+          "parent_id": "archkeel.analyzer.dart.resolve.ConstructionResolution",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "annotation": "str | None"
+        },
+        {
+          "id": "archkeel.analyzer.dart.resolve.ResolvedParameter",
+          "kind": "class",
+          "qualified_name": "archkeel.analyzer.dart.resolve.ResolvedParameter",
+          "language": "python",
+          "presence": "planned",
+          "responsibilities": [
+            "Own the immutable ResolvedParameter result of bounded Dart resolution."
+          ],
+          "provenance": [
+            "docs/architecture/dart-nominal-controls.md"
+          ],
+          "parent_id": "archkeel.analyzer.dart.resolve",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "modifiers": [
+            "frozen"
+          ]
+        },
+        {
+          "id": "archkeel.analyzer.dart.resolve.ResolvedParameter.name",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.dart.resolve.ResolvedParameter.name",
+          "language": "python",
+          "presence": "planned",
+          "responsibilities": [
+            "Carry the typed name resolution value."
+          ],
+          "provenance": [
+            "docs/architecture/dart-nominal-controls.md"
+          ],
+          "parent_id": "archkeel.analyzer.dart.resolve.ResolvedParameter",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "annotation": "str"
+        },
+        {
+          "id": "archkeel.analyzer.dart.resolve.ResolvedParameter.annotation",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.dart.resolve.ResolvedParameter.annotation",
+          "language": "python",
+          "presence": "planned",
+          "responsibilities": [
+            "Carry the typed annotation resolution value."
+          ],
+          "provenance": [
+            "docs/architecture/dart-nominal-controls.md"
+          ],
+          "parent_id": "archkeel.analyzer.dart.resolve.ResolvedParameter",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "annotation": "str | None"
+        },
+        {
+          "id": "archkeel.analyzer.dart.resolve.ResolvedParameter.kind",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.dart.resolve.ResolvedParameter.kind",
+          "language": "python",
+          "presence": "planned",
+          "responsibilities": [
+            "Carry the typed kind resolution value."
+          ],
+          "provenance": [
+            "docs/architecture/dart-nominal-controls.md"
+          ],
+          "parent_id": "archkeel.analyzer.dart.resolve.ResolvedParameter",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "annotation": "ParameterKind"
+        },
+        {
+          "id": "archkeel.analyzer.dart.resolve.ResolvedParameter.default",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.dart.resolve.ResolvedParameter.default",
+          "language": "python",
+          "presence": "planned",
+          "responsibilities": [
+            "Carry the typed default resolution value."
+          ],
+          "provenance": [
+            "docs/architecture/dart-nominal-controls.md"
+          ],
+          "parent_id": "archkeel.analyzer.dart.resolve.ResolvedParameter",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "annotation": "str | None"
+        },
+        {
+          "id": "archkeel.analyzer.dart.resolve.ResolvedParameter.default_known",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.dart.resolve.ResolvedParameter.default_known",
+          "language": "python",
+          "presence": "planned",
+          "responsibilities": [
+            "Carry the typed default_known resolution value."
+          ],
+          "provenance": [
+            "docs/architecture/dart-nominal-controls.md"
+          ],
+          "parent_id": "archkeel.analyzer.dart.resolve.ResolvedParameter",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "annotation": "bool"
+        },
+        {
+          "id": "archkeel.analyzer.dart.resolve.ResolvedParameter.span",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.dart.resolve.ResolvedParameter.span",
+          "language": "python",
+          "presence": "planned",
+          "responsibilities": [
+            "Carry the typed span resolution value."
+          ],
+          "provenance": [
+            "docs/architecture/dart-nominal-controls.md"
+          ],
+          "parent_id": "archkeel.analyzer.dart.resolve.ResolvedParameter",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "annotation": "Span"
+        },
+        {
+          "id": "archkeel.analyzer.dart.resolve.ResolvedParameter.field_formal",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.dart.resolve.ResolvedParameter.field_formal",
+          "language": "python",
+          "presence": "planned",
+          "responsibilities": [
+            "Carry the typed field_formal resolution value."
+          ],
+          "provenance": [
+            "docs/architecture/dart-nominal-controls.md"
+          ],
+          "parent_id": "archkeel.analyzer.dart.resolve.ResolvedParameter",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "annotation": "bool"
+        },
+        {
+          "id": "archkeel.analyzer.dart.resolve.ParameterResolution",
+          "kind": "class",
+          "qualified_name": "archkeel.analyzer.dart.resolve.ParameterResolution",
+          "language": "python",
+          "presence": "planned",
+          "responsibilities": [
+            "Own the immutable ParameterResolution result of bounded Dart resolution."
+          ],
+          "provenance": [
+            "docs/architecture/dart-nominal-controls.md"
+          ],
+          "parent_id": "archkeel.analyzer.dart.resolve",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "modifiers": [
+            "frozen"
+          ]
+        },
+        {
+          "id": "archkeel.analyzer.dart.resolve.ParameterResolution.parameters",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.dart.resolve.ParameterResolution.parameters",
+          "language": "python",
+          "presence": "planned",
+          "responsibilities": [
+            "Carry the typed parameters resolution value."
+          ],
+          "provenance": [
+            "docs/architecture/dart-nominal-controls.md"
+          ],
+          "parent_id": "archkeel.analyzer.dart.resolve.ParameterResolution",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "annotation": "tuple[ResolvedParameter, ...]"
+        },
+        {
+          "id": "archkeel.analyzer.dart.resolve.ParameterResolution.problems",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.dart.resolve.ParameterResolution.problems",
+          "language": "python",
+          "presence": "planned",
+          "responsibilities": [
+            "Carry the typed problems resolution value."
+          ],
+          "provenance": [
+            "docs/architecture/dart-nominal-controls.md"
+          ],
+          "parent_id": "archkeel.analyzer.dart.resolve.ParameterResolution",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "annotation": "tuple[ResolutionProblem, ...]"
+        },
+        {
+          "id": "archkeel.analyzer.dart.resolve.ResolutionStatus",
+          "kind": "enum",
+          "qualified_name": "archkeel.analyzer.dart.resolve.ResolutionStatus",
+          "language": "python",
+          "presence": "planned",
+          "responsibilities": [
+            "Own the closed ResolutionStatus values of source resolution."
+          ],
+          "provenance": [
+            "docs/architecture/dart-nominal-controls.md"
+          ],
+          "parent_id": "archkeel.analyzer.dart.resolve",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          }
+        },
+        {
+          "id": "archkeel.analyzer.dart.resolve.BindingRole",
+          "kind": "enum",
+          "qualified_name": "archkeel.analyzer.dart.resolve.BindingRole",
+          "language": "python",
+          "presence": "planned",
+          "responsibilities": [
+            "Own the closed BindingRole values of source resolution."
+          ],
+          "provenance": [
+            "docs/architecture/dart-nominal-controls.md"
+          ],
+          "parent_id": "archkeel.analyzer.dart.resolve",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          }
+        },
+        {
+          "id": "archkeel.analyzer.dart.resolve.Resolver.resolved_sites",
+          "kind": "method",
+          "qualified_name": "archkeel.analyzer.dart.resolve.Resolver.resolved_sites",
+          "language": "python",
+          "presence": "planned",
+          "responsibilities": [
+            "Return the typed result of bounded resolved sites without runtime guesses."
+          ],
+          "provenance": [
+            "docs/architecture/dart-nominal-controls.md"
+          ],
+          "parent_id": "archkeel.analyzer.dart.resolve.Resolver",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "signature": {
+            "parameters": [
+              {
+                "name": "self",
+                "annotation": null,
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "rel_path",
+                "annotation": "str",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              }
+            ],
+            "returns": "tuple[ResolvedSite, ...]"
+          }
+        },
+        {
+          "id": "archkeel.analyzer.dart.resolve.Resolver.resolve_construction",
+          "kind": "method",
+          "qualified_name": "archkeel.analyzer.dart.resolve.Resolver.resolve_construction",
+          "language": "python",
+          "presence": "planned",
+          "responsibilities": [
+            "Return the typed result of bounded resolve construction without runtime guesses."
+          ],
+          "provenance": [
+            "docs/architecture/dart-nominal-controls.md"
+          ],
+          "parent_id": "archkeel.analyzer.dart.resolve.Resolver",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "signature": {
+            "parameters": [
+              {
+                "name": "self",
+                "annotation": null,
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "rel_path",
+                "annotation": "str",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "site",
+                "annotation": "Site",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              }
+            ],
+            "returns": "ConstructionResolution"
+          }
+        },
+        {
+          "id": "archkeel.analyzer.dart.resolve.Resolver.resolve_uri",
+          "kind": "method",
+          "qualified_name": "archkeel.analyzer.dart.resolve.Resolver.resolve_uri",
+          "language": "python",
+          "presence": "planned",
+          "responsibilities": [
+            "Return the typed result of bounded resolve uri without runtime guesses."
+          ],
+          "provenance": [
+            "docs/architecture/dart-nominal-controls.md"
+          ],
+          "parent_id": "archkeel.analyzer.dart.resolve.Resolver",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "signature": {
+            "parameters": [
+              {
+                "name": "self",
+                "annotation": null,
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "rel_path",
+                "annotation": "str",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "uri",
+                "annotation": "str",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              }
+            ],
+            "returns": "ResolvedTarget | None"
+          }
+        },
+        {
+          "id": "archkeel.analyzer.dart.resolve.Resolver.resolve_directive",
+          "kind": "method",
+          "qualified_name": "archkeel.analyzer.dart.resolve.Resolver.resolve_directive",
+          "language": "python",
+          "presence": "planned",
+          "responsibilities": [
+            "Return the typed result of bounded resolve directive without runtime guesses."
+          ],
+          "provenance": [
+            "docs/architecture/dart-nominal-controls.md"
+          ],
+          "parent_id": "archkeel.analyzer.dart.resolve.Resolver",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "signature": {
+            "parameters": [
+              {
+                "name": "self",
+                "annotation": null,
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "rel_path",
+                "annotation": "str",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "directive",
+                "annotation": "Directive",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              }
+            ],
+            "returns": "tuple[ResolvedTarget, ...]"
           }
         }
       ],
@@ -2752,8 +3725,8 @@
         {
           "id": "DART-REL-11",
           "kind": "references",
-          "source_id": "archkeel.analyzer.dart.parse.Syntax",
-          "target_id": "archkeel.analyzer.dart.parse.Definition",
+          "source_id": "archkeel.analyzer.dart.syntax.Syntax",
+          "target_id": "archkeel.analyzer.dart.syntax.Definition",
           "resolution": "not_applicable",
           "reason": "The typed boundary carries this immutable source value.",
           "provenance": [
@@ -2763,8 +3736,8 @@
         {
           "id": "DART-REL-12",
           "kind": "references",
-          "source_id": "archkeel.analyzer.dart.parse.Syntax",
-          "target_id": "archkeel.analyzer.dart.parse.Directive",
+          "source_id": "archkeel.analyzer.dart.syntax.Syntax",
+          "target_id": "archkeel.analyzer.dart.syntax.Directive",
           "resolution": "not_applicable",
           "reason": "The typed boundary carries this immutable source value.",
           "provenance": [
@@ -2774,8 +3747,8 @@
         {
           "id": "DART-REL-13",
           "kind": "references",
-          "source_id": "archkeel.analyzer.dart.parse.Syntax",
-          "target_id": "archkeel.analyzer.dart.parse.Site",
+          "source_id": "archkeel.analyzer.dart.syntax.Syntax",
+          "target_id": "archkeel.analyzer.dart.syntax.Site",
           "resolution": "not_applicable",
           "reason": "The typed boundary carries this immutable source value.",
           "provenance": [
@@ -2785,8 +3758,8 @@
         {
           "id": "DART-REL-14",
           "kind": "references",
-          "source_id": "archkeel.analyzer.dart.parse.Syntax",
-          "target_id": "archkeel.analyzer.dart.parse.Concern",
+          "source_id": "archkeel.analyzer.dart.syntax.Syntax",
+          "target_id": "archkeel.analyzer.dart.syntax.Concern",
           "resolution": "not_applicable",
           "reason": "The typed boundary carries this immutable source value.",
           "provenance": [
@@ -2796,8 +3769,8 @@
         {
           "id": "DART-REL-15",
           "kind": "references",
-          "source_id": "archkeel.analyzer.dart.parse.Definition",
-          "target_id": "archkeel.analyzer.dart.parse.Span",
+          "source_id": "archkeel.analyzer.dart.syntax.Definition",
+          "target_id": "archkeel.analyzer.dart.syntax.Span",
           "resolution": "not_applicable",
           "reason": "The typed boundary carries this immutable source value.",
           "provenance": [
@@ -2807,8 +3780,8 @@
         {
           "id": "DART-REL-16",
           "kind": "references",
-          "source_id": "archkeel.analyzer.dart.parse.Site",
-          "target_id": "archkeel.analyzer.dart.parse.Span",
+          "source_id": "archkeel.analyzer.dart.syntax.Site",
+          "target_id": "archkeel.analyzer.dart.syntax.Span",
           "resolution": "not_applicable",
           "reason": "The typed boundary carries this immutable source value.",
           "provenance": [
@@ -2829,8 +3802,8 @@
         {
           "id": "DART-REL-18",
           "kind": "references",
-          "source_id": "archkeel.analyzer.dart.parse.Definition",
-          "target_id": "archkeel.analyzer.dart.parse.Member",
+          "source_id": "archkeel.analyzer.dart.syntax.Definition",
+          "target_id": "archkeel.analyzer.dart.syntax.Member",
           "resolution": "not_applicable",
           "reason": "Class and extension declarations retain their member inventory.",
           "provenance": [
@@ -2840,8 +3813,8 @@
         {
           "id": "DART-REL-19",
           "kind": "references",
-          "source_id": "archkeel.analyzer.dart.parse.Definition",
-          "target_id": "archkeel.analyzer.dart.parse.Parameter",
+          "source_id": "archkeel.analyzer.dart.syntax.Definition",
+          "target_id": "archkeel.analyzer.dart.syntax.Parameter",
           "resolution": "not_applicable",
           "reason": "Callable declarations retain authored parameter data.",
           "provenance": [
@@ -2851,8 +3824,8 @@
         {
           "id": "DART-REL-20",
           "kind": "references",
-          "source_id": "archkeel.analyzer.dart.parse.Member",
-          "target_id": "archkeel.analyzer.dart.parse.Parameter",
+          "source_id": "archkeel.analyzer.dart.syntax.Member",
+          "target_id": "archkeel.analyzer.dart.syntax.Parameter",
           "resolution": "not_applicable",
           "reason": "Members retain authored parameters and defaults.",
           "provenance": [
@@ -2862,8 +3835,8 @@
         {
           "id": "DART-REL-21",
           "kind": "references",
-          "source_id": "archkeel.analyzer.dart.parse.Parameter",
-          "target_id": "archkeel.analyzer.dart.parse.Span",
+          "source_id": "archkeel.analyzer.dart.syntax.Parameter",
+          "target_id": "archkeel.analyzer.dart.syntax.Span",
           "resolution": "not_applicable",
           "reason": "Parameter evidence retains its exact source range.",
           "provenance": [
@@ -2873,8 +3846,8 @@
         {
           "id": "DART-REL-22",
           "kind": "references",
-          "source_id": "archkeel.analyzer.dart.parse.Member",
-          "target_id": "archkeel.analyzer.dart.parse.Span",
+          "source_id": "archkeel.analyzer.dart.syntax.Member",
+          "target_id": "archkeel.analyzer.dart.syntax.Span",
           "resolution": "not_applicable",
           "reason": "Member evidence retains its exact source range.",
           "provenance": [
@@ -2884,8 +3857,8 @@
         {
           "id": "DART-REL-23",
           "kind": "references",
-          "source_id": "archkeel.analyzer.dart.parse.Directive",
-          "target_id": "archkeel.analyzer.dart.parse.Span",
+          "source_id": "archkeel.analyzer.dart.syntax.Directive",
+          "target_id": "archkeel.analyzer.dart.syntax.Span",
           "resolution": "not_applicable",
           "reason": "Directive evidence retains its exact source range.",
           "provenance": [
@@ -2895,8 +3868,8 @@
         {
           "id": "DART-REL-24",
           "kind": "references",
-          "source_id": "archkeel.analyzer.dart.parse.Syntax",
-          "target_id": "archkeel.analyzer.dart.parse.Span",
+          "source_id": "archkeel.analyzer.dart.syntax.Syntax",
+          "target_id": "archkeel.analyzer.dart.syntax.Span",
           "resolution": "not_applicable",
           "reason": "The first parser error is carried as source evidence.",
           "provenance": [

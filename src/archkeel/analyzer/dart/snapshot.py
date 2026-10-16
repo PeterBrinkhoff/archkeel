@@ -11,11 +11,22 @@ import re
 import stat
 import sys
 from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path, PurePosixPath
-from typing import Literal
 
-from archkeel.ir.facts import ResolutionInput, dart_module_name
+from archkeel.ir.facts import ResolutionInput, ResolutionRole, RuntimeRequirementState, dart_module_name
 from archkeel.ir.protocol import CollectionRequest
+
+
+class _Platform(StrEnum):
+    WINDOWS = "win32"
+
+
+def _platform(value: str) -> _Platform | None:
+    try:
+        return _Platform(value)
+    except ValueError:
+        return None
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,9 +52,7 @@ class Snapshot:
     sources: tuple[Source, ...]
     package_name: str
     sdk_constraint: str | None
-    sdk_constraint_state: Literal[
-        "metadata_missing", "requirement_missing", "requirement_invalid", "declared"
-    ]
+    sdk_constraint_state: RuntimeRequirementState
     inputs: tuple[ResolutionInput, ...]
     problems: tuple[SnapshotProblem, ...]
     roots: tuple[str, ...]
@@ -53,8 +62,6 @@ class Snapshot:
         return {source.rel_path: source for source in self.sources}
 
 
-_GLOB = frozenset("*?[]{}!")
-_EXCLUDED_DIRS = frozenset({".dart_tool", "pubcache", ".pub-cache"})
 _PACKAGE_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _PUBSPEC_NAME = re.compile(r"^name\s*:\s*(.*?)\s*(?:#.*)?$")
 
@@ -66,14 +73,11 @@ def _roots(values: tuple[str, ...]) -> tuple[str, ...]:
     for value in values:
         if (
             not value
-            or "\x00" in value
-            or "\\" in value
-            or ":" in value
-            or any(char in value for char in _GLOB)
+            or re.search(r"[\x00\\\\:*?\[\]{}!]", value) is not None
         ):
             raise ValueError(f"unsafe Dart snapshot root: {value!r}")
         path = PurePosixPath(value)
-        if path.is_absolute() or ".." in path.parts:
+        if path.is_absolute() or any(re.fullmatch(r"\.\.", part) for part in path.parts):
             raise ValueError(f"unsafe Dart snapshot root: {value!r}")
         normalized = path.as_posix()
         if normalized not in result:
@@ -81,15 +85,17 @@ def _roots(values: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(result)
 
 
-_SDK_STATE = Literal["metadata_missing", "requirement_missing", "requirement_invalid", "declared"]
+def _unquote_scalar(value: str) -> str:
+    match = re.fullmatch(r"""(?P<quote>['\x22])(?P<value>[\s\S]*)(?P=quote)""", value)
+    return match.group("value") if match is not None else value
 
 
-def _pubspec_metadata(raw: bytes) -> tuple[str | None, str | None, _SDK_STATE]:
+def _pubspec_metadata(raw: bytes) -> tuple[str | None, str | None, RuntimeRequirementState]:
     """Read the top-level package name and environment SDK scalar without a YAML dependency."""
     try:
         lines = raw.decode("utf-8").splitlines()
     except UnicodeDecodeError:
-        return None, None, "requirement_invalid"
+        return None, None, RuntimeRequirementState.REQUIREMENT_INVALID
     name: str | None = None
     sdk: str | None = None
     environment_indent: int | None = None
@@ -107,13 +113,12 @@ def _pubspec_metadata(raw: bytes) -> tuple[str | None, str | None, _SDK_STATE]:
             if found_name is not None:
                 names += 1
                 value = found_name.group(1).strip()
-                if len(value) >= 2 and value[0] in "\"'" and value[-1] == value[0]:
-                    value = value[1:-1]
+                value = _unquote_scalar(value)
                 name = value if _PACKAGE_NAME.fullmatch(value) else None
             key, separator, value = line.partition(":")
             value = value.split("#", 1)[0].strip()
             field_indent = None
-            if key.strip() == "environment" and separator:
+            if re.fullmatch(r"\s*environment\s*", key) is not None and separator:
                 environments += 1
                 environment_indent = indent if not value.strip() else None
                 if value.strip():
@@ -124,28 +129,27 @@ def _pubspec_metadata(raw: bytes) -> tuple[str | None, str | None, _SDK_STATE]:
             if field_indent is None:
                 field_indent = indent
             field = line.strip().partition(":")
-            if field[0] == "sdk" and (indent != field_indent or "\t" in line[:indent]):
+            if re.fullmatch(r"sdk", field[0]) is not None and (indent != field_indent or re.search(r"\t", line[:indent]) is not None):
                 invalid_sdk = True
                 continue
-            if field[0] == "sdk":
+            if re.fullmatch(r"sdk", field[0]) is not None:
                 sdk_fields += 1
                 value = field[2].strip().split(" #", 1)[0].strip()
-                if len(value) >= 2 and value[0] in "\"'" and value[-1] == value[0]:
-                    value = value[1:-1]
-                if not field[1] or not value or any(char in value for char in "{}[]&*!|"):
+                value = _unquote_scalar(value)
+                if not field[1] or not value or re.search(r"[{}\[\]&*!|]", value) is not None:
                     invalid_sdk = True
                 else:
                     sdk = value
-    state: _SDK_STATE = (
-        "requirement_invalid"
+    state: RuntimeRequirementState = (
+        RuntimeRequirementState.REQUIREMENT_INVALID
         if invalid_sdk or environments > 1 or sdk_fields > 1
-        else "declared"
+        else RuntimeRequirementState.DECLARED
         if sdk_fields == 1
-        else "requirement_missing"
+        else RuntimeRequirementState.REQUIREMENT_MISSING
     )
     if names != 1:
         name = None
-    if state == "requirement_invalid":
+    if state == RuntimeRequirementState.REQUIREMENT_INVALID:
         sdk = None
     return name, sdk, state
 
@@ -169,7 +173,7 @@ def _read_regular(path: Path, real_root: Path) -> bytes:
     ):
         raise OSError("input is outside snapshot or not a regular file")
     flags = os.O_RDONLY
-    if sys.platform == "win32":
+    if _platform(sys.platform) == _Platform.WINDOWS:
         flags |= os.O_BINARY
     else:
         flags |= os.O_NOFOLLOW | os.O_NONBLOCK
@@ -206,7 +210,7 @@ def _read_source_file(
         )
         return None
     source = Source(rel, f"{namespace}.{short}", content)
-    item = ResolutionInput(rel, hashlib.sha256(content).hexdigest(), "selected")
+    item = ResolutionInput(rel, hashlib.sha256(content).hexdigest(), ResolutionRole.SELECTED)
     return source, item
 
 
@@ -269,7 +273,7 @@ def _safe_subdirectories(
     for name in sorted(dirnames):
         path = current / name
         rel = path.relative_to(root).as_posix()
-        if name in _EXCLUDED_DIRS:
+        if re.fullmatch(r"(?:\.dart_tool|pubcache|\.pub-cache)", name) is not None:
             problems.append(
                 SnapshotProblem(
                     rel,
@@ -286,7 +290,7 @@ def _safe_subdirectories(
 
 def _read_pubspec(
     root: Path, real_root: Path
-) -> tuple[str, str | None, _SDK_STATE, ResolutionInput]:
+) -> tuple[str, str | None, RuntimeRequirementState, ResolutionInput]:
     pubspec = root / "pubspec.yaml"
     if not os.path.lexists(pubspec) or pubspec.is_symlink():
         raise SnapshotError("regular pubspec.yaml is required inside the snapshot")
@@ -295,7 +299,9 @@ def _read_pubspec(
         package_name, sdk_constraint, parsed_state = _pubspec_metadata(raw)
         if package_name is None:
             raise SnapshotError("pubspec.yaml must declare a valid package name")
-        item = ResolutionInput("pubspec.yaml", hashlib.sha256(raw).hexdigest(), "resolution")
+        item = ResolutionInput(
+            "pubspec.yaml", hashlib.sha256(raw).hexdigest(), ResolutionRole.RESOLUTION
+        )
         return package_name, sdk_constraint, parsed_state, item
     except OSError as error:
         raise SnapshotError(f"cannot read regular pubspec.yaml: {error}") from error
