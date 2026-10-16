@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+import runpy
 import subprocess
 from html import unescape
 from pathlib import Path
@@ -521,3 +522,14 @@ def test_catalog_raw_map_decisions_retain_exact_cli_evidence(
         if item.kind == "boundary_type_allowance" and item.data.get("accepted_opacity")
     ]
     assert len(facts) == (0 if missing_values else 2)
+
+
+def test_catalog_raw_map_validation_preserves_missing_and_present_null(tmp_path: Path) -> None:
+    variant = next(item for item in CATALOG if item.id == "class-a-boundary-types-opaque-map-values")
+    root = _prepare_repo(tmp_path, dict(variant.files))
+    snapshot = runpy.run_path(str(root / "shop/app/reports.py"))["snapshot"]
+    with pytest.raises(ValueError, match="count required"):
+        snapshot({})
+    for value in (None, 0):
+        payload = {"count": value}
+        assert snapshot(payload) is payload
