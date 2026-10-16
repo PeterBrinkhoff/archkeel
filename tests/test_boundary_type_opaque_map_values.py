@@ -525,7 +525,9 @@ def test_catalog_raw_map_decisions_retain_exact_cli_evidence(
 
 
 def test_catalog_raw_map_validation_preserves_missing_and_present_null(tmp_path: Path) -> None:
-    variant = next(item for item in CATALOG if item.id == "class-a-boundary-types-opaque-map-values")
+    variant = next(
+        item for item in CATALOG if item.id == "class-a-boundary-types-opaque-map-values"
+    )
     root = _prepare_repo(tmp_path, dict(variant.files))
     snapshot = runpy.run_path(str(root / "shop/app/reports.py"))["snapshot"]
     with pytest.raises(ValueError, match="count required"):
