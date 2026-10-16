@@ -42,14 +42,19 @@
       "label": "atlas-payload",
       "role": "projection",
       "exact_modules": [
-        "archkeel.render.atlas"
+        "archkeel.render.atlas",
+        "archkeel.render.atlas_deviations"
       ],
       "public": [
         "archkeel.render.atlas:atlas_payload",
-        "archkeel.render.atlas:boundary_permissions_payload"
+        "archkeel.render.atlas:boundary_permissions_payload",
+        "archkeel.render.atlas_deviations:AtlasDeviationKind",
+        "archkeel.render.atlas_deviations:AtlasDeviation",
+        "archkeel.render.atlas_deviations:level_deviations"
       ],
       "responsibilities": [
-        "Build the compact Atlas payload from authenticated Core report, projection and result values."
+        "Build the compact Atlas payload from authenticated Core report, projection and result values.",
+        "Own deterministic recorded Atlas deviations, their immutable value and wire emission."
       ],
       "forbidden_responsibilities": [
         "Compose HTML, format terminal output or change Core verdicts."
@@ -58,7 +63,8 @@
         "docs/architecture/decisions/ad-179-reports-render-one-graph-boundary.md",
         "docs/architecture/render-target.md",
         "docs/architecture/decisions/ad-213-renderer-responsibility-boundaries.md",
-        "docs/architecture/decisions/ad-219-atlas-boundary-permissions.md"
+        "docs/architecture/decisions/ad-219-atlas-boundary-permissions.md",
+        "docs/superpowers/specs/2026-10-16-atlas-deviation-boundary.md"
       ],
       "decided_by": "agent",
       "requires": [],
@@ -171,6 +177,19 @@
       "rationale": "The actual Badge model and derivation use owned display states and canonical Core verdict types, including conversion at the input boundary.",
       "provenance": [
         "docs/architecture/summary-badges.md"
+      ],
+      "decided_by": "architect"
+    },
+    {
+      "id": "RENDER-DEVIATION-TYPED-CONTROL",
+      "kind": "forbidden_construct",
+      "source": "archkeel.render.atlas_deviations",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "The real deviation value and pair derivation use their owned kind at all closed decisions.",
+      "provenance": [
+        "docs/superpowers/specs/2026-10-16-atlas-deviation-boundary.md"
       ],
       "decided_by": "architect"
     }
@@ -501,6 +520,184 @@
             ],
             "returns": "Badge"
           }
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/superpowers/specs/2026-10-16-atlas-deviation-boundary.md"
+          ],
+          "id": "RENDER-DEVIATION-module",
+          "kind": "module",
+          "qualified_name": "archkeel.render.atlas_deviations",
+          "parent_id": "RENDER-ATLAS-PAYLOAD",
+          "responsibilities": [
+            "Derive typed recorded Atlas deviations and emit their existing wire value."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/superpowers/specs/2026-10-16-atlas-deviation-boundary.md"
+          ],
+          "id": "RENDER-DEVIATION-AtlasDeviationKind",
+          "kind": "enum",
+          "qualified_name": "archkeel.render.atlas_deviations.AtlasDeviationKind",
+          "parent_id": "RENDER-DEVIATION-module",
+          "responsibilities": [
+            "Own the two recorded pair-deviation kinds."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/superpowers/specs/2026-10-16-atlas-deviation-boundary.md"
+          ],
+          "id": "RENDER-DEVIATION-AtlasDeviation",
+          "kind": "class",
+          "qualified_name": "archkeel.render.atlas_deviations.AtlasDeviation",
+          "parent_id": "RENDER-DEVIATION-module",
+          "responsibilities": [
+            "Carry one immutable deviation with deterministic identity."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/superpowers/specs/2026-10-16-atlas-deviation-boundary.md"
+          ],
+          "id": "RENDER-DEVIATION-AtlasDeviation.id",
+          "kind": "attribute",
+          "qualified_name": "archkeel.render.atlas_deviations.AtlasDeviation.id",
+          "parent_id": "RENDER-DEVIATION-AtlasDeviation",
+          "annotation": "str",
+          "responsibilities": [
+            "Retain the recorded id value."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/superpowers/specs/2026-10-16-atlas-deviation-boundary.md"
+          ],
+          "id": "RENDER-DEVIATION-AtlasDeviation.kind",
+          "kind": "attribute",
+          "qualified_name": "archkeel.render.atlas_deviations.AtlasDeviation.kind",
+          "parent_id": "RENDER-DEVIATION-AtlasDeviation",
+          "annotation": "AtlasDeviationKind",
+          "responsibilities": [
+            "Retain the recorded kind value."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/superpowers/specs/2026-10-16-atlas-deviation-boundary.md"
+          ],
+          "id": "RENDER-DEVIATION-AtlasDeviation.source_id",
+          "kind": "attribute",
+          "qualified_name": "archkeel.render.atlas_deviations.AtlasDeviation.source_id",
+          "parent_id": "RENDER-DEVIATION-AtlasDeviation",
+          "annotation": "str",
+          "responsibilities": [
+            "Retain the recorded source_id value."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/superpowers/specs/2026-10-16-atlas-deviation-boundary.md"
+          ],
+          "id": "RENDER-DEVIATION-AtlasDeviation.target_id",
+          "kind": "attribute",
+          "qualified_name": "archkeel.render.atlas_deviations.AtlasDeviation.target_id",
+          "parent_id": "RENDER-DEVIATION-AtlasDeviation",
+          "annotation": "str",
+          "responsibilities": [
+            "Retain the recorded target_id value."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/superpowers/specs/2026-10-16-atlas-deviation-boundary.md"
+          ],
+          "id": "RENDER-DEVIATION-AtlasDeviation.level_id",
+          "kind": "attribute",
+          "qualified_name": "archkeel.render.atlas_deviations.AtlasDeviation.level_id",
+          "parent_id": "RENDER-DEVIATION-AtlasDeviation",
+          "annotation": "str | None",
+          "responsibilities": [
+            "Retain the recorded level_id value."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/superpowers/specs/2026-10-16-atlas-deviation-boundary.md"
+          ],
+          "id": "RENDER-DEVIATION-AtlasDeviation.to_wire",
+          "kind": "method",
+          "qualified_name": "archkeel.render.atlas_deviations.AtlasDeviation.to_wire",
+          "parent_id": "RENDER-DEVIATION-AtlasDeviation",
+          "signature": {
+            "parameters": [
+              {
+                "name": "self",
+                "kind": "positional",
+                "default_known": true
+              }
+            ],
+            "returns": "dict[str, str | None]"
+          },
+          "responsibilities": [
+            "Emit the existing ordered five-field dictionary with a plain string kind."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/superpowers/specs/2026-10-16-atlas-deviation-boundary.md"
+          ],
+          "id": "RENDER-DEVIATION-level_deviations",
+          "kind": "function",
+          "qualified_name": "archkeel.render.atlas_deviations.level_deviations",
+          "parent_id": "RENDER-DEVIATION-module",
+          "signature": {
+            "parameters": [
+              {
+                "name": "level_id",
+                "kind": "positional",
+                "annotation": "str | None",
+                "default_known": true
+              },
+              {
+                "name": "declared",
+                "kind": "positional",
+                "annotation": "set[tuple[str, str]]",
+                "default_known": true
+              },
+              {
+                "name": "used",
+                "kind": "positional",
+                "annotation": "set[tuple[str, str]]",
+                "default_known": true
+              }
+            ],
+            "returns": "tuple[AtlasDeviation, ...]"
+          },
+          "responsibilities": [
+            "Derive sorted allowed-unused then undeclared pairs without changing their stable IDs."
+          ]
         }
       ],
       "relationships": [
