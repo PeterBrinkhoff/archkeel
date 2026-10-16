@@ -166,9 +166,7 @@ class _Position:
 
     def __post_init__(self) -> None:
         if self.undecidable is not None:
-            builtins.object.__setattr__(
-                self, "undecidable", _UndecidableReason(self.undecidable)
-            )
+            builtins.object.__setattr__(self, "undecidable", _UndecidableReason(self.undecidable))
 
 
 @dataclass(frozen=True, slots=True)
@@ -1277,9 +1275,13 @@ def _type_alias_verdict(
     reached: tuple[tuple[str, str], ...] = (resolved,)
     alias = symbol.get("alias")
     if not _alias_binding_static(symbol):
-        return _Position(undecidable=_UndecidableReason.OTHER, resolved=reached, named_origins=reached)
+        return _Position(
+            undecidable=_UndecidableReason.OTHER, resolved=reached, named_origins=reached
+        )
     if resolved in aliases_seen or not isinstance(alias, str) or alias == annotation:
-        return _Position(undecidable=_UndecidableReason.OTHER, resolved=reached, named_origins=reached)
+        return _Position(
+            undecidable=_UndecidableReason.OTHER, resolved=reached, named_origins=reached
+        )
     if classes_by_location.module_bindings is not None:
         classes_by_location = classes_by_location.module_bindings
     expanded = _boundary_type_verdict(
@@ -1367,7 +1369,9 @@ def _imported_alias_verdict(
     imported = imports_by_binding.get((module, annotation))
     if imported is not None and not _alias_binding_static(imported):
         return _Position(
-            undecidable=_UndecidableReason.OTHER, resolved=alias.named_origins, named_origins=alias.named_origins
+            undecidable=_UndecidableReason.OTHER,
+            resolved=alias.named_origins,
+            named_origins=alias.named_origins,
         )
     if isinstance(imported, dict) and len(imported["reexport_chain"] or ()) > 1:
         return replace(alias, bound_alias=None, typed_mapping_union=None)
@@ -1446,9 +1450,13 @@ def _named_type_verdict(
     if alias is not None:
         return _imported_alias_verdict(alias, module, annotation, imports_by_binding)
     if isinstance(origin_symbol, dict) and origin_symbol.get("record_kind") == "static_constant":
-        return _Position(undecidable=_UndecidableReason.OTHER, resolved=reached, named_origins=reached)
+        return _Position(
+            undecidable=_UndecidableReason.OTHER, resolved=reached, named_origins=reached
+        )
     if isinstance(origin_symbol, dict) and origin_symbol.get("record_kind") == "dynamic_binding":
-        return _Position(undecidable=_UndecidableReason.OTHER, resolved=reached, named_origins=reached)
+        return _Position(
+            undecidable=_UndecidableReason.OTHER, resolved=reached, named_origins=reached
+        )
     # `resolve_named_type` ruled out an ambiguous location; the surviving class record carries
     # `class_kind` (AD-30).
     class_kind = origin_symbol["class_kind"] if isinstance(origin_symbol, dict) else None
@@ -1494,12 +1502,18 @@ def _owned_type_verdict(
             if component_owns_module(component, origin_module)
         ]
         if len(claims) > 1:
-            return _Position(undecidable=_UndecidableReason.OTHER, resolved=reached, named_origins=(resolved,))
+            return _Position(
+                undecidable=_UndecidableReason.OTHER, resolved=reached, named_origins=(resolved,)
+            )
         if claims:
             origin_component = claims[0]
             break
     if origin_component is None:
-        return _Position(undecidable=_UndecidableReason.EXTERNAL_TYPE, resolved=reached, named_origins=(resolved,))
+        return _Position(
+            undecidable=_UndecidableReason.EXTERNAL_TYPE,
+            resolved=reached,
+            named_origins=(resolved,),
+        )
     owner_facade_proof = imports_by_binding.owner_facade_type_states.get(
         (origin_component.id, origin_module, origin_name)
     )
@@ -1508,7 +1522,11 @@ def _owned_type_verdict(
         owner_facade_proof is False
         or (owner_facade_proof is True and not isinstance(origin_symbol, dict))
     ):
-        return _Position(undecidable=_UndecidableReason.UNRESOLVED_NAME, resolved=reached, named_origins=(resolved,))
+        return _Position(
+            undecidable=_UndecidableReason.UNRESOLVED_NAME,
+            resolved=reached,
+            named_origins=(resolved,),
+        )
     if directly_public or owner_facade_proof is True:
         if resolved in visited:
             return _Position(resolved=reached, named_origins=(resolved,))
@@ -3676,7 +3694,8 @@ def _declared_field_reach(
             and chain_static
             and shape is not None
             and _base_route_member_static(shape, module, bindings, classes)
-            and verdict.undecidable not in {_UndecidableReason.AMBIGUOUS_BINDING, _UndecidableReason.UNRESOLVED_NAME}
+            and verdict.undecidable
+            not in {_UndecidableReason.AMBIGUOUS_BINDING, _UndecidableReason.UNRESOLVED_NAME}
         )
         if certain:
             names.update(reached)
@@ -6215,7 +6234,8 @@ def public_api_exposed_types(
         module, _, name = entry.partition(":")
         position = declared_positions[entry]
         ambiguous = (
-            position.undecidable == _UndecidableReason.AMBIGUOUS_BINDING and not position.named_origins
+            position.undecidable == _UndecidableReason.AMBIGUOUS_BINDING
+            and not position.named_origins
         ) or _binding_is_ambiguous((module, name), imports_by_binding, classes_by_location)
         symbol = _public_api_symbol(
             symbols, module, name, position.named_origins, ambiguous, type_shapes=type_shapes
