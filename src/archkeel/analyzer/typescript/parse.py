@@ -68,6 +68,7 @@ from .syntax import (
 from .syntax import (
     Span as Span,
 )
+from .syntax import StringComparison
 from .syntax import (
     Syntax as Syntax,
 )
@@ -89,6 +90,11 @@ class _NodeKind(Enum):
     AS_EXPRESSION = "as_expression"
     ASSIGNMENT_EXPRESSION = "assignment_expression"
     ASYNC = "async"
+    BINARY_EXPRESSION = "binary_expression"
+    EQUAL = "=="
+    NOT_EQUAL = "!="
+    STRICT_EQUAL = "==="
+    STRICT_NOT_EQUAL = "!=="
     CALL_EXPRESSION = "call_expression"
     CLASS_BODY = "class_body"
     CLASS_DECLARATION = "class_declaration"
@@ -139,6 +145,7 @@ class _NodeKind(Enum):
     OBJECT = "object"
     OPTIONAL_PARAMETER = "optional_parameter"
     OVERRIDE = "override"
+    PARENTHESIZED_EXPRESSION = "parenthesized_expression"
     PRIVATE_PROPERTY_IDENTIFIER = "private_property_identifier"
     PROGRAM = "program"
     PROPERTY_IDENTIFIER = "property_identifier"
@@ -153,6 +160,8 @@ class _NodeKind(Enum):
     STATEMENT_BLOCK = "statement_block"
     STATIC = "static"
     STRING = "string"
+    STRING_FRAGMENT = "string_fragment"
+    SWITCH_CASE = "switch_case"
     SUBSCRIPT_EXPRESSION = "subscript_expression"
     TEMPLATE_STRING = "template_string"
     TEMPLATE_SUBSTITUTION = "template_substitution"
@@ -327,6 +336,7 @@ def parse(rel_path: str, data: bytes) -> Syntax:
     if re.search(rb"/\*\*|///", data):
         concerns.extend(_comment_concerns(source))
     errors = sorted(source.captures("errors").get("error", []), key=lambda item: item.start_byte)
+    definitions, sites, comparisons = _inner(source)
     return Syntax(
         tuple(
             sorted(trusted, key=lambda item: (item.span.line, item.span.column, item.form.value))
@@ -334,13 +344,17 @@ def parse(rel_path: str, data: bytes) -> Syntax:
         tuple(concerns),
         shadows,
         source.span(errors[0]) if errors else None,
-        *_inner(source),
+        definitions,
+        sites,
         _import_bindings(source),
         _rebound_names(source),
+        comparisons,
     )
 
 
-def _inner(source: _Source) -> tuple[tuple[Definition, ...], tuple[Site, ...]]:
+def _inner(
+    source: _Source,
+) -> tuple[tuple[Definition, ...], tuple[Site, ...], tuple[StringComparison, ...]]:
     definitions: list[Definition] = []
     declaration_nodes: dict[_RawNode, DefinitionKind] = {}
     scopes: list[tuple[_RawNode, str, int]] = []
@@ -411,9 +425,11 @@ def _inner(source: _Source) -> tuple[tuple[Definition, ...], tuple[Site, ...]]:
         _module_visibility(item, module_syntax, exported_names, visible_names, exports_complete)
         for item in definitions
     ]
-    sites = _sites(source, scopes, declaration_nodes)
-    return tuple(sorted(definitions, key=lambda item: (item.span.line, item.span.column))), tuple(
-        sorted(sites, key=lambda item: (item.span.line, item.span.column, item.kind.value))
+    sites, comparisons = _sites(source, scopes, declaration_nodes)
+    return (
+        tuple(sorted(definitions, key=lambda item: (item.span.line, item.span.column))),
+        tuple(sorted(sites, key=lambda item: (item.span.line, item.span.column, item.kind.value))),
+        tuple(comparisons),
     )
 
 
@@ -1259,15 +1275,62 @@ def _call_site(
     )
 
 
+def _comparison_literal(node: _RawNode) -> _RawNode | None:
+    """Read written equality/case syntax, without evaluating names or method semantics."""
+    kind = _node_kind(node)
+    if kind is _NodeKind.SWITCH_CASE:
+        return _written_string(node.child_by_field_name("value"))
+    if kind is not _NodeKind.BINARY_EXPRESSION:
+        return None
+    operator = node.child_by_field_name("operator")
+    if operator is None or _node_kind(operator) not in {
+        _NodeKind.EQUAL,
+        _NodeKind.NOT_EQUAL,
+        _NodeKind.STRICT_EQUAL,
+        _NodeKind.STRICT_NOT_EQUAL,
+    }:
+        return None
+    return _written_string(node.child_by_field_name("left")) or _written_string(
+        node.child_by_field_name("right")
+    )
+
+
+def _written_string(node: _RawNode | None) -> _RawNode | None:
+    """Keep original literal evidence; unknown template children are never static proof."""
+    while node is not None and _node_kind(node) is _NodeKind.PARENTHESIZED_EXPRESSION:
+        children = [item for item in node.named_children if _node_kind(item) is not _NodeKind.COMMENT]
+        node = children[0] if len(children) == 1 else None
+    if node is None:
+        return None
+    kind = _node_kind(node)
+    if kind not in {_NodeKind.STRING, _NodeKind.TEMPLATE_STRING} or _in_error(node):
+        return None
+    if kind is _NodeKind.STRING:
+        return node
+    if all(
+        _node_kind(child) in {_NodeKind.STRING_FRAGMENT, _NodeKind.ESCAPE_SEQUENCE}
+        for child in node.named_children
+    ):
+        return node
+    return None
+
+
 def _sites(
     source: _Source,
     scopes: list[tuple[_RawNode, str, int]],
     declarations: dict[_RawNode, DefinitionKind],
-) -> list[Site]:
+) -> tuple[list[Site], list[StringComparison]]:
     sites: list[Site] = []
+    comparisons: list[StringComparison] = []
     for node in _walk(source.root):
         if source.root.has_error and _in_error(node):
             continue
+        literal = _comparison_literal(node)
+        if literal is not None:
+            scope_name = next(
+                (name for scope, name, _ in reversed(scopes) if _contains(scope, node)), None
+            )
+            comparisons.append(StringComparison(source.span(literal), scope_name))
         if _node_kind(node) in (_NodeKind.CALL_EXPRESSION, _NodeKind.NEW_EXPRESSION):
             site = _call_site(node, source, scopes)
             if site is not None:
@@ -1316,7 +1379,7 @@ def _sites(
                 scope_column=source.span(scope).column if scope is not None else None,
             )
         )
-    return sites
+    return sites, comparisons
 
 
 def _declaration_name(node: _RawNode) -> bool:

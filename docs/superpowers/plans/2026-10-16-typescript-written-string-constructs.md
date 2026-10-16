@@ -34,7 +34,7 @@ Consumes: parse(rel_path: str, data: bytes) -> Syntax; existing _node_kind/_walk
 Produces: syntax.StringComparison(span: Span, scope: str | None); Syntax.string_comparisons: tuple[StringComparison, ...]; canonical witnessed SourceSectionName.CONSTRUCTS facts with PARTIAL capability.
 
 - [x] Preserve the independently authored fixed HRC contract and original 38956449624 RED (25 expected failures, 44 controls).
-- [ ] Extend native JS callback/IIFE, comment-unwrapping and UTF-16 probes; run on untouched fa37 and inspect expected missing-feature/registry failures.
+- [x] Extend native JS callback/IIFE, comment-unwrapping and UTF-16 probes; run on untouched fa37 and inspect expected missing-feature/registry failures.
 - [ ] Implement the smallest producer/DTO/profile/registry change; keep enum vocabulary private and derived from consumed AST kinds.
 - [ ] Run focused native tests, legacy/profile replay, Ruff and strict mypy; correct implementation failures, then commit.
 
@@ -59,4 +59,4 @@ Produces: named public lexical port plus authored Span/sequence/receipt-group an
 
 Ruling: Root explicitly authorized implementation of this previously reviewed bounded design; no new confirmation pause is needed. Remote GitHub branches and hosted Actions replace local worktree/scripts because the task explicitly forbids local execution.
 Pre-flight: parser -> syntax DTO -> collector uses one lexical port; collector -> registry shares the canonical construct identity; profile -> codec shares atomic receipt groups. No independent competing vocabulary or AST layer is introduced.
-Task 1: in progress; refreshed native RED is the next gate.
+Task 1: refreshed native RED 38964339186/job117186950096: 36 expected failures, 47 controls passed. The existing legacy source registry accepted an unimplemented DECIDED construct claim; that exact boundary is now covered. Minimal product implementation is next; no success claim yet.
