@@ -5,7 +5,7 @@ Part of #542. This first increment observes written syntax and advertises only P
 - parse.py alone owns Tree-sitter and its canonical _node_kind decoder. It reuses the existing walk, source Span and named-scope inventory.
 - syntax.py owns frozen StringComparison(span: Span, scope: str | None) and the immutable Syntax.string_comparisons tuple. Parser nodes never cross that port.
 - collect.py owns canonical ForbiddenConstructKind.STRING_LITERAL_COMPARE production, stable source-bound identities and evidence.
-- profiles.py owns independent atomic optional-section groups. The previous symbols/calls/references/bindings group remains atomic; constructs is a separate receipt. The existing optional_sections read API is derived from those groups.
+- profiles.py preserves the legacy optional_sections field and its atomic symbols/calls/references/bindings receipt, including positional construction and dataclasses.replace. A keyword-only additional_optional_section_groups field adds the separate construct receipt. Derived optional_section_groups and all_optional_sections views serve codec consumers without storing a second inventory.
 - Core authenticates the actual seven-section TypeScript form and its exact PARTIAL capability tuple. Legacy import/UML receipts remain readable and cannot advertise construct authority.
 
 The measured syntax is ==, ===, != and !== with a directly written string operand, and switch case values. Escaped strings remain written literals; plain templates are accepted only when all named children are known fragments/escapes. Simple nested parentheses may contain comments. The participating literal's original Span gives nested comparisons distinct stable identities and retains UTF-16 evidence coordinates.

@@ -9,7 +9,7 @@ than 0. One table, so the two can never disagree about what a Dart scan saw.
 """
 
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Final, Literal, TypeAlias
 
@@ -50,9 +50,8 @@ class Profile:
     # A section the profile never produces is null in the observation, so a claim built on it
     # reads UNKNOWN (signal missing) instead of "0 candidates".
     absent_sections: frozenset[ObservedSection] = frozenset()
-    # Each group is one atomic measurement receipt. Separate groups may be independently
-    # absent (null) or measured (arrays), preserving older observations.
-    optional_section_groups: tuple[frozenset[ObservedSection], ...] = ()
+    # Preserve the legacy constructor field and its single atomic receipt.
+    optional_sections: frozenset[ObservedSection] = frozenset()
     # Top-level import names `complete_external_scope` exempts as the language's own library.
     standard_library: frozenset[str] = frozenset()
     # Library names a `forbidden_dependency` target may name although no scanned module has them.
@@ -60,9 +59,27 @@ class Profile:
     # Exact caller/target grants may permit Python module-object imports.
     module_object_imports: bool = False
 
+    # New independent receipts are keyword-only so all legacy positional fields stay put.
+    additional_optional_section_groups: tuple[frozenset[ObservedSection], ...] = field(
+        default=(), kw_only=True
+    )
+
+    def __post_init__(self) -> None:
+        sections = set(self.optional_sections)
+        for group in self.additional_optional_section_groups:
+            if not group or not sections.isdisjoint(group):
+                raise ValueError("additional optional groups must be non-empty and disjoint")
+            sections.update(group)
+
     @property
-    def optional_sections(self) -> frozenset[ObservedSection]:
-        """Retain the optional-section read API, derived from its owned receipt groups."""
+    def optional_section_groups(self) -> tuple[frozenset[ObservedSection], ...]:
+        """Derive atomic receipts from the legacy group and independent additions."""
+        legacy = (self.optional_sections,) if self.optional_sections else ()
+        return legacy + self.additional_optional_section_groups
+
+    @property
+    def all_optional_sections(self) -> frozenset[ObservedSection]:
+        """Derive the complete read view without changing the legacy constructor field."""
         return frozenset(section for group in self.optional_section_groups for section in group)
 
 
@@ -145,17 +162,15 @@ TYPESCRIPT: Final = Profile(
         }
     ),
     absent_sections=frozenset({ObservedSection.TYPING_SIGNALS}),
-    optional_section_groups=(
-        frozenset(
-            {
-                ObservedSection.SYMBOLS,
-                ObservedSection.REFERENCES,
-                ObservedSection.BINDINGS,
-                ObservedSection.CALLS,
-            }
-        ),
-        frozenset({ObservedSection.CONSTRUCTS}),
+    optional_sections=frozenset(
+        {
+            ObservedSection.SYMBOLS,
+            ObservedSection.REFERENCES,
+            ObservedSection.BINDINGS,
+            ObservedSection.CALLS,
+        }
     ),
+    additional_optional_section_groups=(frozenset({ObservedSection.CONSTRUCTS}),),
 )
 
 PROFILES: Final[dict[Language, Profile]] = {

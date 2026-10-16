@@ -280,7 +280,7 @@ def _parse_coverage(
         for key in call_counts
     }
     call_percent = coverage["call_resolution_percent"]
-    if ObservedSection.CALLS in profile.optional_sections:
+    if ObservedSection.CALLS in profile.all_optional_sections:
         if not calls_measured:
             if any(value is not None for value in call_values.values()) or call_percent is not None:
                 raise ValueError("TypeScript call measurements must be null")
@@ -346,7 +346,7 @@ def _validate_profile_sections(model: Mapping[str, RawJson], profile: Profile) -
             if raw is None:
                 continue
             raise ValueError(f"{section} must be null for analyzer {profile.analyzer}")
-        if section in profile.optional_sections and raw is None:
+        if section in profile.all_optional_sections and raw is None:
             continue
         if not isinstance(raw, list):
             raise ValueError(f"{section} must be an array for analyzer {profile.analyzer}")
@@ -378,7 +378,7 @@ def observation_payload(observation: Observation) -> dict[str, RawJson]:
     profile = profile_for(observation.analyzer.name)
     for name in profile.absent_sections:
         result[name] = None
-    for name in profile.optional_sections:
+    for name in profile.all_optional_sections:
         result.setdefault(name, None)
     result.update(
         {
