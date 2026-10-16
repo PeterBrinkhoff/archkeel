@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import json
 import posixpath
+from enum import Enum
 from typing import Final
 
 from archkeel.analyzer.runtime import collector_provenance
@@ -21,14 +22,11 @@ from archkeel.ir.facts import (
     FactSection,
     FileFact,
     ImportTarget,
-    Language,
     LocalTarget,
     Record,
     ResolutionInput,
-    ResolutionRole,
     SourceFacts,
     SourceInfo,
-    SourceProfile,
     SourceSectionName,
     UnresolvedTarget,
     stable_id,
@@ -45,17 +43,48 @@ from archkeel.ir.facts_codec import (
 from archkeel.ir.identity import module_identity
 from archkeel.ir.protocol import CollectionRequest, TypeScriptSettings
 
-from .config import ModuleKind, Snapshot, join, load_config, within
-from .parse import Base, Definition, Reference, Site, Span, Syntax, parse
+from .config import ModuleKind, PathToken, Snapshot, join, load_config, within
+from .parse import parse
 from .resolve import Found, ModuleFormat, Resolver, Unknown, is_builtin, is_relative, package_name
+from .syntax import (
+    Base,
+    Definition,
+    DefinitionKind,
+    ReceiverKind,
+    Reference,
+    ReferenceForm,
+    Site,
+    SiteKind,
+    SiteUse,
+    Span,
+    Syntax,
+    Visibility,
+)
+
+
+class _ResolutionStatus(Enum):
+    RESOLVED = "resolved"
+    PARTIAL = "partially_resolved"
+    UNRESOLVED = "unresolved"
+
+
+class _InventoryStatus(Enum):
+    COMPLETE = "complete"
+    PARTIAL = "partial"
+
+
+class _GapKind(Enum):
+    COLLECTION = "collection_gap"
+    RESOLUTION = SOURCE_RESOLUTION_GAP_KIND
+
 
 _SECTIONS: tuple[SourceSectionName, ...] = (
-    SourceSectionName.IMPORTS,
-    SourceSectionName.UNKNOWNS,
-    SourceSectionName.SYMBOLS,
-    SourceSectionName.CALLS,
-    SourceSectionName.REFERENCES,
-    SourceSectionName.BINDINGS,
+    "imports",
+    "unknowns",
+    "symbols",
+    "calls",
+    "references",
+    "bindings",
 )
 _SOURCE: Final = (".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs")
 _DECLARATION: Final = (".d.ts", ".d.mts", ".d.cts")
@@ -111,29 +140,29 @@ class _Collection:
         for problem in sorted(self.snapshot.problems):
             self._gap(problem)
         inputs = tuple(
-            ResolutionInput(path, digest, ResolutionRole(role))
+            ResolutionInput(path, digest, role)
             for path, (digest, role) in sorted(self.snapshot.inputs.items())
         )
         unknowns = tuple(parse_record(item) for _, item in sorted(self.gaps.items()))
         imports = tuple(
             parse_record(item) for item in sorted(self.imports, key=lambda item: item["id"])
         )
-        adapter, runtime = collector_provenance(Language.TYPESCRIPT)
+        adapter, runtime = collector_provenance("typescript")
         listing: str = json.dumps(
             [{"path": item.path, "digest": item.digest, "role": item.role} for item in inputs],
             separators=(",", ":"),
             ensure_ascii=False,
         )
         records: dict[SourceSectionName, tuple[Record, ...]] = {
-            SourceSectionName.IMPORTS: imports,
-            SourceSectionName.UNKNOWNS: unknowns,
-            SourceSectionName.SYMBOLS: tuple(parse_record(item) for item in symbols),
-            SourceSectionName.CALLS: tuple(parse_record(item) for item in calls),
-            SourceSectionName.REFERENCES: tuple(parse_record(item) for item in references),
-            SourceSectionName.BINDINGS: tuple(parse_record(item) for item in bindings),
+            "imports": imports,
+            "unknowns": unknowns,
+            "symbols": tuple(parse_record(item) for item in symbols),
+            "calls": tuple(parse_record(item) for item in calls),
+            "references": tuple(parse_record(item) for item in references),
+            "bindings": tuple(parse_record(item) for item in bindings),
         }
         return SourceFacts(
-            SourceProfile.TYPESCRIPT,
+            "archkeel-typescript-imports",
             adapter,
             runtime,
             SourceInfo(
@@ -179,7 +208,7 @@ class _Collection:
                 definition.span.line,
                 definition.span.column,
                 qualified,
-                definition.kind,
+                definition.kind.value,
             )
             ids[(rel, definition.span.line, definition.span.column)] = identity
             by_qualified.setdefault(qualified, []).append((identity, definition))
@@ -230,7 +259,11 @@ class _Collection:
                 definition,
                 len(by_qualified[qualified]) == 1,
             )
-            if definition.kind in {"class", "interface", "enum"}:
+            if definition.kind in {
+                DefinitionKind.CLASS,
+                DefinitionKind.INTERFACE,
+                DefinitionKind.ENUM,
+            }:
                 data.update(
                     self._classifier_data(
                         rel, module, definition, qualified, definitions, ids, by_qualified
@@ -251,7 +284,7 @@ class _Collection:
                     }
                     for parameter in definition.parameters
                 ]
-                if definition.kind == "method":
+                if definition.kind is DefinitionKind.METHOD:
                     data["method_kind"] = "static" if definition.static else "instance"
             symbols.append(
                 classified(
@@ -260,8 +293,9 @@ class _Collection:
                     area="source",
                     kind=(
                         "class"
-                        if definition.kind in {"class", "interface", "enum"}
-                        else definition.kind
+                        if definition.kind
+                        in {DefinitionKind.CLASS, DefinitionKind.INTERFACE, DefinitionKind.ENUM}
+                        else definition.kind.value
                     ),
                     title=f"{qualified} declaration",
                     subjects=[qualified],
@@ -282,7 +316,12 @@ class _Collection:
         definition: Definition,
         binding_unique: bool,
     ) -> dict[str, object]:
-        category = "class" if definition.kind in {"class", "interface", "enum"} else definition.kind
+        category = (
+            "class"
+            if definition.kind
+            in {DefinitionKind.CLASS, DefinitionKind.INTERFACE, DefinitionKind.ENUM}
+            else definition.kind.value
+        )
         return {
             "qualified_name": qualified,
             "module": module,
@@ -291,7 +330,9 @@ class _Collection:
             "parent": parent_name,
             "lexical_parent_id": parent_id,
             "visibility_detail": {
-                "kind": definition.visibility or ("unknown" if definition.top_level else "public"),
+                "kind": definition.visibility.value
+                if definition.visibility
+                else ("unknown" if definition.top_level else "public"),
                 "basis": (
                     "unknown"
                     if definition.top_level and definition.visibility is None
@@ -322,14 +363,18 @@ class _Collection:
         by_qualified: dict[str, list[tuple[str, Definition]]],
     ) -> dict[str, object]:
         data: dict[str, object] = {}
-        if definition.kind in {"interface", "enum"}:
-            data["class_kind"] = "protocol" if definition.kind == "interface" else "enum"
+        if definition.kind in {DefinitionKind.INTERFACE, DefinitionKind.ENUM}:
+            data["class_kind"] = (
+                "protocol" if definition.kind is DefinitionKind.INTERFACE else "enum"
+            )
         attribute_declarations: list[dict[str, object]] = [
             {
                 "name": member.name,
                 "annotation": member.annotation,
                 "visibility": {
-                    "kind": member.visibility or "public",
+                    "kind": member.visibility.value
+                    if member.visibility
+                    else Visibility.PUBLIC.value,
                     "basis": "language",
                     "spelling": member.name,
                 },
@@ -351,36 +396,38 @@ class _Collection:
             for member in definition.members
         ]
         data["attribute_declarations"] = attribute_declarations
-        if definition.kind == "enum":
+        if definition.kind is DefinitionKind.ENUM:
             data["enum_members"] = [member.name for member in definition.members]
         methods = [
             ids[(child_rel, child.span.line, child.span.column)]
             for child_rel, child_module, child in definitions
             if child_module == module
-            and child.kind == "method"
+            and child.kind is DefinitionKind.METHOD
             and child.parent == (qualified.removeprefix(f"{module}."))
             and child.parent_line == definition.span.line
             and child.parent_column == definition.span.column
         ]
         attrs = [item["definition_id"] for item in attribute_declarations]
         status = (
-            "complete"
+            _InventoryStatus.COMPLETE
             if definition.members_complete and len(by_qualified[qualified]) == 1
-            else "partial"
+            else _InventoryStatus.PARTIAL
         )
-        member_reason = None if status == "complete" else "computed or unsupported member syntax"
+        member_reason = (
+            None if status is _InventoryStatus.COMPLETE else "computed or unsupported member syntax"
+        )
         data["member_inventories"] = [
             {
                 "schema_version": "1.0.0",
                 "kind": "attribute",
-                "status": status,
+                "status": status.value,
                 "definition_ids": attrs,
                 "reason": member_reason,
             },
             {
                 "schema_version": "1.0.0",
                 "kind": "method",
-                "status": status,
+                "status": status.value,
                 "definition_ids": methods,
                 "reason": member_reason,
             },
@@ -430,7 +477,7 @@ class _Collection:
                     definitions_by_module,
                     by_qualified,
                 )
-                if site.kind == "reference":
+                if site.kind is SiteKind.REFERENCE:
                     references.append(
                         self._reference_record(
                             module, scope, source_id, site, candidates, status, reason, evidence
@@ -483,7 +530,7 @@ class _Collection:
         import_by_local: dict[str, dict[str, list[tuple[str, str, bool, bool]]]],
         definitions_by_module: dict[str, list[Definition]],
         by_qualified: dict[str, list[tuple[str, Definition]]],
-    ) -> tuple[list[str], str, str | None]:
+    ) -> tuple[list[str], _ResolutionStatus, str | None]:
         name = site.name
         candidates: list[str] = []
         reason: str | None = None
@@ -506,13 +553,13 @@ class _Collection:
                         definitions_by_module,
                     )
                 )
-            elif site.kind == "reference" and site.receiver == "this":
+            elif site.kind is SiteKind.REFERENCE and site.receiver_kind is ReceiverKind.THIS:
                 class_scope = scope.rpartition(".")[0]
                 local_class = by_qualified.get(class_scope, [])
                 field_definitions = [
                     definition
                     for _, definition in local_class
-                    if definition.kind in {"class", "interface"}
+                    if definition.kind in {DefinitionKind.CLASS, DefinitionKind.INTERFACE}
                     and any(member.name == name for member in definition.members)
                 ]
                 field_count = len(field_definitions)
@@ -531,20 +578,20 @@ class _Collection:
             reason = "name is rebound in module scope"
         candidates = sorted(set(candidates))
         status = (
-            "resolved"
+            _ResolutionStatus.RESOLVED
             if len(candidates) == 1
             and reason is None
             and (
                 unique_this_member
                 or all(len(by_qualified.get(target, [])) == 1 for target in candidates)
             )
-            else "partially_resolved"
+            else _ResolutionStatus.PARTIAL
             if candidates
-            else "unresolved"
+            else _ResolutionStatus.UNRESOLVED
         )
-        if status == "partially_resolved" and reason is None:
+        if status is _ResolutionStatus.PARTIAL and reason is None:
             reason = "multiple definition sites share the target name"
-        if reason is None and status != "resolved":
+        if reason is None and status is not _ResolutionStatus.RESOLVED:
             reason = "definition is missing or ambiguous"
         return candidates, status, reason
 
@@ -562,15 +609,15 @@ class _Collection:
             for _, item in top_by_module.get(module, [])
             if item.name == name
             and (
-                site.kind == "reference"
-                or (site.kind == "call" and item.kind == "function")
-                or (site.kind == "new" and item.kind == "class")
+                site.kind is SiteKind.REFERENCE
+                or (site.kind is SiteKind.CALL and item.kind is DefinitionKind.FUNCTION)
+                or (site.kind is SiteKind.NEW and item.kind is DefinitionKind.CLASS)
             )
         ]
         for target_module, imported, namespace, type_only in import_by_local.get(module, {}).get(
             name, []
         ):
-            if namespace or (type_only and site.use != "type"):
+            if namespace or (type_only and site.use is not SiteUse.TYPE):
                 continue
             candidates.extend(
                 f"{target_module}.{item.name}"
@@ -578,9 +625,9 @@ class _Collection:
                 if item.name == imported
                 and item.exported
                 and (
-                    site.kind == "reference"
-                    or (site.kind == "call" and item.kind == "function")
-                    or (site.kind == "new" and item.kind == "class")
+                    site.kind is SiteKind.REFERENCE
+                    or (site.kind is SiteKind.CALL and item.kind is DefinitionKind.FUNCTION)
+                    or (site.kind is SiteKind.NEW and item.kind is DefinitionKind.CLASS)
                 )
             )
         return candidates
@@ -592,7 +639,7 @@ class _Collection:
         source_id: str | None,
         site: Site,
         candidates: list[str],
-        status: str,
+        status: _ResolutionStatus,
         reason: str | None,
         evidence: str,
     ) -> RawRecord:
@@ -600,11 +647,11 @@ class _Collection:
             "source_scope": scope,
             "source_module": module,
             "expression": site.expression,
-            "status": status,
+            "status": status.value,
             "targets": candidates,
             "candidate_count": len(candidates),
             "candidates_truncated": False,
-            "use": site.use,
+            "use": site.use.value,
         }
         if reason:
             data["reason"] = reason
@@ -629,7 +676,7 @@ class _Collection:
         source_id: str | None,
         site: Site,
         candidates: list[str],
-        status: str,
+        status: _ResolutionStatus,
         reason: str | None,
         evidence: str,
         by_qualified: dict[str, list[tuple[str, Definition]]],
@@ -639,7 +686,7 @@ class _Collection:
             "source_scope": scope,
             "source_module": module,
             "expression": site.expression,
-            "status": status,
+            "status": status.value,
             "targets": candidates,
             "candidate_count": len(candidates),
             "candidates_truncated": False,
@@ -649,25 +696,27 @@ class _Collection:
         if source_id:
             data["source_definition_id"] = source_id
         binding_records: list[RawRecord] = []
-        if site.kind == "new":
+        if site.kind is SiteKind.NEW:
             targets = sorted(
                 target
                 for target in candidates
-                if any(item.kind == "class" for _, item in by_qualified.get(target, []))
+                if any(
+                    item.kind is DefinitionKind.CLASS for _, item in by_qualified.get(target, [])
+                )
             )
             create_status = (
-                "resolved"
-                if len(targets) == 1 and status == "resolved"
-                else "partially_resolved"
+                _ResolutionStatus.RESOLVED
+                if len(targets) == 1 and status is _ResolutionStatus.RESOLVED
+                else _ResolutionStatus.PARTIAL
                 if targets
-                else "unresolved"
+                else _ResolutionStatus.UNRESOLVED
             )
             data["construction"] = {
-                "status": create_status,
+                "status": create_status.value,
                 "targets": targets,
                 "candidates_truncated": False,
                 "reason": "Unique local classifier construction"
-                if create_status == "resolved"
+                if create_status is _ResolutionStatus.RESOLVED
                 else reason or "Construction target is not proven",
             }
             result_bindings = self._result_binding(rel, site, call_id)
@@ -754,21 +803,21 @@ class _Collection:
         classifier_targets = [
             item_id
             for item_id, definition in by_qualified.get(qualified, [])
-            if definition.kind in {"class", "interface"}
+            if definition.kind in {DefinitionKind.CLASS, DefinitionKind.INTERFACE}
         ]
         targets = [qualified] if classifier_targets else []
         evidence = self._cite(rel, base.span)
         status = (
-            "resolved"
+            _ResolutionStatus.RESOLVED
             if len(classifier_targets) == 1
-            else "partially_resolved"
+            else _ResolutionStatus.PARTIAL
             if targets
-            else "unresolved"
+            else _ResolutionStatus.UNRESOLVED
         )
         result: dict[str, object] = {
             "id": stable_id("TSBASE", owner, base.span.line, base.span.column, name),
-            "relationship_kind": base.relationship,
-            "status": status,
+            "relationship_kind": base.relationship.value,
+            "status": status.value,
             "targets": targets,
             "candidate_count": len(classifier_targets),
             "candidates_truncated": False,
@@ -777,7 +826,7 @@ class _Collection:
         }
         if not targets:
             result["reason"] = "Base is not a unique local classifier"
-        elif status == "partially_resolved":
+        elif status is _ResolutionStatus.PARTIAL:
             result["reason"] = "multiple classifier definition sites share the target name"
         return result
 
@@ -787,7 +836,7 @@ class _Collection:
         evidence: tuple[str, ...] = (),
         module: str = "",
         *,
-        kind: str = "collection_gap",
+        kind: _GapKind = _GapKind.COLLECTION,
     ) -> None:
         identity = stable_id("UNKNOWN", reason, *evidence, module)
         self.gaps.setdefault(
@@ -796,18 +845,14 @@ class _Collection:
                 item_id=identity,
                 evidence_class=EvidenceClass.UNKNOWN,
                 area="source",
-                kind=kind,
+                kind=kind.value,
                 title=reason,
                 subjects=[module],
                 evidence_ids=list(evidence),
                 data={
                     "reason": reason,
                     "module": module,
-                    **(
-                        {"resolution_dimension": "imports"}
-                        if kind == SOURCE_RESOLUTION_GAP_KIND
-                        else {}
-                    ),
+                    **({"resolution_dimension": "imports"} if kind is _GapKind.RESOLUTION else {}),
                 },
             ),
         )
@@ -829,7 +874,7 @@ class _Collection:
         elif content is not None:
             self._gap(
                 f"Local dependency outside selected source scope: {rel}",
-                kind=SOURCE_RESOLUTION_GAP_KIND,
+                kind=_GapKind.RESOLUTION,
             )
         return content
 
@@ -889,19 +934,19 @@ class _Collection:
         )
         for reference in syntax.references:
             evidence = self._cite(rel, reference.span)
-            if reference.form == "require" and (not cjs or syntax.shadows_require):
+            if reference.form is ReferenceForm.REQUIRE and (not cjs or syntax.shadows_require):
                 self._gap(
                     "Unproven or shadowed require call",
                     (evidence,),
                     module,
-                    kind=SOURCE_RESOLUTION_GAP_KIND,
+                    kind=_GapKind.RESOLUTION,
                 )
             elif reference.specifier is None:
                 self._gap(
-                    f"Computed {reference.form} cannot be resolved",
+                    f"Computed {reference.form.value} cannot be resolved",
                     (evidence,),
                     module,
-                    kind=SOURCE_RESOLUTION_GAP_KIND,
+                    kind=_GapKind.RESOLUTION,
                 )
             else:
                 self._import(rel, module, reference, evidence, form)
@@ -916,7 +961,7 @@ class _Collection:
     ) -> None:
         specifier: str = reference.specifier or ""
         identity = stable_id(
-            "IMP", module, reference.span.line, reference.span.column, reference.form
+            "IMP", module, reference.span.line, reference.span.column, reference.form.value
         )
         target = self._target(rel, module, reference, identity, form)
         self.import_targets[identity] = target
@@ -935,7 +980,7 @@ class _Collection:
                 item_id=identity,
                 evidence_class=EvidenceClass.FACT,
                 area="source",
-                kind=reference.form,
+                kind=reference.form.value,
                 title=f"{module} imports {specifier}",
                 subjects=[module, target_module],
                 evidence_ids=[evidence],
@@ -951,14 +996,14 @@ class _Collection:
                     "type_only": reference.type_only,
                     "relative_level": 0,
                     "under_type_checking": reference.type_only,
-                    "reexport": reference.form == "reexport",
+                    "reexport": reference.form is ReferenceForm.REEXPORT,
                     "module_level_import": reference.module_level,
                 },
             )
         )
 
     def _unresolved(self, module: str, identity: str, specifier: str, reason: str) -> ImportTarget:
-        self._gap(reason, (), module, kind=SOURCE_RESOLUTION_GAP_KIND)
+        self._gap(reason, (), module, kind=_GapKind.RESOLUTION)
         return UnresolvedTarget(identity, specifier, reason)
 
     def _target(
@@ -984,9 +1029,9 @@ class _Collection:
         if isinstance(form, Unknown):
             return self._unresolved(module, identity, specifier, form.reason)
         mode: ModuleFormat | None = form
-        if reference.form == "dynamic_import":
+        if reference.form is ReferenceForm.DYNAMIC_IMPORT:
             mode = ModuleFormat.ESM if form is not None else None
-        elif reference.form in ("require", "import_equals"):
+        elif reference.form in (ReferenceForm.REQUIRE, ReferenceForm.IMPORT_EQUALS):
             mode = ModuleFormat.CJS if form is not None else None
         found = self.resolver.resolve(specifier, rel, mode, prefer_builtin=not reference.type_only)
         if isinstance(found, Unknown):
@@ -1006,7 +1051,9 @@ class _Collection:
             return self._unresolved(
                 module, identity, specifier, f"Unavailable local target: {specifier}"
             )
-        if "node_modules" in path.split("/") or (not self._selected(path) and found.external):
+        if any(
+            PathToken.parse(segment) is PathToken.NODE_MODULES for segment in path.split("/")
+        ) or (not self._selected(path) and found.external):
             if specifier.startswith("#"):
                 reason = f"External package alias identity is not observed: {specifier}"
             elif is_relative(specifier):
@@ -1020,7 +1067,7 @@ class _Collection:
         declaration = path if path.endswith(_DECLARATION) else None
         runtime = None if declaration else path
         explicit = relative and specifier.endswith(_EXPLICIT_RUNTIME)
-        direct = reference.form in ("require", "import_equals")
+        direct = reference.form in (ReferenceForm.REQUIRE, ReferenceForm.IMPORT_EQUALS)
         common_lookup = relative and direct and not explicit
         if not type_only:
             # Compiler substitution does not prove the file Node loads.
@@ -1034,7 +1081,7 @@ class _Collection:
                     f"Runtime implementation unavailable for declaration: {path}"
                     if declaration
                     else f"CommonJS runtime file is unavailable: {specifier}",
-                    kind=SOURCE_RESOLUTION_GAP_KIND,
+                    kind=_GapKind.RESOLUTION,
                 )
         self._observe(path)
         if not type_only and (not relative or found.directory_package or common_lookup):
@@ -1045,7 +1092,7 @@ class _Collection:
                 reason = f"Local directory runtime metadata is not proven: {specifier}"
             else:
                 reason = f"Local alias runtime conditions are not proven: {specifier}"
-            self._gap(reason, (), module, kind=SOURCE_RESOLUTION_GAP_KIND)
+            self._gap(reason, (), module, kind=_GapKind.RESOLUTION)
         file = runtime if not type_only and runtime else path
         return LocalTarget(
             identity, module_identity(self.namespace, file), file, runtime, declaration

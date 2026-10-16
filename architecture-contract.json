@@ -780,9 +780,12 @@
         "archkeel.ir.profiles",
         "archkeel.analyzer.runtime",
         "archkeel.cli.config",
-        "archkeel.check.runtime"
+        "archkeel.check.runtime",
+        "archkeel.analyzer.typescript.parse",
+        "archkeel.analyzer.typescript.syntax",
+        "archkeel.analyzer.typescript.collect"
       ],
-      "rationale": "Each closed vocabulary belongs to its domain or wire boundary: shared state and source facts own domain controls; codecs own private wire tags and consumers use published nominal types.",
+      "rationale": "Each closed vocabulary belongs to its domain or wire boundary: shared state and source facts own domain controls; codecs own private wire tags; TypeScript parser and collector own their private controls and share the published syntax port; consumers use published nominal types.",
       "provenance": [
         "docs/architecture/archkeel.md"
       ],
