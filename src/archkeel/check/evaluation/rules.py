@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import builtins as _builtins
 from collections import defaultdict
 from collections.abc import Iterator, Sequence
 from collections.abc import Set as AbstractSet
@@ -12,6 +13,7 @@ from pathlib import PurePosixPath
 from typing import Final, TypeAlias, assert_never
 from typing import Literal as _Literal
 
+from archkeel.ir.architecture_graph import AssessmentStatus as _Verdict
 from archkeel.ir.facts import ConstructCapability, ConstructSupport
 from archkeel.ir.facts_codec import RawData as RecordData
 from archkeel.ir.facts_codec import RawRecord, classified
@@ -46,7 +48,7 @@ from archkeel.ir.model import (
     package_owners,
     stable_id,
 )
-from archkeel.ir.model import requires_covers as _requires_covers
+from archkeel.ir.model import requires_import_assessment as _requires_import_assessment
 from archkeel.ir.profiles import DeclarationField, Profile
 from archkeel.ir.type_shapes import TypeShapeIndex
 
@@ -166,7 +168,6 @@ from .rule_support import _forbidden_dependency_matches as _forbidden_dependency
 from .rule_support import _forbidden_dependency_verdicts as _forbidden_dependency_verdicts
 from .rule_support import _reexport_index as _reexport_index
 from .rule_support import _rule_evaluation_receipt as _rule_evaluation_receipt
-from .rule_support import _Verdict as _Verdict
 from .rule_support import exports_by_module as exports_by_module
 
 
@@ -729,18 +730,18 @@ def _interface_verdict(
     """
     if data["symbols_known"]:
         if _interface_allows(data, target, exports_by_module):
-            return "allowed"
+            return _Verdict.PASS
         if "reexport_candidates" in data and data["symbol_visibility"] == "public_name":
-            return "undecided"
-        return "violation"
+            return _Verdict.UNKNOWN
+        return _Verdict.FAIL
     module = data["target_module"]
     public = target.public or ()
     if module in public:
-        return "allowed"
+        return _Verdict.PASS
     prefix = f"{module}:"
     if module in exporting or any(entry[: len(prefix)] == prefix for entry in public):
-        return "undecided"
-    return "violation"
+        return _Verdict.UNKNOWN
+    return _Verdict.FAIL
 
 
 _InterfaceVerdict: TypeAlias = tuple[
@@ -788,7 +789,7 @@ def _interface_verdicts(
                 )
             )
             verdict = (
-                "allowed"
+                _Verdict.PASS
                 if module_object_granted
                 else _interface_verdict(data, target, exports_by_module, exporting)
             )
@@ -810,7 +811,7 @@ def _interface_violations(
     ):
         if not dependency_symbols and any(":" in entry for entry in target.public or ()):
             continue
-        if verdict != "violation":
+        if verdict is not _Verdict.FAIL:
             continue
         data = item["data"]
         target_name = ".".join(filter(None, (data["target_module"], data["symbol"])))
@@ -845,7 +846,7 @@ def _undecided_records(
     records: list[RawRecord] = []
     for rule_id in sorted({rule.id for rule, _, _ in verdicts}):
         judged = [(item, verdict) for rule, item, verdict in verdicts if rule.id == rule_id]
-        undecided = [item for item, verdict in judged if verdict == "undecided"]
+        undecided = [item for item, verdict in judged if verdict is _Verdict.UNKNOWN]
         if not undecided:
             continue
         decided = len(judged) - len(undecided)
@@ -886,17 +887,26 @@ def symbol_limits(
     forbidden = list(
         _forbidden_dependency_verdicts(imports, contract.rules, components, source_modules)
     )
-    rejected = frozenset(item["id"] for _, item, verdict in forbidden if verdict == "violation")
+    rejected = frozenset(item["id"] for _, item, verdict in forbidden if verdict is _Verdict.FAIL)
     interface = [
         (rule, item, verdict)
         for rule, item, _, _, verdict in _interface_verdicts(
             imports, contract, exports_by_module, rejected, source_modules
         )
     ]
+    requires = [
+        (rule, item, verdict)
+        for rule in contract.rules
+        if isinstance(rule, CompleteRequiresRule)
+        for item, _, _, verdict in _requires_import_verdicts(
+            imports, contract, rule, source_modules
+        )
+    ]
     return sorted(
         [
             *_undecided_records("dependency_symbol_limit", forbidden),
             *_undecided_records("interface_symbol_limit", interface),
+            *_undecided_records("requires_symbol_limit", requires),
         ],
         key=lambda item: item["id"],
     )
@@ -1335,6 +1345,46 @@ def _symbol_placement_violations(
     return sorted(violations, key=lambda item: item["id"])
 
 
+def _requires_import_verdicts(
+    imports: Sequence[RawRecord],
+    contract: ArchitectureContract,
+    rule: CompleteRequiresRule,
+    source_modules: frozenset[str] | None = None,
+    *,
+    dependency_symbols: bool = True,
+) -> Iterator[tuple[RawRecord, ContractComponent, ContractComponent, _Verdict]]:
+    """Share import selection and its owned permission decision with UNKNOWN reporting."""
+    for item in imports:
+        data = item["data"]
+        source = contract.component_for(data["source_module"])
+        target = contract.component_for(data["target_module"])
+        if (
+            source is None
+            or target is None
+            or source == target
+            or (source_modules is not None and data["source_module"] not in source_modules)
+            or (data["under_type_checking"] and not rule.include_type_checking)
+        ):
+            continue
+        if not dependency_symbols and any(
+            entry.component == target.label and any(":" in name for name in entry.through)
+            for entry in source.requires or ()
+        ):
+            continue
+        yield (
+            item,
+            source,
+            target,
+            _requires_import_assessment(
+                source,
+                target.label,
+                data["target_module"],
+                _builtins.dict.get(data, "symbol"),
+                symbols_known=_builtins.dict.get(data, "symbols_known", False),
+            ),
+        )
+
+
 def requires_violations(
     imports: Sequence[RawRecord],
     contract: ArchitectureContract,
@@ -1357,26 +1407,13 @@ def requires_violations(
     violations: list[RawRecord] = []
     for rule in rules:
         evaluated: list[RawRecord] = []
-        for item in imports:
-            data = item["data"]
-            source = contract.component_for(data["source_module"])
-            target = contract.component_for(data["target_module"])
-            if (
-                source is None
-                or target is None
-                or source == target
-                or (source_modules is not None and data["source_module"] not in source_modules)
-                or (data["under_type_checking"] and not rule.include_type_checking)
-            ):
-                continue
-            if not dependency_symbols and any(
-                entry.component == target.label and any(":" in name for name in entry.through)
-                for entry in source.requires or ()
-            ):
-                continue
+        for item, source, target, verdict in _requires_import_verdicts(
+            imports, contract, rule, source_modules, dependency_symbols=dependency_symbols
+        ):
             evaluated.append(item)
-            if _requires_covers(source, target.label, data["target_module"]):
+            if verdict is not _Verdict.FAIL:
                 continue
+            data = item["data"]
             violations.append(
                 classified(
                     item_id=stable_id("VIO", rule.id, item["id"]),
