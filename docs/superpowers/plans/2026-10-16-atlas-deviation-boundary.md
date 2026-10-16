@@ -57,7 +57,7 @@
 **Files:** tests/test_atlas_deviation_boundary.py; tests/test_atlas_deviation_target.py; tests/browser_graph_scene_target.ts; CI routing/gates only where required.
 
 - [ ] Under fixed authored Python intent, mutate the actual kind annotation and producer return to str/broad data; require trace-valid native FAIL. Add raw equality/membership/alias controls and a valid data/Enum control for the whole new Python owner.
-- [ ] Mutate the actual checked JS consumer to raw undeclared and a foreign nominal domain; widen its return under the fixed authored compiler target. Require genuine compiler diagnostics.
+- [ ] Mutate the actual checked JS unused-row return to project a raw kind and a foreign nominal kind; widen its return under the fixed authored compiler target. Require genuine compiler diagnostics. Enum-versus-literal equality is not a compiler rejection claim; its separate native witness is the next step.
 - [ ] Run the actual TypeScript/JS collector on one written-literal consumer mutation and require a trace-valid forbidden_construct FAIL while capability remains PARTIAL.
 - [ ] Verify unknown decoding, same row identity, unchanged complete wire JSON and repeated projections; compare actual old/new Atlas scenes and Mermaid for root/nested Diagram/Target/Diff plus the existing Evidence modes.
 - [ ] Run the unmodified required report Make path, appropriate Atlas/renderer Chromium tests, deterministic/stale artifact checks, wheel/sdist offline shipping and unchanged 2MB/400KB guards on the actual combined Publisher basis.
@@ -66,3 +66,9 @@
 ## Handoff
 
 Plan-only predecessor is frozen Scene 0aee692. No Atlas production is changed yet. Publisher/Main refs remain exclusively with the integration steward. Task1 RED precedes Task2, and Root reviews source cost before production commit.
+
+## Task 1 ledger and rulings
+
+Run 38981994858 / job 117244738785 observed three real public Scene assertion failures for malformed kind/source/level and two passing empty/missing controls; the new producer-owner assertion also failed. Native input inspection in run 38982162444 / job 117245271522 proved rule_without_subjects for the future missing module, so that failure is not counted as a type comparison RED.
+
+Ruling: isolate the fixed authored type intent from the whole-module guard in its native type fixture. The guard requires an actual existing source owner and gets a separate test; a missing owner must never be sold as an absence PASS. The authored type Target remains identical during source mutation tests. Also, string-Enum literal equality is accepted by TypeScript, so static controls corrupt the actual returned DTO field/return; raw comparison decisions are tested by the native PARTIAL witness instead.

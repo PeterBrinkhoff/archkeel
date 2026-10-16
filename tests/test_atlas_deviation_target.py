@@ -21,26 +21,39 @@ GUARD = "RENDER-DEVIATION-TYPED-CONTROL"
 SPEC = "docs/superpowers/specs/2026-10-16-atlas-deviation-boundary.md"
 
 
-def _contract():
+def _contract(*, include_guard=False):
     render = json.loads((ROOT / "docs/architecture/contracts/render.json").read_text())
-    component = copy.deepcopy(next(row for row in render["components"] if row["label"] == "atlas-payload"))
+    component = copy.deepcopy(
+        next(row for row in render["components"] if row["label"] == "atlas-payload")
+    )
     component["exact_modules"] = [OWNER]
     component["public"] = [port for port in component["public"] if port.startswith(OWNER + ":")]
     component["provenance"] = [SPEC]
     return {
-        "schema_version": render["schema_version"], "components": [component],
-        "declarations": {"uml": {"schema_version": "1.2.0", "entities": [
-            row for row in render["declarations"]["uml"]["entities"]
-            if row["id"].startswith("RENDER-DEVIATION-")
-        ], "relationships": [], "scopes": []}},
-        "rules": [row for row in render["rules"] if row["id"] == GUARD],
+        "schema_version": render["schema_version"],
+        "components": [component],
+        "declarations": {
+            "uml": {
+                "schema_version": "1.2.0",
+                "entities": [
+                    row
+                    for row in render["declarations"]["uml"]["entities"]
+                    if row["id"].startswith("RENDER-DEVIATION-")
+                ],
+                "relationships": [],
+                "scopes": [],
+            }
+        },
+        "rules": [row for row in render["rules"] if include_guard and row["id"] == GUARD],
     }
 
 
-def _repository(tmp_path):
+def _repository(tmp_path, *, include_guard=False):
     files = {
-        "archkeel/__init__.py": "", "archkeel/render/__init__.py": "",
-        "contract.json": json.dumps(_contract()), SPEC: (ROOT / SPEC).read_text(),
+        "archkeel/__init__.py": "",
+        "archkeel/render/__init__.py": "",
+        "contract.json": json.dumps(_contract(include_guard=include_guard)),
+        SPEC: (ROOT / SPEC).read_text(),
     }
     owner = ROOT / "src/archkeel/render/atlas_deviations.py"
     if owner.is_file():
@@ -51,11 +64,18 @@ def _repository(tmp_path):
     return root, ScanConfig(("archkeel",), "archkeel", "contract.json", "0" * 64)
 
 
-def test_actual_deviation_owner_fulfills_fixed_types_and_whole_owner_guard(tmp_path):
+def test_actual_deviation_owner_fulfills_fixed_types(tmp_path):
     root, config = _repository(tmp_path)
     model = _model(root, config)
     comparison = architecture_report(model).comparison
     assert comparison is not None and comparison.status == "PASS", comparison
+    assert not trace_valid_violations(model)
+
+
+def test_actual_deviation_owner_whole_module_guard_is_proven(tmp_path):
+    assert (ROOT / "src/archkeel/render/atlas_deviations.py").is_file(), "The actual owner is absent"
+    root, config = _repository(tmp_path, include_guard=True)
+    model = _model(root, config)
     guard = next(row for row in rule_assessments(model, undecided_by_rule={}) if row.id == GUARD)
     assert guard.status == "PASS" and guard.evaluation_proven, guard
     assert not trace_valid_violations(model)

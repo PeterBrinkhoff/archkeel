@@ -15,9 +15,17 @@ from archkeel.ir.model import stable_id
 
 def _packed_atlas():
     return {
-        "reference_ids": [], "rule_assessments": [], "cells": [], "assignments": [],
-        "modules": [], "symbol_coverages": [], "levels": [], "components": [],
-        "findings": [], "declared_modules": [], "deviations": [],
+        "reference_ids": [],
+        "rule_assessments": [],
+        "cells": [],
+        "assignments": [],
+        "modules": [],
+        "symbol_coverages": [],
+        "levels": [],
+        "components": [],
+        "findings": [],
+        "declared_modules": [],
+        "deviations": [],
     }
 
 
@@ -29,16 +37,18 @@ def test_public_scene_rejects_malformed_recorded_deviation(field, value):
     api = pytest.importorskip("playwright.sync_api")
     playwright, browser, page = _asset_page(api, ["report-scene.js"])
     atlas = _packed_atlas()
-    row = {"id": "row", "kind": "undeclared", "source_id": "a",
-           "target_id": "b", "level_id": None}
+    row = {"id": "row", "kind": "undeclared", "source_id": "a", "target_id": "b", "level_id": None}
     row[field] = value
     atlas["deviations"] = [row]
     try:
-        result = page.evaluate("""data => {
+        result = page.evaluate(
+            """data => {
           try { ArchkeelReportScene.create(data); }
           catch (error) { return error instanceof TypeError; }
           return false;
-        }""", {"atlas": atlas})
+        }""",
+            {"atlas": atlas},
+        )
         assert result, f"Actual scene.create accepted malformed deviation {field}"
     finally:
         browser.close()
@@ -53,11 +63,14 @@ def test_public_scene_preserves_legacy_empty_or_missing_deviations(omitted):
     if omitted:
         del atlas["deviations"]
     try:
-        assert page.evaluate("""data => {
+        assert page.evaluate(
+            """data => {
           const before = JSON.stringify(data);
           const model = ArchkeelReportScene.create(data);
           return model.atlas !== data.atlas && JSON.stringify(data) === before;
-        }""", {"atlas": atlas})
+        }""",
+            {"atlas": atlas},
+        )
     finally:
         browser.close()
         playwright.stop()
@@ -71,10 +84,16 @@ def test_real_deviation_producer_preserves_sorted_wire_order_and_stable_ids():
     used = {("b", "a"), ("shared", "pair")}
     rows = owner.level_deviations(None, declared, used)
     expected = [
-        {"id": stable_id("atlas-deviation", None, kind, source, target), "kind": kind,
-         "source_id": source, "target_id": target, "level_id": None}
+        {
+            "id": stable_id("atlas-deviation", None, kind, source, target),
+            "kind": kind,
+            "source_id": source,
+            "target_id": target,
+            "level_id": None,
+        }
         for kind, source, target in [
-            ("allowed_unused", "a", "b"), ("allowed_unused", "z", "a"),
+            ("allowed_unused", "a", "b"),
+            ("allowed_unused", "z", "a"),
             ("undeclared", "b", "a"),
         ]
     ]
