@@ -25,3 +25,7 @@ JSON key identity, supplied selectors, paths and field grammar remain data. This
 - [ ] Add named ports, independently authored Target and native mutation tests.
 - [ ] Focused compatibility, static checks, real own observation and fresh amendment.
 - [ ] Independent Astra review and final combined CI before merge.
+
+## Integrated verification
+
+Production was integrated with the canonical graph owner without replacing its DecisionMaker, AssessmentStatus, binary collector Verdict or module-object grant definitions. The 429-test version job in run38948588690 is green, as are Ruff, strict mypy, native validation and exact-predecessor normal amendment generation (918/52/58/0; unchanged baseline). The separate browser job in that run exposed a compact-label test expectation; the final Wire test correction passed real Chromium in run38949400359 (3 cases). No production browser change was needed. Independent final review, a no-write check and full combined regression remain merge gates.
