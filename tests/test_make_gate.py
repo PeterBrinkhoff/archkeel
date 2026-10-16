@@ -216,7 +216,12 @@ def test_pr_core_uses_representative_dart_and_flutter_checks() -> None:
 )
 def test_pr_report_gate_runs_its_browser_sample_and_propagates_failure(tmp_path, failed):
     result, steps = _run_gate(tmp_path, "ci-pr-report-check", failed, 2, False)
-    expected = ["browser-install", "browser-runtime-check", "browser-graph-check", "pr-report-test"]
+    expected = [
+        "browser-install",
+        "browser-runtime-check",
+        "browser-graph-check",
+        "pr-report-test",
+    ]
     if failed is not None:
         expected = expected[: expected.index(failed) + 1]
     assert steps == expected
