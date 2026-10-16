@@ -818,12 +818,14 @@
         "archkeel.ir.diagnostics",
         "archkeel.render.summary_badges",
         "archkeel.analyzer.bootstrap",
-        "archkeel.ir.amendment"
+        "archkeel.ir.amendment",
+        "archkeel.check.evaluation.boundary_types"
       ],
-      "rationale": "Closed vocabularies belong to their domain and wire boundaries. State and source facts own shared controls; codecs own private tags; contract_version owns versions and feature availability. Python binding and receiver models own lexical controls. TypeScript and Dart syntax ports own parser DTO controls, while collectors own private states. Consumers use the published nominal types. Amendment artifacts own their versions and verification outcomes.",
+      "rationale": "Closed vocabularies belong to their domain and wire boundaries. State and source facts own shared controls; codecs own private tags; contract_version owns versions and feature availability. Python binding and receiver models own lexical controls. TypeScript and Dart syntax ports own parser DTO controls, while collectors own private states. Consumers use the published nominal types. Amendment artifacts own their versions and verification outcomes. The Core boundary evaluator owns its private undecidable-position reasons.",
       "provenance": [
         "docs/architecture/archkeel.md",
-        "docs/architecture/typed-amendment-artifact.md"
+        "docs/architecture/typed-amendment-artifact.md",
+        "docs/architecture/boundary-reason-types.md"
       ],
       "decided_by": "architect"
     },

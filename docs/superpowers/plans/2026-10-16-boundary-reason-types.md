@@ -40,11 +40,11 @@ Interfaces: consume actual _Position and _unresolvable_shape; authored Target re
 Files: only src/archkeel/check/evaluation/boundary_types.py for production.
 Interfaces: private _UndecidableReason(StrEnum); _Position.undecidable: _UndecidableReason | None; _unresolvable_shape(annotation: str) -> _UndecidableReason.
 
-- [ ] Replace the twelve-item inventory with the enum and a derived tuple of plain string values.
-- [ ] Normalize the existing optional reason once in _Position.__post_init__, preserving frozen/slots and valid legacy input.
-- [ ] Change actual producers and all four reason comparisons; keep unrelated strings/data and inheritance diagnostics unchanged.
-- [ ] At the existing aggregate detail ingress, use the same reason decoder before writing the canonical string counter key.
-- [ ] Observe GREEN; mutate the real field and return annotations to str and require trace-valid FAIL under the byte-identical Target.
+- [x] Replace the twelve-item inventory with the enum and a derived tuple of plain string values.
+- [x] Normalize the existing optional reason once in _Position.__post_init__, preserving frozen/slots and valid legacy input.
+- [x] Change actual producers and all four reason comparisons; keep unrelated strings/data and inheritance diagnostics unchanged.
+- [x] Preserve the open aggregate detail ingress unchanged; only the private DTO port closes twelve values, per Root's ruling.
+- [x] Observe GREEN; mutate the real field and return annotations to str and require trace-valid FAIL under the byte-identical Target.
 - [ ] Run Boundary/PublicAPI/finding-ID/historical-wire tests, Ruff/format/mypy and the full suite; report every failure honestly.
 
 ## Task 3: Exact evidence and independent review
@@ -71,3 +71,9 @@ Ruling (Root): keep the existing open wire-detail/aggregate path unchanged. A Re
 Authoritative RED 38981172657/job117242121662 runs unchanged f264 production with independent authored intent: 21 expected failures and three genuine compatibility controls pass (including future wire text). A separate native observation shows the real _Position.undecidable annotation FAIL and _unresolvable_shape signature FAIL, with source evidence and two trace-valid UML findings. Two widening tests wait for the actual nominal source ports. Initial test harnesses were corrected for declared-rule provenance, canonical report envelopes and Target responsibilities before production; their fixture failures are not counted as product RED. Production diff against f264 remained empty.
 
 Deferred Context/Parameter move also has an actual derived browser consumer: tools/browser_graph_protocol.py imports these enums through architecture_graph. A later canonical move to facts must move authored QNames and required Report-CI routing for facts.py together, preserve Graph facade identity, and keep AST/evidence DTOs distinct. No second registry is needed.
+
+The first full native source comparison found the planned private enum missing from the existing TYPES-ENUM-IN-MODEL placement declaration. Source/Target intent was otherwise unchanged: UNKNOWN58 including IDs/citations, typing52 and unresolved865 remain exact. This was a real policy finding, not suppressed. Root confirmed the concrete existing-owner decision belongs in that unchanged whole-source placement rule: add exactly boundary_types, its domain rationale and this spec provenance. An unrelated check owner remains outside the allowed modules. Native policy RED38982827595/job117247394338 proves the real reason owner rejects before declaration while the unrelated-owner negative control already passes (one FAIL/one PASS). The first auxiliary placement fixture lacked a selected allowed target module; that harness failure was corrected before the authored policy edit.
+
+Focused GREEN38981913468/job117244486387 proves all26 private-port, ingress, legacy-wire and two actual field/return mutation controls; Ruff/format and strict mypy142 are green. Existing Boundary/PublicAPI/finding-ID/historical cases plus hygiene:2094PASS/24SKIP in38981565403/job117243382324. The fullsuite on the preceding policy declaration is still running; its real placement failure is not a claimed final success.
+
+Real separate runtime copies differing only in boundary_types.py produce exact all-field E/F/H-uml/K-python-realworld payloads except analyzer.code_digest (the real engine source hash); after replacing only that declared metadata value, canonical bytes match5572/145970/56632/1349592. Run38982078572/job117245003629, artifact12081243387. Findings/evidenceIDs/UNKNOWNs are exact. E-runtime retains its actual3.12-vs3.11 runtime diagnostic. Single ordered elapsed times are controls, not a benchmark or speedup claim.
