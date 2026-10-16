@@ -1,0 +1,9 @@
+{
+  "after_baseline_digest": "cf6163c6f1f29d9d30733a11f24464591114e417fef6a1bc2f02a6027deb2714",
+  "after_digest": "2bcce4f73946b6cd3ab103560a2f253216a535b57beed330f67c50fc46887066",
+  "before_baseline_digest": "cf6163c6f1f29d9d30733a11f24464591114e417fef6a1bc2f02a6027deb2714",
+  "before_digest": "2bcce4f73946b6cd3ab103560a2f253216a535b57beed330f67c50fc46887066",
+  "decided_by": "ake2l",
+  "rationale": "Recognize one proven same-function local literal binding without adding resolver or general value authority, preserving merged graph/version policy and all measured debt ceilings.",
+  "schema_version": "2.0.0"
+}
