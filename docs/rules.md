@@ -188,6 +188,12 @@ vocabulary and source scope. Aliases/shadowing are limits. Exact type-ignore
 allowances bind scope, line, AST statement and tag; moving or changing them needs
 review.
 
+The native TypeScript/JavaScript collector provides PARTIAL evidence for written
+string equality/inequality and `switch` case literals, including plain templates
+and simple parentheses. A witnessed occurrence can FAIL; an empty inventory
+remains UNKNOWN. Method forms and propagated constants remain outside this
+increment. See [supported forms and receipt compatibility](architecture/typescript-written-string-controls.md).
+
 ArchKeel's own dependency-policy component uses the existing
 `string_literal_compare` construct rule to protect closed selector modes. Native
 source mutations check literal equality, membership, `match` and `Final[str]`
