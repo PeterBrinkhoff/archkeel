@@ -25,8 +25,8 @@
 **Files:** Modify src/archkeel/analyzer/python/constructs.py; create tests/test_string_comparison_observation.py; amend existing exclusions tests only for newly intended bytes/main semantics; document docs/architecture/string-comparison-observation.md.
 **Consumes:** collect_constructs(parsed: Sequence[ParsedModule], evidence) and native observe/evaluation.
 **Produces:** existing string_literal_compare records and trace-valid forbidden_construct violations; no new record schema.
-- [ ] Add actual-source cases for equality, membership, match, Final, named literal tuple/set/list, bytes, local Enum.member.value, main guard, parameter/local shadowing and dynamic/imported limits.
-- [ ] Run hosted focused tests before production edits; verify expected missing observations.
-- [ ] Implement bounded AST classification, preserving the existing construct owner and one record per statement.
-- [ ] Run focused collector, trust-boundary, import/source-binding regressions; ruff/mypy/hygiene; native self-validation with 65 unknown positions and 919 unresolved calls unchanged.
-- [ ] Report clean product commit, exact coverage/limits and red/green evidence for independent Astra review.
+- [x] Add actual-source cases for equality, membership, match, Final, named literal tuple/set/list, bytes, local Enum.member.value, main guard, parameter/local shadowing and dynamic/imported limits.
+- [x] Run hosted focused tests before production edits; verify expected missing observations.
+- [x] Implement bounded AST classification, preserving the existing construct owner and one record per statement.
+- [x] Run focused collector, trust-boundary, import/source-binding regressions; ruff/mypy/hygiene; native self-validation with 65 unknown positions and 919 unresolved calls unchanged.
+- [x] Report clean product commit, exact coverage/limits and red/green evidence for independent Astra review.
