@@ -253,3 +253,60 @@ def test_native_syntax_field_widening_fails_against_fixed_port_intent(tmp_path, 
     assert target.status == "FAIL"
     assert any(target.id in row.rule_ids for row in trace_valid_violations(model))
     assert (root / "contract.json").read_bytes() == before
+
+
+@pytest.mark.parametrize("widened", [False, True], ids=["declared-group", "widened-group"])
+def test_native_profile_receipt_group_type_uses_fixed_authored_intent(tmp_path, widened):
+    declared = json.loads((ROOT / "docs/architecture/contracts/ir.json").read_text())
+    component = next(row for row in declared["components"] if row["id"] == "TARGET-PROFILES")
+    # The fragment isolates the authored field, without claiming unrelated IR contracts.
+    component.pop("requires")
+    wanted = {
+        "IR-MODULE-OBJECT-profiles",
+        "IR-MODULE-OBJECT-Profile",
+        "IR-PROFILE-optional_section_groups",
+    }
+    entities = [
+        row for row in declared["declarations"]["uml"]["entities"] if row["id"] in wanted
+    ]
+    contract = {
+        "schema_version": declared["schema_version"],
+        "components": [component],
+        "rules": [],
+        "declarations": {
+            "uml": {"schema_version": "1.1.0", "entities": entities, "relationships": []}
+        },
+    }
+    source = (ROOT / "src/archkeel/ir/profiles.py").read_text()
+    annotation = "optional_section_groups: tuple[frozenset[ObservedSection], ...]"
+    assert annotation in source
+    if widened:
+        source = source.replace(annotation, "optional_section_groups: tuple[object, ...]", 1)
+    paths = {
+        "docs/architecture/language-adapter-target.md",
+        "docs/architecture/module-object-grants.md",
+        "docs/architecture/typescript-written-string-controls.md",
+    }
+    root = _prepare_repo(
+        tmp_path,
+        {
+            "archkeel/__init__.py": "",
+            "archkeel/ir/__init__.py": "",
+            "archkeel/ir/profiles.py": source,
+            "contract.json": json.dumps(contract),
+            **{path: (ROOT / path).read_text() for path in paths},
+        },
+    )
+    before = (root / "contract.json").read_bytes()
+    model = _model(root, ScanConfig(("archkeel",), "archkeel", "contract.json", "0" * 64))
+    comparison = architecture_report(model).comparison
+    assert comparison is not None
+    field = [
+        row
+        for row in comparison.assessments
+        if row.subject_id == "IR-PROFILE-optional_section_groups" and row.aspect == "annotation"
+    ]
+    assert len(field) == 1 and field[0].status == ("FAIL" if widened else "PASS")
+    if widened:
+        assert trace_valid_violations(model)
+    assert (root / "contract.json").read_bytes() == before

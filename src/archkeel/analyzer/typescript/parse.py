@@ -1279,10 +1279,10 @@ def _comparison_literal(node: _RawNode) -> _RawNode | None:
     """Read written equality/case syntax, without evaluating names or method semantics."""
     kind = _node_kind(node)
     if kind is _NodeKind.SWITCH_CASE:
-        return _written_string(node.child_by_field_name("value"))
+        return _written_string(_RawNode.child_by_field_name(node, "value"))
     if kind is not _NodeKind.BINARY_EXPRESSION:
         return None
-    operator = node.child_by_field_name("operator")
+    operator = _RawNode.child_by_field_name(node, "operator")
     if operator is None or _node_kind(operator) not in {
         _NodeKind.EQUAL,
         _NodeKind.NOT_EQUAL,
@@ -1290,8 +1290,8 @@ def _comparison_literal(node: _RawNode) -> _RawNode | None:
         _NodeKind.STRICT_NOT_EQUAL,
     }:
         return None
-    return _written_string(node.child_by_field_name("left")) or _written_string(
-        node.child_by_field_name("right")
+    return _written_string(_RawNode.child_by_field_name(node, "left")) or _written_string(
+        _RawNode.child_by_field_name(node, "right")
     )
 
 

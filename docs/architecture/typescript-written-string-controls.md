@@ -14,7 +14,7 @@ Anonymous callbacks and IIFEs receive no fabricated names. A containing named sc
 
 Known occurrences can cause trace-valid FAIL under an independently authored forbidden_construct rule. An empty inventory remains UNKNOWN. Unknown comparison grammar, dynamic templates and parse repairs cannot prove absence. Existing unknown parents remain traversable.
 
-There is no imported/constant/alias/mutation/closure value propagation, type-checker inference or compiler/runtime authority. Type assertions and non-null wrappers, .includes, startsWith/endsWith and array/tuple membership require later explicitly scoped capabilities. JavaScript in checks property presence, rather than array membership. No browser-wide guard is enabled.
+There is no imported/constant/alias/mutation/closure value propagation, type-checker inference or compiler/runtime authority. Type assertions and non-null wrappers, .includes, startsWith/endsWith and array/tuple membership require later explicitly scoped capabilities. JavaScript `in` checks property presence, rather than array membership. No browser-wide guard is enabled.
 
 Native JavaScript file selection uses existing allowJs/checkJs semantics; explicit allowJs=false wins. checkJs inclusion does not establish deep JSDoc type/member Target evidence. TypeScript 5.9.3 remains the pinned compiler reference.
 

@@ -63,3 +63,6 @@ Task 1: refreshed native RED 38964339186/job117186950096: 36 expected failures, 
 
 Task 1: focused native 38964957065: 83 tests passed, 405 lexical/protocol regressions passed, strict mypy 133 files passed; two formatter issues were corrected in the candidate.
 Task 2: native Target RED 38965409045/job117190542715: all three real Span/scope/sequence source widenings incorrectly remained PASS under the prior Target. Independently authored port intent is now added; GREEN is pending.
+
+Task 2: 38966064396 focused gate passed 132 native/legacy/hygiene controls, Ruff, formatter and mypy 133 files. The parallel TypeScript/Target/differential gate is still running.
+Task 3: the first actual own gate found 918 unresolved calls against unchanged ceiling 913, with 0 violations, 52 typing and 58 UNKNOWN. Exact same-observer comparison 38966726298/job117194913539 proved four new bound Tree-sitter field calls and one newly nested generator isinstance site; other apparent deltas were relocated anonymous scope coordinates. The candidate now uses the already-established explicit RawNode method owner and a simple atomic-group validation loop. No inference policy, budget, allowance, cast or authority changed; fresh verification is pending.
