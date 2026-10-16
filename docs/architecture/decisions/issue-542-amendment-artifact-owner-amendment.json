@@ -1,0 +1,9 @@
+{
+  "after_baseline_digest": "02279ca79283191bc1137034db4191abc1850cf3f290e974ec1caed594f95600",
+  "after_digest": "45abdcff32d486913727dcbc92ef6d5811f5419cbc65f1e5604da730f82fb835",
+  "before_baseline_digest": "02279ca79283191bc1137034db4191abc1850cf3f290e974ec1caed594f95600",
+  "before_digest": "2bcce4f73946b6cd3ab103560a2f253216a535b57beed330f67c50fc46887066",
+  "decided_by": "ake2l (explicit parser/protocol typing request); Codex implementation, independent Astra review before merge",
+  "rationale": "Own the existing immutable Amendment artifact, supported wire versions, exact binding verification and valid/stale outcome; specify 16 new independently authored API Target entities with two existing anchors, two complete module controls and the actual enum owner without changing baseline, caps or allowances; docs/architecture/typed-amendment-artifact.md.",
+  "schema_version": "2.0.0"
+}
