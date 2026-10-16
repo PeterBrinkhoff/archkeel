@@ -17,7 +17,9 @@ from archkeel.ir.facts import (
     SOURCE_RESOLUTION_GAP_KIND,
     BuiltinTarget,
     ConstructCapability,
+    ConstructSupport,
     ExternalPackageTarget,
+    ForbiddenConstructKind,
     SourceFacts,
     SourceProfile,
     SourceSectionName,
@@ -607,22 +609,29 @@ def evaluate_source(
     is_python = facts.profile == SourceProfile.PYTHON
     required = (
         {
-            "symbols",
-            "imports",
-            "calls",
-            "references",
-            "bindings",
-            "typing_signals",
-            "constructs",
-            "unknowns",
+            SourceSectionName.SYMBOLS,
+            SourceSectionName.IMPORTS,
+            SourceSectionName.CALLS,
+            SourceSectionName.REFERENCES,
+            SourceSectionName.BINDINGS,
+            SourceSectionName.TYPING_SIGNALS,
+            SourceSectionName.CONSTRUCTS,
+            SourceSectionName.UNKNOWNS,
         }
         if is_python
-        else {"imports", "unknowns"}
+        else {SourceSectionName.IMPORTS, SourceSectionName.UNKNOWNS}
     )
     declared_sections = set(facts.capabilities.sections)
     features = set(facts.capabilities.resolution_features)
+    inner_uml_sections = {
+        SourceSectionName.IMPORTS,
+        SourceSectionName.UNKNOWNS,
+        SourceSectionName.SYMBOLS,
+        SourceSectionName.CALLS,
+        SourceSectionName.REFERENCES,
+        SourceSectionName.BINDINGS,
+    }
     if facts.profile == SourceProfile.DART:
-        inner_uml_sections = {"imports", "unknowns", "symbols", "calls", "references", "bindings"}
         if declared_sections != inner_uml_sections or facts.capabilities.resolution_features != (
             "inner-uml-v1",
         ):
@@ -636,9 +645,23 @@ def evaluate_source(
         }
         legacy_features = ({"static-imports"}, native_import_features)
         inner_uml_features = native_import_features | {"inner-uml-v1"}
-        inner_uml_sections = {"imports", "unknowns", "symbols", "calls", "references", "bindings"}
-        legacy = declared_sections == required and features in legacy_features
-        inner_uml = declared_sections == inner_uml_sections and features == inner_uml_features
+        legacy = (
+            declared_sections == required
+            and features in legacy_features
+            and not facts.capabilities.constructs
+        )
+        inner_uml = features == inner_uml_features and (
+            (declared_sections == inner_uml_sections and not facts.capabilities.constructs)
+            or (
+                declared_sections == inner_uml_sections | {SourceSectionName.CONSTRUCTS}
+                and facts.capabilities.constructs
+                == (
+                    ConstructCapability(
+                        ForbiddenConstructKind.STRING_LITERAL_COMPARE, ConstructSupport.PARTIAL
+                    ),
+                )
+            )
+        )
         if len(facts.capabilities.resolution_features) != len(features):
             raise ProtocolError("duplicate resolution feature")
         if not (legacy or inner_uml):

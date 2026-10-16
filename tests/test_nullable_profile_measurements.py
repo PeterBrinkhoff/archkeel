@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import json
 from copy import deepcopy
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from types import SimpleNamespace
 from typing import Any
 
@@ -14,18 +14,21 @@ from test_delta import _model, _record
 
 from archkeel.check.observation import _metrics
 from archkeel.check.ratchets import RatchetError, measure_python_ratchets
+from archkeel.ir import codec_observation
 from archkeel.ir.codec import (
     delta_payload,
+    observation_payload,
     parse_delta,
     parse_lock,
     parse_measurements,
     parse_observation,
     result_payload,
 )
+from archkeel.ir.facts import SourceSectionName
 from archkeel.ir.lock import LockError, verify_observation
 from archkeel.ir.measurements import Measurements, RatchetScalars, compare_measurements
 from archkeel.ir.model import RunResult
-from archkeel.ir.profiles import TYPESCRIPT
+from archkeel.ir.profiles import TYPESCRIPT, Profile
 from archkeel.ir.structure import scope_metrics
 from archkeel.render.html import _coverage, _structure_row, render_html
 
@@ -103,6 +106,36 @@ def test_typescript_optional_sections_are_an_atomic_measurement_receipt() -> Non
     mixed["references"] = None
     with pytest.raises(ValueError, match="all null or all arrays"):
         parse_observation(mixed)
+
+
+def test_legacy_typescript_inner_receipt_keeps_its_absent_construct_section() -> None:
+    legacy = _profile_model("archkeel-typescript-imports")
+    for section in ("symbols", "calls", "references", "bindings"):
+        legacy[section] = []
+    legacy["coverage"].update(
+        calls_analyzed=0,
+        calls_resolved=0,
+        calls_partially_resolved=0,
+        calls_unresolved=0,
+        call_resolution_percent=0.0,
+    )
+    restored = parse_observation(legacy)
+    replay = observation_payload(restored)
+    assert replay["constructs"] is None
+    assert all(replay[section] == [] for section in ("symbols", "calls", "references", "bindings"))
+    assert parse_observation(replay) == restored
+
+
+def test_typescript_construct_receipt_is_independent_of_the_inner_receipt() -> None:
+    payload = _profile_model("archkeel-typescript-imports")
+    payload["constructs"] = []
+    restored = parse_observation(payload)
+    replay = observation_payload(restored)
+    assert replay["constructs"] == []
+    assert all(
+        replay[section] is None for section in ("symbols", "calls", "references", "bindings")
+    )
+    assert parse_observation(replay) == restored
 
 
 def test_ratchets_skip_absent_typescript_sections_and_keep_python_validation() -> None:
@@ -350,3 +383,126 @@ def test_forbidden_package_edges_use_declared_module_packages() -> None:
     assert by_kind["typing_signals"]["data"]["value"] is None
     assert by_kind["unresolved_calls"]["data"]["value"] is None
     assert by_kind["call_resolution"]["data"]["value"] is None
+
+
+_LEGACY_TYPESCRIPT_OPTIONAL = frozenset(
+    {
+        SourceSectionName.SYMBOLS,
+        SourceSectionName.CALLS,
+        SourceSectionName.REFERENCES,
+        SourceSectionName.BINDINGS,
+    }
+)
+
+
+def _consume_profile_receipts(monkeypatch, profile):
+    # Inject a real Profile at the existing codec seam; source authority is not under test.
+    monkeypatch.setattr(codec_observation, "profile_for", lambda _analyzer: profile)
+    payload = _profile_model(TYPESCRIPT.analyzer)
+    sections = (*_LEGACY_TYPESCRIPT_OPTIONAL, SourceSectionName.CONSTRUCTS)
+    for section in sections:
+        payload[section] = []
+    for section in profile.all_optional_sections | profile.absent_sections:
+        payload[section] = None
+    if payload["calls"] is not None:
+        payload["coverage"].update(
+            calls_analyzed=0,
+            calls_resolved=0,
+            calls_partially_resolved=0,
+            calls_unresolved=0,
+            call_resolution_percent=0.0,
+        )
+    restored = parse_observation(payload)
+    replay = observation_payload(restored)
+    assert all(replay[section] == payload[section] for section in sections)
+    assert parse_observation(replay) == restored
+
+
+@pytest.mark.parametrize("construction", ["keyword", "positional"])
+def test_legacy_profile_constructor_keeps_its_atomic_group_and_codec(monkeypatch, construction):
+    legacy = _LEGACY_TYPESCRIPT_OPTIONAL
+    if construction == "keyword":
+        profile = Profile(
+            analyzer=TYPESCRIPT.analyzer,
+            source_suffix=".ts",
+            absent_sections=TYPESCRIPT.absent_sections,
+            optional_sections=legacy,
+            standard_library=frozenset({"stdlib"}),
+            sdk_libraries=frozenset({"sdk"}),
+            module_object_imports=True,
+        )
+    else:
+        # Exact old positional order, including the three fields after optional_sections.
+        profile = Profile(
+            TYPESCRIPT.analyzer,
+            ".ts",
+            frozenset(),
+            True,
+            True,
+            False,
+            False,
+            frozenset(),
+            frozenset(),
+            TYPESCRIPT.absent_sections,
+            legacy,
+            frozenset({"stdlib"}),
+            frozenset({"sdk"}),
+            True,
+        )
+    assert profile.optional_sections == legacy
+    assert profile.optional_section_groups == (legacy,)
+    assert profile.all_optional_sections == legacy
+    assert profile.standard_library == frozenset({"stdlib"})
+    assert profile.sdk_libraries == frozenset({"sdk"}) and profile.module_object_imports
+    _consume_profile_receipts(monkeypatch, profile)
+
+
+@pytest.mark.parametrize(
+    "legacy",
+    [frozenset({SourceSectionName.SYMBOLS}), frozenset()],
+    ids=["changed-legacy-group", "emptied-legacy-group"],
+)
+def test_profile_replace_changes_only_the_legacy_group(monkeypatch, legacy):
+    profile = replace(TYPESCRIPT, optional_sections=legacy)
+    additional = (frozenset({SourceSectionName.CONSTRUCTS}),)
+    assert profile.optional_sections == legacy
+    assert profile.additional_optional_section_groups == additional
+    assert profile.optional_section_groups == ((legacy,) if legacy else ()) + additional
+    assert profile.all_optional_sections == legacy | additional[0]
+    _consume_profile_receipts(monkeypatch, profile)
+
+
+def test_unrelated_profile_replace_preserves_legacy_and_additional_receipts(monkeypatch):
+    profile = replace(TYPESCRIPT, source_suffix=".jsx")
+    assert profile.optional_sections == _LEGACY_TYPESCRIPT_OPTIONAL
+    assert profile.additional_optional_section_groups == (
+        frozenset({SourceSectionName.CONSTRUCTS}),
+    )
+    assert profile.optional_section_groups == (
+        _LEGACY_TYPESCRIPT_OPTIONAL,
+        frozenset({SourceSectionName.CONSTRUCTS}),
+    )
+    _consume_profile_receipts(monkeypatch, profile)
+
+
+def test_additional_profile_groups_are_keyword_only():
+    from inspect import Parameter, signature
+
+    assert (
+        signature(Profile).parameters["additional_optional_section_groups"].kind
+        is Parameter.KEYWORD_ONLY
+    )
+
+
+@pytest.mark.parametrize(
+    "groups",
+    [
+        (frozenset({SourceSectionName.SYMBOLS}),),
+        (frozenset({SourceSectionName.CONSTRUCTS}),) * 2,
+        (frozenset(),),
+    ],
+    ids=["overlaps-legacy", "overlaps-additional", "empty-additional"],
+)
+def test_additional_profile_groups_are_nonempty_and_disjoint(groups):
+    with pytest.raises(ValueError, match="non-empty and disjoint"):
+        replace(TYPESCRIPT, additional_optional_section_groups=groups)

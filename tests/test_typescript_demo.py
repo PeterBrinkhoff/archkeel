@@ -274,21 +274,47 @@ def test_layer_order_judges_declared_permissions_without_changing_imports(
     assert violation.subjects == ("domain", "presentation")
 
 
-def test_real_typescript_demo_matches_decoded_profile_schema(outcomes: dict[str, Outcome]) -> None:
+def _decoded_validator():
     root = Path(__file__).parents[1]
     schemas = [json.loads(path.read_bytes()) for path in (root / "schema").glob("*.json")]
     registry = Registry().with_resources(
         (schema["$id"], Resource.from_contents(schema)) for schema in schemas
     )
     schema = json.loads((root / "schema/architecture-ir-decoded.schema.json").read_bytes())
+    return Draft202012Validator(schema, registry=registry)
+
+
+def test_real_typescript_demo_matches_decoded_profile_schema(outcomes: dict[str, Outcome]) -> None:
     observation = outcomes["typescript-clean"].observation
     assert observation is not None
-    errors = list(
-        Draft202012Validator(schema, registry=registry).iter_errors(
-            observation_payload(observation)
-        )
+    assert not list(_decoded_validator().iter_errors(observation_payload(observation)))
+
+
+@pytest.mark.parametrize("inner", [False, True], ids=["legacy-imports", "inner-uml"])
+@pytest.mark.parametrize("constructs", [False, True], ids=["legacy-null", "construct-array"])
+def test_decoded_schema_and_codec_keep_independent_receipt_groups(outcomes, inner, constructs):
+    observation = outcomes["typescript-clean"].observation
+    assert observation is not None
+    payload = observation_payload(observation)
+    if not inner:
+        for section in ("symbols", "calls", "references", "bindings"):
+            payload[section] = None
+        for field in (
+            "calls_analyzed",
+            "calls_resolved",
+            "calls_partially_resolved",
+            "calls_unresolved",
+            "call_resolution_percent",
+        ):
+            payload["coverage"][field] = None
+    payload["constructs"] = [] if constructs else None
+    assert not list(_decoded_validator().iter_errors(payload))
+    replay = observation_payload(parse_observation(payload))
+    assert replay["constructs"] == payload["constructs"]
+    assert all(
+        replay[section] == payload[section]
+        for section in ("symbols", "calls", "references", "bindings")
     )
-    assert not errors
 
 
 def test_module_cycle_is_not_a_component_cycle(outcomes: dict[str, Outcome]) -> None:
@@ -601,7 +627,8 @@ def test_committed_js_only_revision_check(tmp_path: Path) -> None:
         decode_canonical_model(json.loads((output / "accepted.json").read_bytes()))
     )
     assert accepted.coverage.calls_analyzed == 6
-    assert accepted.records("constructs") is None
+    # The current native collector measures supported occurrences; legacy null still replays.
+    assert accepted.records("constructs") == ()
     assert accepted.records("symbols") is not None
     assert json.loads((output / "revisions-check.stdout.json").read_bytes()) == json.loads(
         (output / "revisions-repeat.stdout.json").read_bytes()

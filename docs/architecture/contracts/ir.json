@@ -9454,6 +9454,100 @@
           "responsibilities": [
             "Normalize the two canonical rule tags idempotently without defining dataclass fields."
           ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/typescript-written-string-controls.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-PROFILE-optional_sections",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.profiles.Profile.optional_sections",
+          "parent_id": "IR-MODULE-OBJECT-Profile",
+          "annotation": "frozenset[ObservedSection]",
+          "responsibilities": [
+            "Preserve the legacy optional-section constructor field and its single atomic receipt."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/typescript-written-string-controls.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-PROFILE-additional_optional_section_groups",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.profiles.Profile.additional_optional_section_groups",
+          "parent_id": "IR-MODULE-OBJECT-Profile",
+          "annotation": "tuple[frozenset[ObservedSection], ...]",
+          "responsibilities": [
+            "Own keyword-only independent non-empty and disjoint optional receipts."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/typescript-written-string-controls.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-PROFILE-optional_section_groups",
+          "kind": "method",
+          "qualified_name": "archkeel.ir.profiles.Profile.optional_section_groups",
+          "parent_id": "IR-MODULE-OBJECT-Profile",
+          "responsibilities": [
+            "Derive the atomic receipt groups from the legacy group and independent additions."
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "self",
+                "kind": "positional",
+                "default_known": true
+              }
+            ],
+            "returns": "tuple[frozenset[ObservedSection], ...]"
+          }
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/typescript-written-string-controls.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-PROFILE-all_optional_sections",
+          "kind": "method",
+          "qualified_name": "archkeel.ir.profiles.Profile.all_optional_sections",
+          "parent_id": "IR-MODULE-OBJECT-Profile",
+          "responsibilities": [
+            "Derive the full optional-section read view for codec consumers."
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "self",
+                "kind": "positional",
+                "default_known": true
+              }
+            ],
+            "returns": "frozenset[ObservedSection]"
+          }
         }
       ],
       "relationships": [
