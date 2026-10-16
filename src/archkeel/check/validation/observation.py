@@ -75,7 +75,9 @@ def _responsibility_diagnostics(
             if component.decided_by != "architect":
                 continue
             responsibilities = tuple(map(str.strip, component.responsibilities))
-            if any(value and not _PLACEHOLDER_RATIONALE.fullmatch(value) for value in responsibilities):
+            if any(
+                value and not _PLACEHOLDER_RATIONALE.fullmatch(value) for value in responsibilities
+            ):
                 continue
             location = f" in {path}" if path is not None else ""
             diagnostics.append(
