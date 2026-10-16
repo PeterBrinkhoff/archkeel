@@ -20,13 +20,13 @@ ci-check: ci-artifacts-clean ci-core-check ci-report-check
 
 ci-core-check: PYTEST_EXTRA = --with playwright==$(PLAYWRIGHT_VERSION)
 ci-core-check: PYTEST_STOP := --maxfail=1
-ci-core-check: browser-install gate typescript-compiler-check ci-typescript
+ci-core-check: browser-install gate typescript-compiler-check browser-graph-check ci-typescript browser-runtime-check
 
 ci-report-check: report-timing report-browser-proof
 
 ci-pr-check: $(if $(strip $(BASE)),against,self-validate) lint typecheck pr-test
 
-ci-pr-report-check: browser-install pr-report-test
+ci-pr-report-check: browser-install browser-runtime-check browser-graph-check pr-report-test
 
 pr-test:
 	$(UV) run --locked python -m pytest -n 2 --dist=loadfile --max-worker-restart=0 \
@@ -77,7 +77,7 @@ pr-test:
 pr-report-test:
 	$(UV) run --locked --with playwright==$(PLAYWRIGHT_VERSION) python -m pytest -n 2 --dist=loadfile --max-worker-restart=0 -q \
 		--junitxml=test-artifacts/pytest/pr-report.xml \
-		tests/test_report_renderer_units.py \
+		tests/test_report_renderer_units.py tests/test_graph_scene_protocol.py \
 		tests/test_explorer_report.py \
 		tests/test_report_interactions.py::test_native_card_drag_reroutes_all_hits_and_keeps_architecture_unchanged \
 		tests/test_uml_rendering.py::test_standard_uml_ignores_stale_layout_and_retries_rejected_layout \
@@ -186,7 +186,7 @@ LINT_PATHS := src tests tools/terminal_svg.py tools/interface_profile.py tools/r
 	fixtures/reproduce_dart.py fixtures/reproduce_snapshot_check.py fixtures/consume_result.py fixtures/reproduce_github.py \
 	fixtures/reproduce_typescript.py fixtures/typescript_differential.py fixtures/typescript_scenarios.py fixtures/typescript_realworld.py \
 	fixtures/architecture_demo.py fixtures/demo_catalog_*.py \
-	tools/architecture_graph_schema.py tools/report_timing.py tools/report_artifact_retention.py
+	tools/architecture_graph_schema.py tools/report_timing.py tools/report_artifact_retention.py tools/browser_runtime.py tools/browser_graph_protocol.py
 
 # The same commit measured 80-96s on hosted runners; allow for runner noise.
 REPORT_MAX_SECONDS ?= 120
@@ -316,3 +316,33 @@ build:
 smoke:
 	$(UV) run --isolated --no-project --with dist/*.whl tests/smoke_test.py
 	$(UV) run --isolated --no-project --with dist/*.tar.gz tests/smoke_test.py
+
+# Development publication only; reports and Python package builds load committed assets.
+.PHONY: browser-runtime-install browser-runtime-generate browser-runtime-check
+browser-runtime-install:
+	npm ci --prefix tools/browser-runtime --ignore-scripts --no-audit --no-fund
+
+browser-runtime-generate: browser-runtime-install
+	uv run --locked python -m tools.browser_runtime
+
+browser-runtime-check: browser-runtime-install
+	uv run --locked mypy --strict tools/browser_runtime.py
+	uv run --locked python -m tools.browser_runtime --check
+	uv run --locked python -m pytest -q tests/test_flow_runtime_publication.py
+
+.PHONY: browser-graph-generate browser-graph-check
+BROWSER_GRAPH_PROTOCOL := src/archkeel/render/assets/report-graph-vocabulary.ts src/archkeel/render/assets/report-graph-protocol.ts
+BROWSER_GRAPH_COMPILER := npx --yes --package typescript@5.9.3 tsc --strict --target ES2022 --module none --newLine lf
+
+browser-graph-generate:
+	$(UV) run --locked python -m tools.browser_graph_protocol
+	$(BROWSER_GRAPH_COMPILER) --outFile src/archkeel/render/assets/report-graph-protocol.js $(BROWSER_GRAPH_PROTOCOL)
+
+browser-graph-check:
+	$(UV) run --locked mypy --strict tools/browser_graph_protocol.py
+	$(UV) run --locked python -m tools.browser_graph_protocol --check
+	@set -e; browser_graph_stage=$$(mktemp -d); \
+		trap 'rm -rf "$$browser_graph_stage"' EXIT; \
+		$(BROWSER_GRAPH_COMPILER) --outFile "$$browser_graph_stage/protocol.js" $(BROWSER_GRAPH_PROTOCOL); \
+		cmp src/archkeel/render/assets/report-graph-protocol.js "$$browser_graph_stage/protocol.js"
+	$(BROWSER_GRAPH_COMPILER) --allowJs --checkJs --noEmit $(BROWSER_GRAPH_PROTOCOL) src/archkeel/render/assets/report-graph-scene.js tests/browser_graph_scene_target.ts
