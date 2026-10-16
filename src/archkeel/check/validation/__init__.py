@@ -7,8 +7,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Literal
 
+from archkeel.ir.amendment import Amendment, AmendmentStatus, verify_amendment
 from archkeel.ir.baseline import (
     KnownViolation,
     ValidationBaseline,
@@ -68,12 +68,10 @@ from archkeel.ir.model import (
 from archkeel.ir.model import DiagnosticCode as _DiagnosticCode
 from archkeel.ir.renames import Renamed, module_layouts, observed_names, renames_since
 from archkeel.ir.widening import (
-    Amendment,
     WideningChange,
     baseline_widening_changes,
     contract_widening_changes,
     measurement_budget_changes,
-    verify_amendment,
 )
 
 from ..git import GitError, MissingBlobError, read_blob, tracked_paths, working_tree_paths
@@ -275,7 +273,7 @@ def _observed_result(
     baseline_resolved: int | None = None,
     interface_budgets: tuple[InterfaceBudgetResult, ...] | None = None,
     widenings: tuple[WideningFinding, ...] | None = None,
-    amendment_status: Literal["valid", "stale"] | None = None,
+    amendment_status: AmendmentStatus | None = None,
     compact_open_decisions: bool = False,
 ) -> RunResult:
     """The validate result once a complete observation has produced its diagnostics.
@@ -840,7 +838,7 @@ def _widening_failures(
     after_policy_digest: str | None,
     *,
     amendment_written: bool,
-) -> tuple[tuple[str, ...], tuple[WideningFinding, ...], Literal["valid", "stale"] | None]:
+) -> tuple[tuple[str, ...], tuple[WideningFinding, ...], AmendmentStatus | None]:
     """Every unamended widening from `ctx.contract` to `contract` (AD-61, #11).
 
     A recognised rename is applied to the old side first (AD-105), so only what it does not
@@ -888,11 +886,11 @@ def _widening_failures(
         return (
             messages or ("amendment does not bind this contract and baseline comparison",),
             coded_findings,
-            "stale",
+            AmendmentStatus.STALE,
         )
-    status: Literal["valid", "stale"] | None = None
+    status: AmendmentStatus | None = None
     if ctx.parsed_amendment is not None and amended:
-        status = "valid"
+        status = AmendmentStatus.VALID
     if findings and not amended:
         return tuple(item.message for item in findings), coded_findings, status
     empty_messages: tuple[str, ...] = ()
