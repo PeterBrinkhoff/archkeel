@@ -38,6 +38,18 @@
     const positions = Object.create(null), frames = Object.create(null);
     const routes = new Map(), labels = Object.create(null);
     const pendingEdges = new Map(), origins = new Map();
+    function readLabels(items, x, y) {
+      for (const label of items) {
+        if (!expectedLabels.has(label.id)) throw new Error(`ELK returned an unexpected layout label ${label.id}.`);
+        if (Object.hasOwn(labels, label.id)) throw new Error(`ELK duplicated active layout label ${label.id}.`);
+        if (![label.x, label.y, label.width, label.height].every(Number.isFinite)
+            || label.width <= 0 || label.height <= 0) {
+          throw new Error(`ELK returned invalid geometry for label ${label.id}.`);
+        }
+        labels[label.id] = { x: x + label.x, y: y + label.y,
+          width: label.width, height: label.height };
+      }
+    }
     const walk = (graph, offsetX = 0, offsetY = 0, isRoot = false, parentId = null) => {
       const [x, y] = absolutePosition(graph, offsetX, offsetY, isRoot ? result.id : "");
       origins.set(graph.id, [x, y]);
@@ -55,16 +67,7 @@
           };
         } else throw new Error(`ELK returned an unexpected layout node ${graph.id}.`);
       }
-      for (const label of graph.labels || []) {
-        if (!expectedLabels.has(label.id)) throw new Error(`ELK returned an unexpected layout label ${label.id}.`);
-        if (Object.hasOwn(labels, label.id)) throw new Error(`ELK duplicated active layout label ${label.id}.`);
-        if (![label.x, label.y, label.width, label.height].every(Number.isFinite)
-            || label.width <= 0 || label.height <= 0) {
-          throw new Error(`ELK returned invalid geometry for label ${label.id}.`);
-        }
-        labels[label.id] = { x: x + label.x, y: y + label.y,
-          width: label.width, height: label.height };
-      }
+      readLabels(graph.labels || [], x, y);
       for (const edge of graph.edges || []) {
         if (!expectedEdges.has(edge.id)) throw new Error(`ELK returned an unexpected layout relationship ${edge.id}.`);
         if (pendingEdges.has(edge.id)) throw new Error(`ELK duplicated layout relationship ${edge.id}.`);
@@ -80,16 +83,7 @@
       }
       const [x, y] = origins.get(container);
       routes.set(edge.id, routeSections(edge.sections || [], x, y, edge.id));
-      for (const label of edge.labels || []) {
-        if (!expectedLabels.has(label.id)) throw new Error(`ELK returned an unexpected layout label ${label.id}.`);
-        if (Object.hasOwn(labels, label.id)) throw new Error(`ELK duplicated active layout label ${label.id}.`);
-        if (![label.x, label.y, label.width, label.height].every(Number.isFinite)
-            || label.width <= 0 || label.height <= 0) {
-          throw new Error(`ELK returned invalid geometry for label ${label.id}.`);
-        }
-        labels[label.id] = { x: x + label.x, y: y + label.y,
-          width: label.width, height: label.height };
-      }
+      readLabels(edge.labels || [], x, y);
     }
     if ([...expectedNodes].some((id) => !Object.hasOwn(positions, id)) || Object.keys(positions).length !== expectedNodes.size) {
       throw new Error("ELK did not place every active layout node.");
