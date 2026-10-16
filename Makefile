@@ -59,7 +59,7 @@ pr-test:
 		tests/test_flutter_demo.py::test_flutter_target_owns_three_meaningful_component_levels_and_all_modules \
 		tests/test_flutter_demo.py::test_flutter_target_pins_journey_signatures_member_scopes_and_flutter_inheritance \
 		tests/test_runtime.py \
-		tests/test_codec.py tests/test_source_provenance_acceptance.py \
+		tests/test_codec.py tests/test_codec_compatibility.py tests/test_source_provenance_acceptance.py \
 		tests/test_collection_process.py tests/test_collection_conformance.py tests/test_schema_drift.py \
 		tests/test_runtime_delta.py tests/test_nullable_profile_measurements.py \
 		tests/test_collection_runtime_gate.py tests/test_ratchets.py tests/test_model.py tests/test_trace.py tests/test_violations.py \
