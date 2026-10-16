@@ -72,10 +72,10 @@ def _responsibility_diagnostics(
     diagnostics = []
     for reviewed_contract, path in contracts:
         for index, component in enumerate(reviewed_contract.components):
-            if component.decided_by != "architect" or any(
-                value.strip() and not _PLACEHOLDER_RATIONALE.fullmatch(value.strip())
-                for value in component.responsibilities
-            ):
+            if component.decided_by != "architect":
+                continue
+            responsibilities = tuple(map(str.strip, component.responsibilities))
+            if any(value and not _PLACEHOLDER_RATIONALE.fullmatch(value) for value in responsibilities):
                 continue
             location = f" in {path}" if path is not None else ""
             diagnostics.append(
@@ -85,7 +85,7 @@ def _responsibility_diagnostics(
                     f"{component.label}{location}",
                     (
                         "The architect-decided component has only placeholder responsibilities."
-                        if any(value.strip() for value in component.responsibilities)
+                        if any(responsibilities)
                         else "The architect-decided component has no responsibility declaration."
                     ),
                     "Ask the architect to declare the component's intended responsibilities.",
