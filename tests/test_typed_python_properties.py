@@ -9,6 +9,7 @@ import json
 from dataclasses import FrozenInstanceError
 from enum import Enum
 from pathlib import Path
+from types import MappingProxyType
 from typing import get_type_hints
 
 import pytest
@@ -54,7 +55,7 @@ def test_consumed_property_fields_are_owned_nominal_enums(field, name):
 
 @pytest.mark.parametrize("mapping", [False, True])
 def test_legacy_raw_property_constructor_preserves_dict_operations(mapping):
-    raw = source._PropertyBinding(WIRE) if mapping else source._PropertyBinding(**WIRE)
+    raw = source._PropertyBinding(MappingProxyType(WIRE)) if mapping else source._PropertyBinding(**WIRE)
     assert type(raw) is dict and raw == WIRE
     assert {**raw} == WIRE and raw["operation"] == "setter"
     assert json.loads(json.dumps(raw)) == WIRE
@@ -63,7 +64,7 @@ def test_legacy_raw_property_constructor_preserves_dict_operations(mapping):
 def test_property_decoder_reads_raw_mapping_and_immutable_record_identically():
     binding = _api()
     raw = source._PropertyBinding(**WIRE)
-    decoded = facts.property_binding(raw)
+    decoded = facts.property_binding(MappingProxyType(raw))
     immutable = facts.property_binding(facts_codec.freeze_data(raw))
     assert type(decoded) is binding and decoded == immutable
     assert decoded.operation is facts.PropertyOperation.SETTER
@@ -151,8 +152,11 @@ def test_actual_property_functions_have_no_raw_operation_dispatch(tmp_path, file
         for node in ast.walk(ast.parse((ROOT / "src/archkeel" / filename).read_text()))
         if isinstance(node, ast.Compare)
         and any(
-            (isinstance(child, ast.Constant) and isinstance(child.value, str)
-             and child.value in vocabulary)
+            (
+                isinstance(child, ast.Constant)
+                and isinstance(child.value, str)
+                and child.value in vocabulary
+            )
             or (isinstance(child, ast.Attribute) and child.attr == "value")
             for child in ast.walk(node)
         )
@@ -161,7 +165,8 @@ def test_actual_property_functions_have_no_raw_operation_dispatch(tmp_path, file
     assert not [
         row
         for row in result.observation.records("constructs")
-        if row.kind == "string_literal_compare" and row.data.get("owner") == owner
+        if row.kind == "string_literal_compare"
+        and row.data.get("owner") == owner
         and any(evidence[reference].line in property_lines for reference in row.evidence_ids)
     ]
 
@@ -190,7 +195,9 @@ def test_real_property_lifecycle_keeps_verdict_and_canonical_wire(tmp_path, sett
     ]
     assert len(values) == 2
     _api()
-    ordered = sorted((facts.property_binding(value) for value in values), key=lambda item: item.line)
+    ordered = sorted(
+        (facts.property_binding(value) for value in values), key=lambda item: item.line
+    )
     assert [value.operation for value in ordered] == [
         facts.PropertyOperation.CREATE,
         facts.PropertyOperation.SETTER,
