@@ -218,6 +218,46 @@ def property_binding(value: RecordData | Mapping[str, object]) -> PropertyBindin
         raise ValueError("invalid property binding operation or order") from error
 
 
+class MethodKind(Enum):
+    INSTANCE = "instance"
+    STATIC = "static"
+    CLASS = "class"
+    CONSTRUCTOR = "constructor"
+    FACTORY = "factory"
+
+
+def parse_method_kind(value: object) -> MethodKind | None:
+    """Recognize shared method tags without assigning meaning to opaque wire data."""
+    if isinstance(value, MethodKind):
+        return value
+    if not isinstance(value, str):
+        return None
+    try:
+        return MethodKind(value)
+    except ValueError:
+        return None
+
+
+@dataclass(frozen=True, slots=True)
+class MethodDescriptor:
+    """Nominal method kind with independent source descriptor and binding proof."""
+
+    method_kind: MethodKind
+    signature_decorators_proven: bool
+    source_final_method_binding: bool
+    property_binding: PropertyBinding | None = None
+
+    def __post_init__(self) -> None:
+        if (
+            not isinstance(self.method_kind, MethodKind)
+            or type(self.signature_decorators_proven) is not bool
+            or type(self.source_final_method_binding) is not bool
+            or self.property_binding is not None
+            and not isinstance(self.property_binding, PropertyBinding)
+        ):
+            raise ValueError("invalid method descriptor")
+
+
 @dataclass(frozen=True, slots=True)
 class MemberInventory:
     """Direct static declarations; inherited and generated members stay outside proof."""

@@ -38,9 +38,11 @@ from archkeel.ir.facts import (
     SOURCE_RESOLUTION_GAP_KIND,
     InventoryStatus,
     MemberKind,
+    MethodKind,
     ResolutionInput,
     ResolutionRole,
     member_inventories,
+    parse_method_kind,
 )
 from archkeel.ir.model import (
     TARGET_GRAPH_RECORD_KINDS,
@@ -454,9 +456,10 @@ def _symbol(record: Record, language: str) -> Entity:
     for key, modifier in (("async", ModifierKind.ASYNC), ("frozen_object", ModifierKind.FROZEN)):
         if data.get(key) is True:
             modifiers.append(modifier)
-    if data.get("method_kind") in {"static", "class"}:
+    method_kind = parse_method_kind(data.get("method_kind"))
+    if method_kind in (MethodKind.STATIC, MethodKind.CLASS):
         modifiers.append(
-            ModifierKind.STATIC if data.get("method_kind") == "static" else ModifierKind.CLASS
+            ModifierKind.STATIC if method_kind is MethodKind.STATIC else ModifierKind.CLASS
         )
     return Entity(
         record.id,

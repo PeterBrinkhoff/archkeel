@@ -11,7 +11,13 @@ from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, replace
 from typing import Final, NamedTuple, TypeAlias
 
-from archkeel.ir.facts import PropertyOperation, PropertyOrigin, property_binding
+from archkeel.ir.facts import (
+    MethodKind,
+    PropertyOperation,
+    PropertyOrigin,
+    parse_method_kind,
+    property_binding,
+)
 from archkeel.ir.facts_codec import RawData as RecordData
 from archkeel.ir.facts_codec import RawEvidence, RawRecord, classified
 from archkeel.ir.model import (
@@ -3154,7 +3160,7 @@ def _method_signature_positions(data: RecordData) -> list[tuple[str, str]]:
     parameters = data["parameters"]
     receiver_parameter = data.get("receiver_parameter")
     if (
-        data["method_kind"] != "static"
+        parse_method_kind(data["method_kind"]) is not MethodKind.STATIC
         and isinstance(receiver_parameter, str)
         and parameters
         and parameters[0]["name"] == receiver_parameter

@@ -14,6 +14,7 @@ from .facts import (
     EvidenceClass,
     ExternalPackageTarget,
     LocalTarget,
+    MethodKind,
     PropertyOrigin,
     Record,
     RecordData,
@@ -22,6 +23,7 @@ from .facts import (
     UnresolvedTarget,
     in_scope,
     member_inventories,
+    parse_method_kind,
     property_binding,
 )
 from .state_facts import ArgumentPass, AttributeAccess
@@ -218,7 +220,7 @@ def _property_bindings(records: list[Record], evidence: dict[str, Evidence]) -> 
         if (
             record.kind != "method"
             or record.data.get("symbol_category") != "method"
-            or record.data.get("method_kind") != "instance"
+            or parse_method_kind(record.data.get("method_kind")) is not MethodKind.INSTANCE
             or record.data.get("async") is not False
             or not isinstance(parent, str)
             or not isinstance(name, str)
@@ -454,7 +456,7 @@ def _resolution_gap_module(
             or method.kind != "method"
             or method.data.get("module") != module
             or method.data.get("signature_complete") is not False
-            or method.data.get("method_kind") != "constructor"
+            or parse_method_kind(method.data.get("method_kind")) is not MethodKind.CONSTRUCTOR
             or module_paths[module][-5:] != ".dart"
             or not isinstance(parameters := method.data.get("parameters"), tuple)
             or not any(

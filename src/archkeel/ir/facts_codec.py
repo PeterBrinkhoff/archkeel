@@ -32,6 +32,7 @@ from .facts import (
     JsonValue,
     Language,
     LocalTarget,
+    MethodDescriptor,
     PropertyBinding,
     Record,
     RecordData,
@@ -103,6 +104,20 @@ def property_binding_data(binding: PropertyBinding) -> RawData:
         "source": binding.source.value,
         "line": binding.line,
         "source_line": binding.source_line,
+    }
+
+
+def method_descriptor_data(descriptor: MethodDescriptor) -> RawData:
+    """Write the existing method payload without changing its proof or optional fields."""
+    return {
+        "method_kind": descriptor.method_kind.value,
+        "signature_decorators_proven": descriptor.signature_decorators_proven,
+        "source_final_method_binding": descriptor.source_final_method_binding,
+        **(
+            {"property_binding": property_binding_data(descriptor.property_binding)}
+            if descriptor.property_binding is not None
+            else {}
+        ),
     }
 
 
