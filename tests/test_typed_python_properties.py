@@ -55,7 +55,11 @@ def test_consumed_property_fields_are_owned_nominal_enums(field, name):
 
 @pytest.mark.parametrize("mapping", [False, True])
 def test_legacy_raw_property_constructor_preserves_dict_operations(mapping):
-    raw = source._PropertyBinding(MappingProxyType(WIRE)) if mapping else source._PropertyBinding(**WIRE)
+    raw = (
+        source._PropertyBinding(MappingProxyType(WIRE))
+        if mapping
+        else source._PropertyBinding(**WIRE)
+    )
     assert type(raw) is dict and raw == WIRE
     assert {**raw} == WIRE and raw["operation"] == "setter"
     assert json.loads(json.dumps(raw)) == WIRE
