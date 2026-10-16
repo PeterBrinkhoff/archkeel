@@ -693,9 +693,6 @@
           "typing_signals": {
             "type": "null"
           },
-          "constructs": {
-            "type": "null"
-          },
           "coverage": {
             "properties": {}
           }
