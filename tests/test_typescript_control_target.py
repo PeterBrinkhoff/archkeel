@@ -54,6 +54,9 @@ def _repository(tmp_path, *, changed=None):
             "docs/architecture/typescript-control-types.md": (
                 ROOT / "docs/architecture/typescript-control-types.md"
             ).read_text(),
+            "docs/architecture/typescript-written-string-controls.md": (
+                ROOT / "docs/architecture/typescript-written-string-controls.md"
+            ).read_text(),
             "docs/architecture/typescript-syntax-types.md": (
                 ROOT / "docs/architecture/typescript-syntax-types.md"
             ).read_text(),
