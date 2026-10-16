@@ -8,6 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Final, TypeAlias
 
+from archkeel.ir.measurements import MetricComparisonStatus as _MetricComparisonStatus
 from archkeel.ir.measurements import compare_measurements
 from archkeel.ir.model import (
     AssessmentStatus as _AssessmentStatus,
@@ -28,7 +29,7 @@ from .summary_badges import BadgeState as BadgeState
 from .summary_badges import badge as badge
 
 State: TypeAlias = BadgeState
-Comparison: TypeAlias = tuple[str, str, str, str]
+Comparison: TypeAlias = tuple[str, str, str, _MetricComparisonStatus]
 # AD-100: a rejected run names this many unresolved call sites; the JSON result names all.
 _CALL_SITES_SHOWN: Final = 5
 
@@ -423,7 +424,7 @@ def _check_regressions(result: RunResult) -> tuple[Comparison, ...]:
     ):
         return ()
     comparisons = compare_measurements(ratchets.baseline, ratchets.head)
-    return tuple(sorted(comparisons, key=lambda item: item[3] != "FAIL"))
+    return tuple(sorted(comparisons, key=lambda item: item[3] is not _MetricComparisonStatus.FAIL))
 
 
 def _check_verdict_reason(
@@ -441,7 +442,7 @@ def _check_verdict_reason(
             "host_order": "The publication time could not be established.",
         }[key]
     if badge(value).state is BadgeState.FAIL:
-        failed = sum(status == "FAIL" for *_, status in comparisons)
+        failed = sum(status is _MetricComparisonStatus.FAIL for *_, status in comparisons)
         return {
             "declared_rules": "At least one declared rule was violated.",
             "expectation_fulfilled": (
