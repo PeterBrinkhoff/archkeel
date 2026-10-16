@@ -9,7 +9,7 @@ import json
 from dataclasses import FrozenInstanceError, replace
 from enum import Enum
 from pathlib import Path
-from typing import get_type_hints
+from typing import get_args, get_origin, get_type_hints
 
 import pytest
 from test_analyzer import _observe_one_rule, _parsed_module
@@ -71,6 +71,18 @@ def test_descriptor_field_and_five_shared_kinds_are_nominal():
         model("static", True, False)
 
 
+def test_reader_input_owns_existing_raw_and_frozen_json_types():
+    _api()
+    raw_json = getattr(facts, "RawJson", None)
+    assert raw_json is not None, "facts must own the existing raw JSON value alias"
+    assert facts_codec.RawJson is raw_json
+    annotation = get_type_hints(facts.parse_method_kind)["value"]
+    arguments = get_args(annotation)
+    assert object not in arguments and facts.MethodKind in arguments
+    assert facts.RecordData in arguments
+    assert {get_origin(argument) for argument in arguments} >= {list, dict, tuple}
+
+
 @pytest.mark.parametrize("tag", TAGS)
 def test_method_reader_accepts_all_existing_profile_tags_once(tag):
     _api()
@@ -83,6 +95,17 @@ def test_method_reader_accepts_all_existing_profile_tags_once(tag):
 def test_method_reader_does_not_default_opaque_tags_to_instance(tag):
     _api()
     assert facts.parse_method_kind(tag) is None
+
+
+def test_reader_retains_raw_and_frozen_nested_json_offshapes():
+    _api()
+    raw = {"future": [None, False, 3.5, {"method_kind": "static"}]}
+    for value in (raw, list(raw.values()), facts_codec.freeze_data(raw)):
+        assert facts.parse_method_kind(value) is None
+    data = {"method_kind": raw, "receiver_parameter": "self", "name": "make",
+            "parameters": [{"name": "self", "annotation": "object"},
+                           {"name": "value", "annotation": "int"}], "returns": "str"}
+    assert _method_signature_positions(data) == [("value", "int"), ("return", "str")]
 
 
 @pytest.mark.parametrize(
@@ -350,6 +373,7 @@ def test_native_descriptor_fulfils_authored_consumed_api_target(tmp_path, produc
     [
         (False, "method_kind: MethodKind", "method_kind: str"),
         (False, "-> MethodKind | None:", "-> str | None:"),
+        (False, "value: JsonValue | RawJson | MethodKind", "value: object"),
         (True, ") -> MethodDescriptor:", ") -> RecordData:"),
     ],
 )
