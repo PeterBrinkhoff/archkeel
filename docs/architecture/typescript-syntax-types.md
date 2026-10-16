@@ -53,7 +53,7 @@ it still costs about 0.227 s more than the original string-based parser on that 
 These are runner measurements, not portable limits or a performance claim versus 8eb.
 
 The [complete call-site comparison](https://github.com/rapiddweller/archkeel/actions/runs/38963358892)
-uses the same engine for both actual revisions and joins all 346 moved module calls to
+uses the same engine for both actual revisions and joins all 346 checked calls in changed modules to
 zero-based AST positions, callee/argument structure and closure bindings. No relevant
 site remains unmatched. Existing PARTIAL status, reason, targets and multiplicity are
 unchanged, but the total rises from 2,450 to 2,454: the four global decoder map lookups

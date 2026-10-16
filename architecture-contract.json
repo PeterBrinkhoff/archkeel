@@ -153,7 +153,13 @@
         "archkeel.ir.architecture_graph:PresenceKind",
         "archkeel.ir.architecture_graph:ResolutionKind",
         "archkeel.ir.architecture_graph:VisibilityBasis",
-        "archkeel.ir.architecture_graph:VisibilityKind"
+        "archkeel.ir.architecture_graph:VisibilityKind",
+        "archkeel.ir.diagnostics:DiagnosticKind",
+        "archkeel.ir.diagnostics:DiagnosticCode",
+        "archkeel.ir.diagnostics:Diagnostic",
+        "archkeel.ir.diagnostics:DiagnosticError",
+        "archkeel.ir.diagnostics:ReportLocation",
+        "archkeel.ir.architecture_graph:RuleAssessmentStatus"
       ],
       "responsibilities": [
         "Own immutable source facts, protocol values, governance models and pure derivations."
@@ -257,7 +263,8 @@
       ],
       "decided_by": "architect",
       "public": [],
-      "layer": "Edge"
+      "layer": "Edge",
+      "inside": "docs/architecture/contracts/cli.json"
     },
     {
       "id": "COMP-HOST",
@@ -346,13 +353,14 @@
       ],
       "public": [
         "archkeel.render.html",
-        "archkeel.render.summary:Badge",
+        "archkeel.render.summary_badges:Badge",
         "archkeel.render.summary:VerdictRow",
         "archkeel.render.summary:check_summary",
         "archkeel.render.summary:init_summary",
         "archkeel.render.summary:Summary",
         "archkeel.render.summary:report_summary",
-        "archkeel.render.terminal"
+        "archkeel.render.terminal",
+        "archkeel.render.summary_badges:BadgeState"
       ],
       "responsibilities": [
         "Deterministic HTML and terminal projections of typed Archkeel evidence.",
@@ -789,9 +797,23 @@
         "archkeel.analyzer.runtime",
         "archkeel.cli.config",
         "archkeel.check.runtime",
-        "archkeel.ir.contract_version"
+        "archkeel.ir.contract_version",
+        "archkeel.cli.arguments",
+        "archkeel.cli.skill",
+        "archkeel.analyzer.python.binding_types",
+        "archkeel.analyzer.python.receiver_types",
+        "archkeel.analyzer.typescript.parse",
+        "archkeel.analyzer.typescript.syntax",
+        "archkeel.analyzer.typescript.collect",
+        "archkeel.analyzer.dart.syntax",
+        "archkeel.analyzer.dart.parse",
+        "archkeel.analyzer.dart.resolve",
+        "archkeel.analyzer.dart.snapshot",
+        "archkeel.analyzer.dart.collect",
+        "archkeel.ir.diagnostics",
+        "archkeel.render.summary_badges"
       ],
-      "rationale": "Each closed vocabulary belongs to its domain or wire boundary: shared state and source facts own domain controls; codecs own private wire tags and consumers use published nominal types. Contract versions and feature availability belong to contract_version.",
+      "rationale": "Closed vocabularies belong to their domain and wire boundaries. State and source facts own shared controls; codecs own private tags; contract_version owns versions and feature availability. Python binding and receiver models own lexical controls. TypeScript and Dart syntax ports own parser DTO controls, while collectors own private states. Consumers use the published nominal types.",
       "provenance": [
         "docs/architecture/archkeel.md"
       ],
@@ -1061,6 +1083,110 @@
       "rationale": "Version and feature control uses the owned nominal API, with no parser or constant-string exemption.",
       "provenance": [
         "docs/architecture/contract-version-types.md"
+      ],
+      "decided_by": "architect"
+    },
+    {
+      "id": "PYTHON-BINDINGS-TYPED-CONTROL",
+      "kind": "forbidden_construct",
+      "source": "archkeel.analyzer.python.binding_types",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "The Python binding model owns nominal controls and decodes compiler protocol values without raw-string dispatch. Other Python grammar modules remain pending.",
+      "provenance": [
+        "docs/architecture/typed-python-bindings.md"
+      ],
+      "decided_by": "architect"
+    },
+    {
+      "id": "PYTHON-RECEIVERS-TYPED-CONTROL",
+      "kind": "forbidden_construct",
+      "source": "archkeel.analyzer.python.receiver_types",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "Receiver evidence categories have one nominal owner; consumers use that type without raw origin dispatch.",
+      "provenance": [
+        "docs/architecture/typed-python-receivers.md"
+      ],
+      "decided_by": "architect"
+    },
+    {
+      "id": "DART-SYNTAX-TYPED-CONTROL",
+      "kind": "forbidden_construct",
+      "source": "archkeel.analyzer.dart.syntax",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "Closed Dart implementation categories use their nominal owners; parser and metadata conversion do not exempt string dispatch.",
+      "provenance": [
+        "docs/architecture/dart-nominal-controls.md"
+      ],
+      "decided_by": "architect"
+    },
+    {
+      "id": "DART-PARSE-TYPED-CONTROL",
+      "kind": "forbidden_construct",
+      "source": "archkeel.analyzer.dart.parse",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "Closed Dart implementation categories use their nominal owners; parser and metadata conversion do not exempt string dispatch.",
+      "provenance": [
+        "docs/architecture/dart-nominal-controls.md"
+      ],
+      "decided_by": "architect"
+    },
+    {
+      "id": "DART-RESOLVE-TYPED-CONTROL",
+      "kind": "forbidden_construct",
+      "source": "archkeel.analyzer.dart.resolve",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "Closed Dart implementation categories use their nominal owners; parser and metadata conversion do not exempt string dispatch.",
+      "provenance": [
+        "docs/architecture/dart-nominal-controls.md"
+      ],
+      "decided_by": "architect"
+    },
+    {
+      "id": "DART-SNAPSHOT-TYPED-CONTROL",
+      "kind": "forbidden_construct",
+      "source": "archkeel.analyzer.dart.snapshot",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "Closed Dart implementation categories use their nominal owners; parser and metadata conversion do not exempt string dispatch.",
+      "provenance": [
+        "docs/architecture/dart-nominal-controls.md"
+      ],
+      "decided_by": "architect"
+    },
+    {
+      "id": "DART-COLLECT-TYPED-CONTROL",
+      "kind": "forbidden_construct",
+      "source": "archkeel.analyzer.dart.collect",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "Closed Dart implementation categories use their nominal owners; parser and metadata conversion do not exempt string dispatch.",
+      "provenance": [
+        "docs/architecture/dart-nominal-controls.md"
+      ],
+      "decided_by": "architect"
+    },
+    {
+      "id": "DIAGNOSTIC-TYPED-CONTROL",
+      "kind": "forbidden_construct",
+      "source": "archkeel.ir.diagnostics",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "The diagnostic owner normalizes kind and code once and uses nominal decisions; parser and protocol strings have no exception.",
+      "provenance": [
+        "docs/architecture/typed-diagnostic-owner.md"
       ],
       "decided_by": "architect"
     }
