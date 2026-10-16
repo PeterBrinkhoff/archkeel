@@ -9,7 +9,6 @@ from typing import get_type_hints
 import pytest
 from test_dart_resolve import _snapshot
 
-
 from archkeel.analyzer.dart import collect, parse, resolve, syntax
 from archkeel.ir.protocol import CollectionRequest, DartSettings, SnapshotInput, SourceScope
 
@@ -126,7 +125,9 @@ def test_real_receiver_resolution_requires_existing_call_facts(tmp_path):
         {"lib/main.dart": "class Box { Box(); void work() {} } void run() { Box().work(); }"},
     )
     source = parsed["lib/main.dart"]
-    outer = next(site for site in source.sites if site.kind is syntax.SiteKind.CALL and site.name == "work")
+    outer = next(
+        site for site in source.sites if site.kind is syntax.SiteKind.CALL and site.name == "work"
+    )
     normal = resolve.Resolver(snapshot, parsed)
     assert normal._receiver_bindings("lib/main.dart", "configured_namespace.main", outer)
     missing = replace(
@@ -152,7 +153,8 @@ def test_index_and_shadowed_receiver_forms_do_not_gain_known_targets(tmp_path, b
     )
     resolver = resolve.Resolver(snapshot, parsed)
     results = [
-        result for result in resolver.resolved_sites("lib/main.dart")
+        result
+        for result in resolver.resolved_sites("lib/main.dart")
         if result.site.name == "work" and result.site.kind is syntax.SiteKind.CALL
     ]
     assert results
@@ -162,10 +164,12 @@ def test_index_and_shadowed_receiver_forms_do_not_gain_known_targets(tmp_path, b
 def test_member_constructor_attribute_and_binding_visibility_keep_wire_semantics(tmp_path):
     _snapshot(
         tmp_path,
-        {"lib/main.dart": (
-            "class _Owner { _Owner.named(); _Owner._hidden(); int _field=0; int field=0; } "
-            "void run() { var _local=1; var local=2; }"
-        )},
+        {
+            "lib/main.dart": (
+                "class _Owner { _Owner.named(); _Owner._hidden(); int _field=0; int field=0; } "
+                "void run() { var _local=1; var local=2; }"
+            )
+        },
     )
     request = CollectionRequest(
         SnapshotInput(str(tmp_path), "a" * 40, False),
@@ -174,8 +178,10 @@ def test_member_constructor_attribute_and_binding_visibility_keep_wire_semantics
     )
     facts = collect.collect(request)
     symbols = {
-        record.data.get("name"): record for section in facts.sections
-        if section.name == "symbols" for record in section.records
+        record.data.get("name"): record
+        for section in facts.sections
+        if section.name == "symbols"
+        for record in section.records
     }
     assert symbols["_Owner.named"].data["visibility"].get("kind") == "public"
     assert symbols["_Owner._hidden"].data["visibility"].get("kind") == "private"
