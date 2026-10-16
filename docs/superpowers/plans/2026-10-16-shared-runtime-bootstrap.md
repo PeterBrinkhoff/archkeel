@@ -32,11 +32,29 @@
 
 **Interfaces:** public is_direct_entrypoint(module_name: str) -> bool. Private marker enum _EntryMode.MAIN has wire spelling __main__. The Process component publishes only the function; all three existing language-to-Process edges already authorize it.
 
-- [ ] Commit plan and independently authored Target before production.
-- [ ] RED: actual three-entry source fails a native raw-control guard; absent owner/port fails the independently authored Target and public API assertions. Existing real-entry, passive-import and exception controls remain passing.
-- [ ] Implement the smallest owned marker classification and replace only each direct-start condition.
-- [ ] GREEN: native positive source/Target checks, raw-dispatch probes (equality, membership, match, alias, Enum.value) and bool-return/Enum-kind mutation controls.
-- [ ] Exercise actual Python/Dart/TypeScript main functions and subprocess module starts, with exact same-snapshot wire bytes and error paths.
-- [ ] Run related protocol/native tests, Ruff, Mypy, hygiene, native self-validation and before/after unresolved/PARTIAL/UNKNOWN site comparison.
-- [ ] Generate/replay normal v2 amendment against the exact base; keep baseline bytes unchanged.
-- [ ] Export clean product carrier, no temporary workflow, and hand off independent Astra/full-regression review.
+- [x] Commit plan and independently authored Target before production.
+- [x] RED: actual three-entry source fails a native raw-control guard; absent owner/port fails the independently authored Target and public API assertions. Existing real-entry, passive-import and exception controls remain passing.
+- [x] Implement the smallest owned marker classification and replace only each direct-start condition.
+- [x] GREEN: native positive source/Target checks, raw-dispatch probes (equality, membership, match, alias, Enum.value) and bool-return/Enum-kind mutation controls.
+- [x] Exercise actual Python/Dart/TypeScript main functions and subprocess module starts, with exact same-snapshot wire bytes and error paths.
+- [x] Run related protocol/native tests, Ruff, Mypy, hygiene, native self-validation and before/after unresolved/PARTIAL/UNKNOWN site comparison.
+- [x] Generate/replay normal v2 amendment against the exact base; keep baseline bytes unchanged.
+- [x] Export clean product carrier, no temporary workflow, and hand off independent Astra/full-regression review.
+
+## Verification and rulings
+
+- Ruling: share the protocol decision through a bool port, while each entry retains its statically known main/SystemExit targets — this avoids introducing an unresolved callback solely to deduplicate a start idiom; cost: three explicit launch branches remain, using one marker owner.
+- Ruling: GitHub branch isolation and hosted commands replace unavailable local processes — no shared Main edits or local execution; cost: final whole-branch Astra and combined regression remain parent integration gates.
+- Ruling: include bootstrap.py in each collector code digest — shared startup is collector source; cost: adapter digests intentionally change when this shared implementation changes, while request/response grammar and same-snapshot main/module bytes remain identical.
+
+RED run38964550700:13 expected missing-owner/Target/raw-dispatch assertions failed,19 behavioral controls passed. The earlier Dart fixture setup omission was corrected before production.
+GREEN run38964732019:218 tests and11 hygiene checks passed, Ruff/Mypy133 clean.
+Digest RED/GREEN and expanded regression run38965125573:3 expected old-runtime digest failures, followed by316 passing protocol/runtime/native tests and11 hygiene checks. Formatter patch empty, Ruff and Mypy133 clean.
+Native run38964875426: normal amendment generation and no-write replay both exit0, diagnostics/failures empty;918 unresolved,58 unknown,52 typing positions,0 violations. Baseline bytes and all ceilings unchanged.
+
+The exact native site comparison reports no added or removed unresolved/PARTIAL site:
+918 unresolved and2453 PARTIAL before/after. bootstrap.py and all three entry.py modules have no such sites. Existing runtime.py sites shift by one physical line because the shared digest path is added; their callers, expressions, reasons and counts stay identical. Boundary UNKNOWN positions remain Render29/Check19/Analyzer2; the full native unknown scalar remains58.
+No compiler/binding, namespace/member, callback, GenericAlias, property or other proof authority changes.
+The umbrella issue542 remains open for the separately inventoried control scopes.
+
+This isolated carrier is ready for independent Astra review and the parent's combined full regression; those integration gates are not claimed complete here.
