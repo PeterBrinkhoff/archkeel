@@ -24,6 +24,11 @@ this detector concerns comparisons, not ordinary serialization.
 The existing lexical-scope owner distinguishes a module literal from a parameter,
 local variable or shadowed class. A named collection with a second assignment,
 global rebinding declaration, visible mutation or alias escape is not classified.
+Its initializer must have a single assignment target; chained assignments can
+publish the same mutable container through another name or attribute. Each named
+load must be the final comparator of a final `in`/`not in` operation. In
+`value in TOKENS == expected`, `TOKENS` also has an equality role, so that named
+collection is not classified.
 Mapping-pattern keys are structure; a string key alone is not a value comparison.
 
 ## Explicit limits
