@@ -57,3 +57,11 @@ The temporary hosted workflow stays on a verification branch, outside the produc
 - Final integration rebases the binding-only changes onto the current collector-wire carrier ff4cae52451f43550639959b6f87a77f96375597. Root policy updates append to that carrier; no stale whole-contract overlay is used.
 - The independent physical-source-line evidence correction is a separate PR and is not part of this increment. Its future import and parse_sources line-view deltas remain independent of these binding changes.
 - Previous broad verification on the old carrier: 555 passed / 6 skipped; final narrow verification: 70 passed, Ruff, Mypy, and unchanged 65/919 baseline. These counts are historical evidence only; the final carrier must retain its own 58/918 baseline.
+
+## Final verification on the current carrier
+
+- Hosted run 38947855629, candidate 6a248271958c8af77caf425d204b603414548b5b: 629 passed / 6 skipped; Ruff clean; Mypy clean for 133 source files. The canonical formatter produced an empty patch.
+- Native validate against ff4cae52451f43550639959b6f87a77f96375597 generated the normal v2 amendment and the following no-write replay succeeded. Exit 0, no diagnostics or failures; 918 unresolved / 58 unknown / 52 typing / 0 violations. Baseline bytes and budgets are unchanged.
+- Actual before/after reports were produced from the exact carrier worktree and candidate. The unresolved call-site multiset keyed by source file, callee expression and reason is identical: no added or removed sites. Calls analyzed 18169→18172, resolved 14801→14804, partially resolved 2450 unchanged; AST coverage 100% and rules PASS remain.
+- Contract changes add one exact enum-owner placement, one complete-model raw-control guard, three consumed Source ports and nine independently authored Target entities. No broad Source-module PASS or arbitrary namespace inference is claimed.
+- The temporary verification workflow is excluded from the product tree.

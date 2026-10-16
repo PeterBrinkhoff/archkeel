@@ -1,0 +1,9 @@
+{
+  "after_baseline_digest": "02279ca79283191bc1137034db4191abc1850cf3f290e974ec1caed594f95600",
+  "after_digest": "bbaae178f9b1f8a24a223807e338d03efa7d9d2af69613e2480ca3569b6da120",
+  "before_baseline_digest": "02279ca79283191bc1137034db4191abc1850cf3f290e974ec1caed594f95600",
+  "before_digest": "8aea00dcba2312ec6aadf842ec9a50ad252af4f2dab9cc3684dcdcc909c888e8",
+  "decided_by": "ake2l",
+  "rationale": "Give Source binding controls one nominal owner, retain conservative compiler scope evidence and strengthen authored binding field types without additional allowances.",
+  "schema_version": "2.0.0"
+}
