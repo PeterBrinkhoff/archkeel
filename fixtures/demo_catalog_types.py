@@ -172,7 +172,8 @@ def _opaque_map_contract(*, values: bool, list_values: bool = False) -> str:
 _RAW_MAP_SOURCE = HEADER + (
     "from __future__ import annotations\n\n"
     "def snapshot(context: dict[str, object]) -> dict[str, object]:\n"
-    "    if 'count' not in context: raise ValueError('count required')\n"
+    "    missing = object()\n"
+    "    if context.get('count', missing) is missing: raise ValueError('count required')\n"
     "    return context\n"
 )
 
