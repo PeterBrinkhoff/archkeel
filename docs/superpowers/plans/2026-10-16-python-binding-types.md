@@ -21,7 +21,7 @@ Branch: fix/542-python-binding-types.
 - Human reason text preserves the existing enum word through output-only value rendering.
   No control branch compares .value or raw parser strings.
 - Preserve the existing source.AliasBinding and scopes.BindingKind re-export ports.
-- Do not change constructor validation, compiler claims, namespace inference, source receipts,
+- Preserve valid legacy constructor spellings while storing nominal kinds; do not change compiler claims, namespace inference, source receipts,
   measurement budgets, or rule evaluation semantics.
 - The root enum-placement rule adds only the explicit new model owner. The inner Python
   Source owner exposes the typed binding port. Contract deltas are additive and isolated.
@@ -65,3 +65,21 @@ The temporary hosted workflow stays on a verification branch, outside the produc
 - Actual before/after reports were produced from the exact carrier worktree and candidate. The unresolved call-site multiset keyed by source file, callee expression and reason is identical: no added or removed sites. Calls analyzed 18169→18172, resolved 14801→14804, partially resolved 2450 unchanged; AST coverage 100% and rules PASS remain.
 - Contract changes add one exact enum-owner placement, one complete-model raw-control guard, three consumed Source ports and nine independently authored Target entities. No broad Source-module PASS or arbitrary namespace inference is claimed.
 - The temporary verification workflow is excluded from the product tree.
+
+## Astra constructor compatibility correction
+
+- Reproduce both previously valid string-kind constructor APIs before changing production.
+- Normalize AliasBinding.kind and NameBinding.kind exactly once in their frozen dataclass
+  post-init methods, using their existing nominal Enum constructors and
+  builtin-qualified object.__setattr__. Unknown values raise ValueError.
+- Retain nominal field annotations, enum identity, re-export identity and immutable values;
+  no union field types, shared converter framework or resolver authority is introduced.
+- Preserve the two browser assertions from the actual #551 base
+  7b2a14de58eb18be716c8eadef5c43928ec464a5.
+- Verify legacy and nominal inputs, defaults, invalid values and the real lexical consumer;
+  then existing binding/native Target controls, Ruff, Mypy, and normal amendment replay
+  against the actual #551 base with no additional unresolved calls or budget changes.
+
+- Constructor RED: hosted run 38951445020 produced19 expected failures and one passing default control. Both valid legacy kind vocabularies and the real lexical consumer reproduce the compatibility regression; invalid-value controls reproduce missing validation.
+
+- Compatibility GREEN: hosted run38951645434, candidate 1f0008a1935d04dc0dc4ed36ea71735148c13bf5: 261 passed / 6 skipped; Ruff and Mypy 133 clean. Canonical formatting patch is empty. Native comparison against the actual #551 base 7b2a14de58eb18be716c8eadef5c43928ec464a5 and the following normal no-write amendment replay both exit 0 without diagnostics/failures and retain 918 unresolved / 58 unknown / 52 typing / 0 violations. The four added constructor calls add no unresolved calls. Normal v2 amendment bytes and baseline bytes are unchanged.
