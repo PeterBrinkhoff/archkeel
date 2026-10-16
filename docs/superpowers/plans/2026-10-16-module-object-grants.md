@@ -47,3 +47,12 @@
 - The standard eight-entity Target amendment validates against the clean combined base in [38933327926](https://github.com/rapiddweller/archkeel/actions/runs/38933327926), with identical baseline digests.
 
 Parent coordination retains the full combined suite, independent Astra review and PR integration.
+
+
+## Integration on the State and observer chain
+
+The feature retains real ancestry through predecessor `61404f1cf9e8579929119be093c3676075754661`; all 25 State Target entities and the suite corrections remain intact. The product tree contains no temporary workflow.
+
+- Integrated checks: [38938213642](https://github.com/rapiddweller/archkeel/actions/runs/38938213642), 287 tests passed, full lint, mypy (138 source files), hygiene and schema reproduction passed.
+- Integrated own validation and fresh standard amendment against that exact predecessor: [38938140826](https://github.com/rapiddweller/archkeel/actions/runs/38938140826), both commands exit 0, 919 unresolved calls, 65 unknown positions, zero violations and identical baseline digests.
+- The generated amendment replaces the earlier combined-base amendment. No grants, publication, exceptions or baseline ceilings were added to the own contracts. Independent final review remains with the parent.
