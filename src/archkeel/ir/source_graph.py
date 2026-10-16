@@ -40,7 +40,6 @@ from archkeel.ir.facts import (
     member_inventories,
 )
 from archkeel.ir.model import (
-    Verdict,
     TARGET_GRAPH_RECORD_KINDS,
     EvidenceClass,
     JsonValue,
@@ -48,6 +47,7 @@ from archkeel.ir.model import (
     RawJson,
     Record,
     RecordData,
+    Verdict,
     stable_id,
 )
 from archkeel.ir.profiles import PROFILES, profile_for

@@ -1123,7 +1123,9 @@ class ObservationResult:
         if self.observation is not None and self.observation.coverage != self.coverage:
             raise ValueError("analyzer coverage differs from its observation")
         if (
-            self.observation is None or self.coverage is None or self.coverage.status != Verdict.PASS
+            self.observation is None
+            or self.coverage is None
+            or self.coverage.status != Verdict.PASS
         ) and not self.diagnostics:
             raise ValueError("incomplete observation requires a diagnostic")
 
