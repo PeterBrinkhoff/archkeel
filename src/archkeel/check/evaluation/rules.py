@@ -26,6 +26,7 @@ from archkeel.ir.model import (
     CompleteRequiresRule,
     ContractComponent,
     ContractDeclarations,
+    DependencyTargetKind,
     EvidenceClass,
     ExternalDependencyScopeRule,
     ForbiddenConstructKind,
@@ -1068,7 +1069,8 @@ def rule_subject_failures(
             rule_failures.extend(_layer_metadata_failures(contract, rule))
         scopes = rule_scopes(rule)
         if isinstance(rule, ForbiddenDependencyRule) and (
-            rule.target in sdk_libraries or rule.target_kind == "import_namespace"
+            rule.target in sdk_libraries
+            or rule.target_kind is DependencyTargetKind.IMPORT_NAMESPACE
         ):
             scopes = {"source": scopes["source"]}
         source_subjects: AbstractSet[str] = module_names | planned_subjects

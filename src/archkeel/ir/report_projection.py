@@ -31,6 +31,7 @@ from archkeel.ir.architecture_projection import (
     UnknownProjection,
     UsageProjection,
 )
+from archkeel.ir.codec_contract import parse_dependency_selector
 
 # Preserve the established command-view imports while their implementation has one owner.
 from archkeel.ir.command_view import (
@@ -70,6 +71,7 @@ from archkeel.ir.command_view import (
     unknown_groups as unknown_groups,
 )
 from archkeel.ir.decisions import rule_assessment_applies_to_component
+from archkeel.ir.dependency import DependencySelector
 from archkeel.ir.facts import Record
 from archkeel.ir.model import (
     RULE_KINDS,
@@ -78,7 +80,6 @@ from archkeel.ir.model import (
     DiagnosticError,
     Observation,
     RequiredComponent,
-    declared_package_pair,
     module_in_ownership,
     requires_covers,
     text_value,
@@ -173,26 +174,24 @@ def _pair_permission_rules(
     level_rules: tuple[Record, ...],
     owners: tuple[ComponentOwnership, ...],
     pair: tuple[str, str],
+    selectors: dict[str, DependencySelector],
 ) -> tuple[Record, ...]:
-    return tuple(
-        rule
-        for rule in level_rules
-        if declared_package_pair(
-            text_value(rule.data.get("source")),
-            text_value(rule.data.get("target")),
-            text_value(rule.data.get("target_symbol")) or None,
-            owners,
-            source_match=text_value(rule.data.get("source_match")) or "prefix",
-            target_match=text_value(rule.data.get("target_match")) or "prefix",
-            target_kind=text_value(rule.data.get("target_kind")) or "module",
-        )
-        == pair
-    )
+    deciding = []
+    for rule in level_rules:
+        selector = selectors.get(rule.id)
+        if selector is not None and selector.component_pair(owners) == pair:
+            deciding.append(rule)
+    return tuple(deciding)
 
 
 def _permissions(
     target: ArchitectureGraph, rules: tuple[PermissionRuleProjection, ...]
 ) -> dict[str, tuple[PermissionProjection, ...]]:
+    selectors = {
+        item.declaration.id: parse_dependency_selector(item.declaration)
+        for item in rules
+        if item.declaration.kind in {"allowed_dependency", "forbidden_dependency"}
+    }
     rows = {}
     for source in target.component_intents:
         siblings = tuple(
@@ -213,7 +212,7 @@ def _permissions(
                 for edge in target.relationships
                 if edge.kind == "requires" and (edge.source_id, edge.target_id) == pair
             )
-            deciding = _pair_permission_rules(level_rules, owners, pair)
+            deciding = _pair_permission_rules(level_rules, owners, pair, selectors)
             forbidden = tuple(
                 rule.id
                 for rule in deciding

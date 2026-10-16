@@ -14,11 +14,13 @@ from archkeel.ir.model import (
     ArchitectureContract,
     CompleteRequiresRule,
     ContractComponent,
+    DependencyTargetKind,
     Diagnostic,
     ForbiddenDependencyRule,
     InterfaceBoundaryRule,
     Observation,
     RecordData,
+    SelectorMatch,
     component_owns_module,
     in_scope,
     interface_covers_import,
@@ -56,8 +58,8 @@ def _forbidden_targets(
         (rule.id, rule.target)
         for rule in contract.rules
         if isinstance(rule, ForbiddenDependencyRule)
-        and rule.source_match == rule.target_match == "prefix"
-        and rule.target_kind == "module"
+        and rule.source_match is rule.target_match is SelectorMatch.PREFIX
+        and rule.target_kind is DependencyTargetKind.MODULE
         and module_in_ownership(rule.source, component.packages, component.exact_modules or ())
     ]
 

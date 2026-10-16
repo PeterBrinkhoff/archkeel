@@ -35,6 +35,7 @@ from .model import (
     CompleteRequiresRule,
     ContractComponent,
     ContractDeclarations,
+    DependencyTargetKind,
     ExternalDependencyScopeRule,
     ForbiddenConstructRule,
     ForbiddenDependencyRule,
@@ -42,6 +43,7 @@ from .model import (
     NoComponentCyclesRule,
     RequiredComponent,
     RootLayoutRule,
+    SelectorMatch,
     SiblingIsolationRule,
     last_name,
 )
@@ -257,7 +259,7 @@ def _forbidden_dependency_widenings(
                 ("source_match", before.source_match, after.source_match),
                 ("target_match", before.target_match, after.target_match),
             )
-            if old == "prefix" and new == "exact"
+            if old is SelectorMatch.PREFIX and new is SelectorMatch.EXACT
         ],
         *(
             [
@@ -265,7 +267,8 @@ def _forbidden_dependency_widenings(
                     subject, "target_kind", f"{subject} now permits an absent import namespace"
                 )
             ]
-            if before.target_kind == "module" and after.target_kind == "import_namespace"
+            if before.target_kind is DependencyTargetKind.MODULE
+            and after.target_kind is DependencyTargetKind.IMPORT_NAMESPACE
             else []
         ),
         *_generic_field_widenings(
