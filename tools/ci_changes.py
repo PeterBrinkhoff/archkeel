@@ -35,6 +35,7 @@ _REPORT_PATTERNS = (
     "src/archkeel/render/*",
     "src/archkeel/check/report.py",
     "src/archkeel/ir/architecture_graph.py",
+    "src/archkeel/ir/facts.py",
     "src/archkeel/check/uml*.py",
     "docs/report-visual-system.md",
     "tools/report_*.py",

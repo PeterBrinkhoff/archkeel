@@ -219,6 +219,15 @@ def property_binding(value: RecordData | Mapping[str, object]) -> PropertyBindin
         raise ValueError("invalid property binding operation or order") from error
 
 
+class ParameterKind(StrEnum):
+    POSITIONAL_ONLY = "positional_only"
+    POSITIONAL = "positional"
+    KEYWORD_ONLY = "keyword_only"
+    VARARGS = "varargs"
+    KWARGS = "kwargs"
+    UNKNOWN = "unknown"
+
+
 class MethodKind(Enum):
     INSTANCE = "instance"
     STATIC = "static"

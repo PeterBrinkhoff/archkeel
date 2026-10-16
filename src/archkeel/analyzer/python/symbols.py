@@ -13,7 +13,14 @@ import sys
 from collections.abc import Sequence
 from types import EllipsisType
 
-from archkeel.ir.facts import EvidenceClass, InventoryStatus, MemberInventory, MemberKind, stable_id
+from archkeel.ir.facts import (
+    EvidenceClass,
+    InventoryStatus,
+    MemberInventory,
+    MemberKind,
+    ParameterKind,
+    stable_id,
+)
 from archkeel.ir.facts_codec import RawData as RecordData
 from archkeel.ir.facts_codec import RawEvidence, RawRecord, classified, member_inventory_data
 
@@ -72,19 +79,21 @@ def _function_signature(node: ast.FunctionDef | ast.AsyncFunctionDef) -> RecordD
     parameters = [
         _parameter(
             argument,
-            "positional_only" if index < len(node.args.posonlyargs) else "positional",
+            ParameterKind.POSITIONAL_ONLY
+            if index < len(node.args.posonlyargs)
+            else ParameterKind.POSITIONAL,
             defaults[index],
         )
         for index, argument in enumerate(positional)
     ]
     if node.args.vararg:
-        parameters.append(_parameter(node.args.vararg, "varargs", None, "*"))
+        parameters.append(_parameter(node.args.vararg, ParameterKind.VARARGS, None, "*"))
     parameters.extend(
-        _parameter(argument, "keyword_only", default)
+        _parameter(argument, ParameterKind.KEYWORD_ONLY, default)
         for argument, default in zip(node.args.kwonlyargs, node.args.kw_defaults, strict=True)
     )
     if node.args.kwarg:
-        parameters.append(_parameter(node.args.kwarg, "kwargs", None, "**"))
+        parameters.append(_parameter(node.args.kwarg, ParameterKind.KWARGS, None, "**"))
     return {
         "parameters": parameters,
         "receiver_parameter": positional[0].arg if positional else None,
@@ -94,7 +103,7 @@ def _function_signature(node: ast.FunctionDef | ast.AsyncFunctionDef) -> RecordD
 
 
 def _parameter(
-    argument: ast.arg, kind: str, default: ast.expr | None, prefix: str = ""
+    argument: ast.arg, kind: ParameterKind, default: ast.expr | None, prefix: str = ""
 ) -> RecordData:
     return {
         "name": prefix + argument.arg,

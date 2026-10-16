@@ -13,6 +13,7 @@ from pathlib import PurePosixPath
 from typing import Literal
 
 from archkeel.ir.facts import Evidence, Language
+from archkeel.ir.facts import ParameterKind as ParameterKind
 
 
 class EntityKind(StrEnum):
@@ -70,15 +71,6 @@ class VisibilityBasis(StrEnum):
     LANGUAGE = "language"
     CONVENTION = "convention"
     DECLARED = "declared"
-    UNKNOWN = "unknown"
-
-
-class ParameterKind(StrEnum):
-    POSITIONAL_ONLY = "positional_only"
-    POSITIONAL = "positional"
-    KEYWORD_ONLY = "keyword_only"
-    VARARGS = "varargs"
-    KWARGS = "kwargs"
     UNKNOWN = "unknown"
 
 
