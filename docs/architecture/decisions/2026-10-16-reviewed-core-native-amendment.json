@@ -1,0 +1,9 @@
+{
+  "after_baseline_digest": "ce0214aa53088d46512d9c71a8fe5fe51597afadb50bd8e5b6629be012533ef7",
+  "after_digest": "e45bac25bc3e5589897dacf02552fbcbff58a79d0c016930f330582c31a789d7",
+  "before_baseline_digest": "ce0214aa53088d46512d9c71a8fe5fe51597afadb50bd8e5b6629be012533ef7",
+  "before_digest": "4860ec833a0f8c237879a924f9689001a7a908a2c302861c77493f747a5a9656",
+  "decided_by": "ake2l",
+  "rationale": "Integrate independently reviewed native syntax, method descriptors and exact Core command ports with unchanged source-policy budgets and corrected fixture inventories.",
+  "schema_version": "2.0.0"
+}
