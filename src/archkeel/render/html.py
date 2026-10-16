@@ -14,7 +14,11 @@ from importlib.resources import files
 from pathlib import PurePosixPath as _PurePosixPath
 from typing import TypeAlias
 
-from archkeel.ir.architecture_graph import ArchitectureReport, RuleAssessment
+from archkeel.ir.architecture_graph import (
+    ArchitectureReport,
+    RuleAssessment,
+    RuleAssessmentStatus,
+)
 from archkeel.ir.architecture_projection import ArchitectureProjection
 from archkeel.ir.bindings import BindingReads, unread_bindings
 from archkeel.ir.codec import decode_canonical_model, parse_observation
@@ -54,11 +58,12 @@ from .atlas import atlas_payload, boundary_permissions_payload
 from .summary import (
     Comparison,
     VerdictRow,
-    badge,
     check_summary,
     report_summary,
     report_violates_rules,
 )
+
+from .summary_badges import BadgeState, badge
 
 
 def _asset(name: str) -> bytes:
@@ -370,7 +375,11 @@ def _rule_assessments(items: tuple[RuleAssessment, ...] | None) -> str:
 
 
 def _rule_assessment_row(item: RuleAssessment) -> str:
-    state = "info" if item.status == "DECLARATION" else badge(item.status).state
+    state = (
+        BadgeState.INFO
+        if item.status is RuleAssessmentStatus.DECLARATION
+        else badge(item.status).state
+    )
     provenance = ", ".join(item.provenance) or "—"
     components = ", ".join(item.components) or "—"
     details = " ".join(

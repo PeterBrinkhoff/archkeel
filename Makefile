@@ -66,7 +66,7 @@ pr-test:
 		tests/test_collection_runtime_gate.py tests/test_ratchets.py tests/test_model.py tests/test_trace.py tests/test_violations.py \
 		tests/test_typescript_demo.py tests/test_onboarding_guidance.py \
 		tests/test_references.py tests/test_levels.py tests/test_widening.py tests/test_measurement_budgets.py \
-		tests/test_onboarding.py tests/test_terminal.py \
+		tests/test_onboarding.py tests/test_terminal.py tests/test_summary_badge_types.py tests/test_summary_badge_target.py \
 		tests/test_onboarding_demo.py tests/test_pypi_description.py tests/test_typescript_onboarding.py \
 		tests/test_unknown_positions.py tests/test_inside_rule_coverage.py tests/test_report_159_160.py \
 		tests/test_target_navigation_graph.py \
