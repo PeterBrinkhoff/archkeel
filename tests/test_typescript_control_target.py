@@ -255,7 +255,6 @@ def test_native_syntax_field_widening_fails_against_fixed_port_intent(tmp_path, 
     assert (root / "contract.json").read_bytes() == before
 
 
-
 @pytest.mark.parametrize(
     ("port", "old", "new", "aspect"),
     [
