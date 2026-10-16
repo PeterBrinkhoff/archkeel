@@ -431,7 +431,16 @@ def _validated_member_inventory_result(result: ObservationResult) -> Observation
 
 
 def _has_architecture_declarations(version: str, known: dict[str, Record]) -> bool:
-    return version in {"2.2.0", "2.3.0", "3.0.0", "3.1.0", "3.2.0", "3.3.0", "3.4.0"} or any(
+    return version in {
+        "2.2.0",
+        "2.3.0",
+        "3.0.0",
+        "3.1.0",
+        "3.2.0",
+        "3.3.0",
+        "3.4.0",
+        "3.5.0",
+    } or any(
         record.kind in TARGET_GRAPH_RECORD_KINDS
         or record.kind
         in {
