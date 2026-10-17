@@ -977,7 +977,7 @@ def rule_assessments(
     declarations = [
         record
         for record in records.values()
-        if record.evidence_class.value == "DECLARED_RULE" and record.kind in RULE_RECORD_KINDS
+        if record.evidence_class == EvidenceClass.DECLARED_RULE and record.kind in RULE_RECORD_KINDS
     ]
     violations: _Counter[str] = _Counter(
         rule_id for record in observation.records("violations") or () for rule_id in record.rule_ids

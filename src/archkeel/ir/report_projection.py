@@ -77,6 +77,7 @@ from archkeel.ir.command_view import (
 from archkeel.ir.decisions import rule_assessment_applies_to_component
 from archkeel.ir.dependency import DependencyOwner, DependencySelector
 from archkeel.ir.facts import Record
+from archkeel.ir.facts import EvidenceClass as _EvidenceClass
 from archkeel.ir.model import (
     RULE_KINDS,
     Diagnostic,
@@ -172,7 +173,7 @@ def _permission_rules(
             scope_ids.get(text_value(item.data.get("parent_id"))),
         )
         for item in sorted(model.records("declarations") or (), key=lambda item: item.id)
-        if item.kind in RULE_KINDS and item.evidence_class.value == "DECLARED_RULE"
+        if item.kind in RULE_KINDS and item.evidence_class == _EvidenceClass.DECLARED_RULE
     )
 
 
