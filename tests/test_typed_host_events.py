@@ -141,9 +141,15 @@ def test_future_github_provider_event_remains_an_open_bounded_observation(tmp_pa
 def _repository(tmp_path, *, old=None, new=None, probe=""):
     target = json.loads((ROOT / "docs/architecture/contracts/ir.json").read_text())
     target.pop("$schema", None)
-    target["components"] = [
-        item for item in target["components"] if item["id"] == "TARGET-GOVERNANCE"
-    ] + [{
+    target["components"] = [{
+        "id": "TARGET-GOVERNANCE",
+        "label": "governance",
+        "role": "component",
+        "packages": ["archkeel.ir.host_records"],
+        "responsibilities": ["Own replayable host records."],
+        "forbidden_responsibilities": [],
+        "provenance": ["docs/architecture/host-event-types.md"],
+    }, {
         "id": "ordering",
         "label": "ordering",
         "role": "component",
@@ -218,7 +224,8 @@ def test_native_host_port_return_weakening_fails_unchanged_authored_target(tmp_p
     "probe",
     [
         'def _probe(value):\n    return value == "expectation_published"\n',
-        'def _probe(value):\n    return value in ("expectation_published", "candidate_submitted")\n',
+        'def _probe(value):\n'
+        '    return value in ("expectation_published", "candidate_submitted")\n',
         "def _probe(value):\n    return value == HostEvent.CANDIDATE_SUBMITTED.value\n",
     ],
 )
