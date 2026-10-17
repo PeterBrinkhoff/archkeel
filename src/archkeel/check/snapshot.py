@@ -214,7 +214,9 @@ def _materialize_archive(
                     allowed_metadata = path.name in {"package.json", "tsconfig.json"} or (
                         tsconfig is not None and path.as_posix() == tsconfig
                     )
-                resolver_input = language is Language.TYPESCRIPT and path.suffix in _TS_RESOLVER_SUFFIXES
+                resolver_input = (
+                    language is Language.TYPESCRIPT and path.suffix in _TS_RESOLVER_SUFFIXES
+                )
                 if not member.isfile() or not (
                     is_scoped_source or allowed_metadata or resolver_input
                 ):
