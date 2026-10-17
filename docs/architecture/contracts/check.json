@@ -528,6 +528,99 @@
           "responsibilities": [
             "Classify an otherwise unresolved written annotation using existing diagnostic categories."
           ]
+        },
+        {
+          "language": "python",
+          "provenance": [
+            "docs/superpowers/plans/2026-10-17-snapshot-language.md"
+          ],
+          "id": "SNAPSHOT-LANGUAGE-MODULE",
+          "kind": "module",
+          "qualified_name": "archkeel.check.snapshot",
+          "parent_id": "TARGET-INPUTS",
+          "presence": "planned",
+          "responsibilities": [
+            "Materialize exact committed source and resolver inputs through the canonical language port."
+          ]
+        },
+        {
+          "language": "python",
+          "provenance": [
+            "docs/superpowers/plans/2026-10-17-snapshot-language.md"
+          ],
+          "id": "SNAPSHOT-LANGUAGE-FACTS",
+          "kind": "enum",
+          "qualified_name": "archkeel.ir.facts.Language",
+          "presence": "referenced"
+        },
+        {
+          "language": "python",
+          "provenance": [
+            "docs/superpowers/plans/2026-10-17-snapshot-language.md"
+          ],
+          "id": "SNAPSHOT-LANGUAGE-RESULT",
+          "kind": "class",
+          "qualified_name": "archkeel.check.snapshot.ArchivedSnapshot",
+          "parent_id": "SNAPSHOT-LANGUAGE-MODULE",
+          "presence": "referenced"
+        },
+        {
+          "language": "python",
+          "provenance": [
+            "docs/superpowers/plans/2026-10-17-snapshot-language.md"
+          ],
+          "id": "SNAPSHOT-LANGUAGE-ENTRY",
+          "kind": "function",
+          "qualified_name": "archkeel.check.snapshot.materialize_git_snapshot",
+          "parent_id": "SNAPSHOT-LANGUAGE-MODULE",
+          "presence": "planned",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "signature": {
+            "parameters": [
+              {
+                "name": "root",
+                "annotation": "Path",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "revision",
+                "annotation": "str",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "roots",
+                "annotation": "tuple[str, ...]",
+                "kind": "keyword_only",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "language",
+                "annotation": "Language",
+                "kind": "keyword_only",
+                "default": "Language.PYTHON",
+                "default_known": true
+              },
+              {
+                "name": "tsconfig",
+                "annotation": "str | None",
+                "kind": "keyword_only",
+                "default": "None",
+                "default_known": true
+              }
+            ],
+            "returns": "Iterator[ArchivedSnapshot]"
+          },
+          "responsibilities": [
+            "Accept canonical Facts Language while keeping legacy input normalization at the archive ingress."
+          ]
         }
       ],
       "relationships": [
