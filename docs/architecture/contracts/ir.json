@@ -415,6 +415,19 @@
       "constructs": [
         "string_literal_compare"
       ]
+    },
+    {
+      "id": "IR-RESULT-ASSESSMENT-CONTROL",
+      "kind": "forbidden_construct",
+      "source": "archkeel.ir.model.RunResult",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "This owned result decision uses canonical controls; rendered wording and arbitrary identities remain data.",
+      "provenance": [
+        "docs/architecture/core-command-result-types.md"
+      ],
+      "decided_by": "architect"
     }
   ],
   "declarations": {

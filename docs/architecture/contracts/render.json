@@ -189,6 +189,58 @@
         "docs/superpowers/specs/2026-10-16-atlas-deviation-boundary.md"
       ],
       "decided_by": "architect"
+    },
+    {
+      "id": "RENDER-RULE-LEGEND-CONTROL",
+      "kind": "forbidden_construct",
+      "source": "archkeel.render.html._atlas_rule_status_cards",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "This owned result decision uses canonical controls; rendered wording and arbitrary identities remain data.",
+      "provenance": [
+        "docs/architecture/core-command-result-types.md"
+      ],
+      "decided_by": "architect"
+    },
+    {
+      "id": "RENDER-REPORT-FAILURE-CONTROL",
+      "kind": "forbidden_construct",
+      "source": "archkeel.render.summary.report_violates_rules",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "This owned result decision uses canonical controls; rendered wording and arbitrary identities remain data.",
+      "provenance": [
+        "docs/architecture/core-command-result-types.md"
+      ],
+      "decided_by": "architect"
+    },
+    {
+      "id": "RENDER-REPORT-UNKNOWN-CONTROL",
+      "kind": "forbidden_construct",
+      "source": "archkeel.render.summary.report_leaves_rules_undecided",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "This owned result decision uses canonical controls; rendered wording and arbitrary identities remain data.",
+      "provenance": [
+        "docs/architecture/core-command-result-types.md"
+      ],
+      "decided_by": "architect"
+    },
+    {
+      "id": "RENDER-RESULT-BADGE-CONTROL",
+      "kind": "forbidden_construct",
+      "source": "archkeel.render.summary._decision_badge",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "This owned result decision uses canonical controls; rendered wording and arbitrary identities remain data.",
+      "provenance": [
+        "docs/architecture/core-command-result-types.md"
+      ],
+      "decided_by": "architect"
     }
   ],
   "declarations": {
