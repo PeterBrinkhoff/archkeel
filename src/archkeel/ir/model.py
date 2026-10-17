@@ -69,10 +69,10 @@ from .facts import (
 from .facts import (
     RuntimeInfo as RuntimeInfo,
 )
-from .facts import SourceResolution, parse_source_resolution
 from .facts import (
     SourceInfo as SourceInfo,
 )
+from .facts import SourceResolution, parse_source_resolution
 from .facts import (
     in_scope as in_scope,
 )
@@ -1451,9 +1451,7 @@ class BaselineViolationComparison:
     status: Literal["known", "new", "reduced", "resolved", "contracted", "unknown"]
 
 
-CallStatus: TypeAlias = Literal[
-    SourceResolution.UNRESOLVED, SourceResolution.PARTIALLY_RESOLVED
-]
+CallStatus: TypeAlias = Literal[SourceResolution.UNRESOLVED, SourceResolution.PARTIALLY_RESOLVED]
 
 
 @dataclass(frozen=True, slots=True)

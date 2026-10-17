@@ -171,7 +171,12 @@ class CallCollector(ast.NodeVisitor):
         }
 
     def _construction(
-        self, node: ast.Call, expression: str, status: SourceResolution, targets: list[str], truncated: bool
+        self,
+        node: ast.Call,
+        expression: str,
+        status: SourceResolution,
+        targets: list[str],
+        truncated: bool,
     ) -> RecordData | None:
         if dotted_expression(node.func) is None:
             return None

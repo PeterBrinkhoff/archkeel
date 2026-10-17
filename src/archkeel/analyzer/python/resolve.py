@@ -123,7 +123,9 @@ def build_symbol_index(symbols: Sequence[RawRecord]) -> SymbolIndex:
     )
 
 
-def _named_binding(target: str, index: SymbolIndex, reason: str) -> tuple[SourceResolution, list[str], str, int]:
+def _named_binding(
+    target: str, index: SymbolIndex, reason: str
+) -> tuple[SourceResolution, list[str], str, int]:
     parts = target.split(".")
     if any(".".join(parts[:end]) in index.conditional_names for end in range(1, len(parts) + 1)):
         return (
@@ -198,7 +200,10 @@ def _resolve_expression_receiver(
         status, reason = SourceResolution.RESOLVED, "literal receiver of known type"
     elif isinstance(node.value, ast.Call):
         literal_type = call_result_type(node.value, receiver_types=receiver_types, scopes=scopes)
-        status, reason = SourceResolution.PARTIALLY_RESOLVED, "call result of documented type, unproven at runtime"
+        status, reason = (
+            SourceResolution.PARTIALLY_RESOLVED,
+            "call result of documented type, unproven at runtime",
+        )
     else:
         return None
     if literal_type is None:

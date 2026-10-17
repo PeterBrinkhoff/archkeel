@@ -1181,7 +1181,9 @@ class _Collection:
         )
         if resolved.status != ResolutionStatus.RESOLVED:
             status = (
-                SourceResolution.PARTIALLY_RESOLVED if call and target_names else SourceResolution.UNRESOLVED
+                SourceResolution.PARTIALLY_RESOLVED
+                if call and target_names
+                else SourceResolution.UNRESOLVED
             )
         if construction_status is not None:
             status = (

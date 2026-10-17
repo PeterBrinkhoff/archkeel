@@ -827,7 +827,11 @@ def _construction_sites(
         raise ValueError("invalid construction resolution")
     if not set(names) <= set(_texts(record.data.get("targets"))) or (
         status == ResolutionKind.RESOLVED
-        and (parse_source_resolution(record.data.get("status")) is not SourceResolution.RESOLVED or truncated or len(names) != 1)
+        and (
+            parse_source_resolution(record.data.get("status")) is not SourceResolution.RESOLVED
+            or truncated
+            or len(names) != 1
+        )
     ):
         raise ValueError("construction resolution conflicts with its call site")
     targets = tuple(
@@ -1176,7 +1180,8 @@ def _coverage(observation: Observation, entities: list[Entity]) -> tuple[Coverag
             continue
         bases = _records(item.data.get("base_declarations"))
         complete = observation.coverage.status == Verdict.PASS and all(
-            parse_source_resolution(base.get("status")) is SourceResolution.RESOLVED for base in bases
+            parse_source_resolution(base.get("status")) is SourceResolution.RESOLVED
+            for base in bases
         )
         result.append(
             Coverage(

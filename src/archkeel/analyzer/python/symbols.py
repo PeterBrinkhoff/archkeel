@@ -658,7 +658,10 @@ def _base_binding(
     classifier = base.value if isinstance(base, ast.Subscript) else base
     dotted: str = dotted_expression(classifier) or ""
     targets: list[str] = []
-    status, reason = SourceResolution.UNRESOLVED, "dynamic base expression has no proven classifier binding"
+    status, reason = (
+        SourceResolution.UNRESOLVED,
+        "dynamic base expression has no proven classifier binding",
+    )
     if dotted:
         root, _, tail = dotted.partition(".")
         alias = module.aliases.get(root)
@@ -682,16 +685,25 @@ def _base_binding(
                 "base name has candidates without a proven binding",
             )
             if proven and (alias or (len(known) == 1 and known[0]["kind"] == "class")):
-                status, reason = SourceResolution.RESOLVED, "explicit base with a stable direct module binding"
+                status, reason = (
+                    SourceResolution.RESOLVED,
+                    "explicit base with a stable direct module binding",
+                )
                 if len(known) > 1 or (known and known[0]["kind"] != "class"):
                     status, reason = (
                         SourceResolution.PARTIALLY_RESOLVED,
                         "imported classifier identity is ambiguous or unavailable",
                     )
                 elif _base_namespace_uncertain(target, by_name):
-                    status, reason = SourceResolution.PARTIALLY_RESOLVED, "classifier or qualifier may be replaced"
+                    status, reason = (
+                        SourceResolution.PARTIALLY_RESOLVED,
+                        "classifier or qualifier may be replaced",
+                    )
                 elif not known and target not in _KNOWN_CLASS_KINDS and target != "builtins.object":
-                    status, reason = SourceResolution.PARTIALLY_RESOLVED, "external classifier kind is unavailable"
+                    status, reason = (
+                        SourceResolution.PARTIALLY_RESOLVED,
+                        "external classifier kind is unavailable",
+                    )
         elif (
             dotted == "object"
             and owner["data"]["lexical_parent_id"] is None

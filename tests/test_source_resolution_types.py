@@ -118,7 +118,9 @@ def _native_repository(tmp_path, *, raw_control=False, widen_field=False):
     for path in sources:
         text = (ROOT / "src/archkeel" / path).read_text()
         if path == "analyzer/python/resolve.py" and raw_control:
-            text += '\ndef _raw_resolution(status):\n    return status == "resolved"\n'
+            nominal = "if result[0] == SourceResolution.PARTIALLY_RESOLVED:"
+            assert nominal in text
+            text = text.replace(nominal, 'if result[0] == "partially_resolved":', 1)
         if path == "ir/model.py" and widen_field:
             text = text.replace("status: CallStatus", "status: str")
         files["archkeel/" + path] = text
@@ -184,7 +186,7 @@ def _native_repository(tmp_path, *, raw_control=False, widen_field=False):
             {
                 "id": GUARD,
                 "kind": "forbidden_construct",
-                "source": "archkeel.analyzer.python.resolve",
+                "source": "archkeel.analyzer.python.resolve._scoped_binding",
                 "constructs": ["string_literal_compare"],
                 "rationale": "Source-resolution producer dispatch uses its nominal domain.",
                 "decided_by": "architect",
@@ -246,22 +248,37 @@ def test_future_call_status_survives_actual_source_protocol_without_becoming_pro
     record = dict(payload["facts"]["sections"][0]["records"][0])
     record.update(id="CALL-FUTURE", kind="future_call", area="call_hierarchy")
     record["data"] = {
-        "source_module": "project.app", "source_scope": "project.app",
-        "expression": "future()", "targets": [], "status": "future",
+        "source_module": "project.app",
+        "source_scope": "project.app",
+        "expression": "future()",
+        "targets": [],
+        "status": "future",
     }
     section = next(row for row in payload["facts"]["sections"] if row["name"] == "calls")
     section["records"].append(record)
     response = decode_response(json.dumps(payload).encode())
     assert json.loads(encode_response(response)) == payload
-    call = next(row for section in response.facts.sections for row in section.records if row.id == "CALL-FUTURE")
+    call = next(
+        row
+        for section in response.facts.sections
+        for row in section.records
+        if row.id == "CALL-FUTURE"
+    )
     assert facts.parse_source_resolution(call.data.get("status")) is None
 
 
 def test_absent_status_and_open_kind_survive_generic_record_codec():
     record = {
-        "id": "opaque", "evidence_class": "FACT", "area": "future",
-        "kind": "future_kind", "title": "opaque record", "subjects": [],
-        "evidence_ids": [], "rule_ids": [], "fact_ids": [], "provenance": [],
+        "id": "opaque",
+        "evidence_class": "FACT",
+        "area": "future",
+        "kind": "future_kind",
+        "title": "opaque record",
+        "subjects": [],
+        "evidence_ids": [],
+        "rule_ids": [],
+        "fact_ids": [],
+        "provenance": [],
         "data": {"metadata": {"status": "resolved"}},
     }
     parsed = parse_record(record)
