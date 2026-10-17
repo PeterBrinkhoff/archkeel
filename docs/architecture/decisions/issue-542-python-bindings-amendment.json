@@ -1,0 +1,9 @@
+{
+  "after_baseline_digest": "a97dae6915b19cba4ee68c12f1db23d2b8849d49029b44831d006b8845b109db",
+  "after_digest": "085d8eed6628bb03769c286e3bf3cd8cc029394387df0dd1744e2b3be7f10e8f",
+  "before_baseline_digest": "a97dae6915b19cba4ee68c12f1db23d2b8849d49029b44831d006b8845b109db",
+  "before_digest": "6c15d0e541e85dec89efbf43109e4c789bd5cd972b13bbc681f2a5039ac24bef",
+  "decided_by": "ake2l",
+  "rationale": "Own nominal Python import, lexical binding and compiler-scope controls, preserve valid legacy constructor and reexport APIs, and add the authored binding Target and complete-model control guard without broadening resolver authority or debt ceilings.",
+  "schema_version": "2.0.0"
+}

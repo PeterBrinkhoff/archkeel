@@ -289,6 +289,7 @@ def test_self_analyzer_inside_covers_its_modules(self_observation: Observation) 
     }
     assert modules_by_component["python"] == {
         "archkeel.analyzer.python",
+        "archkeel.analyzer.python.binding_types",
         "archkeel.analyzer.python.bindings",
         "archkeel.analyzer.python.calls",
         "archkeel.analyzer.python.collect",
