@@ -24,6 +24,7 @@ class ChangeClassificationTests(unittest.TestCase):
             ("src/archkeel/ir/architecture_graph.py", Areas(core=True, report=True)),
             ("src/archkeel/ir/facts.py", Areas(core=True, report=True)),
             ("tests/test_graph_scene_protocol.py", Areas(core=True, report=True)),
+            ("tests/test_atlas_deviation_boundary.py", Areas(core=True, report=True)),
             ("tests/browser_graph_scene_target.ts", Areas(core=True, report=True)),
             ("tools/browser_runtime.py", Areas(core=True, report=True)),
             ("tools/browser-runtime/options.json", Areas(core=True, report=True)),

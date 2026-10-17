@@ -17,6 +17,9 @@ def main() -> None:
     assets = files("archkeel.render").joinpath("assets")
     for name in ("report-graph-protocol.js", "report-graph-scene.js"):
         assert "ArchkeelGraph" in assets.joinpath(name).read_text(encoding="utf-8")
+    assert "ArchkeelAtlasDeviations" in assets.joinpath("report-atlas-deviations.js").read_text(
+        encoding="utf-8"
+    )
     flow_digest = sha256(assets.joinpath("flow.js").read_bytes()).hexdigest()
     assert f"// Generated from flow.js; source-sha256={flow_digest}" in assets.joinpath(
         "flow.runtime.js"
