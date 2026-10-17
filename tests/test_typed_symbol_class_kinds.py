@@ -18,6 +18,7 @@ from archkeel.check.ports import ScanConfig
 from archkeel.ir import facts, model
 from archkeel.ir.facts_codec import parse_record, record_payload
 from archkeel.ir.report_graph import architecture_report
+from archkeel.ir.trace import trace_valid_violations
 
 TAGS = ("protocol", "enum", "pydantic_model", "dataclass", "class")
 
@@ -99,7 +100,10 @@ def _native_target(tmp_path):
     root = Path(__file__).parents[1]
     contract = json.loads((root / "docs/architecture/contracts/ir.json").read_text())
     contract.pop("$schema", None)
-    contract["rules"] = []
+    contract["rules"] = [
+        rule for rule in contract["rules"] if rule["id"] == "TARGET-COMPLETE_REQUIRES"
+    ]
+    assert len(contract["rules"]) == 1
     contract["declarations"]["modules"] = []
     target = contract["declarations"]["uml"]
     target["relationships"] = []
@@ -123,8 +127,10 @@ def _native_target(tmp_path):
 
 def test_actual_source_fulfils_the_unchanged_classifier_owner_and_reader_target(tmp_path):
     project, config = _native_target(tmp_path)
-    comparison = architecture_report(_model(project, config)).comparison
+    observed = _model(project, config)
+    comparison = architecture_report(observed).comparison
     assert comparison is not None and comparison.status == "PASS", comparison
+    assert not trace_valid_violations(observed)
 
 
 @pytest.mark.parametrize("mutation", ("owner", "input", "return"))
@@ -161,9 +167,16 @@ def test_classifier_port_weakening_fails_the_existing_authored_target(tmp_path, 
         text = text.replace(old, new, 1)
         subject = "IR-SYMBOL-CLASS-KIND-READER"
     path.write_text(text)
-    comparison = architecture_report(_model(project, config)).comparison
+    observed = _model(project, config)
+    comparison = architecture_report(observed).comparison
     assert comparison is not None
-    assert any(
-        item.status == "FAIL" and item.subject_id == subject for item in comparison.assessments
-    ), comparison
+    if mutation == "owner":
+        assert any(
+            item.rule_ids == ("TARGET-COMPLETE_REQUIRES",)
+            for item in trace_valid_violations(observed)
+        ), observed.records("violations")
+    else:
+        assert any(
+            item.status == "FAIL" and item.subject_id == subject for item in comparison.assessments
+        ), comparison
     assert contract.read_bytes() == before
