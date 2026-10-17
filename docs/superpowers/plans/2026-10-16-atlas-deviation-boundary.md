@@ -32,10 +32,10 @@
 
 **Interfaces:** Test the actual ArchkeelReportScene.create(data) and planned level_deviations(level_id, declared, used) boundary; independent target pins AtlasDeviation.kind and its producer return.
 
-- [ ] Add actual public Scene tests using the existing packed-Atlas fixture shape: unsupported kind, numeric source ID and numeric level ID must reject TypeError. Keep valid empty and omitted arrays as passing controls.
-- [ ] Add a producer test for sorted allowed_unused then undeclared pairs, equal/shared pairs, plain five-field wire dictionaries, stable IDs and two independent levels.
-- [ ] Add fixed native intent for the actual new DTO kind and level_deviations return; observe the absent/legacy source mismatch before production.
-- [ ] Run RED on unchanged production; record exact assertion/mismatch evidence and commit tests independently.
+- [x] Add actual public Scene tests using the existing packed-Atlas fixture shape: unsupported kind, numeric source ID and numeric level ID must reject TypeError. Keep valid empty and omitted arrays as passing controls.
+- [x] Add a producer test for sorted allowed_unused then undeclared pairs, equal/shared pairs, plain five-field wire dictionaries, stable IDs and two independent levels.
+- [x] Add fixed native intent for the actual new DTO kind and level_deviations return; observe the absent/legacy source mismatch before production.
+- [x] Run RED on unchanged production; record exact assertion/mismatch evidence and commit tests independently.
 
 ## Task 2: Close the actual deviation value and consumer
 
@@ -46,21 +46,21 @@
 - Protocol AtlasDeviation five-field interface with canonical generated kind; decodeAtlasDeviations(value: unknown) -> AtlasDeviation[] preserving original list/row identity.
 - ArchkeelAtlasDeviations.create(value: unknown) -> DeviationIndex with isUndeclared(levelId, sourceId, targetId): boolean and unused(levelId): readonly AtlasDeviation[].
 
-- [ ] Implement the Python value/real derivation; delegate from _level_balance, use attributes in _atlas_levels, and emit existing dicts only at atlas_payload.
-- [ ] Register the actual Enum with the existing generator and add the precise predicate using existing primitive validators; reject unsupported input without a broad cast.
-- [ ] Implement the checked browser level/pair index, constructed once from the existing cloned Atlas. Replace the actual atlasScene kind decisions with its operations and retain original source/target IDs instead of splitting pair strings.
-- [ ] Add the new authored JS asset in the real HTML/fixture/packaging load order and existing strict compiler target; regenerate only through the existing official command.
-- [ ] Count manual source before committing; if above 160 lines, narrow the stage. Run Task1 GREEN and commit the minimal production boundary.
+- [x] Implement the Python value/real derivation; delegate from _level_balance, use attributes in _atlas_levels, and emit existing dicts only at atlas_payload.
+- [x] Register the actual Enum with the existing generator and add the precise predicate using existing primitive validators; reject unsupported input without a broad cast.
+- [x] Implement the checked browser level/pair index, constructed once from the existing cloned Atlas. Replace the actual atlasScene kind decisions with its operations and retain original source/target IDs instead of splitting pair strings.
+- [x] Add the new authored JS asset in the real HTML/fixture/packaging load order and existing strict compiler target; regenerate only through the existing official command.
+- [x] Count manual source before committing; if above 160 lines, narrow the stage. Run Task1 GREEN and commit the minimal production boundary.
 
 ## Task 3: Verify independent type and source controls
 
 **Files:** tests/test_atlas_deviation_boundary.py; tests/test_atlas_deviation_target.py; tests/browser_graph_scene_target.ts; CI routing/gates only where required.
 
-- [ ] Under fixed authored Python intent, mutate the actual kind annotation and producer return to str/broad data; require trace-valid native FAIL. Add raw equality/membership/alias controls and a valid data/Enum control for the whole new Python owner.
-- [ ] Mutate the actual checked JS unused-row return to project a raw kind and a foreign nominal kind; widen its return under the fixed authored compiler target. Require genuine compiler diagnostics. Enum-versus-literal equality is not a compiler rejection claim; its separate native witness is the next step.
-- [ ] Run the actual TypeScript/JS collector on one written-literal consumer mutation and require a trace-valid forbidden_construct FAIL while capability remains PARTIAL.
-- [ ] Verify unknown decoding, same row identity, unchanged complete wire JSON and repeated projections; compare actual old/new Atlas scenes and Mermaid for root/nested Diagram/Target/Diff plus the existing Evidence modes.
-- [ ] Run the unmodified required report Make path, appropriate Atlas/renderer Chromium tests, deterministic/stale artifact checks, wheel/sdist offline shipping and unchanged 2MB/400KB guards on the actual combined Publisher basis.
+- [x] Under fixed authored Python intent, mutate the actual kind annotation and producer return to str/broad data; require trace-valid native FAIL. Add raw equality/membership/alias controls and a valid data/Enum control for the whole new Python owner.
+- [x] Mutate the actual checked JS unused-row return to project a raw kind and a foreign nominal kind; widen its return under the fixed authored compiler target. Require genuine compiler diagnostics. Enum-versus-literal equality is not a compiler rejection claim; its separate native witness is the next step.
+- [x] Run the actual TypeScript/JS collector on one written-literal consumer mutation and require a trace-valid forbidden_construct FAIL while capability remains PARTIAL.
+- [x] Verify unknown decoding, same row identity, unchanged complete wire JSON and repeated projections; compare actual old/new Atlas scenes and Mermaid for root/nested Diagram/Target/Diff plus the existing Evidence modes.
+- [x] Run the unmodified required report Make path, appropriate Atlas/renderer Chromium tests, deterministic/stale artifact checks, wheel/sdist offline shipping and unchanged 2MB/400KB guards on the actual combined Publisher basis.
 - [ ] Record source/generated costs and any real native site deltas. Obtain independent Astra review; Root integrates with an exact predecessor and normal amendment.
 
 ## Handoff
@@ -94,3 +94,5 @@ Run 38985484625 / job 117255858038 passed the complete final 87-test/strict-comp
 Actual old/new runtime proof: run 38985699134 / job 117256532006 compared predecessor 0aee Scene source to the frozen new source on a real Tour report with both deviation kinds. Every one of 10 real levels across six existing views produced identical complete Scene JSON and Mermaid (60 comparisons), with exactly one decoder invocation and unchanged input bytes. The primitive decoder is strict; the existing public Scene `deviations || []` compatibility fallback still treats prior falsy containers as empty, so no universal strict-ingress claim is made.
 
 Independent Astra approved all 23 frozen source/intent/test deltas at 017623fd7a854e7fbb3627ff3a7570f8745d0795 with no Critical/Important source findings. Final receipt review and the final source-specific UNKNOWN/call-site comparison remain separate closing evidence.
+
+Final source site proof: run 38986133833 / job 117257919637, auxiliary975b0208 with the exact frozen source017623fd, compared canonical observations against actual predecessor0aee. Both measure 865 unresolved / 52 typing / 58 UNKNOWN / zero violations. UNKNOWN-ID counters have added[] and removed[]. The only unresolved row additions/removals are two unchanged calls relocated by one line: atlas._components_payload `asdict(entry).items` (163→164) and html._baseline_comparison `item.status.upper` (1209→1210), whose enclosing comprehension IDs include the line number. No genuine new unresolved call remains. The new real `atlas_payload.<listcomp:576:22>` call `item.to_wire` is explicitly PARTIAL at atlas.py:576, reason `dynamic receiver with matching internal methods`; total partially-resolved calls2536→2537. This limitation is retained, not relabeled complete.
