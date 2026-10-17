@@ -324,3 +324,74 @@ def test_construct_evidence_keeps_the_real_utf16_literal_location(tmp_path, exte
     assert evidence.column == len(prefix.encode("utf-16-le")) // 2 + 1
     assert evidence.excerpt == '"active"'
     assert _assessment(model).status == "FAIL"
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        'return value === ("active" as const);',
+        'return value === ("active" as string);',
+        'return ("active" satisfies string) !== value;',
+        'return value === ("active"!);',
+        'return value === ((("active" as const)!) satisfies string);',
+        'return value === (`active` as const);',
+        'switch (value) { case ("active" as const): return true; default: return false; }',
+        'switch (value) { case ("active"! satisfies string): return true; default: return false; }',
+    ],
+)
+def test_ts_value_preserving_literal_wrappers_keep_native_original_evidence(tmp_path, body):
+    source = 'const emoji = "😀";\nexport function decide(value: any) { ' + body + " }"
+    facts, model = _model(tmp_path, source)
+    records = _constructs(facts)
+    assert len(records) == 1
+    evidence = next(row for row in facts.evidence if row.id == records[0].evidence_ids[0])
+    literal = '"active"' if '"active"' in body else '`active`'
+    second_line = source.splitlines()[1]
+    prefix = second_line[: second_line.index(literal)]
+    assert (evidence.file, evidence.line, evidence.end_line) == ("src/main.ts", 2, 2)
+    assert evidence.column == len(prefix.encode("utf-16-le")) // 2 + 1
+    assert evidence.excerpt == literal
+    assert records[0].data.get("owner").endswith(".decide")
+    violations = trace_valid_violations(model)
+    assert len(violations) == 1 and violations[0].fact_ids == (records[0].id,)
+    assert _assessment(model).status == "FAIL"
+    replay = decode_response(encode_response(CollectionResponse(facts))).facts
+    assert _constructs(replay) == records
+    assert _assessment(_assemble(tmp_path, replay)).status == "FAIL"
+
+
+@pytest.mark.parametrize(
+    "expression",
+    [
+        '(left as "active")',
+        '(left satisfies "active")',
+        '(left as string)!',
+        '(`active-${left}` as string)',
+        '(Mode.Active as Mode)',
+        '(Mode.Active! satisfies Mode)',
+    ],
+)
+def test_ts_literal_wrappers_do_not_turn_types_names_or_dynamic_values_into_proof(
+    tmp_path, expression
+):
+    source = (
+        'enum Mode { Active = "active" }\n'
+        "export function decide(value: any, left: any) { return value === " + expression + "; }"
+    )
+    facts, model = _model(tmp_path, source)
+    assert not _constructs(facts)
+    assert not trace_valid_violations(model)
+    assert _assessment(model).status == "UNKNOWN"
+    assert facts.capabilities.constructs[0].status is ConstructSupport.PARTIAL
+
+
+def test_unknown_ts_literal_wrapper_kind_cannot_promote_its_type_literal(tmp_path, monkeypatch):
+    original = parser._NODE_KINDS
+    monkeypatch.setattr(parser, "_NODE_KINDS", {key: value for key, value in original.items() if key != "as_expression"})
+    facts, model = _model(
+        tmp_path,
+        'export function decide(value: any, left: any) { return value === (left as "active"); }',
+    )
+    assert not _constructs(facts)
+    assert not trace_valid_violations(model)
+    assert _assessment(model).status == "UNKNOWN"
