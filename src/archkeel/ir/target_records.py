@@ -26,6 +26,7 @@ from archkeel.ir.graph_codec import (
     parse_target,
 )
 from archkeel.ir.model import Observation, Record, RecordData, stable_id
+from archkeel.ir.model import EvidenceClass as _EvidenceClass
 from archkeel.ir.target_graph import component_permissions, intent_graph
 
 
@@ -112,7 +113,7 @@ def _recorded_owners(
                 if identifier in parents
                 else "component_responsibility"
             )
-            or owner.evidence_class.value != "DECLARED_RULE"
+            or owner.evidence_class != _EvidenceClass.DECLARED_RULE
         ):
             raise ValueError("UML component owner is unavailable")
         namespace = owner.data.get("namespace")
@@ -154,7 +155,11 @@ def _declaration_records(
             raise ValueError("Target declaration IDs must be unique text")
         seen.add(identifier)
         record = known.get(identifier)
-        if record is None or record.kind != kind or record.evidence_class.value != "DECLARED_RULE":
+        if (
+            record is None
+            or record.kind != kind
+            or record.evidence_class != _EvidenceClass.DECLARED_RULE
+        ):
             raise ValueError("Target declaration is unavailable")
         records.append(record)
     return tuple(records)
