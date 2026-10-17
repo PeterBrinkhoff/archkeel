@@ -275,7 +275,8 @@
         "archkeel.ir.amendment:AmendmentVersion",
         "archkeel.ir.amendment:AmendmentStatus",
         "archkeel.ir.amendment:Amendment",
-        "archkeel.ir.amendment:verify_amendment"
+        "archkeel.ir.amendment:verify_amendment",
+        "archkeel.ir.architecture_projection:PermissionStatus"
       ]
     },
     {
@@ -401,6 +402,19 @@
         "docs/architecture/contract-version-types.md"
       ],
       "decided_by": "architect"
+    },
+    {
+      "id": "TARGET-PERMISSION-TYPED-CONTROL",
+      "kind": "forbidden_construct",
+      "source": "archkeel.ir.architecture_projection",
+      "rationale": "The complete compact value owner normalizes known permission strings once and uses nominal controls; parser/protocol values have no literal-comparison exception.",
+      "provenance": [
+        "docs/superpowers/specs/2026-10-17-permission-status-types.md"
+      ],
+      "decided_by": "architect",
+      "constructs": [
+        "string_literal_compare"
+      ]
     }
   ],
   "declarations": {
@@ -10355,6 +10369,63 @@
             ],
             "returns": "DeltaVersion"
           }
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/superpowers/specs/2026-10-17-permission-status-types.md"
+          ],
+          "id": "IR-PERMISSION-module",
+          "kind": "module",
+          "qualified_name": "archkeel.ir.architecture_projection",
+          "parent_id": "TARGET-GOVERNANCE",
+          "responsibilities": [
+            "Own compact authenticated projection values and the component-pair permission vocabulary."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/superpowers/specs/2026-10-17-permission-status-types.md"
+          ],
+          "id": "IR-PERMISSION-status",
+          "kind": "enum",
+          "qualified_name": "archkeel.ir.architecture_projection.PermissionStatus",
+          "parent_id": "IR-PERMISSION-module",
+          "responsibilities": [
+            "Own allowed, forbidden and undecided component-pair permission states."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/superpowers/specs/2026-10-17-permission-status-types.md"
+          ],
+          "id": "IR-PERMISSION-value",
+          "kind": "class",
+          "qualified_name": "archkeel.ir.architecture_projection.PermissionProjection",
+          "parent_id": "IR-PERMISSION-module",
+          "responsibilities": [
+            "Retain one declared component-pair permission and its governing evidence."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/superpowers/specs/2026-10-17-permission-status-types.md"
+          ],
+          "id": "IR-PERMISSION-value-status",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.architecture_projection.PermissionProjection.status",
+          "parent_id": "IR-PERMISSION-value",
+          "annotation": "PermissionStatus",
+          "responsibilities": [
+            "Retain the canonical nominal component-pair permission state."
+          ]
         }
       ],
       "relationships": [
