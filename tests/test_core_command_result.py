@@ -282,6 +282,7 @@ def _result_guard_repository(tmp_path):
                 "role": "component",
                 "packages": ["archkeel"],
                 "responsibilities": ["Own the actual result control fixture."],
+                "forbidden_responsibilities": [],
                 "provenance": ["docs/architecture/core-command-result-types.md"],
                 "decided_by": "architect",
             }
