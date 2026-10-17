@@ -28,6 +28,7 @@ from .dependency import DependencyOwner as DependencyOwner
 from .dependency import DependencySelection as DependencySelection
 from .dependency import DependencySelector as DependencySelector
 from .dependency import DependencyTargetKind as DependencyTargetKind
+from .dependency import ImportSymbolMarker as _ImportSymbolMarker
 from .dependency import ModuleSelection as ModuleSelection
 from .dependency import SelectorMatch as SelectorMatch
 from .dependency import module_in_ownership as module_in_ownership
@@ -223,8 +224,8 @@ def interface_covers_import(
 class RequiredComponent:
     """One component its owner may import, carrying the architect's reason for the edge (AD-32).
 
-    `through` narrows the edge to module prefixes of the required component (AD-42); empty
-    means its whole public surface, the way the entry always read before.
+    `through` narrows the edge to module prefixes or exact module:symbol ports (AD-42,
+    issue #564); empty means its whole public surface.
 
     `decided_by` names who decided this edge (AD-50); it overrides the component's own.
     """
@@ -239,18 +240,66 @@ def requires_covers(
     source: ContractComponent | tuple[RequiredComponent, ...],
     target_label: str,
     target_module: str | None = None,
+    target_symbol: str | None = None,
 ) -> bool:
-    """Apply AD-42; without a module, ask only whether the target is declared."""
+    """Match a concrete required port; without a module, query the declared target."""
     entries = (source.requires or ()) if isinstance(source, ContractComponent) else source
     return any(
         entry.component == target_label
         and (
             target_module is None
             or not entry.through
-            or any(in_scope(target_module, module) for module in entry.through)
+            or any(
+                _required_port_assessment(port, target_module, target_symbol, symbols_known=True)
+                is AssessmentStatus.PASS
+                for port in entry.through
+            )
         )
         for entry in entries
     )
+
+
+def _required_port_assessment(
+    port: str, target_module: str, target_symbol: str | None, *, symbols_known: bool
+) -> AssessmentStatus:
+    # Selectors are wire text, even when an accepted str subclass overrides partition.
+    module, separator, symbol = builtins.str.partition(port, ":")
+    if not separator:
+        return AssessmentStatus.PASS if in_scope(target_module, module) else AssessmentStatus.FAIL
+    if target_module != module:
+        return AssessmentStatus.FAIL
+    if not symbols_known:
+        return AssessmentStatus.UNKNOWN
+    return AssessmentStatus.PASS if target_symbol == symbol else AssessmentStatus.FAIL
+
+
+def requires_import_assessment(
+    source: ContractComponent,
+    target_label: str,
+    target_module: str,
+    symbol: str | None,
+    *,
+    symbols_known: bool,
+) -> AssessmentStatus:
+    """Judge actual import names once; a wildcard cannot prove an exact symbol port."""
+    try:
+        marker = _ImportSymbolMarker(symbol) if symbol is not None else None
+    except ValueError:
+        marker = None
+    named = symbols_known and marker is None
+    if requires_covers(source, target_label, target_module, symbol if named else None):
+        return AssessmentStatus.PASS
+    if not named and any(
+        entry.component == target_label
+        and any(
+            _required_port_assessment(port, target_module, symbol, symbols_known=False)
+            is AssessmentStatus.UNKNOWN
+            for port in entry.through
+        )
+        for entry in source.requires or ()
+    ):
+        return AssessmentStatus.UNKNOWN
+    return AssessmentStatus.FAIL
 
 
 @dataclass(frozen=True, slots=True)
