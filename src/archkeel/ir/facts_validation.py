@@ -45,7 +45,14 @@ _REQUIRED = {
         "under_type_checking",
     ),
     SourceSectionName.CALLS: ("source_scope", "source_module", "expression", "status", "targets"),
-    SourceSectionName.REFERENCES: ("source_scope", "source_module", "expression", "status", "targets", "use"),
+    SourceSectionName.REFERENCES: (
+        "source_scope",
+        "source_module",
+        "expression",
+        "status",
+        "targets",
+        "use",
+    ),
     SourceSectionName.BINDINGS: ("module",),
     SourceSectionName.TYPING_SIGNALS: ("owner", "signal"),
     SourceSectionName.CONSTRUCTS: ("owner", "construct"),
@@ -266,7 +273,9 @@ def _source_record(record: Record, section: SourceSectionName) -> None:
         raise ValueError("source records cannot carry rules or contract provenance")
     fields = {key for key, _ in record.data.entries}
     declaration = {"declaration_scope", "declaration_definition_id"}
-    if fields & declaration and (section != SourceSectionName.REFERENCES or not declaration <= fields):
+    if fields & declaration and (
+        section != SourceSectionName.REFERENCES or not declaration <= fields
+    ):
         raise ValueError("reference declaration needs both identity fields")
     if fields & declaration and any(record.data.get(key) == "" for key in declaration):
         raise ValueError("reference declaration identities must be nonempty")

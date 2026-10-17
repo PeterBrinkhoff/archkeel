@@ -17,3 +17,5 @@ Progress:
 
 - RED: run38999235380/job117298426074: 14 expected failures, 1 pass; actual product strict144 and both authored Target schemas passed. The first attempt stopped before tests because rg was absent; it is not RED evidence.
 - Legacy ingress: ScanResult is explicitly published by TARGET-EVALUATION. It previously accepted source section strings; preserve all eight supported spellings and normalize once in its constructor. The only existing direct test constructor uses an empty set. Unsupported source-only sections remain outside this port; generic Observation sections remain open.
+
+- GREEN: run38999413354/job117298961349: all15 focused tests pass, including the real native guard, four actual Target annotation mutations, and canonical plus five strict negative controls. Product strict144 and both actual Target schemas pass. Three formatter-only product corrections follow that run; final bounded regressions and compatibility are pending.

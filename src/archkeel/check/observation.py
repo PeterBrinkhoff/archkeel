@@ -20,7 +20,12 @@ from archkeel.ir.codec import (
 from archkeel.ir.decisions import dependency_binding_id
 from archkeel.ir.digest import package_digest
 from archkeel.ir.facts import ResolutionRole as _ResolutionRole
-from archkeel.ir.facts import RuntimeRequirementState, SourceFacts, SourceSectionName, dart_module_name
+from archkeel.ir.facts import (
+    RuntimeRequirementState,
+    SourceFacts,
+    SourceSectionName,
+    dart_module_name,
+)
 from archkeel.ir.facts_codec import (
     RawRecord,
     classified,
@@ -316,7 +321,9 @@ def _metrics(scan: ScanResult, contract: ArchitectureContract, profile: Profile)
             _metric(
                 "private_crossings",
                 "Confirmed private symbol crossings",
-                None if UnmeasurableScalar.PRIVATE_CROSSINGS in profile.unmeasured else len(private_crossings),
+                None
+                if UnmeasurableScalar.PRIVATE_CROSSINGS in profile.unmeasured
+                else len(private_crossings),
                 "api",
                 fact_ids=(
                     [item["id"] for item in private_crossings]
