@@ -743,14 +743,20 @@ def _atlas_section(payload: dict[str, object]) -> str:
 
 def _atlas_rule_status_cards(result: RunResult) -> str:
     meanings = (
-        ("PASS", "Required evaluator evidence is complete; decided positions have no violations."),
-        ("FAIL", "A rule violation was found. Undecided evidence can coexist with that failure."),
         (
-            "UNKNOWN",
+            RuleAssessmentStatus.PASS,
+            "Required evaluator evidence is complete; decided positions have no violations.",
+        ),
+        (
+            RuleAssessmentStatus.FAIL,
+            "A rule violation was found. Undecided evidence can coexist with that failure.",
+        ),
+        (
+            RuleAssessmentStatus.UNKNOWN,
             "Available evidence does not establish the result. Missing scope proof is not a pass.",
         ),
         (
-            "NOT CHECKED",
+            None,
             "A check was not performed or could not be completed. Read its scope and explanation. "
             "This status definition does not itself say which occurred.",
         ),
@@ -758,18 +764,20 @@ def _atlas_rule_status_cards(result: RunResult) -> str:
     cards = []
     for status, reason in meanings:
         count = (
-            sum(item.status == status for item in result.rule_assessments)
-            if result.rule_assessments is not None and status != "NOT CHECKED"
+            sum(item.status is status for item in result.rule_assessments)
+            if result.rule_assessments is not None and status is not None
             else None
         )
         label = (
             "Status definition"
-            if status == "NOT CHECKED"
+            if status is None
             else f"{count} rule{'s' if count != 1 else ''}"
             if count is not None
             else "No recorded count"
         )
-        cards.append(_verdict_card(VerdictRow(label, "", status, reason)))
+        cards.append(
+            _verdict_card(VerdictRow(label, "", status if status is not None else "NOT CHECKED", reason))
+        )
     return "".join(cards)
 
 

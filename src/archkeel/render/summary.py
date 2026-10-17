@@ -60,7 +60,7 @@ def report_violates_rules(result: RunResult) -> bool:
     return (
         result.command is _Command.REPORT
         and result.exit_code == 0
-        and result.declared_rules == "FAIL"
+        and result.declared_rules is _AssessmentStatus.FAIL
     )
 
 
@@ -85,7 +85,7 @@ def report_leaves_rules_undecided(result: RunResult) -> bool:
     return (
         result.command in {_Command.REPORT, _Command.VALIDATE}
         and result.exit_code == 0
-        and result.declared_rules == "UNKNOWN"
+        and result.declared_rules is _AssessmentStatus.UNKNOWN
     )
 
 
@@ -103,7 +103,7 @@ def _decision_badge(result: RunResult) -> Badge:
     ):
         return (
             badge("FAIL")
-            if result.declared_rules == "FAIL"
+            if result.declared_rules is _AssessmentStatus.FAIL
             else Badge(BadgeState.FAIL, "×", "REJECT")
         )
     if result.exit_code == 0:

@@ -1572,6 +1572,7 @@ class RunResult:
             raise ValueError("observation_complete must be PASS or UNKNOWN")
         builtins.object.__setattr__(self, "command", Command(self.command))
         builtins.object.__setattr__(self, "observation_complete", completion)
+        builtins.object.__setattr__(self, "declared_rules", AssessmentStatus(self.declared_rules))
         builtins.object.__setattr__(
             self, "expectation_fulfilled", ExpectationOutcome(self.expectation_fulfilled)
         )
