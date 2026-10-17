@@ -797,7 +797,12 @@
         "archkeel.analyzer.python.receiver_types",
         "archkeel.analyzer.typescript.parse",
         "archkeel.analyzer.typescript.syntax",
-        "archkeel.analyzer.typescript.collect"
+        "archkeel.analyzer.typescript.collect",
+        "archkeel.analyzer.dart.syntax",
+        "archkeel.analyzer.dart.parse",
+        "archkeel.analyzer.dart.resolve",
+        "archkeel.analyzer.dart.snapshot",
+        "archkeel.analyzer.dart.collect"
       ],
       "rationale": "Each closed vocabulary belongs to its domain or wire boundary: shared state and source facts own domain controls; codecs own private wire tags; TypeScript parser and collector own their private controls and share the published syntax port; consumers use published nominal types. Contract versions and feature availability belong to contract_version. The Python Source binding model owns import, lexical binding and compiler-scope control types.",
       "provenance": [
@@ -1095,6 +1100,71 @@
       "rationale": "Receiver evidence categories have one nominal owner; consumers use that type without raw origin dispatch.",
       "provenance": [
         "docs/architecture/typed-python-receivers.md"
+      ],
+      "decided_by": "architect"
+    },
+    {
+      "id": "DART-SYNTAX-TYPED-CONTROL",
+      "kind": "forbidden_construct",
+      "source": "archkeel.analyzer.dart.syntax",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "Closed Dart implementation categories use their nominal owners; parser and metadata conversion do not exempt string dispatch.",
+      "provenance": [
+        "docs/architecture/dart-nominal-controls.md"
+      ],
+      "decided_by": "architect"
+    },
+    {
+      "id": "DART-PARSE-TYPED-CONTROL",
+      "kind": "forbidden_construct",
+      "source": "archkeel.analyzer.dart.parse",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "Closed Dart implementation categories use their nominal owners; parser and metadata conversion do not exempt string dispatch.",
+      "provenance": [
+        "docs/architecture/dart-nominal-controls.md"
+      ],
+      "decided_by": "architect"
+    },
+    {
+      "id": "DART-RESOLVE-TYPED-CONTROL",
+      "kind": "forbidden_construct",
+      "source": "archkeel.analyzer.dart.resolve",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "Closed Dart implementation categories use their nominal owners; parser and metadata conversion do not exempt string dispatch.",
+      "provenance": [
+        "docs/architecture/dart-nominal-controls.md"
+      ],
+      "decided_by": "architect"
+    },
+    {
+      "id": "DART-SNAPSHOT-TYPED-CONTROL",
+      "kind": "forbidden_construct",
+      "source": "archkeel.analyzer.dart.snapshot",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "Closed Dart implementation categories use their nominal owners; parser and metadata conversion do not exempt string dispatch.",
+      "provenance": [
+        "docs/architecture/dart-nominal-controls.md"
+      ],
+      "decided_by": "architect"
+    },
+    {
+      "id": "DART-COLLECT-TYPED-CONTROL",
+      "kind": "forbidden_construct",
+      "source": "archkeel.analyzer.dart.collect",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "Closed Dart implementation categories use their nominal owners; parser and metadata conversion do not exempt string dispatch.",
+      "provenance": [
+        "docs/architecture/dart-nominal-controls.md"
       ],
       "decided_by": "architect"
     }

@@ -43,8 +43,8 @@ def test_dart_target_declares_signature_member_and_scope_boundaries():
     entities = {entity["qualified_name"]: entity for entity in uml["entities"]}
     relationships = {(item["source_id"], item["target_id"]) for item in uml["relationships"]}
 
-    assert entities["archkeel.analyzer.dart.parse.Parameter"]["kind"] == "class"
-    assert entities["archkeel.analyzer.dart.parse.Member"]["kind"] == "class"
+    assert entities["archkeel.analyzer.dart.syntax.Parameter"]["kind"] == "class"
+    assert entities["archkeel.analyzer.dart.syntax.Member"]["kind"] == "class"
     for dto, fields in {
         "Definition": {
             "name",
@@ -113,11 +113,11 @@ def test_dart_target_declares_signature_member_and_scope_boundaries():
         actual = {
             entity["qualified_name"].rsplit(".", 1)[-1]
             for entity in uml["entities"]
-            if entity.get("parent_id") == f"archkeel.analyzer.dart.parse.{dto}"
+            if entity.get("parent_id") == f"archkeel.analyzer.dart.syntax.{dto}"
         }
         assert fields <= actual, f"{dto} misses fields: {sorted(fields - actual)}"
 
-    parse = "archkeel.analyzer.dart.parse."
+    parse = "archkeel.analyzer.dart.syntax."
     for source, target in (
         ("Syntax", "Definition"),
         ("Syntax", "Directive"),
