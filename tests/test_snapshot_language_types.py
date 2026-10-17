@@ -55,8 +55,11 @@ def test_snapshot_enum_and_legacy_ingress_preserve_exact_committed_files(
         destination = tmp_path / ("enum" if isinstance(value, Language) else "legacy")
         snapshot._materialize_archive(archive, destination, roots=("example",), language=value)
         snapshots.append(
-            {path.relative_to(destination).as_posix(): path.read_bytes()
-             for path in destination.rglob("*") if path.is_file()}
+            {
+                path.relative_to(destination).as_posix(): path.read_bytes()
+                for path in destination.rglob("*")
+                if path.is_file()
+            }
         )
     assert snapshots[0] == snapshots[1]
     assert snapshots[0][source] == b"selected\r\n"
@@ -65,7 +68,9 @@ def test_snapshot_enum_and_legacy_ingress_preserve_exact_committed_files(
 
 @pytest.mark.parametrize("language", ["", "Python", "future"])
 @pytest.mark.parametrize("archive", [False, True])
-def test_unsupported_snapshot_language_keeps_exact_error_before_reading(tmp_path, language, archive):
+def test_unsupported_snapshot_language_keeps_exact_error_before_reading(
+    tmp_path, language, archive
+):
     with pytest.raises(snapshot.SnapshotError) as error:
         if archive:
             snapshot._materialize_archive(b"not a tar", tmp_path, roots=(), language=language)
@@ -84,28 +89,34 @@ def test_public_snapshot_validation_order_precedes_language_rejection(tmp_path, 
         ):
             pass
     assert str(error.value) == (
-        "snapshot roots must not be empty"
-        if bad_roots else "cannot resolve Git revision 'missing'"
+        "snapshot roots must not be empty" if bad_roots else "cannot resolve Git revision 'missing'"
     )
 
 
 def _target_repository(tmp_path):
-    contract = copy.deepcopy(json.loads((ROOT / "docs/architecture/contracts/check.json").read_text()))
+    contract = copy.deepcopy(
+        json.loads((ROOT / "docs/architecture/contracts/check.json").read_text())
+    )
     contract.pop("$schema", None)
     contract["rules"] = []
     contract["declarations"]["modules"] = []
     uml = contract["declarations"]["uml"]
     uml["relationships"] = []
     uml["scopes"] = []
-    uml["entities"] = [item for item in uml["entities"] if item["id"].startswith("SNAPSHOT-LANGUAGE-")]
+    uml["entities"] = [
+        item for item in uml["entities"] if item["id"].startswith("SNAPSHOT-LANGUAGE-")
+    ]
     assert len(uml["entities"]) == 4
-    root = _prepare_repo(tmp_path, {
-        "archkeel/__init__.py": "",
-        "archkeel/check/__init__.py": "",
-        "archkeel/check/snapshot.py": (ROOT / "src/archkeel/check/snapshot.py").read_text(),
-        "contract.json": json.dumps(contract),
-        "docs/superpowers/plans/2026-10-17-snapshot-language.md": "Canonical language ingress.\n",
-    })
+    root = _prepare_repo(
+        tmp_path,
+        {
+            "archkeel/__init__.py": "",
+            "archkeel/check/__init__.py": "",
+            "archkeel/check/snapshot.py": (ROOT / "src/archkeel/check/snapshot.py").read_text(),
+            "contract.json": json.dumps(contract),
+            "docs/superpowers/plans/2026-10-17-snapshot-language.md": "Canonical language ingress.\n",
+        },
+    )
     return root, ScanConfig(("archkeel",), "archkeel", "contract.json", "0" * 64)
 
 
@@ -122,7 +133,9 @@ def test_snapshot_language_widening_fails_the_unchanged_independent_target(tmp_p
     path = root / "archkeel/check/snapshot.py"
     original = path.read_text()
     assert "language: Language = Language.PYTHON" in original
-    path.write_text(original.replace("language: Language = Language.PYTHON", 'language: str = "python"'))
+    path.write_text(
+        original.replace("language: Language = Language.PYTHON", 'language: str = "python"')
+    )
     target = (root / "contract.json").read_bytes()
     comparison = architecture_report(_model(root, config)).comparison
     assert comparison is not None
