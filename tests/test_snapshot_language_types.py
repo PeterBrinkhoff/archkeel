@@ -114,7 +114,7 @@ def _target_repository(tmp_path):
             "archkeel/check/__init__.py": "",
             "archkeel/check/snapshot.py": (ROOT / "src/archkeel/check/snapshot.py").read_text(),
             "contract.json": json.dumps(contract),
-            "docs/superpowers/plans/2026-10-17-snapshot-language.md": "Canonical language ingress.\n",
+            "docs/superpowers/plans/2026-10-17-snapshot-language.md": "Language ingress.\n",
         },
     )
     return root, ScanConfig(("archkeel",), "archkeel", "contract.json", "0" * 64)
