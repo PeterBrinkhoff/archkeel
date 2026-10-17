@@ -823,10 +823,6 @@
           "provenance": [
             "docs/architecture/source-resolution-types.md"
           ],
-          "visibility": {
-            "kind": "public",
-            "basis": "declared"
-          },
           "id": "PYTHON-SOURCE-RESOLUTION-module",
           "kind": "module",
           "qualified_name": "archkeel.analyzer.python.resolve",

@@ -20,8 +20,8 @@ from archkeel.analyzer.python.symbols import collect_symbols
 from archkeel.check.ports import ScanConfig
 from archkeel.ir import facts
 from archkeel.ir.architecture_graph import ResolutionKind
-from archkeel.ir.decisions import rule_assessments
 from archkeel.ir.codec import parse_contract
+from archkeel.ir.decisions import rule_assessments
 from archkeel.ir.facts_codec import parse_record, record_payload
 from archkeel.ir.model import CallRow
 from archkeel.ir.report_graph import architecture_report
@@ -148,7 +148,11 @@ def _native_repository(tmp_path, *, raw_control=False, widen_field=False, includ
         "archkeel/analyzer/python/__init__.py": "",
         "contract.json": json.dumps(target),
     }
-    for item in [*target["components"], *target["rules"], *target["declarations"]["uml"]["entities"]]:
+    for item in [
+        *target["components"],
+        *target["rules"],
+        *target["declarations"]["uml"]["entities"],
+    ]:
         for path in item["provenance"]:
             files[path] = (ROOT / path).read_text()
     for path in sources:
@@ -190,11 +194,12 @@ def test_native_call_row_target_rejects_actual_status_type_weakening(tmp_path):
     original = (root / "contract.json").read_bytes()
     model = _model(root, config)
     assert any(
-        row.kind == "uml_conformance" and row.data.get("aspect") == "annotation"
+        row.kind == "uml_conformance"
+        and row.data.get("aspect") == "annotation"
+        and row.data.get("subject_id") == "IR-SOURCE-RESOLUTION-CallRow.status"
         for row in trace_valid_violations(model)
     )
     assert (root / "contract.json").read_bytes() == original
-
 
 
 def test_authored_source_resolution_targets_keep_owned_api_and_required_test_selection():
@@ -205,8 +210,12 @@ def test_authored_source_resolution_targets_keep_owned_api_and_required_test_sel
     }
     assert by_name["archkeel.ir.facts.parse_source_resolution"]["signature"] == {
         "parameters": [
-            {"name": "value", "kind": "positional", "default_known": True,
-             "annotation": "JsonValue | RawJson"}
+            {
+                "name": "value",
+                "kind": "positional",
+                "default_known": True,
+                "annotation": "JsonValue | RawJson",
+            }
         ],
         "returns": "SourceResolution | None",
     }
@@ -215,9 +224,13 @@ def test_authored_source_resolution_targets_keep_owned_api_and_required_test_sel
         "tuple[SourceResolution, list[str], str, int]"
     )
     assert tuple(member.value for member in facts.SourceResolution) == (
-        "resolved", "partially_resolved", "unresolved"
+        "resolved",
+        "partially_resolved",
+        "unresolved",
     )
-    required = (ROOT / "Makefile").read_text().split("pr-test:", 1)[1].split("pr-report-test:", 1)[0]
+    required = (
+        (ROOT / "Makefile").read_text().split("pr-test:", 1)[1].split("pr-report-test:", 1)[0]
+    )
     assert "tests/test_source_resolution_types.py" in required
 
 
@@ -239,8 +252,10 @@ def test_native_source_resolution_return_weakening_fails_unchanged_authored_targ
         assert separator
         nominal = ") -> tuple[SourceResolution, list[str], str, int]:"
         assert nominal in operation
-        source = prefix + separator + operation.replace(
-            nominal, ") -> tuple[str, list[str], str, int]:", 1
+        source = (
+            prefix
+            + separator
+            + operation.replace(nominal, ") -> tuple[str, list[str], str, int]:", 1)
         )
     else:
         nominal = "-> SourceResolution | None:"
@@ -250,8 +265,7 @@ def test_native_source_resolution_return_weakening_fails_unchanged_authored_targ
     authored = (root / "contract.json").read_bytes()
     comparison = architecture_report(_model(root, config)).comparison
     subject = (
-        "archkeel.analyzer.python.resolve.resolve_name"
-        if producer else "archkeel.ir.facts.parse_source_resolution"
+        "PYTHON-SOURCE-RESOLUTION-producer" if producer else "IR-SOURCE-RESOLUTION-parse"
     )
     assert comparison is not None and any(
         row.status == "FAIL" and row.aspect == "signature" and row.subject_id == subject
