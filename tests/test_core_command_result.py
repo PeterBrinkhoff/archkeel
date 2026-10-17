@@ -331,9 +331,13 @@ def test_native_actual_result_control_owners_reject_literal_regressions(
     module, name = owner.rsplit(".", 1)
     source = root.joinpath(*module.split(".")).with_suffix(".py")
     content = source.read_text()
-    member = next(node for node in ast.parse(content).body if node.name == name)
+    member = next(
+        node for node in ast.parse(content).body if getattr(node, "name", None) == name
+    )
     if isinstance(member, ast.ClassDef):
-        member = next(node for node in member.body if node.name == "__post_init__")
+        member = next(
+            node for node in member.body if getattr(node, "name", None) == "__post_init__"
+        )
     line = member.body[0].lineno - 1
     indent = " " * (member.col_offset + 4)
     receiver = "self" if name == "RunResult" else "result"
