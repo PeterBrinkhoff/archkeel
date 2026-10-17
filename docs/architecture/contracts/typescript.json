@@ -112,7 +112,6 @@
         "archkeel.analyzer.typescript.config:ModuleKind",
         "archkeel.analyzer.typescript.config:ModuleResolution",
         "archkeel.analyzer.typescript.config:Options",
-        "archkeel.analyzer.typescript.config:PathToken",
         "archkeel.analyzer.typescript.config:ScriptTarget",
         "archkeel.analyzer.typescript.config:Snapshot",
         "archkeel.analyzer.typescript.config:decode",
@@ -149,12 +148,8 @@
       ],
       "public": [
         "archkeel.analyzer.typescript.resolve:Found",
-        "archkeel.analyzer.typescript.resolve:ModuleFormat",
         "archkeel.analyzer.typescript.resolve:Resolver",
-        "archkeel.analyzer.typescript.resolve:Unknown",
-        "archkeel.analyzer.typescript.resolve:is_builtin",
-        "archkeel.analyzer.typescript.resolve:is_relative",
-        "archkeel.analyzer.typescript.resolve:package_name"
+        "archkeel.analyzer.typescript.resolve:Unknown"
       ],
       "requires": [
         {
