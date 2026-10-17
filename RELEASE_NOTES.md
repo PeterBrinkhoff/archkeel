@@ -39,7 +39,9 @@ before the collector-safety tests ran. Fetching all branch refs tried to create
 an `aux/...` path; Windows reserves the name `AUX`. Those jobs now fetch only the requested
 ref. Both Python versions, collector-safety tests and the publication gate remain
 required. Native TypeScript mutation fixtures also read and write UTF-8 explicitly
-instead of depending on the Windows locale. The public 4.0.0 tag is retained.
+instead of depending on the Windows locale. Flow source and runtime assets retain
+LF line endings so packaged source checksums remain valid on Windows.
+The public 4.0.0 tag is retained.
 
 ## Upgrade from 3.0.1
 
