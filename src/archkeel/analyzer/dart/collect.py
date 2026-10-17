@@ -29,7 +29,9 @@ from archkeel.ir.facts import (
     RuntimeRequirementState,
     SourceFacts,
     SourceInfo,
+    SourceNameVisibility,
     SourceProfile,
+    SourceResolution,
     SourceSectionName,
     UnresolvedTarget,
     stable_id,
@@ -82,12 +84,6 @@ class _SymbolKind(StrEnum):
     ATTRIBUTE = "attribute"
     CONSTANT = "constant"
     BINDING = "binding"
-
-
-class _FactStatus(StrEnum):
-    RESOLVED = ResolutionStatus.RESOLVED
-    PARTIALLY_RESOLVED = "partially_resolved"
-    UNRESOLVED = ResolutionStatus.UNRESOLVED
 
 
 class _ClassKind(StrEnum):
@@ -534,7 +530,17 @@ class _Collection:
                 definition.enum_members, definition.enum_member_spans, strict=True
             ):
                 attributes.append(
-                    self._attribute(rel, span, qualified, literal, None, True, None, True)
+                    self._attribute(
+                        rel,
+                        span,
+                        qualified,
+                        literal,
+                        None,
+                        True,
+                        None,
+                        True,
+                        visibility=Visibility.from_name(literal),
+                    )
                 )
         for member in definition.members:
             if member.kind == MemberKind.FIELD:
@@ -548,6 +554,7 @@ class _Collection:
                         member.static,
                         member.initializer,
                         member.constant,
+                        visibility=member.visibility,
                     )
                 )
             elif member.kind in {
@@ -562,12 +569,8 @@ class _Collection:
                 )
             else:
                 self.incomplete_inventory_ids.add(symbol_id)
-                self._gap(
-                    rel,
-                    member.span,
-                    "UnsupportedMember",
-                    f"member kind {str(member.kind)!r} is not represented",
-                )
+                message = f"member kind {str(member.kind)!r} is not represented"
+                self._gap(rel, member.span, "UnsupportedMember", message)
         data.update(
             class_kind=class_kind,
             enum_members=list(definition.enum_members),
@@ -616,11 +619,7 @@ class _Collection:
             p["default_known"] and (not p.get("field_formal") or p.get("annotation") is not None)
             for p in parameters
         )
-        visibility = (
-            (Visibility.PRIVATE if member_spelling.startswith("_") else Visibility.PUBLIC)
-            if constructor
-            else member.visibility
-        )
+        visibility = member.visibility
         data = self._meta(
             rel, module, name, MemberKind.METHOD, qualified, parent, parent_id, visibility
         )
@@ -706,6 +705,8 @@ class _Collection:
         static: bool,
         constant: str | None,
         is_constant: bool = False,
+        *,
+        visibility: Visibility,
     ) -> RawData:
         identity = stable_id("DARTATTR", rel, span.start_byte, parent, name)
         qualified = f"{parent}.{name}"
@@ -715,7 +716,7 @@ class _Collection:
             "name": name,
             "annotation": annotation,
             "visibility": {
-                "kind": Visibility.PRIVATE if name.startswith("_") else Visibility.PUBLIC,
+                "kind": visibility,
                 "basis": "language",
                 "spelling": name,
             },
@@ -851,9 +852,9 @@ class _Collection:
                                     "symbol_visibility": None
                                     if symbol is None
                                     else (
-                                        Visibility.PRIVATE
-                                        if symbol.startswith("_")
-                                        else "public_name"
+                                        SourceNameVisibility.PRIVATE
+                                        if Visibility.from_name(symbol) is Visibility.PRIVATE
+                                        else SourceNameVisibility.PUBLIC_NAME
                                     ),
                                 },
                             )
@@ -920,9 +921,9 @@ class _Collection:
                                     "DARTBASE", rel, definition.span.start_byte, kind, name
                                 ),
                                 "relationship_kind": kind,
-                                "status": _FactStatus.RESOLVED
+                                "status": SourceResolution.RESOLVED
                                 if resolved
-                                else _FactStatus.UNRESOLVED,
+                                else SourceResolution.UNRESOLVED,
                                 "targets": [target] if resolved else [],
                                 "candidate_count": 1 if resolved else len(targets),
                                 "candidates_truncated": False,
@@ -1008,7 +1009,7 @@ class _Collection:
                 qualified,
                 scope,
                 scope_id,
-                Visibility.PRIVATE if name.startswith("_") else Visibility.PUBLIC,
+                Visibility.from_name(name),
             )
             data.update(
                 symbol_category="dynamic_binding",
@@ -1085,14 +1086,14 @@ class _Collection:
             "source_file": rel,
             "expression": site.expression_source or site.expression,
             "status": status,
-            "targets": target_names if status != _FactStatus.UNRESOLVED else [],
+            "targets": target_names if status != SourceResolution.UNRESOLVED else [],
             "candidate_count": len(target_names),
             "candidates_truncated": False,
             "reason": (
                 "Analyzer resolved the source element"
-                if status == _FactStatus.RESOLVED
+                if status == SourceResolution.RESOLVED
                 else "multiple local source candidates remain"
-                if status == _FactStatus.PARTIALLY_RESOLVED
+                if status == SourceResolution.PARTIALLY_RESOLVED
                 else "target is external, dynamic, or unresolved"
             ),
         }
@@ -1126,7 +1127,7 @@ class _Collection:
 
     def _site_target_state(
         self, rel: str, resolved: ResolvedSite, call: bool
-    ) -> tuple[list[str], RawData | None, _FactStatus]:
+    ) -> tuple[list[str], RawData | None, SourceResolution]:
         site = resolved.site
         target_names = sorted(
             {name for item in resolved.bindings if (name := self._binding_name(item)) is not None}
@@ -1170,46 +1171,48 @@ class _Collection:
                 if self._symbol_kind(target) in {_SymbolKind.METHOD, _SymbolKind.FUNCTION}
             ]
         status = (
-            _FactStatus.RESOLVED
+            SourceResolution.RESOLVED
             if len(target_names) == 1
             and (
                 not call
                 or construction is not None
                 or self._symbol_kind(target_names[0]) in {_SymbolKind.METHOD, _SymbolKind.FUNCTION}
             )
-            else _FactStatus.UNRESOLVED
+            else SourceResolution.UNRESOLVED
         )
         if resolved.status != ResolutionStatus.RESOLVED:
             status = (
-                _FactStatus.PARTIALLY_RESOLVED if call and target_names else _FactStatus.UNRESOLVED
+                SourceResolution.PARTIALLY_RESOLVED
+                if call and target_names
+                else SourceResolution.UNRESOLVED
             )
         if construction_status is not None:
             status = (
-                _FactStatus.RESOLVED
-                if construction_status != _FactStatus.UNRESOLVED
-                else _FactStatus.UNRESOLVED
+                SourceResolution.RESOLVED
+                if construction_status != SourceResolution.UNRESOLVED
+                else SourceResolution.UNRESOLVED
             )
         return target_names, construction, status
 
     @staticmethod
     def _construction_record(
         resolution: ConstructionResolution,
-    ) -> tuple[RawData, _FactStatus]:
+    ) -> tuple[RawData, SourceResolution]:
         binding = resolution.binding
         class_name = binding.name.split(".", 1)[0] if binding else None
         target = f"{binding.module}.{class_name}" if binding and class_name else None
         if resolution.status == ResolutionStatus.RESOLVED and target:
-            status = _FactStatus.RESOLVED
+            status = SourceResolution.RESOLVED
             targets = [target]
         elif binding is not None and target:
-            status = _FactStatus.PARTIALLY_RESOLVED
+            status = SourceResolution.PARTIALLY_RESOLVED
             targets = [target]
         else:
-            status = _FactStatus.UNRESOLVED
+            status = SourceResolution.UNRESOLVED
             targets = []
-        if status == _FactStatus.RESOLVED:
+        if status == SourceResolution.RESOLVED:
             reason = "Analyzer resolved a local generative constructor"
-        elif status == _FactStatus.PARTIALLY_RESOLVED:
+        elif status == SourceResolution.PARTIALLY_RESOLVED:
             reason = "factory construction does not prove a local instance target"
         else:
             reason = resolution.reason or "constructor target is external, dynamic, or unresolved"

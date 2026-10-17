@@ -175,6 +175,19 @@
         "docs/architecture/language-adapter-target.md"
       ],
       "decided_by": "agent"
+    },
+    {
+      "id": "SOURCE-RESOLUTION-CONTROL",
+      "kind": "forbidden_construct",
+      "source": "archkeel.analyzer.python.resolve._scoped_binding",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "Dispatch on the shared nominal source-resolution domain at the actual scoped-binding producer.",
+      "decided_by": "architect",
+      "provenance": [
+        "docs/architecture/source-resolution-types.md"
+      ]
     }
   ],
   "declarations": {
@@ -237,7 +250,7 @@
       }
     ],
     "uml": {
-      "schema_version": "1.0.0",
+      "schema_version": "1.1.0",
       "entities": [
         {
           "id": "PYTHON-BINDING-MODEL",
@@ -432,6 +445,484 @@
             "docs/architecture/typed-python-receivers.md"
           ],
           "annotation": "ReceiverOrigin"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/typed-python-properties.md",
+            "docs/architecture/definition-context-ports.md"
+          ],
+          "id": "PYTHON-PROPERTY-SOURCE",
+          "kind": "module",
+          "qualified_name": "archkeel.analyzer.python.source",
+          "parent_id": "TARGET-SOURCE",
+          "responsibilities": [
+            "Own Python syntax and source proof for standard property operations.",
+            "Own Python AST definition contexts, their field grammar and typed Source frames."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/typed-python-properties.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "PYTHON-PROPERTY-PRODUCER",
+          "kind": "function",
+          "qualified_name": "archkeel.analyzer.python.source.property_bindings",
+          "parent_id": "PYTHON-PROPERTY-SOURCE",
+          "responsibilities": [
+            "Produce ordered nominal bindings without changing descriptor or owner proof."
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "module",
+                "kind": "positional",
+                "default_known": true,
+                "annotation": "ParsedModule"
+              },
+              {
+                "name": "parent",
+                "kind": "positional",
+                "default_known": true,
+                "annotation": "ast.ClassDef"
+              }
+            ],
+            "returns": "dict[FunctionNode, PropertyBinding]"
+          }
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/typed-method-descriptors.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "PYTHON-METHOD-PRODUCER",
+          "kind": "function",
+          "qualified_name": "archkeel.analyzer.python.source.method_descriptor",
+          "parent_id": "PYTHON-PROPERTY-SOURCE",
+          "responsibilities": [
+            "Produce nominal method descriptors from existing provider proof and ordering."
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "module",
+                "kind": "positional",
+                "default_known": true,
+                "annotation": "ParsedModule"
+              },
+              {
+                "name": "node",
+                "kind": "positional",
+                "default_known": true,
+                "annotation": "ast.FunctionDef | ast.AsyncFunctionDef"
+              },
+              {
+                "name": "parent",
+                "kind": "positional",
+                "default_known": true,
+                "annotation": "ast.ClassDef | None"
+              }
+            ],
+            "returns": "MethodDescriptor"
+          }
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/python-string-predicates.md"
+          ],
+          "id": "PYTHON-PREDICATE-MODULE",
+          "kind": "module",
+          "qualified_name": "archkeel.analyzer.python.constructs",
+          "parent_id": "TARGET-COLLECTORS",
+          "responsibilities": [
+            "Classify written Python constructs with lexical source evidence."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/python-string-predicates.md"
+          ],
+          "id": "PYTHON-PREDICATE-KIND",
+          "kind": "enum",
+          "qualified_name": "archkeel.analyzer.python.constructs._StringPredicate",
+          "parent_id": "PYTHON-PREDICATE-MODULE",
+          "responsibilities": [
+            "Own the two recognized written prefix and suffix method names."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/python-string-predicates.md"
+          ],
+          "id": "PYTHON-PREDICATE-DECODE",
+          "kind": "function",
+          "qualified_name": "archkeel.analyzer.python.constructs._string_predicate",
+          "parent_id": "PYTHON-PREDICATE-MODULE",
+          "responsibilities": [
+            "Decode a written member-call name into its nominal syntax vocabulary without runtime receiver proof."
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "node",
+                "annotation": "ast.Call",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              }
+            ],
+            "returns": "_StringPredicate | None"
+          }
+        },
+        {
+          "id": "PYTHON-PARAMETER-SYMBOLS",
+          "kind": "module",
+          "qualified_name": "archkeel.analyzer.python.symbols",
+          "language": "python",
+          "parent_id": "TARGET-COLLECTORS",
+          "presence": "planned",
+          "responsibilities": [
+            "Collect source symbols and written function signatures without governance decisions."
+          ],
+          "provenance": [
+            "docs/architecture/shared-parameter-kind.md"
+          ]
+        },
+        {
+          "id": "PYTHON-PARAMETER-PRODUCER",
+          "kind": "function",
+          "qualified_name": "archkeel.analyzer.python.symbols._parameter",
+          "language": "python",
+          "parent_id": "PYTHON-PARAMETER-SYMBOLS",
+          "presence": "planned",
+          "responsibilities": [
+            "Write an existing source parameter record from a nominal shared calling convention."
+          ],
+          "provenance": [
+            "docs/architecture/shared-parameter-kind.md"
+          ],
+          "visibility": {
+            "kind": "private",
+            "basis": "declared"
+          },
+          "signature": {
+            "parameters": [
+              {
+                "name": "argument",
+                "kind": "positional",
+                "default_known": true,
+                "annotation": "ast.arg"
+              },
+              {
+                "name": "kind",
+                "kind": "positional",
+                "default_known": true,
+                "annotation": "ParameterKind"
+              },
+              {
+                "name": "default",
+                "kind": "positional",
+                "default_known": true,
+                "annotation": "ast.expr | None"
+              },
+              {
+                "name": "prefix",
+                "kind": "positional",
+                "default_known": true,
+                "annotation": "str",
+                "default": "''"
+              }
+            ],
+            "returns": "RecordData"
+          }
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/python-string-predicates.md"
+          ],
+          "id": "PYTHON-PREDICATE-QUERY",
+          "kind": "function",
+          "qualified_name": "archkeel.analyzer.python.constructs._predicate_matches",
+          "parent_id": "PYTHON-PREDICATE-MODULE",
+          "responsibilities": [
+            "Query the existing lexical literal context for the first written prefix or suffix argument."
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "literals",
+                "annotation": "_LiteralComparisons",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "node",
+                "annotation": "ast.expr",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              }
+            ],
+            "returns": "bool"
+          }
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/definition-context-ports.md"
+          ],
+          "id": "PYTHON-CONTEXT-FRAME",
+          "kind": "class",
+          "qualified_name": "archkeel.analyzer.python.source.DefinitionFrame",
+          "parent_id": "PYTHON-PROPERTY-SOURCE",
+          "responsibilities": [
+            "Carry the actual AST node and nominal context/branch values through Source consumers."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/definition-context-ports.md"
+          ],
+          "id": "PYTHON-CONTEXT-FIELD",
+          "kind": "enum",
+          "qualified_name": "archkeel.analyzer.python.source._DefinitionField",
+          "parent_id": "PYTHON-PROPERTY-SOURCE",
+          "visibility": {
+            "kind": "private",
+            "basis": "declared"
+          },
+          "responsibilities": [
+            "Own only the five AST field labels traversed for definition contexts."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/definition-context-ports.md"
+          ],
+          "id": "PYTHON-CONTEXT-FRAME-NODE",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.python.source.DefinitionFrame.node",
+          "parent_id": "PYTHON-CONTEXT-FRAME",
+          "annotation": "ast.AST",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "responsibilities": [
+            "Retain the node of one source definition context."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/definition-context-ports.md"
+          ],
+          "id": "PYTHON-CONTEXT-FRAME-KIND",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.python.source.DefinitionFrame.kind",
+          "parent_id": "PYTHON-CONTEXT-FRAME",
+          "annotation": "DefinitionContextKind",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "responsibilities": [
+            "Retain the kind of one source definition context."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/definition-context-ports.md"
+          ],
+          "id": "PYTHON-CONTEXT-FRAME-BRANCH",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.python.source.DefinitionFrame.branch",
+          "parent_id": "PYTHON-CONTEXT-FRAME",
+          "annotation": "DefinitionBranchKind",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "responsibilities": [
+            "Retain the branch of one source definition context."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/definition-context-ports.md"
+          ],
+          "id": "PYTHON-CONTEXT-PRODUCER",
+          "kind": "function",
+          "qualified_name": "archkeel.analyzer.python.source._branch_context",
+          "parent_id": "PYTHON-PROPERTY-SOURCE",
+          "visibility": {
+            "kind": "private",
+            "basis": "declared"
+          },
+          "responsibilities": [
+            "Translate the owned AST field grammar into a typed definition frame with its existing source site."
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "node",
+                "annotation": "ast.AST",
+                "kind": "positional",
+                "default_known": true
+              },
+              {
+                "name": "child",
+                "annotation": "ast.AST",
+                "kind": "positional",
+                "default_known": true
+              },
+              {
+                "name": "field_name",
+                "annotation": "_DefinitionField",
+                "kind": "positional",
+                "default_known": true
+              }
+            ],
+            "returns": "DefinitionFrame"
+          }
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/source-resolution-types.md"
+          ],
+          "id": "PYTHON-SOURCE-RESOLUTION-module",
+          "kind": "module",
+          "qualified_name": "archkeel.analyzer.python.resolve",
+          "parent_id": "TARGET-SOURCE",
+          "responsibilities": [
+            "Own shared Python expression resolution for the call and reference collectors."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/source-resolution-types.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "PYTHON-SOURCE-RESOLUTION-producer",
+          "kind": "function",
+          "qualified_name": "archkeel.analyzer.python.resolve.resolve_name",
+          "parent_id": "PYTHON-SOURCE-RESOLUTION-module",
+          "responsibilities": [
+            "Return the shared nominal source-resolution claim together with candidates, reason and candidate count."
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "node",
+                "kind": "positional",
+                "default_known": true,
+                "annotation": "ast.AST"
+              },
+              {
+                "name": "index",
+                "kind": "keyword_only",
+                "default_known": true,
+                "annotation": "SymbolIndex"
+              },
+              {
+                "name": "scopes",
+                "kind": "keyword_only",
+                "default_known": true,
+                "annotation": "LexicalScopes"
+              },
+              {
+                "name": "receiver_types",
+                "kind": "keyword_only",
+                "default_known": true,
+                "annotation": "Mapping[str, ReceiverType]",
+                "default": "_NO_RECEIVERS"
+              },
+              {
+                "name": "value_reference",
+                "kind": "keyword_only",
+                "default_known": true,
+                "annotation": "bool",
+                "default": "False"
+              }
+            ],
+            "returns": "tuple[SourceResolution, list[str], str, int]"
+          }
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/string-comparison-observation.md"
+          ],
+          "id": "PYTHON-CONSTRUCT-COLLECT",
+          "kind": "function",
+          "qualified_name": "archkeel.analyzer.python.constructs.collect_constructs",
+          "parent_id": "PYTHON-PREDICATE-MODULE",
+          "responsibilities": [
+            "Collect written construct facts using scanned literal providers and canonical import origins without runtime namespace claims."
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "parsed",
+                "annotation": "Sequence[ParsedModule]",
+                "kind": "positional",
+                "default_known": true
+              },
+              {
+                "name": "evidence",
+                "annotation": "dict[str, RawEvidence]",
+                "kind": "positional",
+                "default_known": true
+              },
+              {
+                "name": "imports",
+                "annotation": "Sequence[RawRecord]",
+                "kind": "keyword_only",
+                "default": "()",
+                "default_known": true
+              }
+            ],
+            "returns": "list[RawRecord]"
+          }
         }
       ],
       "relationships": [],

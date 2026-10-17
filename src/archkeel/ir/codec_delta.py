@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 from dataclasses import asdict
-from typing import TypeGuard, get_args
 
 from archkeel.ir.codec_governance import _measurement_payload, parse_measurements
 from archkeel.ir.codec_observation import (
@@ -25,8 +24,8 @@ from archkeel.ir.codec_wire import (
     _strings,
 )
 from archkeel.ir.facts import RuntimeRequirementState
+from archkeel.ir.model import DELTA_SCHEMA_VERSION as DELTA_SCHEMA_VERSION
 from archkeel.ir.model import (
-    DELTA_SCHEMA_VERSION,
     AnalyzerInfo,
     ArchitectureDelta,
     ComparisonStatus,
@@ -34,6 +33,7 @@ from archkeel.ir.model import (
     DeltaCoverage,
     DeltaProvenance,
     DeltaUnknown,
+    DeltaVersion,
     DimensionDelta,
     Projection,
     RatchetObservations,
@@ -41,14 +41,28 @@ from archkeel.ir.model import (
     SnapshotSummary,
 )
 from archkeel.ir.model import RawJson as RawJson
+from archkeel.ir.model import supports_nullable_delta_counts as _supports_nullable_delta_counts
 from archkeel.ir.profiles import profile_for
 
 from .facts_codec import freeze_data as _data
 from .facts_codec import parse_evidence as parse_evidence
 
 
-def _is_comparison_status(value: RawJson) -> TypeGuard[ComparisonStatus]:
-    return value in get_args(ComparisonStatus)
+def _parse_delta_version(raw: RawJson) -> DeltaVersion:
+    value = _string(raw, "delta.schema_version")
+    try:
+        return DeltaVersion(value)
+    except ValueError as error:
+        raise ValueError("unsupported delta schema version") from error
+
+
+def _parse_comparison_status(value: RawJson, label: str) -> ComparisonStatus:
+    if isinstance(value, str):
+        try:
+            return ComparisonStatus(value)
+        except ValueError:
+            pass
+    raise ValueError(f"{label} invalid")
 
 
 def _projection_payload(value: Projection) -> dict[str, RawJson]:
@@ -58,7 +72,7 @@ def _projection_payload(value: Projection) -> dict[str, RawJson]:
 
 
 def delta_payload(delta: ArchitectureDelta) -> dict[str, RawJson]:
-    if delta.schema_version != DELTA_SCHEMA_VERSION and any(
+    if delta.schema_version is not DeltaVersion.V2_0 and any(
         snapshot.runtime is not None
         and snapshot.runtime.requirement_state != RuntimeRequirementState.DECLARED
         for snapshot in (delta.baseline, delta.head)
@@ -94,19 +108,19 @@ def delta_payload(delta: ArchitectureDelta) -> dict[str, RawJson]:
         changes.append(change)
     result["semantic_changes"] = changes
     ratchets = delta.ratchets
-    if ratchets.status == "SUPPORTED":
+    if ratchets.status is ComparisonStatus.SUPPORTED:
         if ratchets.baseline is None or ratchets.head is None:
             raise ValueError("supported regression checks require both measurements")
-        legacy_calls = delta.schema_version in {"1.2.0", "1.3.0"}
+        legacy_calls = not _supports_nullable_delta_counts(delta.schema_version)
         result["ratchets"] = {
-            "status": "SUPPORTED",
+            "status": ratchets.status,
             "baseline": _measurement_payload(ratchets.baseline, legacy_calls=legacy_calls),
             "head": _measurement_payload(ratchets.head, legacy_calls=legacy_calls),
         }
     else:
         if ratchets.reason is None:
             raise ValueError("unknown regression checks require a reason")
-        result["ratchets"] = {"status": "UNKNOWN", "reason": ratchets.reason}
+        result["ratchets"] = {"status": ratchets.status, "reason": ratchets.reason}
     return result
 
 
@@ -163,9 +177,7 @@ def parse_delta(raw: object) -> ArchitectureDelta:
     delta_status = _parse_verdict(cv["status"], "delta coverage status")
     baseline_status = _parse_verdict(cv["baseline_status"], "delta coverage status")
     head_status = _parse_verdict(cv["head_status"], "delta coverage status")
-    version = _string(item["schema_version"], "delta.schema_version")
-    if version not in {"1.2.0", "1.3.0", "1.4.0", DELTA_SCHEMA_VERSION}:
-        raise ValueError("unsupported delta schema version")
+    version = _parse_delta_version(item["schema_version"])
     profile_for(_string(analyzer["name"], "delta.analyzer.name"))
     dimensions_raw = _object(item["dimensions"], "delta.dimensions")
     dimensions = tuple(
@@ -173,7 +185,7 @@ def parse_delta(raw: object) -> ArchitectureDelta:
         for name, raw_dimension in sorted(dimensions_raw.items())
     )
     ratchets = _parse_ratchets(
-        item["ratchets"], nullable_calls=version in {"1.4.0", DELTA_SCHEMA_VERSION}
+        item["ratchets"], nullable_calls=_supports_nullable_delta_counts(version)
     )
     semantic_changes_raw = item["semantic_changes"]
     unknowns_raw = item["unknowns"]
@@ -184,7 +196,7 @@ def parse_delta(raw: object) -> ArchitectureDelta:
     )
     unknowns = tuple(_parse_delta_unknown(value) for value in unknowns_raw)
     return ArchitectureDelta(
-        _string(item["schema_version"], "schema_version"),
+        version,
         AnalyzerInfo(
             _string(analyzer["name"], "analyzer.name"),
             _string(analyzer["version"], "analyzer.version"),
@@ -205,10 +217,10 @@ def parse_delta(raw: object) -> ArchitectureDelta:
         _parse_snapshot_summary(
             item["baseline"],
             "delta.baseline",
-            allow_requirement_state=version == DELTA_SCHEMA_VERSION,
+            allow_requirement_state=version is DeltaVersion.V2_0,
         ),
         _parse_snapshot_summary(
-            item["head"], "delta.head", allow_requirement_state=version == DELTA_SCHEMA_VERSION
+            item["head"], "delta.head", allow_requirement_state=version is DeltaVersion.V2_0
         ),
         ContractInfo(
             _string(c["schema_version"], "contract.schema_version"),
@@ -249,27 +261,25 @@ def _parse_snapshot_summary(
     )
 
 
-def _parse_dimension(name: str, raw: RawJson, *, version: str) -> DimensionDelta:
+def _parse_dimension(name: str, raw: RawJson, *, version: DeltaVersion) -> DimensionDelta:
     label = f"dimensions.{name}"
     dimension = _exact(
         raw,
         {"status", "before_count", "after_count", "added", "removed", "relocated", "changed"},
         label,
     )
-    status = dimension["status"]
-    if not _is_comparison_status(status):
-        raise ValueError(f"{label}.status invalid")
+    status = _parse_comparison_status(dimension["status"], f"{label}.status")
     return DimensionDelta(
         name,
         status,
         None
-        if version in {"1.4.0", DELTA_SCHEMA_VERSION}
-        and status == "UNKNOWN"
+        if _supports_nullable_delta_counts(version)
+        and status is ComparisonStatus.UNKNOWN
         and dimension["before_count"] is None
         else _count(dimension["before_count"], f"{label}.before_count"),
         None
-        if version in {"1.4.0", DELTA_SCHEMA_VERSION}
-        and status == "UNKNOWN"
+        if _supports_nullable_delta_counts(version)
+        and status is ComparisonStatus.UNKNOWN
         and dimension["after_count"] is None
         else _count(dimension["after_count"], f"{label}.after_count"),
         _strings(dimension["added"], f"{label}.added"),
@@ -281,21 +291,22 @@ def _parse_dimension(name: str, raw: RawJson, *, version: str) -> DimensionDelta
 
 def _parse_ratchets(raw: object, *, nullable_calls: bool) -> RatchetObservations:
     ratchet_raw = _object(raw, "delta.ratchets")
-    if ratchet_raw.get("status") == "SUPPORTED":
+    status = _parse_comparison_status(ratchet_raw.get("status"), "delta.ratchets status")
+    if status is ComparisonStatus.SUPPORTED:
         if set(ratchet_raw) != {"status", "baseline", "head"}:
             raise ValueError("supported regression check fields mismatch")
         return RatchetObservations(
-            "SUPPORTED",
+            status,
             parse_measurements(
                 ratchet_raw["baseline"], "ratchets.baseline", nullable_calls=nullable_calls
             ),
             parse_measurements(ratchet_raw["head"], "ratchets.head", nullable_calls=nullable_calls),
         )
-    if ratchet_raw.get("status") == "UNKNOWN":
+    if status is ComparisonStatus.UNKNOWN:
         if set(ratchet_raw) != {"status", "reason"}:
             raise ValueError("unknown regression check fields mismatch")
         return RatchetObservations(
-            "UNKNOWN", reason=_string(ratchet_raw.get("reason"), "ratchets.reason")
+            status, reason=_string(ratchet_raw.get("reason"), "ratchets.reason")
         )
     raise ValueError("delta.ratchets status invalid")
 

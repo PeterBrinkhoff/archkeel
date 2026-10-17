@@ -11,6 +11,8 @@ from dataclasses import asdict, replace
 from pathlib import Path
 
 from archkeel.ir.architecture_graph import ArchitectureGraph, TargetDefinition
+from archkeel.ir.architecture_graph import EntityKind as _EntityKind
+from archkeel.ir.architecture_graph import RelationshipKind as _RelationshipKind
 from archkeel.ir.codec import (
     InsideContractTree,
     decode_json,
@@ -41,6 +43,7 @@ from archkeel.ir.model import (
 )
 from archkeel.ir.model import DiagnosticCode as _DiagnosticCode
 from archkeel.ir.model import DiagnosticKind as _DiagnosticKind
+from archkeel.ir.model import EvidenceClass as _EvidenceClass
 from archkeel.ir.source_graph import MEMBER_INVENTORY_PROOF, validated_member_inventory_proof
 from archkeel.ir.target_graph import component_permissions, declared_tree_graph
 
@@ -73,7 +76,7 @@ def _physical_ids(
             if (
                 record is None
                 or record.kind != "module_target"
-                or record.evidence_class.value != "DECLARED_RULE"
+                or record.evidence_class != _EvidenceClass.DECLARED_RULE
                 or record.subjects
                 or record.provenance != (path,)
                 or record.data.get("inventory") is not True
@@ -87,7 +90,7 @@ def _physical_ids(
             if (
                 record is None
                 or record.kind != "module_target"
-                or record.evidence_class.value != "DECLARED_RULE"
+                or record.evidence_class != _EvidenceClass.DECLARED_RULE
                 or record.subjects != (module.path,)
                 or record.provenance != (path,)
                 or record.data.get("path") != module.path
@@ -105,7 +108,7 @@ def _physical_ids(
         if (
             record is None
             or record.kind != "root_layout"
-            or record.evidence_class.value != "DECLARED_RULE"
+            or record.evidence_class != _EvidenceClass.DECLARED_RULE
             or record.subjects != tuple(sorted((rule.root, *rule.allowed_children)))
             or record.provenance != tuple(sorted(rule.provenance))
             or record.data.get("root") != rule.root
@@ -130,7 +133,7 @@ def _external_scope_ids(
         if (
             record is None
             or record.kind != rule.kind
-            or record.evidence_class.value != "DECLARED_RULE"
+            or record.evidence_class != _EvidenceClass.DECLARED_RULE
             or record.subjects
             != tuple(sorted((rule.dependency, *rule.allowed_sources, *rule.exact_sources)))
             or record.provenance != tuple(sorted(rule.provenance))
@@ -168,7 +171,7 @@ def _owner_ids(
         owner = known.get(component.id)
         if (
             owner is None
-            or owner.evidence_class.value != "DECLARED_RULE"
+            or owner.evidence_class != _EvidenceClass.DECLARED_RULE
             or owner.kind
             != ("inside_component_responsibility" if parent_scope else "component_responsibility")
             or owner.data.get("parent_id") != parent_scope
@@ -212,7 +215,7 @@ def _public_api_ids(contract: ArchitectureContract, known: dict[str, Record]) ->
         if (
             record is None
             or record.kind != "declared_public_api"
-            or record.evidence_class.value != "DECLARED_RULE"
+            or record.evidence_class != _EvidenceClass.DECLARED_RULE
             or record.title != selector
             or record.subjects != (selector,)
             or declarations is None
@@ -258,7 +261,7 @@ def _authenticate_rules(tree: InsideContractTree, known: dict[str, Record]) -> N
     actual = tuple(
         item
         for item in known.values()
-        if item.kind in RULE_KINDS and item.evidence_class.value == "DECLARED_RULE"
+        if item.kind in RULE_KINDS and item.evidence_class == _EvidenceClass.DECLARED_RULE
     )
     if {item.id for item in expected} != {item.id for item in actual} or any(
         known.get(item.id) != item for item in expected
@@ -268,8 +271,10 @@ def _authenticate_rules(tree: InsideContractTree, known: dict[str, Record]) -> N
 
 def _target_definition(graph: ArchitectureGraph) -> TargetDefinition:
     return TargetDefinition(
-        entities=tuple(entity for entity in graph.entities if entity.kind != "component"),
-        relationships=tuple(edge for edge in graph.relationships if edge.kind != "requires"),
+        entities=tuple(entity for entity in graph.entities if entity.kind != _EntityKind.COMPONENT),
+        relationships=tuple(
+            edge for edge in graph.relationships if edge.kind != _RelationshipKind.REQUIRES
+        ),
         scopes=graph.target_scopes,
         schema_version=graph.schema_version,
     )

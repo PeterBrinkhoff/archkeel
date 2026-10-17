@@ -17,19 +17,22 @@ from archkeel.ir.facts import (
     BuiltinTarget,
     Capabilities,
     CollectionCoverage,
+    ConstructCapability,
+    ConstructSupport,
     EvidenceClass,
     ExternalPackageTarget,
     FactSection,
     FileFact,
+    ForbiddenConstructKind,
     ImportTarget,
     Language,
     LocalTarget,
     Record,
     ResolutionInput,
-    ResolutionRole,
     SourceFacts,
     SourceInfo,
     SourceProfile,
+    SourceResolution,
     SourceSectionName,
     UnresolvedTarget,
     stable_id,
@@ -46,9 +49,17 @@ from archkeel.ir.facts_codec import (
 from archkeel.ir.identity import module_identity
 from archkeel.ir.protocol import CollectionRequest, TypeScriptSettings
 
-from .config import ModuleKind, PathToken, Snapshot, join, load_config, within
+from .config import ModuleKind, Snapshot, join, load_config, within
 from .parse import parse
-from .resolve import Found, ModuleFormat, Resolver, Unknown, is_builtin, is_relative, package_name
+from .resolve import Found, Resolver, Unknown
+from .source_input import (
+    ModuleFormat,
+    PathToken,
+    SourceKind,
+    SpecifierKind,
+    classify_file,
+    classify_specifier,
+)
 from .syntax import (
     Base,
     Definition,
@@ -64,12 +75,6 @@ from .syntax import (
     Syntax,
     Visibility,
 )
-
-
-class _ResolutionStatus(Enum):
-    RESOLVED = "resolved"
-    PARTIAL = "partially_resolved"
-    UNRESOLVED = "unresolved"
 
 
 class _InventoryStatus(Enum):
@@ -89,10 +94,8 @@ _SECTIONS: tuple[SourceSectionName, ...] = (
     SourceSectionName.CALLS,
     SourceSectionName.REFERENCES,
     SourceSectionName.BINDINGS,
+    SourceSectionName.CONSTRUCTS,
 )
-_SOURCE: Final = (".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs")
-_DECLARATION: Final = (".d.ts", ".d.mts", ".d.cts")
-_EXPLICIT_RUNTIME: Final = (".cjs", ".mjs", ".js")
 # What the compiler's `trim()` removes, which Python's `strip()` does not match exactly.
 _WHITESPACE: Final = " \t\n\v\f\r                 　﻿"
 _FEATURES: Final = (
@@ -144,7 +147,7 @@ class _Collection:
         for problem in sorted(self.snapshot.problems):
             self._gap(problem)
         inputs = tuple(
-            ResolutionInput(path, digest, ResolutionRole(role))
+            ResolutionInput(path, digest, role)
             for path, (digest, role) in sorted(self.snapshot.inputs.items())
         )
         unknowns = tuple(parse_record(item) for _, item in sorted(self.gaps.items()))
@@ -164,6 +167,7 @@ class _Collection:
             SourceSectionName.CALLS: tuple(parse_record(item) for item in calls),
             SourceSectionName.REFERENCES: tuple(parse_record(item) for item in references),
             SourceSectionName.BINDINGS: tuple(parse_record(item) for item in bindings),
+            SourceSectionName.CONSTRUCTS: self._constructs(),
         }
         return SourceFacts(
             SourceProfile.TYPESCRIPT,
@@ -175,7 +179,15 @@ class _Collection:
                 hashlib.sha256(listing.encode("utf-8")).hexdigest(),
                 tuple(f"{root}/**" if self.snapshot.is_dir(root) else root for root in self.roots),
             ),
-            Capabilities(_SECTIONS, _FEATURES),
+            Capabilities(
+                _SECTIONS,
+                _FEATURES,
+                (
+                    ConstructCapability(
+                        ForbiddenConstructKind.STRING_LITERAL_COMPARE, ConstructSupport.PARTIAL
+                    ),
+                ),
+            ),
             inputs,
             tuple(sorted(self.files, key=lambda item: item.rel_path)),
             tuple(self.targets),
@@ -189,6 +201,36 @@ class _Collection:
             ),
             tuple(parse_evidence(item) for _, item in sorted(self.evidence.items())),
         )
+
+    def _constructs(self) -> tuple[Record, ...]:
+        """Publish witnessed syntax; a partial construct inventory cannot prove absence."""
+        kind = ForbiddenConstructKind.STRING_LITERAL_COMPARE
+        records: list[Record] = []
+        for rel, syntax in self.syntax.items():
+            module = self.modules[rel]
+            for comparison in syntax.string_comparisons:
+                owner = f"{module}.{comparison.scope}" if comparison.scope else module
+                records.append(
+                    parse_record(
+                        classified(
+                            item_id=stable_id(
+                                "TSCONSTRUCT",
+                                rel,
+                                comparison.span.line,
+                                comparison.span.column,
+                                kind.value,
+                            ),
+                            evidence_class=EvidenceClass.FACT,
+                            area="constructs",
+                            kind=kind.value,
+                            title=f"{owner} compares a written string literal",
+                            subjects=[owner],
+                            evidence_ids=[self._cite(rel, comparison.span)],
+                            data={"owner": owner, "construct": kind.value},
+                        )
+                    )
+                )
+        return tuple(sorted(records, key=lambda item: item.id))
 
     def _inner_facts(
         self,
@@ -509,7 +551,7 @@ class _Collection:
         import_by_local: dict[str, dict[str, list[tuple[str, str, bool, bool]]]],
         definitions_by_module: dict[str, list[Definition]],
         by_qualified: dict[str, list[tuple[str, Definition]]],
-    ) -> tuple[list[str], _ResolutionStatus, str | None]:
+    ) -> tuple[list[str], SourceResolution, str | None]:
         name = site.name
         candidates: list[str] = []
         reason: str | None = None
@@ -557,20 +599,20 @@ class _Collection:
             reason = "name is rebound in module scope"
         candidates = sorted(set(candidates))
         status = (
-            _ResolutionStatus.RESOLVED
+            SourceResolution.RESOLVED
             if len(candidates) == 1
             and reason is None
             and (
                 unique_this_member
                 or all(len(by_qualified.get(target, [])) == 1 for target in candidates)
             )
-            else _ResolutionStatus.PARTIAL
+            else SourceResolution.PARTIALLY_RESOLVED
             if candidates
-            else _ResolutionStatus.UNRESOLVED
+            else SourceResolution.UNRESOLVED
         )
-        if status is _ResolutionStatus.PARTIAL and reason is None:
+        if status is SourceResolution.PARTIALLY_RESOLVED and reason is None:
             reason = "multiple definition sites share the target name"
-        if reason is None and status is not _ResolutionStatus.RESOLVED:
+        if reason is None and status is not SourceResolution.RESOLVED:
             reason = "definition is missing or ambiguous"
         return candidates, status, reason
 
@@ -618,7 +660,7 @@ class _Collection:
         source_id: str | None,
         site: Site,
         candidates: list[str],
-        status: _ResolutionStatus,
+        status: SourceResolution,
         reason: str | None,
         evidence: str,
     ) -> RawRecord:
@@ -655,7 +697,7 @@ class _Collection:
         source_id: str | None,
         site: Site,
         candidates: list[str],
-        status: _ResolutionStatus,
+        status: SourceResolution,
         reason: str | None,
         evidence: str,
         by_qualified: dict[str, list[tuple[str, Definition]]],
@@ -684,18 +726,18 @@ class _Collection:
                 )
             )
             create_status = (
-                _ResolutionStatus.RESOLVED
-                if len(targets) == 1 and status is _ResolutionStatus.RESOLVED
-                else _ResolutionStatus.PARTIAL
+                SourceResolution.RESOLVED
+                if len(targets) == 1 and status is SourceResolution.RESOLVED
+                else SourceResolution.PARTIALLY_RESOLVED
                 if targets
-                else _ResolutionStatus.UNRESOLVED
+                else SourceResolution.UNRESOLVED
             )
             data["construction"] = {
                 "status": create_status.value,
                 "targets": targets,
                 "candidates_truncated": False,
                 "reason": "Unique local classifier construction"
-                if create_status is _ResolutionStatus.RESOLVED
+                if create_status is SourceResolution.RESOLVED
                 else reason or "Construction target is not proven",
             }
             result_bindings = self._result_binding(rel, site, call_id)
@@ -812,11 +854,11 @@ class _Collection:
         targets = [qualified] if classifier_targets else []
         evidence = self._cite(rel, base.span)
         status = (
-            _ResolutionStatus.RESOLVED
+            SourceResolution.RESOLVED
             if len(classifier_targets) == 1
-            else _ResolutionStatus.PARTIAL
+            else SourceResolution.PARTIALLY_RESOLVED
             if targets
-            else _ResolutionStatus.UNRESOLVED
+            else SourceResolution.UNRESOLVED
         )
         result: dict[str, object] = {
             "id": stable_id("TSBASE", owner, base.span.line, base.span.column, name),
@@ -830,7 +872,7 @@ class _Collection:
         }
         if not targets:
             result["reason"] = "Base is not a unique local classifier"
-        elif status is _ResolutionStatus.PARTIAL:
+        elif status is SourceResolution.PARTIALLY_RESOLVED:
             result["reason"] = "multiple classifier definition sites share the target name"
         return result
 
@@ -872,7 +914,13 @@ class _Collection:
     def _observe(self, rel: str) -> bytes | None:
         """Read a local dependency; it joins the walk when it is a source file in scope."""
         content = self.snapshot.read(rel)
-        if content is not None and self._selected(rel) and rel.endswith(_SOURCE):
+        suffix = classify_file(rel)
+        if (
+            content is not None
+            and self._selected(rel)
+            and suffix is not None
+            and suffix.source_kind is not None
+        ):
             if rel not in self.queue:
                 self.queue.append(rel)
         elif content is not None:
@@ -928,8 +976,9 @@ class _Collection:
         options = self.config.options
         resolver: Resolver = self.resolver
         form = resolver.format_of(rel)
+        suffix = classify_file(rel)
         cjs = (
-            rel.endswith((".cjs", ".cts"))
+            (suffix is not None and suffix.format_hint is ModuleFormat.CJS)
             or options.module is ModuleKind.COMMONJS
             or (
                 form is ModuleFormat.CJS
@@ -1019,7 +1068,8 @@ class _Collection:
         form: ModuleFormat | Unknown | None,
     ) -> ImportTarget:
         specifier: str = reference.specifier or ""
-        if not reference.type_only and specifier.startswith("node:") and is_builtin(specifier):
+        source = classify_specifier(specifier)
+        if not reference.type_only and source.kind is SpecifierKind.NODE and source.builtin:
             return BuiltinTarget(identity, specifier)
         if reference.mode_override:
             return self._unresolved(
@@ -1041,7 +1091,7 @@ class _Collection:
         if isinstance(found, Unknown):
             return self._unresolved(module, identity, specifier, found.reason)
         if found is None:
-            if is_builtin(specifier):
+            if source.builtin:
                 return BuiltinTarget(identity, specifier)
             return self._unresolved(module, identity, specifier, f"Unresolved module: {specifier}")
         return self._local(rel, module, reference, identity, found)
@@ -1050,7 +1100,9 @@ class _Collection:
         self, rel: str, module: str, reference: Reference, identity: str, found: Found
     ) -> ImportTarget:
         specifier: str = reference.specifier or ""
+        source = classify_specifier(specifier)
         path: str = found.path
+        suffix = classify_file(path)
         if self.snapshot.read(path) is None:
             return self._unresolved(
                 module, identity, specifier, f"Unavailable local target: {specifier}"
@@ -1058,19 +1110,22 @@ class _Collection:
         if any(
             PathToken.parse(segment) is PathToken.NODE_MODULES for segment in path.split("/")
         ) or (not self._selected(path) and found.external):
-            if specifier.startswith("#"):
+            if source.kind is SpecifierKind.IMPORTS:
                 reason = f"External package alias identity is not observed: {specifier}"
-            elif is_relative(specifier):
+            elif source.relative:
                 reason = f"Unidentified external package: {specifier}"
             else:
-                return ExternalPackageTarget(identity, package_name(specifier))
+                return ExternalPackageTarget(identity, source.package)
             return self._unresolved(module, identity, specifier, reason)
         type_only = reference.type_only
-        relative = specifier.startswith(("./", "../"))
+        relative = source.relative_path
         lookup = join(posixpath.dirname(rel) or ".", specifier)
-        declaration = path if path.endswith(_DECLARATION) else None
+        declaration = (
+            path if suffix is not None and suffix.source_kind is SourceKind.DECLARATION else None
+        )
         runtime = None if declaration else path
-        explicit = relative and specifier.endswith(_EXPLICIT_RUNTIME)
+        named_suffix = classify_file(specifier)
+        explicit = relative and named_suffix is not None and named_suffix.explicit_runtime
         direct = reference.form in (ReferenceForm.REQUIRE, ReferenceForm.IMPORT_EQUALS)
         common_lookup = relative and direct and not explicit
         if not type_only:

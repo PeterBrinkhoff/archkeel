@@ -15,15 +15,28 @@ source for a component's size, so the claim and the table cannot disagree.
 
 from __future__ import annotations
 
+import builtins as _builtins
 from collections import Counter
 from dataclasses import dataclass
-from typing import Literal, TypeAlias
+from enum import StrEnum
 
+from .facts import SourceResolution, parse_source_resolution
 from .interfaces import component_owners, owner_of
-from .model import ComparisonStatus, ComponentOwnership, Observation, int_value, text_value
-from .profiles import profile_for
+from .model import (
+    ComparisonStatus,
+    ComponentOwnership,
+    GraphTopologyLevel,
+    Observation,
+    int_value,
+    parse_graph_topology_level,
+    text_value,
+)
+from .profiles import UnmeasurableScalar, profile_for
 
-StructureLevel: TypeAlias = Literal["component", "package"]
+
+class StructureLevel(StrEnum):
+    COMPONENT = "component"
+    PACKAGE = "package"
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,6 +51,10 @@ class StructureMetric:
     fan_out: int
     calls: int | None
     unresolved: int | None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.level, StructureLevel):
+            _builtins.object.__setattr__(self, "level", StructureLevel(self.level))
 
 
 def _module_names(observation: Observation) -> tuple[str, ...]:
@@ -56,7 +73,7 @@ def module_edges(observation: Observation) -> tuple[tuple[str, str, int], ...]:
     """
     edges: list[tuple[str, str, int]] = []
     for record in observation.records("dependency_edges") or ():
-        if record.data.get("level") != "module":
+        if parse_graph_topology_level(record.data.get("level")) is not GraphTopologyLevel.MODULE:
             continue
         source = text_value(record.data.get("source"))
         target = text_value(record.data.get("target"))
@@ -70,7 +87,7 @@ def _calls_by_module(
 ) -> tuple[Counter[str] | None, Counter[str] | None]:
     if (
         observation.records("calls") is None
-        or "calls_unresolved" in profile_for(observation.analyzer.name).unmeasured
+        or UnmeasurableScalar.CALLS_UNRESOLVED in profile_for(observation.analyzer.name).unmeasured
     ):
         return None, None
     total: Counter[str] = Counter()
@@ -80,7 +97,7 @@ def _calls_by_module(
         if not module:
             continue
         total[module] += 1
-        if record.data.get("status") == "unresolved":
+        if parse_source_resolution(record.data.get("status")) is SourceResolution.UNRESOLVED:
             unresolved[module] += 1
     return total, unresolved
 
@@ -143,6 +160,7 @@ def scope_metrics(
     declared, so a draft's size and a declared component's size share one aggregation
     (AD-38) instead of `init` counting modules and edges again.
     """
+    level = StructureLevel(level)
     edges = module_edges(observation)
     calls, unresolved = _calls_by_module(observation)
     return _aggregate(level, scope_of, edges, calls, unresolved)
@@ -156,8 +174,8 @@ def structure_metrics(observation: Observation) -> tuple[StructureMetric, ...]:
         module: owner for module in names if (owner := owner_of(module, components)) is not None
     }
     by_package = {module: module.rpartition(".")[0] or module for module in names}
-    return scope_metrics(observation, "component", by_component) + scope_metrics(
-        observation, "package", by_package
+    return scope_metrics(observation, StructureLevel.COMPONENT, by_component) + scope_metrics(
+        observation, StructureLevel.PACKAGE, by_package
     )
 
 
@@ -180,7 +198,9 @@ class InsideSizes:
     candidates: tuple[OversizedInside, ...] = ()
 
     def __post_init__(self) -> None:
-        if self.status == "UNKNOWN" and (
+        if not isinstance(self.status, ComparisonStatus):
+            _builtins.object.__setattr__(self, "status", ComparisonStatus(self.status))
+        if self.status is ComparisonStatus.UNKNOWN and (
             self.components or self.component_edges or self.candidates
         ):
             raise ValueError("an unsupported claim names no component")
@@ -208,13 +228,13 @@ def oversized_insides(observation: Observation) -> InsideSizes:
     against zero component edges and call every component with one inner edge large.
     """
     if observation.records("modules") is None or observation.records("dependency_edges") is None:
-        return InsideSizes("UNKNOWN")
+        return InsideSizes(ComparisonStatus.UNKNOWN)
     components = component_owners(observation)
     edges = _component_edge_count(observation, components)
     candidates = tuple(
         OversizedInside(metric.scope, metric.modules, metric.inner_edges)
         for metric in structure_metrics(observation)
-        if metric.level == "component"
+        if metric.level is StructureLevel.COMPONENT
         and (metric.modules > len(components) or metric.inner_edges > edges)
     )
-    return InsideSizes("SUPPORTED", len(components), edges, candidates)
+    return InsideSizes(ComparisonStatus.SUPPORTED, len(components), edges, candidates)

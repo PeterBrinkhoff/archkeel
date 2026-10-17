@@ -5,10 +5,12 @@
 
 from __future__ import annotations
 
+import builtins
 import hashlib
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from enum import StrEnum
+from enum import Enum, StrEnum
 from typing import Literal, TypeAlias
 
 from .state_facts import StateFacts
@@ -19,6 +21,26 @@ class Language(StrEnum):
     PYTHON = "python"
     DART = "dart"
     TYPESCRIPT = "typescript"
+
+
+class DefinitionContextKind(StrEnum):
+    IF = "if"
+    FOR = "for"
+    ASYNC_FOR = "async_for"
+    WHILE = "while"
+    TRY = "try"
+    TRY_STAR = "try_star"
+    WITH = "with"
+    ASYNC_WITH = "async_with"
+    MATCH = "match"
+
+
+class DefinitionBranchKind(StrEnum):
+    BODY = "body"
+    ELSE = "else"
+    HANDLER = "handler"
+    FINALLY = "finally"
+    CASE = "case"
 
 
 class RuntimeRequirementState(StrEnum):
@@ -58,6 +80,26 @@ class InventoryVersion(StrEnum):
 class ResolutionRole(StrEnum):
     SELECTED = "selected"
     RESOLUTION = "resolution"
+
+
+class SourceResolution(StrEnum):
+    """Resolution claims published by source collectors, separate from graph resolution."""
+
+    RESOLVED = "resolved"
+    PARTIALLY_RESOLVED = "partially_resolved"
+    UNRESOLVED = "unresolved"
+
+
+def parse_source_resolution(value: JsonValue | RawJson) -> SourceResolution | None:
+    """Recognize source resolution at an owned port; future record data remains opaque."""
+    if isinstance(value, SourceResolution):
+        return value
+    if not isinstance(value, str):
+        return None
+    try:
+        return SourceResolution(value)
+    except ValueError:
+        return None
 
 
 def source_dirty(value: bool | str) -> bool | Literal["unknown"]:
@@ -153,6 +195,156 @@ class RecordData:
 
 
 JsonValue: TypeAlias = str | int | float | bool | None | tuple["JsonValue", ...] | RecordData
+RawJson: TypeAlias = str | int | float | bool | None | list["RawJson"] | dict[str, "RawJson"]
+
+
+class PropertyOperation(Enum):
+    CREATE = "create"
+    GETTER = "getter"
+    SETTER = "setter"
+
+
+class PropertyOrigin(Enum):
+    NEW = "new"
+    LOCAL = "local"
+    BASE = "base"
+
+
+@dataclass(frozen=True, slots=True)
+class PropertyBinding:
+    """An ordered standard-property operation, not proof of descriptor ownership."""
+
+    operation: PropertyOperation
+    source: PropertyOrigin
+    line: int
+    source_line: int
+
+    def __post_init__(self) -> None:
+        try:
+            builtins.object.__setattr__(self, "operation", PropertyOperation(self.operation))
+            builtins.object.__setattr__(self, "source", PropertyOrigin(self.source))
+        except ValueError as error:
+            raise ValueError("invalid property binding operation or order") from error
+        if (
+            type(self.line) is not int
+            or type(self.source_line) is not int
+            or self.line < 1
+            or self.source_line < 0
+            or self.source_line >= self.line
+            or (self.operation is PropertyOperation.CREATE) != (self.source is PropertyOrigin.NEW)
+            or (self.source is PropertyOrigin.LOCAL) != (self.source_line > 0)
+        ):
+            raise ValueError("invalid property binding operation or order")
+
+
+def property_binding(value: RecordData | Mapping[str, object]) -> PropertyBinding:
+    """Decode the existing property wire record at the source-facts boundary."""
+    raw = dict(value.entries) if isinstance(value, RecordData) else value
+    if set(raw) != {"operation", "source", "line", "source_line"}:
+        raise ValueError("invalid property binding fields")
+    operation, source = raw["operation"], raw["source"]
+    line, source_line = raw["line"], raw["source_line"]
+    if (
+        not isinstance(operation, str)
+        or not isinstance(source, str)
+        or not isinstance(line, int)
+        or not isinstance(source_line, int)
+    ):
+        raise ValueError("invalid property binding operation or order")
+    try:
+        return PropertyBinding(
+            PropertyOperation(operation), PropertyOrigin(source), line, source_line
+        )
+    except ValueError as error:
+        raise ValueError("invalid property binding operation or order") from error
+
+
+class ParameterKind(StrEnum):
+    POSITIONAL_ONLY = "positional_only"
+    POSITIONAL = "positional"
+    KEYWORD_ONLY = "keyword_only"
+    VARARGS = "varargs"
+    KWARGS = "kwargs"
+    UNKNOWN = "unknown"
+
+
+class SourceNameVisibility(StrEnum):
+    """Source underscore spelling, separate from a language's API visibility detail."""
+
+    PRIVATE = "private"
+    PUBLIC_NAME = "public_name"
+
+
+class SymbolClassKind(StrEnum):
+    """The five values `class_kind` resolves to (`analyzer.python.symbols`'s fixpoint)."""
+
+    PROTOCOL = "protocol"
+    ENUM = "enum"
+    PYDANTIC_MODEL = "pydantic_model"
+    DATACLASS = "dataclass"
+    CLASS = "class"
+
+
+class MethodKind(Enum):
+    INSTANCE = "instance"
+    STATIC = "static"
+    CLASS = "class"
+    CONSTRUCTOR = "constructor"
+    FACTORY = "factory"
+
+
+def parse_method_kind(value: JsonValue | RawJson | MethodKind) -> MethodKind | None:
+    """Recognize shared method tags without assigning meaning to opaque wire data."""
+    if isinstance(value, MethodKind):
+        return value
+    if not isinstance(value, str):
+        return None
+    try:
+        return MethodKind(value)
+    except ValueError:
+        return None
+
+
+def parse_symbol_class_kind(value: JsonValue | RawJson | SymbolClassKind) -> SymbolClassKind | None:
+    """Recognize source classifier tags without assigning meaning to foreign wire data."""
+    if not isinstance(value, str):
+        return None
+    try:
+        return SymbolClassKind(value)
+    except ValueError:
+        return None
+
+
+def parse_source_name_visibility(
+    value: JsonValue | RawJson | SourceNameVisibility,
+) -> SourceNameVisibility | None:
+    """Recognize spelling tags without interpreting foreign language visibility values."""
+    if not isinstance(value, str):
+        return None
+    try:
+        return SourceNameVisibility(value)
+    except ValueError:
+        return None
+
+
+@dataclass(frozen=True, slots=True)
+class MethodDescriptor:
+    """Nominal method kind with independent source descriptor and binding proof."""
+
+    method_kind: MethodKind
+    signature_decorators_proven: bool
+    source_final_method_binding: bool
+    property_binding: PropertyBinding | None = None
+
+    def __post_init__(self) -> None:
+        if (
+            not isinstance(self.method_kind, MethodKind)
+            or type(self.signature_decorators_proven) is not bool
+            or type(self.source_final_method_binding) is not bool
+            or self.property_binding is not None
+            and not isinstance(self.property_binding, PropertyBinding)
+        ):
+            raise ValueError("invalid method descriptor")
 
 
 @dataclass(frozen=True, slots=True)

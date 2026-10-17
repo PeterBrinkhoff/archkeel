@@ -8,7 +8,13 @@ from dataclasses import asdict, replace
 from pathlib import PurePosixPath
 
 from archkeel.ir.architecture_graph import ArchitectureGraph, ArchitectureReport, Coverage, Entity
-from archkeel.ir.architecture_projection import ArchitectureProjection
+from archkeel.ir.architecture_graph import AssessmentStatus as _AssessmentStatus
+from archkeel.ir.architecture_graph import CoverageStatus as _CoverageStatus
+from archkeel.ir.architecture_graph import EntityKind as _EntityKind
+from archkeel.ir.architecture_graph import OriginKind as _OriginKind
+from archkeel.ir.architecture_graph import RelationshipKind as _RelationshipKind
+from archkeel.ir.architecture_graph import RuleAssessmentStatus as _RuleAssessmentStatus
+from archkeel.ir.architecture_projection import ArchitectureProjection, PermissionStatus
 from archkeel.ir.codec import decode_json, value_bytes
 from archkeel.ir.decisions import rule_assessment_applies_to_component, rule_uncertainty_evidence
 from archkeel.ir.model import (
@@ -18,10 +24,11 @@ from archkeel.ir.model import (
     RecordData,
     RunResult,
     module_in_ownership,
-    stable_id,
     text_value,
 )
 from archkeel.ir.module_explore import ModuleExploreLevel, ModuleStatistic, module_exploration
+
+from .atlas_deviations import AtlasDeviation, level_deviations
 
 
 def _reference_fields(item: dict[str, object], references: dict[str, int]) -> dict[str, object]:
@@ -50,7 +57,7 @@ def _component_edges(level: ModuleExploreLevel) -> list[dict[str, object]]:
             if all(level.cells[index].import_sites is not None for index in indices)
             else None,
             "status": "FAIL"
-            if any(level.cells[index].status == "FAIL" for index in indices)
+            if any(level.cells[index].status == _AssessmentStatus.FAIL for index in indices)
             else "UNKNOWN",
         }
         for (source, target), indices in sorted(pairs.items())
@@ -184,7 +191,10 @@ def _components_payload(
             and all(
                 entry.symbols is not None
                 and entry.symbol_coverage
-                and all(coverage.status == "complete" for coverage in entry.symbol_coverage)
+                and all(
+                    coverage.status == _CoverageStatus.COMPLETE
+                    for coverage in entry.symbol_coverage
+                )
                 for entry in statistics
             ),
         }
@@ -197,13 +207,13 @@ def _declared_modules(report: ArchitectureReport) -> list[dict[str, object]]:
         return []
     entities = {item.id: item for item in report.target.entities}
     children = Counter(item.parent_id for item in report.target.entities)
-    module_ids = {item.id for item in report.target.entities if item.kind == "module"}
+    module_ids = {item.id for item in report.target.entities if item.kind == _EntityKind.MODULE}
     modules: list[dict[str, object]] = []
     for entity in report.target.entities:
-        if entity.kind != "module":
+        if entity.kind != _EntityKind.MODULE:
             continue
         parent = entities.get(entity.parent_id or "")
-        while parent is not None and parent.kind != "component":
+        while parent is not None and parent.kind != _EntityKind.COMPONENT:
             parent = entities.get(parent.parent_id or "")
         if parent is not None:
             modules.append(
@@ -228,8 +238,10 @@ def _declared_modules(report: ArchitectureReport) -> list[dict[str, object]]:
 def _module_correspondences(report: ArchitectureReport) -> list[dict[str, object]]:
     if report.observed is None or report.target is None or report.comparison is None:
         return []
-    target_modules = {item.id for item in report.target.entities if item.kind == "module"}
-    observed_modules = {item.id for item in report.observed.entities if item.kind == "module"}
+    target_modules = {item.id for item in report.target.entities if item.kind == _EntityKind.MODULE}
+    observed_modules = {
+        item.id for item in report.observed.entities if item.kind == _EntityKind.MODULE
+    }
     return [
         {"target_id": item.target_id, "observed_ids": list(item.observed_ids)}
         for item in report.comparison.correspondences
@@ -317,7 +329,7 @@ def _level_balance(
     level: ModuleExploreLevel,
     report: ArchitectureReport,
     projection: ArchitectureProjection,
-) -> tuple[dict[str, int | None], list[dict[str, str | None]]]:
+) -> tuple[dict[str, int | None], tuple[AtlasDeviation, ...]]:
     balance = next((item for item in projection.levels if item.parent_id == level.parent_id), None)
     if balance is None:
         if not projection.levels:
@@ -326,8 +338,8 @@ def _level_balance(
                 "used": None,
                 "allowed_unused": None,
                 "undeclared": None,
-            }, []
-        return {"declared": 0, "used": 0, "allowed_unused": 0, "undeclared": 0}, []
+            }, ()
+        return {"declared": 0, "used": 0, "allowed_unused": 0, "undeclared": 0}, ()
     counts: dict[str, int | None] = {
         "declared": balance.declared,
         "used": balance.used,
@@ -335,14 +347,14 @@ def _level_balance(
         "undeclared": balance.undeclared,
     }
     if balance.unused is None or balance.undeclared is None:
-        return counts, []
+        return counts, ()
     if report.target is None:
-        return counts, []
+        return counts, ()
     component_ids = set(level.component_ids)
     declared = {
         (edge.source_id, edge.target_id)
         for edge in report.target.relationships
-        if edge.kind == "requires"
+        if edge.kind == _RelationshipKind.REQUIRES
         and edge.source_id in component_ids
         and edge.target_id is not None
     }
@@ -351,7 +363,7 @@ def _level_balance(
         for component in projection.components
         if component.id in component_ids
         for permission in component.permissions
-        if permission.status == "allowed"
+        if permission.status is PermissionStatus.ALLOWED
     }
     owners = {item.id: item.component_id for item in level.modules}
     used: set[tuple[str, str]] = set()
@@ -360,21 +372,7 @@ def _level_balance(
         target_owner = owners.get(cell.target_id)
         if source_owner is not None and target_owner is not None and source_owner != target_owner:
             used |= {(source_owner, target_owner)}
-    deviations: list[dict[str, str | None]] = [
-        {
-            "id": stable_id("atlas-deviation", level.parent_id, kind, source, target),
-            "kind": kind,
-            "source_id": source,
-            "target_id": target,
-            "level_id": level.parent_id,
-        }
-        for kind, pairs in (
-            ("allowed_unused", sorted(declared - used)),
-            ("undeclared", sorted(used - declared)),
-        )
-        for source, target in pairs
-    ]
-    return counts, deviations
+    return counts, level_deviations(level.parent_id, declared, used)
 
 
 def _cell_payload(
@@ -413,7 +411,7 @@ def _atlas_levels(
     list[dict[str, object]],
     list[dict[str, object]],
     dict[str | None, dict[str, int | None]],
-    list[dict[str, str | None]],
+    list[AtlasDeviation],
     list[dict[str, object]],
     dict[tuple[str, str | None, tuple[str, ...], str, str], int],
 ]:
@@ -426,7 +424,7 @@ def _atlas_levels(
     findings, level_findings = _finding_payload(model, projection, references)
     finding_indices = {item["id"]: index for index, item in enumerate(findings)}
     balances: dict[str | None, dict[str, int | None]] = {}
-    deviations: list[dict[str, str | None]] = []
+    deviations: list[AtlasDeviation] = []
     level_deviations: dict[str | None, list[str]] = defaultdict(list)
     for level, payload in zip(exploration, levels, strict=True):
         payload["finding_ids"] = sorted(
@@ -438,9 +436,7 @@ def _atlas_levels(
         payload["balance"] = balance
         balances[level.parent_id] = balance
         for item in items:
-            identity = item["id"]
-            if identity is not None:
-                level_deviations[level.parent_id] += [identity]
+            level_deviations[level.parent_id] += [item.id]
             deviations.append(item)
         payload["deviation_ids"] = level_deviations[level.parent_id]
     return levels, findings, balances, deviations, questions, assignments
@@ -476,7 +472,11 @@ def _rule_assessments_payload(
     for item in result.rule_assessments or ():
         scope_id = scopes.get(item.id)
         scope = components[scope_id].scope if scope_id in components else item.scope
-        uncertainty = evidence.get(item.id) if item.status == "UNKNOWN" or item.undecided else None
+        uncertainty = (
+            evidence.get(item.id)
+            if item.status == _RuleAssessmentStatus.UNKNOWN or item.undecided
+            else None
+        )
         records = uncertainty.evidence if uncertainty is not None else ()
         rows.append(
             {
@@ -562,7 +562,7 @@ def atlas_payload(
         and all(
             module.symbols is not None
             and module.symbol_coverage
-            and all(entry.status == "complete" for entry in module.symbol_coverage)
+            and all(entry.status == _CoverageStatus.COMPLETE for entry in module.symbol_coverage)
             for module in root.modules
         ),
         "declared_modules": _declared_modules(report),
@@ -588,7 +588,7 @@ def atlas_payload(
         "levels": levels,
         "findings": findings,
         "balance": _system_balance(balances),
-        "deviations": deviations,
+        "deviations": [item.to_wire() for item in deviations],
         "questions": questions,
         "reference_ids": list(references),
         "unknowns": [
@@ -646,13 +646,13 @@ def _permission_navigation(
         ancestors = []
         while current is not None and current.id not in ancestors:
             ancestors.append(current.id)
-            if current.kind == "module":
+            if current.kind == _EntityKind.MODULE:
                 module_id = current.id
-            if current.kind == "component":
+            if current.kind == _EntityKind.COMPONENT:
                 component_id = current.id
                 component_ids.add(current.id)
             current = entities.get(current.parent_id or "")
-        if graph and graph.origin == "observed" and module_id:
+        if graph and graph.origin == _OriginKind.OBSERVED and module_id:
             owners = [
                 membership.component_id
                 for membership in report.memberships
@@ -670,7 +670,8 @@ def _permission_navigation(
                 "component_id": component_id,
                 "origin": graph.origin,
                 "scope_id": entity.parent_id
-                if entity.kind not in ("module", "component", "package")
+                if entity.kind
+                not in (_EntityKind.MODULE, _EntityKind.COMPONENT, _EntityKind.PACKAGE)
                 else entity.id,
                 "label": entity.qualified_name,
             }
@@ -707,7 +708,7 @@ def _declared_permissions(
                 modules = [
                     item
                     for item in report.target.entities
-                    if item.kind == "module" and item.qualified_name == source
+                    if item.kind == _EntityKind.MODULE and item.qualified_name == source
                 ]
                 if len(modules) == 1:
                     links = _permission_navigation(

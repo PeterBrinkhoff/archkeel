@@ -8,13 +8,30 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from datetime import datetime
+from enum import StrEnum
 
 _SHA = re.compile(r"[0-9a-f]{40}\Z")
-_EVENTS = frozenset({"expectation_published", "candidate_submitted"})
 
 
 class OrderingError(ValueError):
     """Host evidence is absent or cannot prove an ordering."""
+
+
+class HostEvent(StrEnum):
+    """The closed replay vocabulary accepted by local ordering evidence."""
+
+    EXPECTATION_PUBLISHED = "expectation_published"
+    CANDIDATE_SUBMITTED = "candidate_submitted"
+
+
+def parse_event(value: str) -> HostEvent:
+    """Convert replay events without closing raw provider event vocabularies."""
+    if not isinstance(value, str):
+        raise OrderingError("host record event is invalid")
+    try:
+        return HostEvent(value)
+    except ValueError as error:
+        raise OrderingError("host record event is invalid") from error
 
 
 @dataclass(frozen=True)
@@ -102,9 +119,7 @@ def parse_records(raw: object) -> tuple[HostRecord, ...]:
         if not isinstance(raw_record, dict) or set(raw_record) != {"sha", "event", "timestamp"}:
             raise OrderingError("each host record must contain exactly sha, event, timestamp")
         sha = validate_sha(raw_record["sha"])
-        event = raw_record["event"]
-        if not isinstance(event, str) or event not in _EVENTS:
-            raise OrderingError("host record event is invalid")
+        event = parse_event(raw_record["event"])
         timestamp = raw_record["timestamp"]
         parse_timestamp(timestamp)
         records.append(HostRecord(sha=sha, event=event, timestamp=timestamp))

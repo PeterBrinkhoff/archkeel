@@ -8,6 +8,13 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 
+from .architecture_graph import EntityKind
+from .facts import (
+    SourceNameVisibility,
+    SymbolClassKind,
+    parse_source_name_visibility,
+    parse_symbol_class_kind,
+)
 from .measurements import NameBudgetKind
 from .model import (
     FUNCTION_KINDS,
@@ -20,7 +27,9 @@ from .model import (
     module_in_ownership,
 )
 
-_CLASS_KINDS = frozenset({"dataclass", "protocol", "enum"})
+_CLASS_KINDS = frozenset(
+    {SymbolClassKind.DATACLASS, SymbolClassKind.PROTOCOL, SymbolClassKind.ENUM}
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -145,10 +154,16 @@ def _symbols_by_name(observation: Observation) -> dict[str, Record]:
 
 
 def _symbol_kind(symbol: Record) -> str:
-    if symbol.kind != "class":
+    try:
+        category = EntityKind(symbol.kind)
+    except ValueError:
         return symbol.kind
-    class_kind = symbol.data.get("class_kind")
-    return class_kind if isinstance(class_kind, str) and class_kind in _CLASS_KINDS else "class"
+    if category is not EntityKind.CLASS:
+        return symbol.kind
+    class_kind = parse_symbol_class_kind(symbol.data.get("class_kind"))
+    if class_kind is not None and class_kind in _CLASS_KINDS:
+        return class_kind.value
+    return SymbolClassKind.CLASS.value
 
 
 def _signature(symbol: Record) -> tuple[tuple[str, ...], str]:
@@ -245,7 +260,8 @@ def _public_symbol_names(observation: Observation) -> dict[str, frozenset[str]]:
         if (
             record.data.get("parent") is None
             and not record.data.get("definition_contexts")
-            and record.data.get("visibility") == "public_name"
+            and parse_source_name_visibility(record.data.get("visibility"))
+            is SourceNameVisibility.PUBLIC_NAME
             and isinstance(module, str)
             and isinstance(name, str)
         ):
@@ -446,7 +462,7 @@ def interface_budgets(
         rows = [item for item in profile.facades if item.component == facade.component]
         results.append(
             _budget_result(
-                "facade_names",
+                NameBudgetKind.FACADE_NAMES,
                 facade.subject,
                 f"/declarations/facade_budgets/{index}",
                 facade.max_names,
@@ -460,7 +476,7 @@ def interface_budgets(
         width = pairs.get((pair.source, pair.target))
         results.append(
             _budget_result(
-                "coupling_names",
+                NameBudgetKind.COUPLING_NAMES,
                 pair.subject,
                 f"/declarations/coupling_budgets/{index}",
                 pair.max_names,

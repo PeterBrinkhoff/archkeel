@@ -201,7 +201,7 @@ def test_self_facades_record_the_declared_types_they_expose(self_observation: Ob
     assert {
         "archkeel.check.ports:Analyzer",
         "archkeel.check.ports:Host",
-        "archkeel.render.summary:Badge",
+        "archkeel.render.summary_badges:Badge",
         "archkeel.render.summary:Summary",
         "archkeel.render.summary:VerdictRow",
     } <= declared
@@ -283,6 +283,7 @@ def test_self_analyzer_inside_covers_its_modules(self_observation: Observation) 
     assert set(modules_by_component) == {"dart", "process", "python", "typescript"}
     assert modules_by_component["process"] == {
         "archkeel.analyzer",
+        "archkeel.analyzer.bootstrap",
         "archkeel.analyzer.process",
         "archkeel.analyzer.runtime",
         "archkeel.analyzer.windows_job",
@@ -314,6 +315,7 @@ def test_self_analyzer_inside_covers_its_modules(self_observation: Observation) 
         "archkeel.analyzer.dart.parse",
         "archkeel.analyzer.dart.resolve",
         "archkeel.analyzer.dart.snapshot",
+        "archkeel.analyzer.dart.syntax",
     }
     assert modules_by_component["typescript"] == {
         "archkeel.analyzer.typescript",
@@ -322,6 +324,8 @@ def test_self_analyzer_inside_covers_its_modules(self_observation: Observation) 
         "archkeel.analyzer.typescript.entry",
         "archkeel.analyzer.typescript.parse",
         "archkeel.analyzer.typescript.resolve",
+        "archkeel.analyzer.typescript.source_input",
+        "archkeel.analyzer.typescript.syntax",
     }
     assert analyzer.unassigned == ()
     assert levels["analyzer:python"].unassigned == ()

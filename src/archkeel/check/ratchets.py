@@ -5,7 +5,9 @@
 
 from archkeel.ir.decisions import unknown_positions as _ir_unknown_positions
 from archkeel.ir.decisions import unknown_positions_by_rule as _ir_unknown_positions_by_rule
+from archkeel.ir.facts import SourceResolution, parse_source_resolution
 from archkeel.ir.interfaces import component_owners, owner_of
+from archkeel.ir.measurements import MeasurementResolution as _Resolution
 from archkeel.ir.measurements import (
     Measurements,
     RatchetError,
@@ -13,6 +15,7 @@ from archkeel.ir.measurements import (
     UnmeasurableScalar,
     compare_measurements,
 )
+from archkeel.ir.measurements import MetricComparisonStatus as _MetricComparisonStatus
 from archkeel.ir.model import (
     CallRow,
     CallStatus,
@@ -23,6 +26,7 @@ from archkeel.ir.model import (
     Verdict,
     text_value,
 )
+from archkeel.ir.model import KnownSemanticChangeKind as _KnownSemanticChangeKind
 from archkeel.ir.profiles import profile_for
 
 from .python_profile import crossing_imports
@@ -143,7 +147,7 @@ def measure_python_ratchets(observation: Observation) -> Measurements:
             unknown_positions=unknown_positions(observation),
         ),
         calls_total=total,
-        resolution="measured" if total else "n/a",
+        resolution=_Resolution.MEASURED if total else _Resolution.NOT_APPLICABLE,
     )
 
 
@@ -155,7 +159,7 @@ def compare_ratchets(accepted: Measurements, candidate: Measurements) -> tuple[s
             for name, accepted_value, candidate_value, status in compare_measurements(
                 accepted, candidate
             )
-            if status == "FAIL"
+            if status is _MetricComparisonStatus.FAIL
         )
     )
 
@@ -163,7 +167,7 @@ def compare_ratchets(accepted: Measurements, candidate: Measurements) -> tuple[s
 def calls_measured(observation: Observation) -> bool:
     """Whether the observing profile measures calls at all; the Dart profile does not (AD-97)."""
     return observation.records("calls") is not None and (
-        "calls_unresolved" not in profile_for(observation.analyzer.name).unmeasured
+        UnmeasurableScalar.CALLS_UNRESOLVED not in profile_for(observation.analyzer.name).unmeasured
     )
 
 
@@ -179,10 +183,11 @@ def call_rows(observation: Observation) -> tuple[CallRow, ...]:
     for record in _records(observation, "calls"):
         data = record.data
         status: CallStatus
-        if data.get("status") == "unresolved":
-            status = "unresolved"
-        elif data.get("status") == "partially_resolved":
-            status = "partially_resolved"
+        resolution = parse_source_resolution(data.get("status"))
+        if resolution is SourceResolution.UNRESOLVED:
+            status = resolution
+        elif resolution is SourceResolution.PARTIALLY_RESOLVED:
+            status = resolution
         else:
             continue
         module = text_value(data.get("source_module"))
@@ -196,7 +201,7 @@ def call_rows(observation: Observation) -> tuple[CallRow, ...]:
         rows.append(
             CallRow(status, caller, expression, reason, component, sites[0].file, sites[0].line)
         )
-    unresolved = sum(row.status == "unresolved" for row in rows)
+    unresolved = sum(row.status is SourceResolution.UNRESOLVED for row in rows)
     coverage = observation.coverage
     if (unresolved, len(rows) - unresolved) != (
         coverage.calls_unresolved,
@@ -212,7 +217,7 @@ def _unresolved_calls(observation: Observation) -> dict[tuple[str, str, str], tu
     """Group the unresolved calls by file, caller and expression, the identity AD-100 compares."""
     grouped: dict[tuple[str, str, str], tuple[CallRow, ...]] = {}
     for row in call_rows(observation):
-        if row.status == "unresolved":
+        if row.status is SourceResolution.UNRESOLVED:
             key = (row.path, row.caller, row.expression)
             grouped[key] = (*grouped.get(key, ()), row)
     return grouped
@@ -233,7 +238,7 @@ def unresolved_call_changes(
         calls = now if added else was
         changes.append(
             UnresolvedCallChange(
-                "added" if added else "removed",
+                _KnownSemanticChangeKind.ADDED if added else _KnownSemanticChangeKind.REMOVED,
                 caller,
                 expression,
                 calls[0].reason,

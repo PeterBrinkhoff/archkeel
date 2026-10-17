@@ -280,7 +280,7 @@ def _parse_coverage(
         for key in call_counts
     }
     call_percent = coverage["call_resolution_percent"]
-    if ObservedSection.CALLS in profile.optional_sections:
+    if ObservedSection.CALLS in profile.all_optional_sections:
         if not calls_measured:
             if any(value is not None for value in call_values.values()) or call_percent is not None:
                 raise ValueError("TypeScript call measurements must be null")
@@ -334,20 +334,19 @@ def _observation_profile(model: Mapping[str, RawJson]) -> Profile:
 
 
 def _validate_profile_sections(model: Mapping[str, RawJson], profile: Profile) -> None:
-    optional_values = [model.get(section, _MISSING_VALUE) for section in profile.optional_sections]
-    if (
-        optional_values
-        and any(value is None for value in optional_values)
-        and any(isinstance(value, list) for value in optional_values)
-    ):
-        raise ValueError("optional profile sections must be all null or all arrays")
+    for group in profile.optional_section_groups:
+        values = [model.get(section, _MISSING_VALUE) for section in group]
+        if any(value is None for value in values):
+            for value in values:
+                if isinstance(value, list):
+                    raise ValueError("optional profile sections must be all null or all arrays")
     for section in CLASSIFIED_SECTIONS:
         raw = model.get(section, _MISSING_VALUE)
         if section in profile.absent_sections:
             if raw is None:
                 continue
             raise ValueError(f"{section} must be null for analyzer {profile.analyzer}")
-        if section in profile.optional_sections and raw is None:
+        if section in profile.all_optional_sections and raw is None:
             continue
         if not isinstance(raw, list):
             raise ValueError(f"{section} must be an array for analyzer {profile.analyzer}")
@@ -379,7 +378,7 @@ def observation_payload(observation: Observation) -> dict[str, RawJson]:
     profile = profile_for(observation.analyzer.name)
     for name in profile.absent_sections:
         result[name] = None
-    for name in profile.optional_sections:
+    for name in profile.all_optional_sections:
         result.setdefault(name, None)
     result.update(
         {

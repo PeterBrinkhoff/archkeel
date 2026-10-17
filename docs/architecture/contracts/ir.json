@@ -171,7 +171,9 @@
         "archkeel.ir.source_graph",
         "archkeel.ir.target_graph",
         "archkeel.ir.target_records",
-        "archkeel.ir.diagnostics"
+        "archkeel.ir.diagnostics",
+        "archkeel.ir.amendment",
+        "archkeel.ir.amendment_codec"
       ],
       "responsibilities": [
         "Own governance models, codecs, policy metrics and pure derivations.",
@@ -269,7 +271,12 @@
         "archkeel.ir.diagnostics:DiagnosticCode",
         "archkeel.ir.diagnostics:Diagnostic",
         "archkeel.ir.diagnostics:DiagnosticError",
-        "archkeel.ir.diagnostics:ReportLocation"
+        "archkeel.ir.diagnostics:ReportLocation",
+        "archkeel.ir.amendment:AmendmentVersion",
+        "archkeel.ir.amendment:AmendmentStatus",
+        "archkeel.ir.amendment:Amendment",
+        "archkeel.ir.amendment:verify_amendment",
+        "archkeel.ir.architecture_projection:PermissionStatus"
       ]
     },
     {
@@ -393,6 +400,123 @@
       "rationale": "Published version and feature APIs retain nominal controls and an explicit boolean availability result.",
       "provenance": [
         "docs/architecture/contract-version-types.md"
+      ],
+      "decided_by": "architect"
+    },
+    {
+      "id": "TARGET-PERMISSION-TYPED-CONTROL",
+      "kind": "forbidden_construct",
+      "source": "archkeel.ir.architecture_projection",
+      "rationale": "The complete compact value owner normalizes known permission strings once and uses nominal controls; parser/protocol values have no literal-comparison exception.",
+      "provenance": [
+        "docs/superpowers/specs/2026-10-17-permission-status-types.md"
+      ],
+      "decided_by": "architect",
+      "constructs": [
+        "string_literal_compare"
+      ]
+    },
+    {
+      "id": "IR-RESULT-ASSESSMENT-CONTROL",
+      "kind": "forbidden_construct",
+      "source": "archkeel.ir.model.RunResult",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "This owned result decision uses canonical controls; rendered wording and arbitrary identities remain data.",
+      "provenance": [
+        "docs/architecture/core-command-result-types.md"
+      ],
+      "decided_by": "architect"
+    },
+    {
+      "id": "PROFILE-SECTION-CONTROL",
+      "kind": "forbidden_construct",
+      "source": "archkeel.ir.source_graph._section_coverage",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "The source section coverage decision uses the existing SourceSectionName and UnmeasurableScalar domains.",
+      "provenance": [
+        "docs/architecture/source-section-consumer-types.md"
+      ],
+      "decided_by": "architect"
+    },
+    {
+      "id": "SOURCE-NAME-VISIBILITY-READER-CONTROL",
+      "kind": "forbidden_construct",
+      "source": "archkeel.ir.facts.parse_source_name_visibility",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "This complete function reads source-name visibility through the Facts owner; foreign language visibility remains distinct.",
+      "provenance": [
+        "docs/architecture/source-name-visibility.md"
+      ],
+      "decided_by": "architect"
+    },
+    {
+      "id": "SOURCE-NAME-VISIBILITY-INTERFACE-CONTROL",
+      "kind": "forbidden_construct",
+      "source": "archkeel.ir.interfaces._public_symbol_names",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "This complete function reads source-name visibility through the Facts owner; foreign language visibility remains distinct.",
+      "provenance": [
+        "docs/architecture/source-name-visibility.md"
+      ],
+      "decided_by": "architect"
+    },
+    {
+      "id": "GRAPH-TOPOLOGY-READ-CONTROL",
+      "kind": "forbidden_construct",
+      "source": "archkeel.ir.structure.module_edges",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "The module topology reader compares recognized canonical levels and leaves future metadata opaque.",
+      "provenance": [
+        "docs/architecture/graph-topology-level-types.md"
+      ],
+      "decided_by": "architect"
+    },
+    {
+      "id": "IR-STRUCTURE-LEVEL-CONTROL",
+      "kind": "forbidden_construct",
+      "source": "archkeel.ir.structure.oversized_insides",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "Structure decisions consume the owner's nominal measurement level; names and JSON keys remain data.",
+      "provenance": [
+        "docs/architecture/structure-level-types.md"
+      ],
+      "decided_by": "architect"
+    },
+    {
+      "id": "CLASSIFIER-INTERFACE-KIND-CONTROL",
+      "kind": "forbidden_construct",
+      "source": "archkeel.ir.interfaces._symbol_kind",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "This complete classifier projection selects canonical enum members; source names and unknown metadata remain data.",
+      "provenance": [
+        "docs/architecture/classifier-projections.md"
+      ],
+      "decided_by": "architect"
+    },
+    {
+      "id": "CLASSIFIER-GRAPH-KIND-CONTROL",
+      "kind": "forbidden_construct",
+      "source": "archkeel.ir.source_graph._classifier_kind",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "This complete classifier projection selects canonical enum members; source names and unknown metadata remain data.",
+      "provenance": [
+        "docs/architecture/classifier-projections.md"
       ],
       "decided_by": "architect"
     }
@@ -7153,15 +7277,15 @@
         {
           "id": "IR-GRAPH-ParameterKind",
           "kind": "enum",
-          "qualified_name": "archkeel.ir.architecture_graph.ParameterKind",
+          "qualified_name": "archkeel.ir.facts.ParameterKind",
           "language": "python",
-          "parent_id": "IR-UML-architecture_graph",
+          "parent_id": "archkeel.ir.facts",
           "presence": "planned",
           "responsibilities": [
-            "Own the closed ParameterKind vocabulary used by graph and UML responsibilities."
+            "Own the single calling-convention vocabulary shared by source producers and graph parameters."
           ],
           "provenance": [
-            "docs/architecture/typed-graph-vocabulary.md"
+            "docs/architecture/shared-parameter-kind.md"
           ],
           "visibility": {
             "kind": "public",
@@ -7189,15 +7313,15 @@
         {
           "id": "IR-GRAPH-DefinitionContextKind",
           "kind": "enum",
-          "qualified_name": "archkeel.ir.architecture_graph.DefinitionContextKind",
+          "qualified_name": "archkeel.ir.facts.DefinitionContextKind",
           "language": "python",
-          "parent_id": "IR-UML-architecture_graph",
+          "parent_id": "archkeel.ir.facts",
           "presence": "planned",
           "responsibilities": [
-            "Own the closed DefinitionContextKind vocabulary used by graph and UML responsibilities."
+            "Own the single definition-context vocabulary shared by source AST frames and graph evidence DTOs."
           ],
           "provenance": [
-            "docs/architecture/typed-graph-vocabulary.md"
+            "docs/architecture/definition-context-ports.md"
           ],
           "visibility": {
             "kind": "public",
@@ -7207,15 +7331,15 @@
         {
           "id": "IR-GRAPH-DefinitionBranchKind",
           "kind": "enum",
-          "qualified_name": "archkeel.ir.architecture_graph.DefinitionBranchKind",
+          "qualified_name": "archkeel.ir.facts.DefinitionBranchKind",
           "language": "python",
-          "parent_id": "IR-UML-architecture_graph",
+          "parent_id": "archkeel.ir.facts",
           "presence": "planned",
           "responsibilities": [
-            "Own the closed DefinitionBranchKind vocabulary used by graph and UML responsibilities."
+            "Own the single definition-context vocabulary shared by source AST frames and graph evidence DTOs."
           ],
           "provenance": [
-            "docs/architecture/typed-graph-vocabulary.md"
+            "docs/architecture/definition-context-ports.md"
           ],
           "visibility": {
             "kind": "public",
@@ -8120,6 +8244,3562 @@
             ],
             "returns": "AssessmentStatus"
           }
+        },
+        {
+          "id": "IR-AMENDMENT-owner",
+          "kind": "module",
+          "qualified_name": "archkeel.ir.amendment",
+          "responsibilities": [
+            "Own immutable amendment values, versions and pure exact binding verification."
+          ],
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/typed-amendment-artifact.md"
+          ]
+        },
+        {
+          "id": "IR-AMENDMENT-version",
+          "kind": "enum",
+          "qualified_name": "archkeel.ir.amendment.AmendmentVersion",
+          "parent_id": "IR-AMENDMENT-owner",
+          "responsibilities": [
+            "Preserve the nominal amendment artifact contract."
+          ],
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/typed-amendment-artifact.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          }
+        },
+        {
+          "id": "IR-AMENDMENT-status",
+          "kind": "enum",
+          "qualified_name": "archkeel.ir.amendment.AmendmentStatus",
+          "parent_id": "IR-AMENDMENT-owner",
+          "responsibilities": [
+            "Preserve the nominal amendment artifact contract."
+          ],
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/typed-amendment-artifact.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          }
+        },
+        {
+          "id": "IR-AMENDMENT-value",
+          "kind": "class",
+          "qualified_name": "archkeel.ir.amendment.Amendment",
+          "parent_id": "IR-AMENDMENT-owner",
+          "responsibilities": [
+            "Preserve the nominal amendment artifact contract."
+          ],
+          "modifiers": [
+            "frozen"
+          ],
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/typed-amendment-artifact.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          }
+        },
+        {
+          "id": "IR-AMENDMENT-before_digest",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.amendment.Amendment.before_digest",
+          "parent_id": "IR-AMENDMENT-value",
+          "responsibilities": [
+            "Preserve the nominal amendment artifact contract."
+          ],
+          "annotation": "str",
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/typed-amendment-artifact.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          }
+        },
+        {
+          "id": "IR-AMENDMENT-after_digest",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.amendment.Amendment.after_digest",
+          "parent_id": "IR-AMENDMENT-value",
+          "responsibilities": [
+            "Preserve the nominal amendment artifact contract."
+          ],
+          "annotation": "str",
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/typed-amendment-artifact.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          }
+        },
+        {
+          "id": "IR-AMENDMENT-decided_by",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.amendment.Amendment.decided_by",
+          "parent_id": "IR-AMENDMENT-value",
+          "responsibilities": [
+            "Preserve the nominal amendment artifact contract."
+          ],
+          "annotation": "str",
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/typed-amendment-artifact.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          }
+        },
+        {
+          "id": "IR-AMENDMENT-rationale",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.amendment.Amendment.rationale",
+          "parent_id": "IR-AMENDMENT-value",
+          "responsibilities": [
+            "Preserve the nominal amendment artifact contract."
+          ],
+          "annotation": "str",
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/typed-amendment-artifact.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          }
+        },
+        {
+          "id": "IR-AMENDMENT-before_baseline_digest",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.amendment.Amendment.before_baseline_digest",
+          "parent_id": "IR-AMENDMENT-value",
+          "responsibilities": [
+            "Preserve the nominal amendment artifact contract."
+          ],
+          "annotation": "str | None",
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/typed-amendment-artifact.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          }
+        },
+        {
+          "id": "IR-AMENDMENT-after_baseline_digest",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.amendment.Amendment.after_baseline_digest",
+          "parent_id": "IR-AMENDMENT-value",
+          "responsibilities": [
+            "Preserve the nominal amendment artifact contract."
+          ],
+          "annotation": "str | None",
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/typed-amendment-artifact.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          }
+        },
+        {
+          "id": "IR-AMENDMENT-schema_version",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.amendment.Amendment.schema_version",
+          "parent_id": "IR-AMENDMENT-value",
+          "responsibilities": [
+            "Preserve the nominal amendment artifact contract."
+          ],
+          "annotation": "AmendmentVersion",
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/typed-amendment-artifact.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          }
+        },
+        {
+          "id": "IR-AMENDMENT-verify",
+          "kind": "function",
+          "qualified_name": "archkeel.ir.amendment.verify_amendment",
+          "parent_id": "IR-AMENDMENT-owner",
+          "responsibilities": [
+            "Preserve the nominal amendment artifact contract."
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "amendment",
+                "annotation": "Amendment",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "before_digest",
+                "annotation": "str",
+                "kind": "keyword_only",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "after_digest",
+                "annotation": "str",
+                "kind": "keyword_only",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "before_baseline_digest",
+                "annotation": "str | None",
+                "kind": "keyword_only",
+                "default": "None",
+                "default_known": true
+              },
+              {
+                "name": "after_baseline_digest",
+                "annotation": "str | None",
+                "kind": "keyword_only",
+                "default": "None",
+                "default_known": true
+              }
+            ],
+            "returns": "bool"
+          },
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/typed-amendment-artifact.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          }
+        },
+        {
+          "id": "IR-AMENDMENT-codec",
+          "kind": "module",
+          "qualified_name": "archkeel.ir.amendment_codec",
+          "responsibilities": [
+            "Read and write the supported artifact grammar without authorizing it."
+          ],
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/typed-amendment-artifact.md"
+          ]
+        },
+        {
+          "id": "IR-AMENDMENT-parse",
+          "kind": "function",
+          "qualified_name": "archkeel.ir.amendment_codec.parse_amendment",
+          "parent_id": "IR-AMENDMENT-codec",
+          "responsibilities": [
+            "Preserve the nominal amendment artifact contract."
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "raw",
+                "annotation": "object",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              }
+            ],
+            "returns": "Amendment"
+          },
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/typed-amendment-artifact.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          }
+        },
+        {
+          "id": "IR-AMENDMENT-bytes",
+          "kind": "function",
+          "qualified_name": "archkeel.ir.amendment_codec.amendment_bytes",
+          "parent_id": "IR-AMENDMENT-codec",
+          "responsibilities": [
+            "Preserve the nominal amendment artifact contract."
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "amendment",
+                "annotation": "Amendment",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              }
+            ],
+            "returns": "bytes"
+          },
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/typed-amendment-artifact.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          }
+        },
+        {
+          "id": "IR-AMENDMENT-result-status",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.model.RunResult.amendment_status",
+          "parent_id": "IR-GRAPH-RunResult",
+          "responsibilities": [
+            "Preserve the nominal amendment artifact contract."
+          ],
+          "annotation": "AmendmentStatus | None",
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/typed-amendment-artifact.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          }
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/typed-python-properties.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-PROPERTY-BINDING",
+          "kind": "class",
+          "qualified_name": "archkeel.ir.facts.PropertyBinding",
+          "parent_id": "archkeel.ir.facts",
+          "responsibilities": [
+            "Keep the ordered standard-property operation and its source immutable."
+          ],
+          "modifiers": [
+            "frozen"
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/typed-python-properties.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-PROPERTY-OPERATION",
+          "kind": "enum",
+          "qualified_name": "archkeel.ir.facts.PropertyOperation",
+          "parent_id": "archkeel.ir.facts",
+          "responsibilities": [
+            "Own the standard property create, getter and setter vocabulary."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/typed-python-properties.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-PROPERTY-ORIGIN",
+          "kind": "enum",
+          "qualified_name": "archkeel.ir.facts.PropertyOrigin",
+          "parent_id": "archkeel.ir.facts",
+          "responsibilities": [
+            "Own new, local and inherited-base property origins."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/typed-python-properties.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-PROPERTY-BINDING-operation",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.facts.PropertyBinding.operation",
+          "parent_id": "IR-PROPERTY-BINDING",
+          "responsibilities": [
+            "Retain the typed operation in the source property proof."
+          ],
+          "annotation": "PropertyOperation"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/typed-python-properties.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-PROPERTY-BINDING-source",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.facts.PropertyBinding.source",
+          "parent_id": "IR-PROPERTY-BINDING",
+          "responsibilities": [
+            "Retain the typed source in the source property proof."
+          ],
+          "annotation": "PropertyOrigin"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/typed-python-properties.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-PROPERTY-BINDING-line",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.facts.PropertyBinding.line",
+          "parent_id": "IR-PROPERTY-BINDING",
+          "responsibilities": [
+            "Retain the typed line in the source property proof."
+          ],
+          "annotation": "int"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/typed-python-properties.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-PROPERTY-BINDING-source_line",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.facts.PropertyBinding.source_line",
+          "parent_id": "IR-PROPERTY-BINDING",
+          "responsibilities": [
+            "Retain the typed source_line in the source property proof."
+          ],
+          "annotation": "int"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/typed-python-properties.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-PROPERTY-DECODE",
+          "kind": "function",
+          "qualified_name": "archkeel.ir.facts.property_binding",
+          "parent_id": "archkeel.ir.facts",
+          "responsibilities": [
+            "Decode the strict property record once into the shared domain model."
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "value",
+                "kind": "positional",
+                "default_known": true,
+                "annotation": "RecordData | Mapping[str, object]"
+              }
+            ],
+            "returns": "PropertyBinding"
+          }
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/typed-python-properties.md"
+          ],
+          "id": "IR-PROPERTY-CODEC",
+          "kind": "module",
+          "qualified_name": "archkeel.ir.facts_codec",
+          "parent_id": "TARGET-FACTS-CODEC",
+          "responsibilities": [
+            "Adapt immutable source facts to the existing process wire format."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/typed-python-properties.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-PROPERTY-ENCODE",
+          "kind": "function",
+          "qualified_name": "archkeel.ir.facts_codec.property_binding_data",
+          "parent_id": "IR-PROPERTY-CODEC",
+          "responsibilities": [
+            "Write the unchanged four-field JSON property proof without deciding its meaning."
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "binding",
+                "kind": "positional",
+                "default_known": true,
+                "annotation": "PropertyBinding"
+              }
+            ],
+            "returns": "RawData"
+          }
+        },
+        {
+          "id": "IR-RULE-GRAMMAR-CompatibilityLifetime",
+          "kind": "enum",
+          "qualified_name": "archkeel.ir.model.CompatibilityLifetime",
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/contract-rule-grammar.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "parent_id": "IR-DEPENDENCY-model",
+          "responsibilities": [
+            "Own the closed CompatibilityLifetime grammar used by contract authoring."
+          ]
+        },
+        {
+          "id": "IR-RULE-GRAMMAR-CycleLevel",
+          "kind": "enum",
+          "qualified_name": "archkeel.ir.model.CycleLevel",
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/contract-rule-grammar.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "parent_id": "IR-DEPENDENCY-model",
+          "responsibilities": [
+            "Own the closed CycleLevel grammar used by contract authoring."
+          ]
+        },
+        {
+          "id": "IR-RULE-GRAMMAR-ForbiddenDependencyRule.kind",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.model.ForbiddenDependencyRule.kind",
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/contract-rule-grammar.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "parent_id": "IR-DEPENDENCY-model.ForbiddenDependencyRule",
+          "annotation": "Literal[ArchitectureRuleKind.FORBIDDEN_DEPENDENCY]",
+          "responsibilities": [
+            "Retain the fixed rule variant from the shared architecture vocabulary."
+          ]
+        },
+        {
+          "id": "IR-RULE-GRAMMAR-ForbiddenDependencyRule.decided_by",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.model.ForbiddenDependencyRule.decided_by",
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/contract-rule-grammar.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "parent_id": "IR-DEPENDENCY-model.ForbiddenDependencyRule",
+          "annotation": "DecisionMaker",
+          "responsibilities": [
+            "Attribute contract decisions through the shared nominal decision-maker type."
+          ]
+        },
+        {
+          "id": "IR-RULE-GRAMMAR-AllowedDependencyRule",
+          "kind": "class",
+          "qualified_name": "archkeel.ir.model.AllowedDependencyRule",
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/contract-rule-grammar.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "parent_id": "IR-DEPENDENCY-model",
+          "modifiers": [
+            "frozen"
+          ],
+          "responsibilities": [
+            "Carry immutable typed contract authoring intent."
+          ]
+        },
+        {
+          "id": "IR-RULE-GRAMMAR-AllowedDependencyRule.kind",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.model.AllowedDependencyRule.kind",
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/contract-rule-grammar.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "parent_id": "IR-RULE-GRAMMAR-AllowedDependencyRule",
+          "annotation": "Literal[ArchitectureRuleKind.ALLOWED_DEPENDENCY]",
+          "responsibilities": [
+            "Retain the fixed rule variant from the shared architecture vocabulary."
+          ]
+        },
+        {
+          "id": "IR-RULE-GRAMMAR-AllowedDependencyRule.decided_by",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.model.AllowedDependencyRule.decided_by",
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/contract-rule-grammar.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "parent_id": "IR-RULE-GRAMMAR-AllowedDependencyRule",
+          "annotation": "DecisionMaker",
+          "responsibilities": [
+            "Attribute contract decisions through the shared nominal decision-maker type."
+          ]
+        },
+        {
+          "id": "IR-RULE-GRAMMAR-ForbiddenConstructRule",
+          "kind": "class",
+          "qualified_name": "archkeel.ir.model.ForbiddenConstructRule",
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/contract-rule-grammar.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "parent_id": "IR-DEPENDENCY-model",
+          "modifiers": [
+            "frozen"
+          ],
+          "responsibilities": [
+            "Carry immutable typed contract authoring intent."
+          ]
+        },
+        {
+          "id": "IR-RULE-GRAMMAR-ForbiddenConstructRule.kind",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.model.ForbiddenConstructRule.kind",
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/contract-rule-grammar.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "parent_id": "IR-RULE-GRAMMAR-ForbiddenConstructRule",
+          "annotation": "Literal[ArchitectureRuleKind.FORBIDDEN_CONSTRUCT]",
+          "responsibilities": [
+            "Retain the fixed rule variant from the shared architecture vocabulary."
+          ]
+        },
+        {
+          "id": "IR-RULE-GRAMMAR-ForbiddenConstructRule.decided_by",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.model.ForbiddenConstructRule.decided_by",
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/contract-rule-grammar.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "parent_id": "IR-RULE-GRAMMAR-ForbiddenConstructRule",
+          "annotation": "DecisionMaker",
+          "responsibilities": [
+            "Attribute contract decisions through the shared nominal decision-maker type."
+          ]
+        },
+        {
+          "id": "IR-RULE-GRAMMAR-CompleteAssignmentRule",
+          "kind": "class",
+          "qualified_name": "archkeel.ir.model.CompleteAssignmentRule",
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/contract-rule-grammar.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "parent_id": "IR-DEPENDENCY-model",
+          "modifiers": [
+            "frozen"
+          ],
+          "responsibilities": [
+            "Carry immutable typed contract authoring intent."
+          ]
+        },
+        {
+          "id": "IR-RULE-GRAMMAR-CompleteAssignmentRule.kind",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.model.CompleteAssignmentRule.kind",
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/contract-rule-grammar.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "parent_id": "IR-RULE-GRAMMAR-CompleteAssignmentRule",
+          "annotation": "Literal[ArchitectureRuleKind.COMPLETE_ASSIGNMENT]",
+          "responsibilities": [
+            "Retain the fixed rule variant from the shared architecture vocabulary."
+          ]
+        },
+        {
+          "id": "IR-RULE-GRAMMAR-CompleteAssignmentRule.decided_by",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.model.CompleteAssignmentRule.decided_by",
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/contract-rule-grammar.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "parent_id": "IR-RULE-GRAMMAR-CompleteAssignmentRule",
+          "annotation": "DecisionMaker",
+          "responsibilities": [
+            "Attribute contract decisions through the shared nominal decision-maker type."
+          ]
+        },
+        {
+          "id": "IR-RULE-GRAMMAR-CompleteRequiresRule",
+          "kind": "class",
+          "qualified_name": "archkeel.ir.model.CompleteRequiresRule",
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/contract-rule-grammar.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "parent_id": "IR-DEPENDENCY-model",
+          "modifiers": [
+            "frozen"
+          ],
+          "responsibilities": [
+            "Carry immutable typed contract authoring intent."
+          ]
+        },
+        {
+          "id": "IR-RULE-GRAMMAR-CompleteRequiresRule.kind",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.model.CompleteRequiresRule.kind",
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/contract-rule-grammar.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "parent_id": "IR-RULE-GRAMMAR-CompleteRequiresRule",
+          "annotation": "Literal[ArchitectureRuleKind.COMPLETE_REQUIRES]",
+          "responsibilities": [
+            "Retain the fixed rule variant from the shared architecture vocabulary."
+          ]
+        },
+        {
+          "id": "IR-RULE-GRAMMAR-CompleteRequiresRule.decided_by",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.model.CompleteRequiresRule.decided_by",
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/contract-rule-grammar.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "parent_id": "IR-RULE-GRAMMAR-CompleteRequiresRule",
+          "annotation": "DecisionMaker",
+          "responsibilities": [
+            "Attribute contract decisions through the shared nominal decision-maker type."
+          ]
+        },
+        {
+          "id": "IR-RULE-GRAMMAR-LayerOrderRule",
+          "kind": "class",
+          "qualified_name": "archkeel.ir.model.LayerOrderRule",
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/contract-rule-grammar.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "parent_id": "IR-DEPENDENCY-model",
+          "modifiers": [
+            "frozen"
+          ],
+          "responsibilities": [
+            "Carry immutable typed contract authoring intent."
+          ]
+        },
+        {
+          "id": "IR-RULE-GRAMMAR-LayerOrderRule.kind",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.model.LayerOrderRule.kind",
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/contract-rule-grammar.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "parent_id": "IR-RULE-GRAMMAR-LayerOrderRule",
+          "annotation": "Literal[ArchitectureRuleKind.LAYER_ORDER]",
+          "responsibilities": [
+            "Retain the fixed rule variant from the shared architecture vocabulary."
+          ]
+        },
+        {
+          "id": "IR-RULE-GRAMMAR-LayerOrderRule.decided_by",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.model.LayerOrderRule.decided_by",
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/contract-rule-grammar.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "parent_id": "IR-RULE-GRAMMAR-LayerOrderRule",
+          "annotation": "DecisionMaker",
+          "responsibilities": [
+            "Attribute contract decisions through the shared nominal decision-maker type."
+          ]
+        },
+        {
+          "id": "IR-RULE-GRAMMAR-CompleteExternalScopeRule",
+          "kind": "class",
+          "qualified_name": "archkeel.ir.model.CompleteExternalScopeRule",
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/contract-rule-grammar.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "parent_id": "IR-DEPENDENCY-model",
+          "modifiers": [
+            "frozen"
+          ],
+          "responsibilities": [
+            "Carry immutable typed contract authoring intent."
+          ]
+        },
+        {
+          "id": "IR-RULE-GRAMMAR-CompleteExternalScopeRule.kind",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.model.CompleteExternalScopeRule.kind",
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/contract-rule-grammar.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "parent_id": "IR-RULE-GRAMMAR-CompleteExternalScopeRule",
+          "annotation": "Literal[ArchitectureRuleKind.COMPLETE_EXTERNAL_SCOPE]",
+          "responsibilities": [
+            "Retain the fixed rule variant from the shared architecture vocabulary."
+          ]
+        },
+        {
+          "id": "IR-RULE-GRAMMAR-CompleteExternalScopeRule.decided_by",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.model.CompleteExternalScopeRule.decided_by",
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/contract-rule-grammar.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "parent_id": "IR-RULE-GRAMMAR-CompleteExternalScopeRule",
+          "annotation": "DecisionMaker",
+          "responsibilities": [
+            "Attribute contract decisions through the shared nominal decision-maker type."
+          ]
+        },
+        {
+          "id": "IR-RULE-GRAMMAR-NoComponentCyclesRule",
+          "kind": "class",
+          "qualified_name": "archkeel.ir.model.NoComponentCyclesRule",
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/contract-rule-grammar.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "parent_id": "IR-DEPENDENCY-model",
+          "modifiers": [
+            "frozen"
+          ],
+          "responsibilities": [
+            "Carry immutable typed contract authoring intent."
+          ]
+        },
+        {
+          "id": "IR-RULE-GRAMMAR-NoComponentCyclesRule.kind",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.model.NoComponentCyclesRule.kind",
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/contract-rule-grammar.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "parent_id": "IR-RULE-GRAMMAR-NoComponentCyclesRule",
+          "annotation": "Literal[ArchitectureRuleKind.NO_COMPONENT_CYCLES]",
+          "responsibilities": [
+            "Retain the fixed rule variant from the shared architecture vocabulary."
+          ]
+        },
+        {
+          "id": "IR-RULE-GRAMMAR-NoComponentCyclesRule.decided_by",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.model.NoComponentCyclesRule.decided_by",
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/contract-rule-grammar.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "parent_id": "IR-RULE-GRAMMAR-NoComponentCyclesRule",
+          "annotation": "DecisionMaker",
+          "responsibilities": [
+            "Attribute contract decisions through the shared nominal decision-maker type."
+          ]
+        },
+        {
+          "id": "IR-RULE-GRAMMAR-InterfaceBoundaryRule.kind",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.model.InterfaceBoundaryRule.kind",
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/contract-rule-grammar.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "parent_id": "IR-MODULE-OBJECT-InterfaceBoundaryRule",
+          "annotation": "Literal[ArchitectureRuleKind.INTERFACE_BOUNDARY]",
+          "responsibilities": [
+            "Retain the fixed rule variant from the shared architecture vocabulary."
+          ]
+        },
+        {
+          "id": "IR-RULE-GRAMMAR-InterfaceBoundaryRule.decided_by",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.model.InterfaceBoundaryRule.decided_by",
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/contract-rule-grammar.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "parent_id": "IR-MODULE-OBJECT-InterfaceBoundaryRule",
+          "annotation": "DecisionMaker",
+          "responsibilities": [
+            "Attribute contract decisions through the shared nominal decision-maker type."
+          ]
+        },
+        {
+          "id": "IR-RULE-GRAMMAR-SiblingIsolationRule",
+          "kind": "class",
+          "qualified_name": "archkeel.ir.model.SiblingIsolationRule",
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/contract-rule-grammar.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "parent_id": "IR-DEPENDENCY-model",
+          "modifiers": [
+            "frozen"
+          ],
+          "responsibilities": [
+            "Carry immutable typed contract authoring intent."
+          ]
+        },
+        {
+          "id": "IR-RULE-GRAMMAR-SiblingIsolationRule.kind",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.model.SiblingIsolationRule.kind",
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/contract-rule-grammar.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "parent_id": "IR-RULE-GRAMMAR-SiblingIsolationRule",
+          "annotation": "Literal[ArchitectureRuleKind.SIBLING_ISOLATION]",
+          "responsibilities": [
+            "Retain the fixed rule variant from the shared architecture vocabulary."
+          ]
+        },
+        {
+          "id": "IR-RULE-GRAMMAR-SiblingIsolationRule.decided_by",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.model.SiblingIsolationRule.decided_by",
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/contract-rule-grammar.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "parent_id": "IR-RULE-GRAMMAR-SiblingIsolationRule",
+          "annotation": "DecisionMaker",
+          "responsibilities": [
+            "Attribute contract decisions through the shared nominal decision-maker type."
+          ]
+        },
+        {
+          "id": "IR-RULE-GRAMMAR-SymbolPlacementRule",
+          "kind": "class",
+          "qualified_name": "archkeel.ir.model.SymbolPlacementRule",
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/contract-rule-grammar.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "parent_id": "IR-DEPENDENCY-model",
+          "modifiers": [
+            "frozen"
+          ],
+          "responsibilities": [
+            "Carry immutable typed contract authoring intent."
+          ]
+        },
+        {
+          "id": "IR-RULE-GRAMMAR-SymbolPlacementRule.kind",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.model.SymbolPlacementRule.kind",
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/contract-rule-grammar.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "parent_id": "IR-RULE-GRAMMAR-SymbolPlacementRule",
+          "annotation": "Literal[ArchitectureRuleKind.SYMBOL_PLACEMENT]",
+          "responsibilities": [
+            "Retain the fixed rule variant from the shared architecture vocabulary."
+          ]
+        },
+        {
+          "id": "IR-RULE-GRAMMAR-SymbolPlacementRule.decided_by",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.model.SymbolPlacementRule.decided_by",
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/contract-rule-grammar.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "parent_id": "IR-RULE-GRAMMAR-SymbolPlacementRule",
+          "annotation": "DecisionMaker",
+          "responsibilities": [
+            "Attribute contract decisions through the shared nominal decision-maker type."
+          ]
+        },
+        {
+          "id": "IR-RULE-GRAMMAR-BoundaryTypesRule",
+          "kind": "class",
+          "qualified_name": "archkeel.ir.model.BoundaryTypesRule",
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/contract-rule-grammar.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "parent_id": "IR-DEPENDENCY-model",
+          "modifiers": [
+            "frozen"
+          ],
+          "responsibilities": [
+            "Carry immutable typed contract authoring intent."
+          ]
+        },
+        {
+          "id": "IR-RULE-GRAMMAR-BoundaryTypesRule.kind",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.model.BoundaryTypesRule.kind",
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/contract-rule-grammar.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "parent_id": "IR-RULE-GRAMMAR-BoundaryTypesRule",
+          "annotation": "Literal[ArchitectureRuleKind.BOUNDARY_TYPES]",
+          "responsibilities": [
+            "Retain the fixed rule variant from the shared architecture vocabulary."
+          ]
+        },
+        {
+          "id": "IR-RULE-GRAMMAR-BoundaryTypesRule.decided_by",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.model.BoundaryTypesRule.decided_by",
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/contract-rule-grammar.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "parent_id": "IR-RULE-GRAMMAR-BoundaryTypesRule",
+          "annotation": "DecisionMaker",
+          "responsibilities": [
+            "Attribute contract decisions through the shared nominal decision-maker type."
+          ]
+        },
+        {
+          "id": "IR-RULE-GRAMMAR-CompatibilityShim",
+          "kind": "class",
+          "qualified_name": "archkeel.ir.model.CompatibilityShim",
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/contract-rule-grammar.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "parent_id": "IR-DEPENDENCY-model",
+          "modifiers": [
+            "frozen"
+          ],
+          "responsibilities": [
+            "Carry immutable typed contract authoring intent."
+          ]
+        },
+        {
+          "id": "IR-RULE-GRAMMAR-CompatibilityShim.lifetime",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.model.CompatibilityShim.lifetime",
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/contract-rule-grammar.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "parent_id": "IR-RULE-GRAMMAR-CompatibilityShim",
+          "annotation": "CompatibilityLifetime",
+          "responsibilities": [
+            "Retain the closed contract grammar as a nominal API type."
+          ]
+        },
+        {
+          "id": "IR-RULE-GRAMMAR-NoComponentCyclesRule.level",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.model.NoComponentCyclesRule.level",
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/contract-rule-grammar.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "parent_id": "IR-RULE-GRAMMAR-NoComponentCyclesRule",
+          "annotation": "Literal[CycleLevel.MODULE] | None",
+          "responsibilities": [
+            "Retain the closed contract grammar as a nominal API type."
+          ]
+        },
+        {
+          "id": "IR-RULE-GRAMMAR-ContractComponent",
+          "kind": "class",
+          "qualified_name": "archkeel.ir.model.ContractComponent",
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/contract-rule-grammar.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "parent_id": "IR-DEPENDENCY-model",
+          "modifiers": [
+            "frozen"
+          ],
+          "responsibilities": [
+            "Carry immutable typed contract authoring intent."
+          ]
+        },
+        {
+          "id": "IR-RULE-GRAMMAR-ContractComponent.decided_by",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.model.ContractComponent.decided_by",
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/contract-rule-grammar.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "parent_id": "IR-RULE-GRAMMAR-ContractComponent",
+          "annotation": "DecisionMaker | None",
+          "responsibilities": [
+            "Attribute contract decisions through the shared nominal decision-maker type."
+          ]
+        },
+        {
+          "id": "IR-RULE-GRAMMAR-RequiredComponent",
+          "kind": "class",
+          "qualified_name": "archkeel.ir.model.RequiredComponent",
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/contract-rule-grammar.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "parent_id": "IR-DEPENDENCY-model",
+          "modifiers": [
+            "frozen"
+          ],
+          "responsibilities": [
+            "Carry immutable typed contract authoring intent."
+          ]
+        },
+        {
+          "id": "IR-RULE-GRAMMAR-RequiredComponent.decided_by",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.model.RequiredComponent.decided_by",
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/contract-rule-grammar.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "parent_id": "IR-RULE-GRAMMAR-RequiredComponent",
+          "annotation": "DecisionMaker | None",
+          "responsibilities": [
+            "Attribute contract decisions through the shared nominal decision-maker type."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/contract-rule-grammar.md"
+          ],
+          "id": "IR-RULE-OWNER-ArchitectureRuleGrammar",
+          "kind": "class",
+          "qualified_name": "archkeel.ir.architecture_graph.ArchitectureRuleGrammar",
+          "parent_id": "IR-UML-architecture_graph",
+          "responsibilities": [
+            "Normalize shared rule kind and decision-maker values once at the public legacy constructor boundary."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/contract-rule-grammar.md"
+          ],
+          "id": "IR-RULE-OWNER-ArchitectureRuleGrammar.kind",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.architecture_graph.ArchitectureRuleGrammar.kind",
+          "parent_id": "IR-RULE-OWNER-ArchitectureRuleGrammar",
+          "annotation": "ArchitectureRuleKind",
+          "responsibilities": [
+            "Expose the canonical shared rule grammar type to immutable rule variants."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/contract-rule-grammar.md"
+          ],
+          "id": "IR-RULE-OWNER-ArchitectureRuleGrammar.decided_by",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.architecture_graph.ArchitectureRuleGrammar.decided_by",
+          "parent_id": "IR-RULE-OWNER-ArchitectureRuleGrammar",
+          "annotation": "DecisionMaker",
+          "responsibilities": [
+            "Expose the canonical shared rule grammar type to immutable rule variants."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/contract-rule-grammar.md"
+          ],
+          "id": "IR-RULE-OWNER-ArchitectureRuleGrammar.__post_init__",
+          "kind": "method",
+          "qualified_name": "archkeel.ir.architecture_graph.ArchitectureRuleGrammar.__post_init__",
+          "parent_id": "IR-RULE-OWNER-ArchitectureRuleGrammar",
+          "signature": {
+            "parameters": [
+              {
+                "name": "self",
+                "kind": "positional",
+                "default_known": true
+              }
+            ],
+            "returns": "None"
+          },
+          "responsibilities": [
+            "Normalize the two canonical rule tags idempotently without defining dataclass fields."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/typed-method-descriptors.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-METHOD-KIND",
+          "kind": "enum",
+          "qualified_name": "archkeel.ir.facts.MethodKind",
+          "parent_id": "archkeel.ir.facts",
+          "responsibilities": [
+            "Name the five existing shared method tags without deriving binding proof."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/typed-method-descriptors.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-METHOD-DESCRIPTOR",
+          "kind": "class",
+          "qualified_name": "archkeel.ir.facts.MethodDescriptor",
+          "parent_id": "archkeel.ir.facts",
+          "responsibilities": [
+            "Retain Python method classification and existing proof bits immutably."
+          ],
+          "modifiers": [
+            "frozen"
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/typed-method-descriptors.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-METHOD-DESCRIPTOR-method_kind",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.facts.MethodDescriptor.method_kind",
+          "parent_id": "IR-METHOD-DESCRIPTOR",
+          "responsibilities": [
+            "Carry the consumed typed method_kind without adding proof authority."
+          ],
+          "annotation": "MethodKind"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/typed-method-descriptors.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-METHOD-DESCRIPTOR-signature_decorators_proven",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.facts.MethodDescriptor.signature_decorators_proven",
+          "parent_id": "IR-METHOD-DESCRIPTOR",
+          "responsibilities": [
+            "Carry the consumed typed signature_decorators_proven without adding proof authority."
+          ],
+          "annotation": "bool"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/typed-method-descriptors.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-METHOD-DESCRIPTOR-source_final_method_binding",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.facts.MethodDescriptor.source_final_method_binding",
+          "parent_id": "IR-METHOD-DESCRIPTOR",
+          "responsibilities": [
+            "Carry the consumed typed source_final_method_binding without adding proof authority."
+          ],
+          "annotation": "bool"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/typed-method-descriptors.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-METHOD-DESCRIPTOR-property_binding",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.facts.MethodDescriptor.property_binding",
+          "parent_id": "IR-METHOD-DESCRIPTOR",
+          "responsibilities": [
+            "Carry the consumed typed property_binding without adding proof authority."
+          ],
+          "annotation": "PropertyBinding | None"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/typed-method-descriptors.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-METHOD-DECODE",
+          "kind": "function",
+          "qualified_name": "archkeel.ir.facts.parse_method_kind",
+          "parent_id": "archkeel.ir.facts",
+          "responsibilities": [
+            "Read supported method tags while keeping unrecognized input unclassified."
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "value",
+                "kind": "positional",
+                "default_known": true,
+                "annotation": "JsonValue | RawJson | MethodKind"
+              }
+            ],
+            "returns": "MethodKind | None"
+          }
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/typed-method-descriptors.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-METHOD-ENCODE",
+          "kind": "function",
+          "qualified_name": "archkeel.ir.facts_codec.method_descriptor_data",
+          "parent_id": "IR-PROPERTY-CODEC",
+          "responsibilities": [
+            "Write the unchanged raw method descriptor record."
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "descriptor",
+                "kind": "positional",
+                "default_known": true,
+                "annotation": "MethodDescriptor"
+              }
+            ],
+            "returns": "RawData"
+          }
+        },
+        {
+          "id": "IR-RESULT-Command",
+          "kind": "enum",
+          "qualified_name": "archkeel.ir.model.Command",
+          "parent_id": "IR-DEPENDENCY-model",
+          "responsibilities": [
+            "Keep the shared Core command/result control domain nominal and precise."
+          ],
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/core-command-result-types.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          }
+        },
+        {
+          "id": "IR-RESULT-ExpectationOutcome",
+          "kind": "enum",
+          "qualified_name": "archkeel.ir.model.ExpectationOutcome",
+          "parent_id": "IR-DEPENDENCY-model",
+          "responsibilities": [
+            "Keep the shared Core command/result control domain nominal and precise."
+          ],
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/core-command-result-types.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          }
+        },
+        {
+          "id": "IR-RESULT-command",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.model.RunResult.command",
+          "parent_id": "IR-GRAPH-RunResult",
+          "responsibilities": [
+            "Keep the shared Core command/result control domain nominal and precise."
+          ],
+          "annotation": "Command",
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/core-command-result-types.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          }
+        },
+        {
+          "id": "IR-RESULT-observation_complete",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.model.RunResult.observation_complete",
+          "parent_id": "IR-GRAPH-RunResult",
+          "responsibilities": [
+            "Keep the shared Core command/result control domain nominal and precise."
+          ],
+          "annotation": "Literal[AssessmentStatus.PASS, AssessmentStatus.UNKNOWN]",
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/core-command-result-types.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          }
+        },
+        {
+          "id": "IR-RESULT-expectation_fulfilled",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.model.RunResult.expectation_fulfilled",
+          "parent_id": "IR-GRAPH-RunResult",
+          "responsibilities": [
+            "Keep the shared Core command/result control domain nominal and precise."
+          ],
+          "annotation": "ExpectationOutcome",
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/core-command-result-types.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          }
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/measurement-control-types.md"
+          ],
+          "responsibilities": [
+            "Keep measurement decisions nominal at the existing typed owner boundary."
+          ],
+          "id": "IR-MEASURE-owner",
+          "kind": "module",
+          "qualified_name": "archkeel.ir.measurements"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/measurement-control-types.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "responsibilities": [
+            "Keep measurement decisions nominal at the existing typed owner boundary."
+          ],
+          "id": "IR-MEASURE-MeasurementBudgetName",
+          "kind": "enum",
+          "qualified_name": "archkeel.ir.measurements.MeasurementBudgetName",
+          "parent_id": "IR-MEASURE-owner"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/measurement-control-types.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "responsibilities": [
+            "Keep measurement decisions nominal at the existing typed owner boundary."
+          ],
+          "id": "IR-MEASURE-NameBudgetKind",
+          "kind": "enum",
+          "qualified_name": "archkeel.ir.measurements.NameBudgetKind",
+          "parent_id": "IR-MEASURE-owner"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/measurement-control-types.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "responsibilities": [
+            "Keep measurement decisions nominal at the existing typed owner boundary."
+          ],
+          "id": "IR-MEASURE-MeasurementResolution",
+          "kind": "enum",
+          "qualified_name": "archkeel.ir.measurements.MeasurementResolution",
+          "parent_id": "IR-MEASURE-owner"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/measurement-control-types.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "responsibilities": [
+            "Keep measurement decisions nominal at the existing typed owner boundary."
+          ],
+          "id": "IR-MEASURE-MetricComparisonStatus",
+          "kind": "enum",
+          "qualified_name": "archkeel.ir.measurements.MetricComparisonStatus",
+          "parent_id": "IR-MEASURE-owner"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/measurement-control-types.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "responsibilities": [
+            "Keep measurement decisions nominal at the existing typed owner boundary."
+          ],
+          "id": "IR-MEASURE-MeasurementBudget",
+          "kind": "class",
+          "qualified_name": "archkeel.ir.measurements.MeasurementBudget",
+          "parent_id": "IR-MEASURE-owner",
+          "modifiers": [
+            "frozen"
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/measurement-control-types.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "responsibilities": [
+            "Keep measurement decisions nominal at the existing typed owner boundary."
+          ],
+          "id": "IR-MEASURE-Measurements",
+          "kind": "class",
+          "qualified_name": "archkeel.ir.measurements.Measurements",
+          "parent_id": "IR-MEASURE-owner",
+          "modifiers": [
+            "frozen"
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/measurement-control-types.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "responsibilities": [
+            "Keep measurement decisions nominal at the existing typed owner boundary."
+          ],
+          "id": "IR-MEASURE-ContractMeasurementBudget",
+          "kind": "class",
+          "qualified_name": "archkeel.ir.model.ContractMeasurementBudget",
+          "parent_id": "IR-DEPENDENCY-model",
+          "modifiers": [
+            "frozen"
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/measurement-control-types.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "responsibilities": [
+            "Keep measurement decisions nominal at the existing typed owner boundary."
+          ],
+          "id": "IR-MEASURE-InterfaceBudgetResult",
+          "kind": "class",
+          "qualified_name": "archkeel.ir.model.InterfaceBudgetResult",
+          "parent_id": "IR-DEPENDENCY-model",
+          "modifiers": [
+            "frozen"
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/measurement-control-types.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "responsibilities": [
+            "Keep measurement decisions nominal at the existing typed owner boundary."
+          ],
+          "id": "IR-MEASURE-MeasurementBudget-name",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.measurements.MeasurementBudget.name",
+          "parent_id": "IR-MEASURE-MeasurementBudget",
+          "annotation": "MeasurementBudgetName | NameBudgetKind"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/measurement-control-types.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "responsibilities": [
+            "Keep measurement decisions nominal at the existing typed owner boundary."
+          ],
+          "id": "IR-MEASURE-Measurements-resolution",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.measurements.Measurements.resolution",
+          "parent_id": "IR-MEASURE-Measurements",
+          "annotation": "MeasurementResolution"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/measurement-control-types.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "responsibilities": [
+            "Keep measurement decisions nominal at the existing typed owner boundary."
+          ],
+          "id": "IR-MEASURE-ContractMeasurementBudget-name",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.model.ContractMeasurementBudget.name",
+          "parent_id": "IR-MEASURE-ContractMeasurementBudget",
+          "annotation": "MeasurementBudgetName"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/measurement-control-types.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "responsibilities": [
+            "Keep measurement decisions nominal at the existing typed owner boundary."
+          ],
+          "id": "IR-MEASURE-InterfaceBudgetResult-budget",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.model.InterfaceBudgetResult.budget",
+          "parent_id": "IR-MEASURE-InterfaceBudgetResult",
+          "annotation": "NameBudgetKind"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/measurement-control-types.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "responsibilities": [
+            "Keep measurement decisions nominal at the existing typed owner boundary."
+          ],
+          "id": "IR-MEASURE-compare_measurements",
+          "kind": "function",
+          "qualified_name": "archkeel.ir.measurements.compare_measurements",
+          "parent_id": "IR-MEASURE-owner",
+          "signature": {
+            "parameters": [
+              {
+                "name": "accepted",
+                "annotation": "Measurements",
+                "kind": "positional",
+                "default_known": true
+              },
+              {
+                "name": "candidate",
+                "annotation": "Measurements",
+                "kind": "positional",
+                "default_known": true
+              }
+            ],
+            "returns": "tuple[tuple[str, str, str, MetricComparisonStatus], ...]"
+          }
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/delta-version-types.md"
+          ],
+          "responsibilities": [
+            "Own supported Delta format identities and nullable-count policy without closing extension data."
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-DELTA-VERSION-enum",
+          "kind": "enum",
+          "qualified_name": "archkeel.ir.model.DeltaVersion",
+          "parent_id": "IR-DEPENDENCY-model"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/delta-version-types.md"
+          ],
+          "responsibilities": [
+            "Own supported Delta format identities and nullable-count policy without closing extension data."
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-DELTA-VERSION-delta",
+          "kind": "class",
+          "qualified_name": "archkeel.ir.model.ArchitectureDelta",
+          "parent_id": "IR-DEPENDENCY-model"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/delta-version-types.md"
+          ],
+          "responsibilities": [
+            "Own supported Delta format identities and nullable-count policy without closing extension data."
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-DELTA-VERSION-field",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.model.ArchitectureDelta.schema_version",
+          "parent_id": "IR-DELTA-VERSION-delta",
+          "annotation": "DeltaVersion"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/delta-version-types.md"
+          ],
+          "responsibilities": [
+            "Own supported Delta format identities and nullable-count policy without closing extension data."
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-DELTA-VERSION-policy",
+          "kind": "function",
+          "qualified_name": "archkeel.ir.model.supports_nullable_delta_counts",
+          "parent_id": "IR-DEPENDENCY-model",
+          "signature": {
+            "parameters": [
+              {
+                "name": "version",
+                "annotation": "DeltaVersion",
+                "kind": "positional",
+                "default_known": true
+              }
+            ],
+            "returns": "bool"
+          }
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/delta-version-types.md"
+          ],
+          "responsibilities": [
+            "Own supported Delta format identities and nullable-count policy without closing extension data."
+          ],
+          "id": "IR-DELTA-VERSION-codec",
+          "kind": "module",
+          "qualified_name": "archkeel.ir.codec_delta"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/delta-version-types.md"
+          ],
+          "responsibilities": [
+            "Own supported Delta format identities and nullable-count policy without closing extension data."
+          ],
+          "id": "IR-DELTA-VERSION-ingress",
+          "kind": "function",
+          "qualified_name": "archkeel.ir.codec_delta._parse_delta_version",
+          "parent_id": "IR-DELTA-VERSION-codec",
+          "signature": {
+            "parameters": [
+              {
+                "name": "raw",
+                "annotation": "RawJson",
+                "kind": "positional",
+                "default_known": true
+              }
+            ],
+            "returns": "DeltaVersion"
+          }
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/typescript-written-string-controls.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-PROFILE-optional_sections",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.profiles.Profile.optional_sections",
+          "parent_id": "IR-MODULE-OBJECT-Profile",
+          "annotation": "frozenset[ObservedSection]",
+          "responsibilities": [
+            "Preserve the legacy optional-section constructor field and its single atomic receipt."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/typescript-written-string-controls.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-PROFILE-additional_optional_section_groups",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.profiles.Profile.additional_optional_section_groups",
+          "parent_id": "IR-MODULE-OBJECT-Profile",
+          "annotation": "tuple[frozenset[ObservedSection], ...]",
+          "responsibilities": [
+            "Own keyword-only independent non-empty and disjoint optional receipts."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/typescript-written-string-controls.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-PROFILE-optional_section_groups",
+          "kind": "method",
+          "qualified_name": "archkeel.ir.profiles.Profile.optional_section_groups",
+          "parent_id": "IR-MODULE-OBJECT-Profile",
+          "responsibilities": [
+            "Derive the atomic receipt groups from the legacy group and independent additions."
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "self",
+                "kind": "positional",
+                "default_known": true
+              }
+            ],
+            "returns": "tuple[frozenset[ObservedSection], ...]"
+          }
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/typescript-written-string-controls.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-PROFILE-all_optional_sections",
+          "kind": "method",
+          "qualified_name": "archkeel.ir.profiles.Profile.all_optional_sections",
+          "parent_id": "IR-MODULE-OBJECT-Profile",
+          "responsibilities": [
+            "Derive the full optional-section read view for codec consumers."
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "self",
+                "kind": "positional",
+                "default_known": true
+              }
+            ],
+            "returns": "frozenset[ObservedSection]"
+          }
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/comparison-support-types.md"
+          ],
+          "responsibilities": [
+            "Keep the existing support-availability contract nominal across its real claim and Delta boundaries."
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-COMPARISON-enum",
+          "kind": "enum",
+          "qualified_name": "archkeel.ir.model.ComparisonStatus",
+          "parent_id": "IR-DEPENDENCY-model"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/comparison-support-types.md"
+          ],
+          "responsibilities": [
+            "Keep the existing support-availability contract nominal across its real claim and Delta boundaries."
+          ],
+          "id": "IR-COMPARISON-bindings",
+          "kind": "module",
+          "qualified_name": "archkeel.ir.bindings"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/comparison-support-types.md"
+          ],
+          "responsibilities": [
+            "Keep the existing support-availability contract nominal across its real claim and Delta boundaries."
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-COMPARISON-BindingReads",
+          "kind": "class",
+          "qualified_name": "archkeel.ir.bindings.BindingReads",
+          "parent_id": "IR-COMPARISON-bindings",
+          "modifiers": [
+            "frozen"
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/comparison-support-types.md"
+          ],
+          "responsibilities": [
+            "Keep the existing support-availability contract nominal across its real claim and Delta boundaries."
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-COMPARISON-BindingReads.status",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.bindings.BindingReads.status",
+          "parent_id": "IR-COMPARISON-BindingReads",
+          "annotation": "ComparisonStatus"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/comparison-support-types.md"
+          ],
+          "responsibilities": [
+            "Keep the existing support-availability contract nominal across its real claim and Delta boundaries."
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-COMPARISON-producer-bindings",
+          "kind": "function",
+          "qualified_name": "archkeel.ir.bindings.unread_bindings",
+          "parent_id": "IR-COMPARISON-bindings",
+          "signature": {
+            "parameters": [
+              {
+                "name": "observation",
+                "annotation": "Observation",
+                "kind": "positional",
+                "default_known": true
+              }
+            ],
+            "returns": "BindingReads"
+          }
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/comparison-support-types.md"
+          ],
+          "responsibilities": [
+            "Keep the existing support-availability contract nominal across its real claim and Delta boundaries."
+          ],
+          "id": "IR-COMPARISON-references",
+          "kind": "module",
+          "qualified_name": "archkeel.ir.references"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/comparison-support-types.md"
+          ],
+          "responsibilities": [
+            "Keep the existing support-availability contract nominal across its real claim and Delta boundaries."
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-COMPARISON-SymbolReferences",
+          "kind": "class",
+          "qualified_name": "archkeel.ir.references.SymbolReferences",
+          "parent_id": "IR-COMPARISON-references",
+          "modifiers": [
+            "frozen"
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/comparison-support-types.md"
+          ],
+          "responsibilities": [
+            "Keep the existing support-availability contract nominal across its real claim and Delta boundaries."
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-COMPARISON-SymbolReferences.status",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.references.SymbolReferences.status",
+          "parent_id": "IR-COMPARISON-SymbolReferences",
+          "annotation": "ComparisonStatus"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/comparison-support-types.md"
+          ],
+          "responsibilities": [
+            "Keep the existing support-availability contract nominal across its real claim and Delta boundaries."
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-COMPARISON-producer-references",
+          "kind": "function",
+          "qualified_name": "archkeel.ir.references.unreferenced_symbols",
+          "parent_id": "IR-COMPARISON-references",
+          "signature": {
+            "parameters": [
+              {
+                "name": "observation",
+                "annotation": "Observation",
+                "kind": "positional",
+                "default_known": true
+              }
+            ],
+            "returns": "SymbolReferences"
+          }
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/comparison-support-types.md"
+          ],
+          "responsibilities": [
+            "Keep the existing support-availability contract nominal across its real claim and Delta boundaries."
+          ],
+          "id": "IR-COMPARISON-type_fanin",
+          "kind": "module",
+          "qualified_name": "archkeel.ir.type_fanin"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/comparison-support-types.md"
+          ],
+          "responsibilities": [
+            "Keep the existing support-availability contract nominal across its real claim and Delta boundaries."
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-COMPARISON-TypeFanin",
+          "kind": "class",
+          "qualified_name": "archkeel.ir.type_fanin.TypeFanin",
+          "parent_id": "IR-COMPARISON-type_fanin",
+          "modifiers": [
+            "frozen"
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/comparison-support-types.md"
+          ],
+          "responsibilities": [
+            "Keep the existing support-availability contract nominal across its real claim and Delta boundaries."
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-COMPARISON-TypeFanin.status",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.type_fanin.TypeFanin.status",
+          "parent_id": "IR-COMPARISON-TypeFanin",
+          "annotation": "ComparisonStatus"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/comparison-support-types.md"
+          ],
+          "responsibilities": [
+            "Keep the existing support-availability contract nominal across its real claim and Delta boundaries."
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-COMPARISON-producer-type_fanin",
+          "kind": "function",
+          "qualified_name": "archkeel.ir.type_fanin.type_fanin",
+          "parent_id": "IR-COMPARISON-type_fanin",
+          "signature": {
+            "parameters": [
+              {
+                "name": "observation",
+                "annotation": "Observation",
+                "kind": "positional",
+                "default_known": true
+              }
+            ],
+            "returns": "TypeFanin"
+          }
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/comparison-support-types.md",
+            "docs/architecture/graph-topology-level-types.md",
+            "docs/architecture/structure-level-types.md"
+          ],
+          "responsibilities": [
+            "Keep the existing support-availability contract nominal across its real claim and Delta boundaries.",
+            "Read derived module/package topology without closing open record metadata.",
+            "Own pure component/package measurements and their shared scope level."
+          ],
+          "id": "IR-COMPARISON-structure",
+          "kind": "module",
+          "qualified_name": "archkeel.ir.structure"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/comparison-support-types.md"
+          ],
+          "responsibilities": [
+            "Keep the existing support-availability contract nominal across its real claim and Delta boundaries."
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-COMPARISON-InsideSizes",
+          "kind": "class",
+          "qualified_name": "archkeel.ir.structure.InsideSizes",
+          "parent_id": "IR-COMPARISON-structure",
+          "modifiers": [
+            "frozen"
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/comparison-support-types.md"
+          ],
+          "responsibilities": [
+            "Keep the existing support-availability contract nominal across its real claim and Delta boundaries."
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-COMPARISON-InsideSizes.status",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.structure.InsideSizes.status",
+          "parent_id": "IR-COMPARISON-InsideSizes",
+          "annotation": "ComparisonStatus"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/comparison-support-types.md"
+          ],
+          "responsibilities": [
+            "Keep the existing support-availability contract nominal across its real claim and Delta boundaries."
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-COMPARISON-producer-structure",
+          "kind": "function",
+          "qualified_name": "archkeel.ir.structure.oversized_insides",
+          "parent_id": "IR-COMPARISON-structure",
+          "signature": {
+            "parameters": [
+              {
+                "name": "observation",
+                "annotation": "Observation",
+                "kind": "positional",
+                "default_known": true
+              }
+            ],
+            "returns": "InsideSizes"
+          }
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/comparison-support-types.md"
+          ],
+          "responsibilities": [
+            "Keep the existing support-availability contract nominal across its real claim and Delta boundaries."
+          ],
+          "id": "IR-COMPARISON-duplication",
+          "kind": "module",
+          "qualified_name": "archkeel.ir.duplication"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/comparison-support-types.md"
+          ],
+          "responsibilities": [
+            "Keep the existing support-availability contract nominal across its real claim and Delta boundaries."
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-COMPARISON-OwnedLogic",
+          "kind": "class",
+          "qualified_name": "archkeel.ir.duplication.OwnedLogic",
+          "parent_id": "IR-COMPARISON-duplication",
+          "modifiers": [
+            "frozen"
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/comparison-support-types.md"
+          ],
+          "responsibilities": [
+            "Keep the existing support-availability contract nominal across its real claim and Delta boundaries."
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-COMPARISON-OwnedLogic.status",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.duplication.OwnedLogic.status",
+          "parent_id": "IR-COMPARISON-OwnedLogic",
+          "annotation": "ComparisonStatus"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/comparison-support-types.md"
+          ],
+          "responsibilities": [
+            "Keep the existing support-availability contract nominal across its real claim and Delta boundaries."
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-COMPARISON-producer-duplication",
+          "kind": "function",
+          "qualified_name": "archkeel.ir.duplication.repeated_logic",
+          "parent_id": "IR-COMPARISON-duplication",
+          "signature": {
+            "parameters": [
+              {
+                "name": "observation",
+                "annotation": "Observation",
+                "kind": "positional",
+                "default_known": true
+              }
+            ],
+            "returns": "OwnedLogic"
+          }
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/comparison-support-types.md"
+          ],
+          "responsibilities": [
+            "Keep the existing support-availability contract nominal across its real claim and Delta boundaries."
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-COMPARISON-DimensionDelta",
+          "kind": "class",
+          "qualified_name": "archkeel.ir.model.DimensionDelta",
+          "parent_id": "IR-DEPENDENCY-model",
+          "modifiers": [
+            "frozen"
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/comparison-support-types.md"
+          ],
+          "responsibilities": [
+            "Keep the existing support-availability contract nominal across its real claim and Delta boundaries."
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-COMPARISON-DimensionDelta.status",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.model.DimensionDelta.status",
+          "parent_id": "IR-COMPARISON-DimensionDelta",
+          "annotation": "ComparisonStatus"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/comparison-support-types.md"
+          ],
+          "responsibilities": [
+            "Keep the existing support-availability contract nominal across its real claim and Delta boundaries."
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-COMPARISON-RatchetObservations",
+          "kind": "class",
+          "qualified_name": "archkeel.ir.model.RatchetObservations",
+          "parent_id": "IR-DEPENDENCY-model",
+          "modifiers": [
+            "frozen"
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/comparison-support-types.md"
+          ],
+          "responsibilities": [
+            "Keep the existing support-availability contract nominal across its real claim and Delta boundaries."
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-COMPARISON-RatchetObservations.status",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.model.RatchetObservations.status",
+          "parent_id": "IR-COMPARISON-RatchetObservations",
+          "annotation": "ComparisonStatus"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/comparison-support-types.md"
+          ],
+          "responsibilities": [
+            "Keep the existing support-availability contract nominal across its real claim and Delta boundaries."
+          ],
+          "id": "IR-COMPARISON-decoder",
+          "kind": "function",
+          "qualified_name": "archkeel.ir.codec_delta._parse_comparison_status",
+          "parent_id": "IR-DELTA-VERSION-codec",
+          "signature": {
+            "parameters": [
+              {
+                "name": "value",
+                "annotation": "RawJson",
+                "kind": "positional",
+                "default_known": true
+              },
+              {
+                "name": "label",
+                "annotation": "str",
+                "kind": "positional",
+                "default_known": true
+              }
+            ],
+            "returns": "ComparisonStatus"
+          }
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/comparison-support-types.md"
+          ],
+          "responsibilities": [
+            "Keep the existing support-availability contract nominal across its real claim and Delta boundaries."
+          ],
+          "id": "IR-COMPARISON-decisions",
+          "kind": "module",
+          "qualified_name": "archkeel.ir.decisions"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/comparison-support-types.md"
+          ],
+          "responsibilities": [
+            "Keep the existing support-availability contract nominal across its real claim and Delta boundaries."
+          ],
+          "id": "IR-COMPARISON-named",
+          "kind": "function",
+          "qualified_name": "archkeel.ir.decisions._named",
+          "parent_id": "IR-COMPARISON-decisions",
+          "signature": {
+            "parameters": [
+              {
+                "name": "status",
+                "annotation": "ComparisonStatus",
+                "kind": "positional",
+                "default_known": true
+              },
+              {
+                "name": "candidates",
+                "annotation": "tuple[object, ...]",
+                "kind": "positional",
+                "default_known": true
+              }
+            ],
+            "returns": "int | None"
+          }
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/superpowers/specs/2026-10-17-permission-status-types.md"
+          ],
+          "id": "IR-PERMISSION-module",
+          "kind": "module",
+          "qualified_name": "archkeel.ir.architecture_projection",
+          "parent_id": "TARGET-GOVERNANCE",
+          "responsibilities": [
+            "Own compact authenticated projection values and the component-pair permission vocabulary."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/superpowers/specs/2026-10-17-permission-status-types.md"
+          ],
+          "id": "IR-PERMISSION-status",
+          "kind": "enum",
+          "qualified_name": "archkeel.ir.architecture_projection.PermissionStatus",
+          "parent_id": "IR-PERMISSION-module",
+          "responsibilities": [
+            "Own allowed, forbidden and undecided component-pair permission states."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/superpowers/specs/2026-10-17-permission-status-types.md"
+          ],
+          "id": "IR-PERMISSION-value",
+          "kind": "class",
+          "qualified_name": "archkeel.ir.architecture_projection.PermissionProjection",
+          "parent_id": "IR-PERMISSION-module",
+          "responsibilities": [
+            "Retain one declared component-pair permission and its governing evidence."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/superpowers/specs/2026-10-17-permission-status-types.md"
+          ],
+          "id": "IR-PERMISSION-value-status",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.architecture_projection.PermissionProjection.status",
+          "parent_id": "IR-PERMISSION-value",
+          "annotation": "PermissionStatus",
+          "responsibilities": [
+            "Retain the canonical nominal component-pair permission state."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/host-event-types.md"
+          ],
+          "id": "IR-HOST-module",
+          "kind": "module",
+          "qualified_name": "archkeel.ir.host_records",
+          "parent_id": "TARGET-GOVERNANCE",
+          "responsibilities": [
+            "Own replayable host evidence and its ordering vocabulary."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/host-event-types.md"
+          ],
+          "id": "IR-HOST-event",
+          "kind": "enum",
+          "qualified_name": "archkeel.ir.host_records.HostEvent",
+          "parent_id": "IR-HOST-module",
+          "responsibilities": [
+            "Own the closed expectation publication and candidate submission replay events."
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          }
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/host-event-types.md"
+          ],
+          "id": "IR-HOST-record",
+          "kind": "class",
+          "qualified_name": "archkeel.ir.host_records.HostRecord",
+          "parent_id": "IR-HOST-module",
+          "responsibilities": [
+            "Retain legacy replay fields and expose their typed ordering meaning."
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          }
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/host-event-types.md"
+          ],
+          "id": "IR-HOST-parse-event",
+          "kind": "function",
+          "qualified_name": "archkeel.ir.host_records.parse_event",
+          "parent_id": "IR-HOST-module",
+          "responsibilities": [
+            "Convert the closed replay vocabulary once for parsing and ordering consumers."
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "signature": {
+            "parameters": [
+              {
+                "name": "value",
+                "kind": "positional",
+                "annotation": "str",
+                "default_known": true
+              }
+            ],
+            "returns": "HostEvent"
+          }
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/host-event-types.md"
+          ],
+          "id": "IR-HOST-record-event",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.host_records.HostRecord.event",
+          "parent_id": "IR-HOST-record",
+          "responsibilities": [
+            "Keep the legacy constructor and wire event field open until existing validation."
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "annotation": "str"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/source-resolution-types.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-SOURCE-RESOLUTION-enum",
+          "kind": "enum",
+          "qualified_name": "archkeel.ir.facts.SourceResolution",
+          "parent_id": "archkeel.ir.facts",
+          "responsibilities": [
+            "Own the existing resolved, partially_resolved and unresolved source claims without graph or resolver-only states."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/source-resolution-types.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-SOURCE-RESOLUTION-parse",
+          "kind": "function",
+          "qualified_name": "archkeel.ir.facts.parse_source_resolution",
+          "parent_id": "archkeel.ir.facts",
+          "responsibilities": [
+            "Recognize shared source-resolution claims at owned consumers while preserving absent and future record data."
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "value",
+                "kind": "positional",
+                "default_known": true,
+                "annotation": "JsonValue | RawJson"
+              }
+            ],
+            "returns": "SourceResolution | None"
+          }
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/source-resolution-types.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-SOURCE-RESOLUTION-CallStatus",
+          "kind": "type_alias",
+          "qualified_name": "archkeel.ir.model.CallStatus",
+          "parent_id": "IR-DEPENDENCY-model",
+          "responsibilities": [
+            "Name only Literal[SourceResolution.UNRESOLVED, SourceResolution.PARTIALLY_RESOLVED] for call rows without a unique proven target."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/source-resolution-types.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-SOURCE-RESOLUTION-CallRow",
+          "kind": "class",
+          "qualified_name": "archkeel.ir.model.CallRow",
+          "parent_id": "IR-DEPENDENCY-model",
+          "responsibilities": [
+            "Retain one call without a unique proven target and normalize its narrow source-resolution subset once."
+          ],
+          "modifiers": [
+            "frozen"
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/source-resolution-types.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-SOURCE-RESOLUTION-CallRow.status",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.model.CallRow.status",
+          "parent_id": "IR-SOURCE-RESOLUTION-CallRow",
+          "responsibilities": [
+            "Require the named two-member source-resolution subset; resolved and unknown values cannot enter a call row."
+          ],
+          "annotation": "CallStatus"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/known-delta-action-types.md"
+          ],
+          "responsibilities": [
+            "Keep known Delta actions nominal at production and governance ports while preserving future-open wire data."
+          ],
+          "id": "KNOWN-ACTION-enum",
+          "kind": "enum",
+          "qualified_name": "archkeel.ir.model.KnownSemanticChangeKind",
+          "parent_id": "IR-DEPENDENCY-model",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          }
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/known-delta-action-types.md"
+          ],
+          "responsibilities": [
+            "Keep known Delta actions nominal at production and governance ports while preserving future-open wire data."
+          ],
+          "id": "KNOWN-ACTION-wire",
+          "kind": "class",
+          "qualified_name": "archkeel.ir.model.SemanticChange",
+          "parent_id": "IR-DEPENDENCY-model",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "modifiers": [
+            "frozen"
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/known-delta-action-types.md"
+          ],
+          "responsibilities": [
+            "Keep known Delta actions nominal at production and governance ports while preserving future-open wire data."
+          ],
+          "id": "KNOWN-ACTION-wire-change",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.model.SemanticChange.change",
+          "parent_id": "KNOWN-ACTION-wire",
+          "annotation": "str",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          }
+        },
+        {
+          "id": "IR-SYMBOL-CLASS-KIND",
+          "kind": "enum",
+          "qualified_name": "archkeel.ir.facts.SymbolClassKind",
+          "language": "python",
+          "parent_id": "archkeel.ir.facts",
+          "presence": "planned",
+          "responsibilities": [
+            "Own the existing classifier vocabulary shared by source producers and contract consumers."
+          ],
+          "provenance": [
+            "docs/architecture/python-class-kind.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          }
+        },
+        {
+          "id": "IR-SYMBOL-CLASS-KIND-READER",
+          "kind": "function",
+          "qualified_name": "archkeel.ir.facts.parse_symbol_class_kind",
+          "language": "python",
+          "parent_id": "archkeel.ir.facts",
+          "presence": "planned",
+          "responsibilities": [
+            "Recognize shared classifier tags without assigning meaning to foreign wire data."
+          ],
+          "provenance": [
+            "docs/architecture/python-class-kind.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "signature": {
+            "parameters": [
+              {
+                "name": "value",
+                "kind": "positional",
+                "default_known": true,
+                "annotation": "JsonValue | RawJson | SymbolClassKind"
+              }
+            ],
+            "returns": "SymbolClassKind | None"
+          }
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/source-section-consumer-types.md"
+          ],
+          "id": "PROFILE-SECTIONS-validation",
+          "kind": "module",
+          "qualified_name": "archkeel.ir.facts_validation",
+          "parent_id": "TARGET-FACTS-CODEC",
+          "responsibilities": [
+            "Validate records in their existing canonical source section."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/source-section-consumer-types.md"
+          ],
+          "id": "PROFILE-SECTIONS-source-record",
+          "kind": "function",
+          "qualified_name": "archkeel.ir.facts_validation._source_record",
+          "parent_id": "PROFILE-SECTIONS-validation",
+          "visibility": {
+            "kind": "private",
+            "basis": "declared"
+          },
+          "signature": {
+            "parameters": [
+              {
+                "name": "record",
+                "annotation": "Record",
+                "kind": "positional",
+                "default_known": true
+              },
+              {
+                "name": "section",
+                "annotation": "SourceSectionName",
+                "kind": "positional",
+                "default_known": true
+              }
+            ],
+            "returns": "None"
+          },
+          "responsibilities": [
+            "Use the canonical source section without widening or reinterpreting record metadata."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/source-section-consumer-types.md"
+          ],
+          "id": "PROFILE-SECTIONS-base-declarations",
+          "kind": "function",
+          "qualified_name": "archkeel.ir.facts_validation._base_declarations",
+          "parent_id": "PROFILE-SECTIONS-validation",
+          "visibility": {
+            "kind": "private",
+            "basis": "declared"
+          },
+          "signature": {
+            "parameters": [
+              {
+                "name": "record",
+                "annotation": "Record",
+                "kind": "positional",
+                "default_known": true
+              },
+              {
+                "name": "section",
+                "annotation": "SourceSectionName",
+                "kind": "positional",
+                "default_known": true
+              }
+            ],
+            "returns": "None"
+          },
+          "responsibilities": [
+            "Use the canonical source section without widening or reinterpreting record metadata."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/source-section-consumer-types.md"
+          ],
+          "id": "PROFILE-SECTIONS-section-coverage",
+          "kind": "function",
+          "qualified_name": "archkeel.ir.source_graph._section_coverage",
+          "parent_id": "IR-UML-source_graph",
+          "visibility": {
+            "kind": "private",
+            "basis": "declared"
+          },
+          "signature": {
+            "parameters": [
+              {
+                "name": "observation",
+                "annotation": "Observation",
+                "kind": "positional",
+                "default_known": true
+              },
+              {
+                "name": "scope_id",
+                "annotation": "str",
+                "kind": "positional",
+                "default_known": true
+              },
+              {
+                "name": "section",
+                "annotation": "SourceSectionName",
+                "kind": "positional",
+                "default_known": true
+              },
+              {
+                "name": "entity_kinds",
+                "annotation": "tuple[EntityKind, ...]",
+                "kind": "positional",
+                "default_known": true
+              },
+              {
+                "name": "relationships",
+                "annotation": "tuple[RelationshipKind, ...]",
+                "kind": "positional",
+                "default_known": true
+              },
+              {
+                "name": "available",
+                "annotation": "bool",
+                "kind": "positional",
+                "default_known": true
+              }
+            ],
+            "returns": "Coverage"
+          },
+          "responsibilities": [
+            "Derive conservative graph coverage from canonical source section and profile capabilities."
+          ]
+        },
+        {
+          "id": "IR-SOURCE-NAME-VISIBILITY",
+          "kind": "enum",
+          "qualified_name": "archkeel.ir.facts.SourceNameVisibility",
+          "language": "python",
+          "parent_id": "archkeel.ir.facts",
+          "presence": "planned",
+          "responsibilities": [
+            "Own source underscore-spelling tags separately from language API visibility."
+          ],
+          "provenance": [
+            "docs/architecture/source-name-visibility.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          }
+        },
+        {
+          "id": "IR-SOURCE-NAME-VISIBILITY-READER",
+          "kind": "function",
+          "qualified_name": "archkeel.ir.facts.parse_source_name_visibility",
+          "language": "python",
+          "parent_id": "archkeel.ir.facts",
+          "presence": "planned",
+          "responsibilities": [
+            "Recognize source-name tags while leaving foreign or opaque visibility data unclassified."
+          ],
+          "provenance": [
+            "docs/architecture/source-name-visibility.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "signature": {
+            "parameters": [
+              {
+                "name": "value",
+                "kind": "positional",
+                "default_known": true,
+                "annotation": "JsonValue | RawJson | SourceNameVisibility"
+              }
+            ],
+            "returns": "SourceNameVisibility | None"
+          }
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/graph-topology-level-types.md"
+          ],
+          "id": "GRAPH-TOPOLOGY-level",
+          "kind": "enum",
+          "qualified_name": "archkeel.ir.model.GraphTopologyLevel",
+          "parent_id": "IR-DEPENDENCY-model",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "responsibilities": [
+            "Own the module/package domain of Core-derived graph topology."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/graph-topology-level-types.md"
+          ],
+          "id": "GRAPH-TOPOLOGY-reader",
+          "kind": "function",
+          "qualified_name": "archkeel.ir.model.parse_graph_topology_level",
+          "parent_id": "IR-DEPENDENCY-model",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "signature": {
+            "parameters": [
+              {
+                "name": "value",
+                "annotation": "JsonValue | RawJson",
+                "kind": "positional",
+                "default_known": true
+              }
+            ],
+            "returns": "GraphTopologyLevel | None"
+          },
+          "responsibilities": [
+            "Recognize known topology levels without closing or rewriting open record data."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/structure-level-types.md"
+          ],
+          "id": "IR-STRUCTURE-level",
+          "kind": "enum",
+          "qualified_name": "archkeel.ir.structure.StructureLevel",
+          "parent_id": "IR-COMPARISON-structure",
+          "responsibilities": [
+            "Distinguish component and package measurement scopes from other topology domains."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/structure-level-types.md"
+          ],
+          "id": "IR-STRUCTURE-metric",
+          "kind": "class",
+          "qualified_name": "archkeel.ir.structure.StructureMetric",
+          "parent_id": "IR-COMPARISON-structure",
+          "responsibilities": [
+            "Publish immutable measurements with one nominal scope level."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/structure-level-types.md"
+          ],
+          "id": "IR-STRUCTURE-metric-level",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.structure.StructureMetric.level",
+          "parent_id": "IR-STRUCTURE-metric",
+          "annotation": "StructureLevel",
+          "responsibilities": [
+            "Keep measurement scope nominal across aggregation and presentation."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/structure-level-types.md"
+          ],
+          "id": "IR-STRUCTURE-scope-metrics",
+          "kind": "function",
+          "qualified_name": "archkeel.ir.structure.scope_metrics",
+          "parent_id": "IR-COMPARISON-structure",
+          "responsibilities": [
+            "Measure a caller-supplied module grouping at a declared structure level."
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "observation",
+                "kind": "positional",
+                "annotation": "Observation",
+                "default_known": true
+              },
+              {
+                "name": "level",
+                "kind": "positional",
+                "annotation": "StructureLevel",
+                "default_known": true
+              },
+              {
+                "name": "scope_of",
+                "kind": "positional",
+                "annotation": "dict[str, str]",
+                "default_known": true
+              }
+            ],
+            "returns": "tuple[StructureMetric, ...]"
+          }
+        },
+        {
+          "id": "IR-CLASSIFIER-GRAPH-READER",
+          "kind": "function",
+          "qualified_name": "archkeel.ir.source_graph._classifier_kind",
+          "language": "python",
+          "parent_id": "IR-UML-source_graph",
+          "presence": "planned",
+          "responsibilities": [
+            "Project known source class tags through canonical source and graph owners while retaining the caller's existing fallback."
+          ],
+          "provenance": [
+            "docs/architecture/classifier-projections.md"
+          ],
+          "visibility": {
+            "kind": "private",
+            "basis": "declared"
+          },
+          "signature": {
+            "parameters": [
+              {
+                "name": "value",
+                "kind": "positional",
+                "default_known": true,
+                "annotation": "JsonValue"
+              }
+            ],
+            "returns": "EntityKind | None"
+          }
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/unresolved-call-change-types.md"
+          ],
+          "id": "CALL-CHANGE-row",
+          "kind": "class",
+          "qualified_name": "archkeel.ir.model.UnresolvedCallChange",
+          "parent_id": "IR-DEPENDENCY-model",
+          "responsibilities": [
+            "Publish the two supported unresolved-call count directions through the shared action owner."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/unresolved-call-change-types.md"
+          ],
+          "id": "CALL-CHANGE-direction",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.model.UnresolvedCallChange.change",
+          "parent_id": "CALL-CHANGE-row",
+          "annotation": "CallChangeKind",
+          "responsibilities": [
+            "Keep added/removed directions nominal without broadening the existing two-value domain."
+          ]
         }
       ],
       "relationships": [

@@ -21,10 +21,12 @@ from archkeel.ir.decisions import (
     open_decision_summary,
     open_decisions,
 )
+from archkeel.ir.facts import SourceNameVisibility, parse_source_name_visibility
 from archkeel.ir.identity import module_identity
 from archkeel.ir.model import (
     ArchitectureContract,
     ArchitectureRule,
+    ArchitectureRuleKind,
     CompleteAssignmentRule,
     ComponentOwnership,
     ComponentRole,
@@ -41,9 +43,18 @@ from archkeel.ir.model import (
     RunResult,
     in_scope,
 )
+from archkeel.ir.model import (
+    AssessmentStatus as _AssessmentStatus,
+)
+from archkeel.ir.model import (
+    Command as _Command,
+)
 from archkeel.ir.model import DiagnosticKind as _DiagnosticKind
+from archkeel.ir.model import (
+    ExpectationOutcome as _ExpectationOutcome,
+)
 from archkeel.ir.profiles import Language
-from archkeel.ir.structure import StructureMetric, scope_metrics
+from archkeel.ir.structure import StructureLevel, StructureMetric, scope_metrics
 
 from .ports import Analyzer, FilesToWrite, ScanConfig
 from .ratchets import measure_python_ratchets
@@ -138,7 +149,8 @@ def public_top_level_names(symbols: Iterable[Record]) -> dict[str, set[str]]:
         if (
             symbol.data.get("parent") is None
             and not symbol.data.get("definition_contexts")
-            and symbol.data.get("visibility") == "public_name"
+            and parse_source_name_visibility(symbol.data.get("visibility"))
+            is SourceNameVisibility.PUBLIC_NAME
             and isinstance(module, str)
             and isinstance(name, str)
         ):
@@ -277,7 +289,7 @@ def draft_contract(
     labels = tuple(component.label for component in draft_components)
     scaffold = ArchitectureContract(ContractVersion.V2_1, draft_components, ())
     edges = observed_component_edges(scaffold, observation)
-    sizes = scope_metrics(observation, "component", module_labels)
+    sizes = scope_metrics(observation, StructureLevel.COMPONENT, module_labels)
     public = _drafted_public(observation, scaffold)
     # A drafted public list is the agent's interface decision, marked the way its rules are
     # (AD-50), so `agent_decisions` counts it and the architect sees what is still owed.
@@ -290,31 +302,31 @@ def draft_contract(
     rules: list[ArchitectureRule] = [
         CompleteAssignmentRule(
             "ASSIGNMENT-COMPLETE",
-            "complete_assignment",
+            ArchitectureRuleKind.COMPLETE_ASSIGNMENT,
             namespace,
             "TODO: explain why every module needs exactly one owning component.",
             (DOCUMENT_PATH,),
-            "agent",
+            DecisionMaker.AGENT,
         )
     ]
     if not _has_cycle(labels, edges):
         rules.append(
             NoComponentCyclesRule(
                 "COMPONENT-NO-CYCLES",
-                "no_component_cycles",
+                ArchitectureRuleKind.NO_COMPONENT_CYCLES,
                 "TODO: explain why components must stay acyclic.",
                 (DOCUMENT_PATH,),
-                "agent",
+                DecisionMaker.AGENT,
             )
         )
     if public:
         rules.append(
             InterfaceBoundaryRule(
                 "INTERFACE-BOUNDARY",
-                "interface_boundary",
+                ArchitectureRuleKind.INTERFACE_BOUNDARY,
                 "TODO: explain why cross-component imports must use declared interfaces.",
                 (DOCUMENT_PATH,),
-                "agent",
+                DecisionMaker.AGENT,
             )
         )
     return ArchitectureContract(ContractVersion.V2_1, components, tuple(rules)), edges, sizes
@@ -462,7 +474,7 @@ def run_init(
             ) from error
     if observed.diagnostics or observed.observation is None:
         return RunResult(
-            "init", 2, diagnostics=observed.diagnostics, coverage=observed.coverage
+            _Command.INIT, 2, diagnostics=observed.diagnostics, coverage=observed.coverage
         ), FilesToWrite()
     contract, edges, sizes = draft_contract(
         observed.observation, namespace, roots=roots, language=language
@@ -512,10 +524,10 @@ def run_init(
         decisions, decision_count = open_decision_summary(observed.observation, ownership)
         decisions_complete = len(decisions) == decision_count
     result = RunResult(
-        "init",
+        _Command.INIT,
         0,
-        observation_complete="PASS",
-        expectation_fulfilled="n/a",
+        observation_complete=_AssessmentStatus.PASS,
+        expectation_fulfilled=_ExpectationOutcome.NOT_APPLICABLE,
         coverage=observed.coverage,
         python_version=observed.observation.python_version,
         artifact=CONTRACT_PATH,

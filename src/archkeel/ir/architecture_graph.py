@@ -12,7 +12,10 @@ from enum import StrEnum
 from pathlib import PurePosixPath
 from typing import Literal
 
+from archkeel.ir.facts import DefinitionBranchKind as DefinitionBranchKind
+from archkeel.ir.facts import DefinitionContextKind as DefinitionContextKind
 from archkeel.ir.facts import Evidence, Language
+from archkeel.ir.facts import ParameterKind as ParameterKind
 
 
 class EntityKind(StrEnum):
@@ -73,15 +76,6 @@ class VisibilityBasis(StrEnum):
     UNKNOWN = "unknown"
 
 
-class ParameterKind(StrEnum):
-    POSITIONAL_ONLY = "positional_only"
-    POSITIONAL = "positional"
-    KEYWORD_ONLY = "keyword_only"
-    VARARGS = "varargs"
-    KWARGS = "kwargs"
-    UNKNOWN = "unknown"
-
-
 class ModifierKind(StrEnum):
     ABSTRACT = "abstract"
     STATIC = "static"
@@ -89,26 +83,6 @@ class ModifierKind(StrEnum):
     ASYNC = "async"
     FROZEN = "frozen"
     MIXIN = "mixin"
-
-
-class DefinitionContextKind(StrEnum):
-    IF = "if"
-    FOR = "for"
-    ASYNC_FOR = "async_for"
-    WHILE = "while"
-    TRY = "try"
-    TRY_STAR = "try_star"
-    WITH = "with"
-    ASYNC_WITH = "async_with"
-    MATCH = "match"
-
-
-class DefinitionBranchKind(StrEnum):
-    BODY = "body"
-    ELSE = "else"
-    HANDLER = "handler"
-    FINALLY = "finally"
-    CASE = "case"
 
 
 class CoverageStatus(StrEnum):
@@ -203,6 +177,18 @@ class ArchitectureRuleKind(StrEnum):
     BOUNDARY_TYPES = "boundary_types"
 
 
+class ArchitectureRuleGrammar:
+    """Normalize the shared contract rule tags at the public constructor boundary."""
+
+    __slots__ = ()
+    kind: ArchitectureRuleKind
+    decided_by: DecisionMaker
+
+    def __post_init__(self) -> None:
+        builtins.object.__setattr__(self, "kind", ArchitectureRuleKind(self.kind))
+        builtins.object.__setattr__(self, "decided_by", DecisionMaker(self.decided_by))
+
+
 class ComponentRole(StrEnum):
     COMPONENT = "component"
     INTERFACE = "interface"
@@ -286,7 +272,7 @@ class PublicAPIEntry:
 
 
 @dataclass(frozen=True, slots=True)
-class RootLayoutRule:
+class RootLayoutRule(ArchitectureRuleGrammar):
     """The immediate packages or modules below a root are an exact allow-list."""
 
     id: str
@@ -297,10 +283,6 @@ class RootLayoutRule:
     provenance: tuple[str, ...]
     decided_by: DecisionMaker
 
-    def __post_init__(self) -> None:
-        builtins.object.__setattr__(self, "kind", ArchitectureRuleKind(self.kind))
-        builtins.object.__setattr__(self, "decided_by", DecisionMaker(self.decided_by))
-
 
 def contract_relative_path(value: str) -> PurePosixPath | None:
     """Check a declared repository path without filesystem access."""
@@ -310,8 +292,7 @@ def contract_relative_path(value: str) -> PurePosixPath | None:
     return relative
 
 
-def validate_module_target(target: ContractModuleTarget) -> None:
-    path: str = target.path
+def _validate_module_target_path(path: str) -> None:
     relative = contract_relative_path(path)
     if (
         not path
@@ -322,6 +303,10 @@ def validate_module_target(target: ContractModuleTarget) -> None:
         or re.fullmatch(r"\.(?:py|dart|tsx?|mts|cts|jsx?|mjs|cjs)", relative.suffix) is None
     ):
         raise ValueError("path must be a repository-relative source path")
+
+
+def validate_module_target(target: ContractModuleTarget) -> None:
+    _validate_module_target_path(target.path)
     responsibility: str = target.responsibility
     if not responsibility.strip() or re.search(r"[\r\n]", responsibility):
         raise ValueError("responsibility must be one sentence on one line")
@@ -606,7 +591,7 @@ class GraphComparison:
 
 
 @dataclass(frozen=True, slots=True)
-class ExternalDependencyScopeRule:
+class ExternalDependencyScopeRule(ArchitectureRuleGrammar):
     """`allowed_sources` match by module prefix, `exact_sources` only the module named (AD-49)."""
 
     id: str
@@ -617,10 +602,6 @@ class ExternalDependencyScopeRule:
     provenance: tuple[str, ...]
     decided_by: DecisionMaker
     exact_sources: tuple[str, ...] = ()
-
-    def __post_init__(self) -> None:
-        builtins.object.__setattr__(self, "kind", ArchitectureRuleKind(self.kind))
-        builtins.object.__setattr__(self, "decided_by", DecisionMaker(self.decided_by))
 
 
 @dataclass(frozen=True, slots=True)

@@ -17,12 +17,17 @@ from archkeel.ir.facts import (
     SOURCE_RESOLUTION_GAP_KIND,
     BuiltinTarget,
     ConstructCapability,
+    ConstructSupport,
     ExternalPackageTarget,
+    ForbiddenConstructKind,
     SourceFacts,
     SourceProfile,
+    SourceResolution,
     SourceSectionName,
     UnresolvedTarget,
+    parse_source_resolution,
 )
+from archkeel.ir.facts import ResolutionRole as _ResolutionRole
 from archkeel.ir.facts_codec import (
     ProtocolError,
     RawEvidence,
@@ -37,6 +42,7 @@ from archkeel.ir.model import (
     ContractComponent,
     ContractDeclarations,
     EvidenceClass,
+    GraphTopologyLevel,
     InterfaceBoundaryRule,
     in_scope,
     module_in_ownership,
@@ -104,7 +110,12 @@ class ScanResult:
     context_evidence: list[RawRecord]
     violations: list[RawRecord]
     unknowns: list[RawRecord]
-    observed_sections: frozenset[str]
+    observed_sections: frozenset[SourceSectionName]
+
+    def __post_init__(self) -> None:
+        self.observed_sections = frozenset(
+            SourceSectionName(section) for section in self.observed_sections
+        )
 
 
 def coverage_payload(
@@ -119,11 +130,21 @@ def coverage_payload(
 ) -> CoveragePayload:
     """Summarize file discovery, rule and call-resolution coverage for one scan."""
     calls_analyzed = len(calls)
-    calls_resolved = sum(1 for call in calls if call["data"]["status"] == "resolved")
-    calls_partially_resolved = sum(
-        1 for call in calls if call["data"]["status"] == "partially_resolved"
+    calls_resolved = sum(
+        1
+        for call in calls
+        if parse_source_resolution(call["data"]["status"]) is SourceResolution.RESOLVED
     )
-    calls_unresolved = sum(1 for call in calls if call["data"]["status"] == "unresolved")
+    calls_partially_resolved = sum(
+        1
+        for call in calls
+        if parse_source_resolution(call["data"]["status"]) is SourceResolution.PARTIALLY_RESOLVED
+    )
+    calls_unresolved = sum(
+        1
+        for call in calls
+        if parse_source_resolution(call["data"]["status"]) is SourceResolution.UNRESOLVED
+    )
     return {
         "status": "FAIL" if failures or rule_failures or not paths else "PASS",
         "rules": "FAIL" if rule_failures else "PASS",
@@ -168,7 +189,10 @@ def _analysis_limits(
             subjects=[namespace],
             data={
                 "unresolved_calls": sum(
-                    1 for call in calls if call["data"]["status"] == "unresolved"
+                    1
+                    for call in calls
+                    if parse_source_resolution(call["data"]["status"])
+                    is SourceResolution.UNRESOLVED
                 )
             },
         ),
@@ -578,7 +602,7 @@ def _unproven_binding_view(item: RawRecord) -> RawRecord:
 def _source_inventory_complete(facts: SourceFacts) -> bool:
     selected = set(facts.coverage.selected_files)
     return bool(selected) and (
-        selected == {item.path for item in facts.inputs if item.role == "selected"}
+        selected == {item.path for item in facts.inputs if item.role == _ResolutionRole.SELECTED}
         and facts.coverage.files_read == facts.coverage.files_parsed == len(selected)
     )
 
@@ -607,22 +631,29 @@ def evaluate_source(
     is_python = facts.profile == SourceProfile.PYTHON
     required = (
         {
-            "symbols",
-            "imports",
-            "calls",
-            "references",
-            "bindings",
-            "typing_signals",
-            "constructs",
-            "unknowns",
+            SourceSectionName.SYMBOLS,
+            SourceSectionName.IMPORTS,
+            SourceSectionName.CALLS,
+            SourceSectionName.REFERENCES,
+            SourceSectionName.BINDINGS,
+            SourceSectionName.TYPING_SIGNALS,
+            SourceSectionName.CONSTRUCTS,
+            SourceSectionName.UNKNOWNS,
         }
         if is_python
-        else {"imports", "unknowns"}
+        else {SourceSectionName.IMPORTS, SourceSectionName.UNKNOWNS}
     )
     declared_sections = set(facts.capabilities.sections)
     features = set(facts.capabilities.resolution_features)
+    inner_uml_sections = {
+        SourceSectionName.IMPORTS,
+        SourceSectionName.UNKNOWNS,
+        SourceSectionName.SYMBOLS,
+        SourceSectionName.CALLS,
+        SourceSectionName.REFERENCES,
+        SourceSectionName.BINDINGS,
+    }
     if facts.profile == SourceProfile.DART:
-        inner_uml_sections = {"imports", "unknowns", "symbols", "calls", "references", "bindings"}
         if declared_sections != inner_uml_sections or facts.capabilities.resolution_features != (
             "inner-uml-v1",
         ):
@@ -636,9 +667,23 @@ def evaluate_source(
         }
         legacy_features = ({"static-imports"}, native_import_features)
         inner_uml_features = native_import_features | {"inner-uml-v1"}
-        inner_uml_sections = {"imports", "unknowns", "symbols", "calls", "references", "bindings"}
-        legacy = declared_sections == required and features in legacy_features
-        inner_uml = declared_sections == inner_uml_sections and features == inner_uml_features
+        legacy = (
+            declared_sections == required
+            and features in legacy_features
+            and not facts.capabilities.constructs
+        )
+        inner_uml = features == inner_uml_features and (
+            (declared_sections == inner_uml_sections and not facts.capabilities.constructs)
+            or (
+                declared_sections == inner_uml_sections | {SourceSectionName.CONSTRUCTS}
+                and facts.capabilities.constructs
+                == (
+                    ConstructCapability(
+                        ForbiddenConstructKind.STRING_LITERAL_COMPARE, ConstructSupport.PARTIAL
+                    ),
+                )
+            )
+        )
         if len(facts.capabilities.resolution_features) != len(features):
             raise ProtocolError("duplicate resolution feature")
         if not (legacy or inner_uml):
@@ -725,10 +770,13 @@ def evaluate_source(
     evidence.update((entry.id, raw_evidence(entry)) for entry in used_evidence)
 
     module_edges, module_edge_pairs = aggregate_edges(
-        imports, level="module", internal_modules=module_names, namespace=namespace
+        imports, level=GraphTopologyLevel.MODULE, internal_modules=module_names, namespace=namespace
     )
     package_edges, package_edge_pairs = aggregate_edges(
-        imports, level="package", internal_modules=module_names, namespace=namespace
+        imports,
+        level=GraphTopologyLevel.PACKAGE,
+        internal_modules=module_names,
+        namespace=namespace,
     )
     dependency_edges = sorted([*package_edges, *module_edges], key=lambda item: item["id"])
     path_observations = declared_path_observations(declarations.paths, package_edges)
@@ -738,7 +786,7 @@ def evaluate_source(
     module_facts = module_records(
         parsed, module_names, module_edge_pairs, inventory_symbols, module_evidence
     )
-    symbols_measured = "symbols" in sections
+    symbols_measured = SourceSectionName.SYMBOLS in sections
     if not symbols_measured:
         for module in module_facts:
             module["data"]["symbol_count"] = None
@@ -894,7 +942,7 @@ def evaluate_source(
         failures=failures,
         rule_failures=rule_failures,
         calls=calls,
-        calls_measured="calls" in sections,
+        calls_measured=SourceSectionName.CALLS in sections,
     )
 
     strip_internal_reexport_facts(imports)

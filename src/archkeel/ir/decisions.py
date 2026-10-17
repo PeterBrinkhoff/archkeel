@@ -22,15 +22,18 @@ from .baseline import violation_rows
 from .bindings import unread_bindings
 from .codec_contract import parse_dependency_selector
 from .duplication import repeated_logic
+from .facts import RuntimeRequirementState as _RuntimeRequirementState
 from .facts_validation import validate_source_bindings
 from .interfaces import component_owners, owner_of
 from .measurements import RatchetError
 from .model import (
     RULE_RECORD_KINDS,
     AllowedDependencyRule,
+    ArchitectureRuleKind,
     ComparisonStatus,
     ComponentOwnership,
     ComponentOwnershipInput,
+    DecisionMaker,
     Evidence,
     EvidenceClass,
     ForbiddenDependencyRule,
@@ -452,22 +455,22 @@ def _open_decision(
         import_sites,
         ForbiddenDependencyRule(
             forbidden_id,
-            "forbidden_dependency",
+            ArchitectureRuleKind.FORBIDDEN_DEPENDENCY,
             source_package,
             target_package,
             True,
             _PLACEHOLDER_RATIONALE,
             (DOCUMENT_PATH,),
-            "agent",
+            DecisionMaker.AGENT,
         ),
         AllowedDependencyRule(
             allowed_id,
-            "allowed_dependency",
+            ArchitectureRuleKind.ALLOWED_DEPENDENCY,
             source_package,
             target_package,
             _PLACEHOLDER_RATIONALE,
             (DOCUMENT_PATH,),
-            "agent",
+            DecisionMaker.AGENT,
         ),
     )
 
@@ -657,7 +660,7 @@ def agent_decisions(observation: Observation) -> tuple[int, int]:
 
 def _named(status: ComparisonStatus, candidates: tuple[object, ...]) -> int | None:
     """An unsupported claim names nothing, which is not the same as finding nothing (AD-5)."""
-    return len(candidates) if status == "SUPPORTED" else None
+    return len(candidates) if status is ComparisonStatus.SUPPORTED else None
 
 
 def review_claims(observation: Observation) -> ReviewClaims:
@@ -844,7 +847,7 @@ def _native_scope_runtime_valid(runtime: RuntimeInfo) -> bool:
     """Replay only a simple numeric Python lower bound already validated by Core."""
     if (
         runtime.name != "python"
-        or runtime.requirement_state != "declared"
+        or runtime.requirement_state != _RuntimeRequirementState.DECLARED
         or runtime.required is None
         or re.fullmatch(r">=[0-9]+\.[0-9]+(?:\.[0-9]+)?", runtime.required) is None
         or re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", runtime.version) is None
@@ -975,7 +978,7 @@ def rule_assessments(
     declarations = [
         record
         for record in records.values()
-        if record.evidence_class.value == "DECLARED_RULE" and record.kind in RULE_RECORD_KINDS
+        if record.evidence_class == EvidenceClass.DECLARED_RULE and record.kind in RULE_RECORD_KINDS
     ]
     violations: _Counter[str] = _Counter(
         rule_id for record in observation.records("violations") or () for rule_id in record.rule_ids

@@ -6,22 +6,34 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Final, Literal, TypeAlias
+from typing import Final, TypeAlias
 
+from archkeel.ir.measurements import MetricComparisonStatus as _MetricComparisonStatus
 from archkeel.ir.measurements import compare_measurements
-from archkeel.ir.model import DraftedComponentSize, RunResult
+from archkeel.ir.model import (
+    AssessmentStatus as _AssessmentStatus,
+)
+from archkeel.ir.model import (
+    Command as _Command,
+)
+from archkeel.ir.model import ComparisonStatus as _ComparisonStatus
+from archkeel.ir.model import (
+    DraftedComponentSize,
+    RunResult,
+)
+from archkeel.ir.model import (
+    ExpectationOutcome as _ExpectationOutcome,
+)
+from archkeel.ir.model import KnownSemanticChangeKind as _KnownSemanticChangeKind
 
-State: TypeAlias = Literal["pass", "fail", "info", "unknown"]
-Comparison: TypeAlias = tuple[str, str, str, str]
+from .summary_badges import Badge as Badge
+from .summary_badges import BadgeState as BadgeState
+from .summary_badges import badge as badge
+
+State: TypeAlias = BadgeState
+Comparison: TypeAlias = tuple[str, str, str, _MetricComparisonStatus]
 # AD-100: a rejected run names this many unresolved call sites; the JSON result names all.
 _CALL_SITES_SHOWN: Final = 5
-
-
-@dataclass(frozen=True, slots=True)
-class Badge:
-    state: State
-    symbol: str
-    label: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,21 +56,13 @@ class Summary:
     call_sites: tuple[str, ...] = ()
 
 
-def badge(value: str) -> Badge:
-    if value == "PASS":
-        return Badge("pass", "✓", "PASS")
-    if value == "FAIL":
-        return Badge("fail", "×", "FAIL")
-    if value == "UNKNOWN":
-        return Badge("unknown", "?", "UNKNOWN")
-    if value == "n/a":
-        return Badge("info", "i", "NOT APPLICABLE")
-    return Badge("unknown", "?", "NOT CHECKED")
-
-
 def report_violates_rules(result: RunResult) -> bool:
     """Whether a completed report found violations its exit code does not express (AD-14)."""
-    return result.command == "report" and result.exit_code == 0 and result.declared_rules == "FAIL"
+    return (
+        result.command is _Command.REPORT
+        and result.exit_code == 0
+        and result.declared_rules is _AssessmentStatus.FAIL
+    )
 
 
 def check_leaves_a_verdict_undecided(result: RunResult) -> bool:
@@ -68,39 +72,46 @@ def check_leaves_a_verdict_undecided(result: RunResult) -> bool:
     decided nothing wrong and a run that could not decide everything both leave it at 0.
     """
     return (
-        result.command == "check"
+        result.command is _Command.CHECK
         and result.exit_code == 0
-        and any(value == "UNKNOWN" for _label, _key, value in _check_verdict_values(result))
+        and any(
+            badge(value).state is BadgeState.UNKNOWN
+            for _label, _key, value in _check_verdict_values(result)
+        )
     )
 
 
 def report_leaves_rules_undecided(result: RunResult) -> bool:
     """Whether a completed report or validation could not decide its declared rules."""
     return (
-        result.command in {"report", "validate"}
+        result.command in {_Command.REPORT, _Command.VALIDATE}
         and result.exit_code == 0
-        and result.declared_rules == "UNKNOWN"
+        and result.declared_rules is _AssessmentStatus.UNKNOWN
     )
 
 
 def _decision_badge(result: RunResult) -> Badge:
-    if result.command == "report" and (
+    if result.command is _Command.REPORT and (
         result.exit_code == 0 or result.rule_assessments is not None
     ):
         return badge(result.declared_rules)
     if check_leaves_a_verdict_undecided(result) or report_leaves_rules_undecided(result):
         return badge("UNKNOWN")
     if (
-        result.command == "validate"
-        and result.observation_complete == "PASS"
+        result.command is _Command.VALIDATE
+        and result.observation_complete is _AssessmentStatus.PASS
         and result.exit_code == 2
     ):
-        return badge("FAIL") if result.declared_rules == "FAIL" else Badge("fail", "×", "REJECT")
+        return (
+            badge("FAIL")
+            if result.declared_rules is _AssessmentStatus.FAIL
+            else Badge(BadgeState.FAIL, "×", "REJECT")
+        )
     if result.exit_code == 0:
-        return Badge("pass", "✓", "PASS")
+        return Badge(BadgeState.PASS, "✓", "PASS")
     if result.exit_code == 1:
-        return Badge("fail", "×", "REJECT")
-    return Badge("unknown", "?", "NOT CHECKED")
+        return Badge(BadgeState.FAIL, "×", "REJECT")
+    return Badge(BadgeState.UNKNOWN, "?", "NOT CHECKED")
 
 
 def _agent_decisions_line(result: RunResult) -> str:
@@ -189,10 +200,10 @@ def _call_site_lines(result: RunResult) -> tuple[str, ...]:
     changes = result.unresolved_call_changes
     if not changes:
         return () if note is None else (f"Unresolved call sites: {note}",)
-    added = sum(item.change == "added" for item in changes)
+    added = sum(item.change is _KnownSemanticChangeKind.ADDED for item in changes)
     lines = [f"Unresolved call sites: {added} added, {len(changes) - added} removed"]
     for item in changes[:_CALL_SITES_SHOWN]:
-        sign = "+" if item.change == "added" else "-"
+        sign = "+" if item.change is _KnownSemanticChangeKind.ADDED else "-"
         where = f"{item.path}:{','.join(str(line) for line in item.lines)}"
         count = f" ({item.before}->{item.after})" if item.before and item.after else ""
         lines.append(
@@ -238,11 +249,22 @@ def _roots_reason(scan_roots: tuple[str, ...]) -> str:
 
 
 def _observation_reason(result: RunResult) -> str:
-    if result.observation_complete != "PASS":
+    if result.observation_complete is not _AssessmentStatus.PASS:
         return "The configured source scope could not be observed completely."
     if result.scan_roots is None:
         return "All configured source files were read and parsed."
     return _roots_reason(result.scan_roots)
+
+
+def _expectation_reason(outcome: _ExpectationOutcome) -> str:
+    return {
+        _ExpectationOutcome.PASS: "The candidate matches its published expectation.",
+        _ExpectationOutcome.FAIL: "The candidate does not match its published expectation.",
+        _ExpectationOutcome.UNKNOWN: "The expectation could not be evaluated completely.",
+        _ExpectationOutcome.NOT_APPLICABLE: (
+            "Report mode does not evaluate a published expectation."
+        ),
+    }[outcome]
 
 
 def report_summary(result: RunResult) -> Summary:
@@ -253,8 +275,8 @@ def report_summary(result: RunResult) -> Summary:
         2: "Some checks could not complete. Read diagnostics and recorded findings.",
     }[result.exit_code]
     if (
-        result.command == "validate"
-        and result.observation_complete == "PASS"
+        result.command is _Command.VALIDATE
+        and result.observation_complete is _AssessmentStatus.PASS
         and result.exit_code == 2
     ):
         sentence = (
@@ -288,12 +310,6 @@ def report_summary(result: RunResult) -> Summary:
         "FAIL": "At least one rule violation was recorded; undecided positions may remain.",
         "UNKNOWN": "Available evidence does not establish the rule outcome.",
     }[result.declared_rules]
-    expectation_reason = {
-        "PASS": "The candidate matches its published expectation.",
-        "FAIL": "The candidate does not match its published expectation.",
-        "UNKNOWN": "The expectation could not be evaluated completely.",
-        "n/a": "Report mode does not evaluate a published expectation.",
-    }[result.expectation_fulfilled]
     verdicts = (
         VerdictRow(
             "Scan complete",
@@ -306,7 +322,7 @@ def report_summary(result: RunResult) -> Summary:
             "Change as declared",
             "expectation_fulfilled",
             result.expectation_fulfilled,
-            expectation_reason,
+            _expectation_reason(result.expectation_fulfilled),
         ),
     )
     sentence += (
@@ -370,7 +386,7 @@ def init_summary(result: RunResult) -> Summary:
                 f"\n\nObserved {cycle_edges} cycle edge position(s). Review these cycles; "
                 "init does not draft no_component_cycles when components already cycle."
             )
-    decision = Badge("info", "i", "DRAFT") if result.exit_code == 0 else report.decision
+    decision = Badge(BadgeState.INFO, "i", "DRAFT") if result.exit_code == 0 else report.decision
     return Summary(decision, sentence, report.verdicts[:1], ())
 
 
@@ -404,13 +420,13 @@ def _check_regressions(result: RunResult) -> tuple[Comparison, ...]:
     ratchets = result.delta.ratchets if result.delta is not None else None
     if (
         ratchets is None
-        or ratchets.status != "SUPPORTED"
+        or ratchets.status is not _ComparisonStatus.SUPPORTED
         or ratchets.baseline is None
         or ratchets.head is None
     ):
         return ()
     comparisons = compare_measurements(ratchets.baseline, ratchets.head)
-    return tuple(sorted(comparisons, key=lambda item: item[3] != "FAIL"))
+    return tuple(sorted(comparisons, key=lambda item: item[3] is not _MetricComparisonStatus.FAIL))
 
 
 def _check_verdict_reason(
@@ -419,7 +435,7 @@ def _check_verdict_reason(
     value: str,
     comparisons: tuple[Comparison, ...],
 ) -> str:
-    if value == "UNKNOWN":
+    if badge(value).state is BadgeState.UNKNOWN:
         return {
             "observation_complete": "The scan could not be completed.",
             "declared_rules": "The rules could not be evaluated.",
@@ -427,8 +443,8 @@ def _check_verdict_reason(
             "git_predicate": "The commit order could not be established.",
             "host_order": "The publication time could not be established.",
         }[key]
-    if value == "FAIL":
-        failed = sum(status == "FAIL" for *_, status in comparisons)
+    if badge(value).state is BadgeState.FAIL:
+        failed = sum(status is _MetricComparisonStatus.FAIL for *_, status in comparisons)
         return {
             "declared_rules": "At least one declared rule was violated.",
             "expectation_fulfilled": (
@@ -459,7 +475,9 @@ def check_decision_sentence(result: RunResult) -> str:
         return f"Do not merge: {diagnostic.kind} — {diagnostic.unknown_claim}"
     if check_leaves_a_verdict_undecided(result):
         undecided = [
-            label for label, _key, value in _check_verdict_values(result) if value == "UNKNOWN"
+            label
+            for label, _key, value in _check_verdict_values(result)
+            if badge(value).state is BadgeState.UNKNOWN
         ]
         return f"Read before merging: {' and '.join(undecided).lower()} could not be decided."
     if result.exit_code == 0:
@@ -481,5 +499,7 @@ def check_decision_sentence(result: RunResult) -> str:
         return (
             "Do not merge: the expectation was not published before the first candidate submission."
         )
-    failed_verdicts = sum(value == "FAIL" for _, _, value in _check_verdict_values(result))
+    failed_verdicts = sum(
+        badge(value).state is BadgeState.FAIL for _, _, value in _check_verdict_values(result)
+    )
     return f"Do not merge: {failed_verdicts} of five verdicts failed."

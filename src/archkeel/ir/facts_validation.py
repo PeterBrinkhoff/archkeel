@@ -13,21 +13,29 @@ from .facts import (
     Evidence,
     EvidenceClass,
     ExternalPackageTarget,
-    JsonValue,
     LocalTarget,
+    MethodKind,
+    PropertyOrigin,
     Record,
     RecordData,
     SourceFacts,
     SourceProfile,
+    SourceResolution,
+    SourceSectionName,
     UnresolvedTarget,
     in_scope,
     member_inventories,
+    parse_method_kind,
+    parse_source_resolution,
+    property_binding,
 )
+from .facts import MemberKind as _MemberKind
+from .facts import ResolutionRole as _ResolutionRole
 from .state_facts import ArgumentPass, AttributeAccess
 
 _REQUIRED = {
-    "symbols": ("qualified_name", "module", "name", "parent"),
-    "imports": (
+    SourceSectionName.SYMBOLS: ("qualified_name", "module", "name", "parent"),
+    SourceSectionName.IMPORTS: (
         "source_module",
         "source_package",
         "target_module",
@@ -38,12 +46,19 @@ _REQUIRED = {
         "relative_level",
         "under_type_checking",
     ),
-    "calls": ("source_scope", "source_module", "expression", "status", "targets"),
-    "references": ("source_scope", "source_module", "expression", "status", "targets", "use"),
-    "bindings": ("module",),
-    "typing_signals": ("owner", "signal"),
-    "constructs": ("owner", "construct"),
-    "unknowns": (),
+    SourceSectionName.CALLS: ("source_scope", "source_module", "expression", "status", "targets"),
+    SourceSectionName.REFERENCES: (
+        "source_scope",
+        "source_module",
+        "expression",
+        "status",
+        "targets",
+        "use",
+    ),
+    SourceSectionName.BINDINGS: ("module",),
+    SourceSectionName.TYPING_SIGNALS: ("owner", "signal"),
+    SourceSectionName.CONSTRUCTS: ("owner", "construct"),
+    SourceSectionName.UNKNOWNS: (),
 }
 _STRING_FIELDS = frozenset(
     {
@@ -147,8 +162,6 @@ def _payload(value: RecordData) -> None:
     # Nested mappings may use source-defined names such as `status` or `contract`.
     # Only the record envelope's own fields have protocol meaning.
     for key, child in value.entries:
-        if key == "property_binding":
-            _property_payload(child)
         if key in _POLICY_FIELDS:
             raise ValueError(f"policy field {key} is not a source fact")
         if key in _STRING_FIELDS and not isinstance(child, str):
@@ -170,30 +183,6 @@ def _payload(value: RecordData) -> None:
             raise ValueError(f"source payload {key} must be a string array")
 
 
-def _property_payload(value: JsonValue) -> None:
-    if not isinstance(value, RecordData) or {key for key, _ in value.entries} != {
-        "operation",
-        "source",
-        "line",
-        "source_line",
-    }:
-        raise ValueError("invalid property binding fields")
-    operation, source = value.get("operation"), value.get("source")
-    line, source_line = value.get("line"), value.get("source_line")
-    if (
-        operation not in ("create", "getter", "setter")
-        or source not in ("new", "local", "base")
-        or type(line) is not int
-        or type(source_line) is not int
-        or line < 1
-        or source_line < 0
-        or source_line >= line
-        or (operation == "create") != (source == "new")
-        or (source == "local") != (source_line > 0)
-    ):
-        raise ValueError("invalid property binding operation or order")
-
-
 def _property_bindings(records: list[Record], evidence: dict[str, Evidence]) -> None:
     classes = {
         name: record
@@ -211,7 +200,12 @@ def _property_bindings(records: list[Record], evidence: dict[str, Evidence]) -> 
     for record in records:
         if record.data.get("property_members") is not None and record.kind != "class":
             raise ValueError("property members need a class owner")
-        binding = record.data.get("property_binding")
+        raw_binding = record.data.get("property_binding")
+        binding = None
+        if any(key == "property_binding" for key, _ in record.data.entries):
+            if not isinstance(raw_binding, RecordData):
+                raise ValueError("invalid property binding fields")
+            binding = property_binding(raw_binding)
         if record.data.get("source_final_method_binding") is True:
             parent, name = record.data.get("parent"), record.data.get("name")
             owner = classes.get(parent) if isinstance(parent, str) else None
@@ -238,9 +232,8 @@ def _property_bindings(records: list[Record], evidence: dict[str, Evidence]) -> 
         if (
             record.kind != "method"
             or record.data.get("symbol_category") != "method"
-            or record.data.get("method_kind") != "instance"
+            or parse_method_kind(record.data.get("method_kind")) is not MethodKind.INSTANCE
             or record.data.get("async") is not False
-            or not isinstance(binding, RecordData)
             or not isinstance(parent, str)
             or not isinstance(name, str)
             or owner is None
@@ -248,11 +241,11 @@ def _property_bindings(records: list[Record], evidence: dict[str, Evidence]) -> 
             or owner.data.get("module") != record.data.get("module")
         ):
             raise ValueError("property binding needs its defining class and method")
-        line, source_line = binding.get("line"), binding.get("source_line")
+        line, source_line = binding.line, binding.source_line
         group = ordered.get((parent, name), {})
         if not isinstance(line, int) or group.get(line) != record:
             raise ValueError("property order disagrees with method evidence")
-        if binding.get("source") == "local":
+        if binding.source is PropertyOrigin.LOCAL:
             previous = max((position for position in group if position < line), default=0)
             previous_record = group.get(previous)
             if (
@@ -271,25 +264,27 @@ def _property_bindings(records: list[Record], evidence: dict[str, Evidence]) -> 
             raise ValueError("property members disagree with method binding proofs")
 
 
-def _source_record(record: Record, section: str) -> None:
+def _source_record(record: Record, section: SourceSectionName) -> None:
     if record.evidence_class not in (EvidenceClass.FACT, EvidenceClass.UNKNOWN):
         raise ValueError("source records cannot carry governance decisions")
-    if section == "unknowns" and record.evidence_class != EvidenceClass.UNKNOWN:
+    if section == SourceSectionName.UNKNOWNS and record.evidence_class != EvidenceClass.UNKNOWN:
         raise ValueError("source unknowns must be UNKNOWN")
-    if section != "unknowns" and record.evidence_class != EvidenceClass.FACT:
+    if section != SourceSectionName.UNKNOWNS and record.evidence_class != EvidenceClass.FACT:
         raise ValueError("measured source sections must contain FACT records")
     if record.rule_ids or record.provenance:
         raise ValueError("source records cannot carry rules or contract provenance")
     fields = {key for key, _ in record.data.entries}
     declaration = {"declaration_scope", "declaration_definition_id"}
-    if fields & declaration and (section != "references" or not declaration <= fields):
+    if fields & declaration and (
+        section != SourceSectionName.REFERENCES or not declaration <= fields
+    ):
         raise ValueError("reference declaration needs both identity fields")
     if fields & declaration and any(record.data.get(key) == "" for key in declaration):
         raise ValueError("reference declaration identities must be nonempty")
     if not set(_REQUIRED[section]).issubset(fields):
         raise ValueError(f"{section} source payload is missing required fields")
     if record.data.get("member_inventories") is not None:
-        if section != "symbols" or record.kind != "class":
+        if section != SourceSectionName.SYMBOLS or record.kind != "class":
             raise ValueError("member inventory needs its class owner")
         member_inventories(record.data.get("member_inventories"))
     if "base_declarations" in fields:
@@ -297,10 +292,10 @@ def _source_record(record: Record, section: str) -> None:
     _payload(record.data)
 
 
-def _base_declarations(record: Record, section: str) -> None:
+def _base_declarations(record: Record, section: SourceSectionName) -> None:
     value = record.data.get("base_declarations")
     if (
-        section != "symbols"
+        section != SourceSectionName.SYMBOLS
         or record.kind != "class"
         or not isinstance(value, tuple)
         or any(not isinstance(item, RecordData) for item in value)
@@ -320,7 +315,7 @@ def _base_declarations(record: Record, section: str) -> None:
     for base in bases:
         fields = {key for key, _ in base.entries}
         relation = base.get("relationship_kind")
-        status = base.get("status")
+        status = parse_source_resolution(base.get("status"))
         targets = base.get("targets")
         count = base.get("candidate_count")
         evidence_ids = base.get("evidence_ids")
@@ -331,7 +326,7 @@ def _base_declarations(record: Record, section: str) -> None:
             or not isinstance(base.get("id"), str)
             or not base.get("id")
             or relation not in {"inherits", "realizes", "mixes_in"}
-            or status not in {"resolved", "partially_resolved", "unresolved"}
+            or status is None
             or not isinstance(base.get("expression"), str)
             or not base.get("expression")
             or not isinstance(targets, tuple)
@@ -340,12 +335,12 @@ def _base_declarations(record: Record, section: str) -> None:
             or isinstance(count, bool)
             or count < len(targets)
             or not isinstance(truncated, bool)
-            or status == "resolved"
+            or status is SourceResolution.RESOLVED
             and len(targets) != 1
-            or status == "unresolved"
+            or status is SourceResolution.UNRESOLVED
             and targets
             or truncated
-            and (status != "partially_resolved" or count <= len(targets))
+            and (status is not SourceResolution.PARTIALLY_RESOLVED or count <= len(targets))
             or not isinstance(evidence_ids, tuple)
             or any(not isinstance(identity, str) or not identity for identity in evidence_ids)
             or base.get("reason") is not None
@@ -357,7 +352,7 @@ def _base_declarations(record: Record, section: str) -> None:
 def _member_inventory_bindings(records: list[Record]) -> None:
     for owner in records:
         for inventory in member_inventories(owner.data.get("member_inventories")):
-            if inventory.kind == "method":
+            if inventory.kind == _MemberKind.METHOD:
                 actual = {
                     item.id
                     for item in records
@@ -475,7 +470,7 @@ def _resolution_gap_module(
             or method.kind != "method"
             or method.data.get("module") != module
             or method.data.get("signature_complete") is not False
-            or method.data.get("method_kind") != "constructor"
+            or parse_method_kind(method.data.get("method_kind")) is not MethodKind.CONSTRUCTOR
             or module_paths[module][-5:] != ".dart"
             or not isinstance(parameters := method.data.get("parameters"), tuple)
             or not any(
@@ -505,7 +500,7 @@ def validate_source_facts(facts: SourceFacts) -> None:
     ):
         raise ValueError("complete collection contradicts coverage gaps or counts")
     inputs = _unique((item.path for item in facts.inputs), "resolution input")
-    selected_inputs = {item.path for item in facts.inputs if item.role == "selected"}
+    selected_inputs = {item.path for item in facts.inputs if item.role == _ResolutionRole.SELECTED}
     if not selected_inputs.issubset(selected):
         raise ValueError("selected input is outside selected coverage")
     file_ids = _unique((item.id for item in facts.files), "file id")
@@ -571,7 +566,7 @@ def validate_source_facts(facts: SourceFacts) -> None:
     _property_bindings(records, base_by_id)
     _member_inventory_bindings(records)
     for gap in facts.coverage.gaps:
-        _source_record(gap, "unknowns")
+        _source_record(gap, SourceSectionName.UNKNOWNS)
         if gap.evidence_class != EvidenceClass.UNKNOWN:
             raise ValueError("coverage gap must be UNKNOWN")
         if gap.id not in record_by_id or record_by_id[gap.id] != gap:
@@ -579,7 +574,7 @@ def validate_source_facts(facts: SourceFacts) -> None:
     imports = {
         record.id
         for section in facts.sections
-        if section.name == "imports"
+        if section.name == SourceSectionName.IMPORTS
         for record in section.records
     }
     target_ids = _unique((target.import_id for target in facts.imports), "import target")
@@ -590,7 +585,7 @@ def validate_source_facts(facts: SourceFacts) -> None:
         (
             record
             for section in facts.sections
-            if section.name != "unknowns"
+            if section.name != SourceSectionName.UNKNOWNS
             for record in section.records
         ),
         {item.module: item.rel_path for item in facts.files},

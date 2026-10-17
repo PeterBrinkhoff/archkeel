@@ -1,0 +1,9 @@
+{
+  "after_baseline_digest": "2bfdc9930db2c00cefe098c1d4d8aef8d7a6916e703643ae5bf349116916bf8d",
+  "after_digest": "5f1fd86c8b171e082e7ab16dd2558839b2ee8a825c7aa19e2c000ecbe0fe7ae8",
+  "before_baseline_digest": "ce0214aa53088d46512d9c71a8fe5fe51597afadb50bd8e5b6629be012533ef7",
+  "before_digest": "42de8a654236aeff81b4a87c4b392a42884612aac786b1a9644434a48586afb7",
+  "decided_by": "ake2l",
+  "rationale": "Own parser and protocol vocabularies at existing API boundaries; preserve wire compatibility, conservative uncertainty and precise native source evidence across independently reviewed increments.",
+  "schema_version": "2.0.0"
+}
