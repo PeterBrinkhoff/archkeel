@@ -1,42 +1,65 @@
 # Typed control migration scope
 
-Issue #542 includes domain control, parser grammar and protocol control strings.
-Known kinds, modes, states and versions must be converted into their owned types;
-parser placement is not an exception. Module names, supplied paths, identities and
-ordinary text remain data. JSON lookup keys and serialized values keep their wire
-spelling.
+Issue #542 includes domain decisions, parser grammar and protocol dispatch.
+Closed kinds, modes, states and versions have a nominal owner. Decode external
+values once at the relevant boundary, then share that type between actual
+producers and consumers. Parser placement is not an exception. Module names,
+paths, symbols, JSON field names and ordinary text remain data.
 
-The migration proceeds in independently reviewed increments. A green rule proves
-its actual source scope; it does not certify an unprotected module.
+A constant, imported string alias or `Enum.value` comparison does not establish
+a nominal decision. Enum values may be serialized at a real wire boundary.
+Supported legacy string inputs normalize once; compatibility is not permission
+to keep internal string dispatch.
 
-| Responsibility | Current owner and guarantee |
+## Implemented guarantees
+
+These scopes describe the reviewed implementation; the linked PRs and #542
+record merge status. A source approval does not replace integration checks.
+
+| Owner | Guarantee |
 | --- | --- |
-| Dependency selector modes | `ir.dependency`: owned enums, independent API Target and native string-control prohibition |
-| State field and access controls | `ir.state_facts`: five owned enums, independent Target annotations and native prohibition |
-| State event grammar | `ir.state_codec`: private event tag, one typed conversion and the same native prohibition |
-| Contract/record grammar and versions | `ir.codec_contract`: remaining raw control dispatch is pending #542 migration, not permitted as a parser exception |
-| Collector and source-language grammar | Profile-owned protocol/parser types and native protection remain pending migration |
-| Graph and assessment vocabulary | Existing typed aliases remain; nominal migration and native protection are pending |
-| Supplied module, package and symbol identities | String data compared using the shared identity and ownership primitives |
+| `ir.dependency` | Shared selector modes, ownership and selections; independent API Target and native raw-comparison guard |
+| `ir.state_facts`, `ir.state_codec` | Owned field/event vocabulary, typed input conversion and native guards |
+| Collector Facts, protocol, type shapes and observation codec | Canonical language/runtime/shape tags shared by producers and decoders; protected modules and authored API intent |
+| `ir.contract_version`, `ir.codec_contract` | Owned supported versions/features and contract grammar; native guards include parser branches |
+| Graph, graph codec, Target graph and UML comparison | Shared nominal graph/assessment vocabulary and protected module scopes |
+| TypeScript configuration, resolution, parser, collector, syntax and source input | Owned compiler/grammar categories, typed semantic outputs and whole-module native guards without parser allowances |
+| Dart syntax, parser, resolver, snapshot and collector | Owned grammar/binding categories and native guards; shadowing is tested separately |
+| Python binding and receiver type owners | Nominal compiler/evidence categories and native owner guards; this does not cover all Python implementation modules |
+| Shared runtime bootstrap and language entries | One direct-start classification and explicit entry port |
+| Diagnostic and amendment owners/codecs | Owned closed tags and typed wire ingress with native guards |
+| CLI input and summary-badge owners | Explicit input/display types, actual consumers and scoped native guards |
+| Measurement owner | Shared budget/resolution/outcome types and native owner guard |
+| DeltaVersion, ParameterKind, method descriptors and Core commands | Shared types in existing owners and independently authored actual field/parameter/return intent; no whole-module migration claim |
+| Private boundary reasons | One private vocabulary in the existing boundary checker; actual producer/consumer types and native widening/control mutations |
+| Browser Scene ingress | Canonical generated vocabulary, checked consumers, malformed-value tests and preserved public view-mode behavior |
 
-The three protected modules use `forbidden_construct` selecting
-`string_literal_compare`, without allowed-source exceptions or debt allowances.
-Their native controls insert equality, membership, match and Final-string branches
-into actual source. Protected parser branches fail just as protected domain
-branches do. A named string constant is not a nominal type.
+Each native rule protects its declared source scope. An authored API Target pins
+intended nominal types independently of observed Source. Actual source mutations
+must produce trace-valid failures under that unchanged Target; fixture errors or
+missing evidence are not a successful negative control.
 
-The dependency-only test fixture deliberately checks that its one guard does not
-claim protection over other modules. That cross-scope check is not a statement
-that raw parser dispatch is acceptable. State parser negative controls separately
-prove the real codec prohibition.
+Wire compatibility, normal baseline/amendment generation, strict replay, required
+CI and independent Astra review remain integration gates. No budget increase,
+fabricated resolution or broad parser exemption establishes completion.
 
-At Main `63437df6734275850838ba1026b276c2f930bf2f`, the native audit observed
-1,662 string-literal comparisons across the repository. This is a syntax count,
-not 1,662 proven design defects, and it is not a count of fixes in this increment.
-Remaining contract, graph and profile/parser migrations must preserve wire
-compatibility, establish the appropriate vocabulary owner and add native
-controls before their scope is marked complete.
+## Remaining scope and evidence limits
 
-The broader independent inner-Target work in #340 also remains open. Each
-migration must keep the owning API explicit; putting every protocol and domain
-literal into one global enum would obscure those responsibilities.
+#542 stays open for remaining closed controls in other Core, Python, presentation
+and browser consumers. Definition contexts, comparison status and further
+TypeScript expression forms are independent bounded increments. Existing typed
+fields do not certify every branch in their containing module. The broader inner
+Target work in #340 remains separate.
+
+Python's supported syntactic comparisons are documented in
+[string-comparison-observation.md](string-comparison-observation.md).
+Imported/dynamic values and arbitrary aliases are not a semantic whole-program
+type proof. TypeScript and JavaScript construct observation remains PARTIAL:
+witnessed prohibited forms can fail, but absence must not become PASS when the
+required coverage is incomplete. Compiler acceptance proves syntax/type
+compatibility, not complete native architectural evidence.
+
+At the original Main `63437df6734275850838ba1026b276c2f930bf2f`, the native
+audit observed 1,662 string-literal constructs. That is a syntax count, not a
+defect count or a count of completed fixes. New source inventories likewise need
+ownership and control/data triage before they justify a migration.
