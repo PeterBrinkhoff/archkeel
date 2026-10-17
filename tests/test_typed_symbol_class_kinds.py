@@ -3,15 +3,22 @@
 # SPDX-License-Identifier: MIT
 """Python classifier decisions share their actual source-fact vocabulary."""
 
+import ast
+import copy
 import json
+from pathlib import Path
 
 import pytest
 from test_analyzer import _parsed_module
+from test_architecture_demo import _prepare_repo
+from test_uml_evaluation import _model
 
 from archkeel.analyzer.python.imports import collect_imports
 from archkeel.analyzer.python.symbols import collect_symbols
+from archkeel.check.ports import ScanConfig
 from archkeel.ir import facts, model
 from archkeel.ir.facts_codec import parse_record, record_payload
+from archkeel.ir.report_graph import architecture_report
 
 TAGS = ("protocol", "enum", "pydantic_model", "dataclass", "class")
 
@@ -87,3 +94,75 @@ def test_actual_fixpoint_produces_nominal_values_without_changing_classifier_rec
         assert json.loads(json.dumps(record_payload(frozen))) == json.loads(json.dumps(row))
     assert classes["Later"]["data"]["enum_members"] == ["VALUE"]
     assert classes["Model"]["data"]["frozen_object"] is True
+
+
+def _native_target(tmp_path):
+    root = Path(__file__).parents[1]
+    contract = copy.deepcopy(
+        json.loads((root / "docs/architecture/contracts/ir.json").read_text())
+    )
+    contract.pop("$schema", None)
+    contract["rules"] = []
+    contract["declarations"]["modules"] = []
+    target = contract["declarations"]["uml"]
+    target["relationships"] = []
+    target["scopes"] = []
+    ids = {"archkeel.ir.facts", "IR-SYMBOL-CLASS-KIND", "IR-SYMBOL-CLASS-KIND-READER"}
+    target["entities"] = [entity for entity in target["entities"] if entity["id"] in ids]
+    assert {entity["id"] for entity in target["entities"]} == ids
+    project = _prepare_repo(
+        tmp_path,
+        {
+            "archkeel/__init__.py": "",
+            "archkeel/ir/__init__.py": "",
+            "archkeel/ir/facts.py": (root / "src/archkeel/ir/facts.py").read_text(),
+            "contract.json": json.dumps(contract),
+            "docs/architecture/python-class-kind.md": "Shared classifier kind.\n",
+            "docs/architecture/language-adapter-target.md": "Shared source facts.\n",
+        },
+    )
+    return project, ScanConfig(("archkeel",), "archkeel", "contract.json", "0" * 64)
+
+
+def test_actual_source_fulfils_the_unchanged_classifier_owner_and_reader_target(tmp_path):
+    project, config = _native_target(tmp_path)
+    comparison = architecture_report(_model(project, config)).comparison
+    assert comparison is not None and comparison.status == "PASS", comparison
+
+
+@pytest.mark.parametrize("mutation", ("owner", "input", "return"))
+def test_classifier_port_weakening_fails_the_existing_authored_target(tmp_path, mutation):
+    project, config = _native_target(tmp_path)
+    contract = project / "contract.json"
+    before = contract.read_bytes()
+    path = project / "archkeel/ir/facts.py"
+    text = path.read_text()
+    if mutation == "owner":
+        node = next(
+            node
+            for node in ast.parse(text).body
+            if isinstance(node, ast.ClassDef) and node.name == "SymbolClassKind"
+        )
+        lines = text.splitlines(keepends=True)
+        definition = "".join(lines[node.lineno - 1 : node.end_lineno])
+        text = "".join(lines[: node.lineno - 1] + lines[node.end_lineno :])
+        (project / "archkeel/ir/model.py").write_text("from enum import StrEnum\n\n" + definition)
+        subject = "IR-SYMBOL-CLASS-KIND"
+    else:
+        old = (
+            "value: JsonValue | RawJson | SymbolClassKind"
+            if mutation == "input"
+            else " -> SymbolClassKind | None:"
+        )
+        new = "value: object" if mutation == "input" else " -> object:"
+        assert text.count(old) == 1
+        text = text.replace(old, new, 1)
+        subject = "IR-SYMBOL-CLASS-KIND-READER"
+    path.write_text(text)
+    comparison = architecture_report(_model(project, config)).comparison
+    assert comparison is not None
+    assert any(
+        item.status == "FAIL" and item.subject_id == subject
+        for item in comparison.assessments
+    ), comparison
+    assert contract.read_bytes() == before
