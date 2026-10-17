@@ -757,6 +757,13 @@ def _propagate_member_escapes(
         if incoming_escapes is not None
         else {name: module.incoming_member_escapes for name, module in modules.items()}
     )
+    # Escape origins stay fixed during this pass; incoming binding sets do not.
+    escaped_namespaces = {
+        escaped[:end]
+        for escaped in escaped_origins
+        for end, char in enumerate(escaped)
+        if char == "."
+    }
     for item in imports:
         data = item["data"]
         targets: set[tuple[str, str]] = set()
@@ -778,10 +785,15 @@ def _propagate_member_escapes(
         if source in modules and any(
             isinstance(origin, str)
             and (
-                in_scope(origin, escaped) or (data["symbol"] is None and in_scope(escaped, origin))
+                origin in escaped_origins
+                or any(
+                    origin[:end] in escaped_origins
+                    for end, char in enumerate(origin)
+                    if char == "."
+                )
+                or (data["symbol"] is None and origin in escaped_namespaces)
             )
             for origin in origins
-            for escaped in escaped_origins
         ):
             incoming[source] |= {data["binding"]}
         if source in modules and not targets:
