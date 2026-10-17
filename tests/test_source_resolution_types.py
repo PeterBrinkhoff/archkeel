@@ -235,3 +235,35 @@ def test_native_call_row_target_rejects_actual_status_type_weakening(tmp_path):
         for row in trace_valid_violations(model)
     )
     assert (root / "contract.json").read_bytes() == original
+
+
+def test_future_call_status_survives_actual_source_protocol_without_becoming_proof():
+    from test_source_trust_boundary import _payload
+
+    from archkeel.ir.facts_codec import decode_response, encode_response
+
+    payload = _payload()
+    record = dict(payload["facts"]["sections"][0]["records"][0])
+    record.update(id="CALL-FUTURE", kind="future_call", area="call_hierarchy")
+    record["data"] = {
+        "source_module": "project.app", "source_scope": "project.app",
+        "expression": "future()", "targets": [], "status": "future",
+    }
+    section = next(row for row in payload["facts"]["sections"] if row["name"] == "calls")
+    section["records"].append(record)
+    response = decode_response(json.dumps(payload).encode())
+    assert json.loads(encode_response(response)) == payload
+    call = next(row for section in response.facts.sections for row in section.records if row.id == "CALL-FUTURE")
+    assert facts.parse_source_resolution(call.data.get("status")) is None
+
+
+def test_absent_status_and_open_kind_survive_generic_record_codec():
+    record = {
+        "id": "opaque", "evidence_class": "FACT", "area": "future",
+        "kind": "future_kind", "title": "opaque record", "subjects": [],
+        "evidence_ids": [], "rule_ids": [], "fact_ids": [], "provenance": [],
+        "data": {"metadata": {"status": "resolved"}},
+    }
+    parsed = parse_record(record)
+    assert facts.parse_source_resolution(parsed.data.get("status")) is None
+    assert record_payload(parsed) == record
