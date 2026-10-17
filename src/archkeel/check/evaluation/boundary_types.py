@@ -9,8 +9,18 @@ import builtins
 from collections import defaultdict
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, replace
+from enum import StrEnum
 from typing import Final, NamedTuple, TypeAlias
 
+from archkeel.ir.facts import (
+    MethodKind,
+    PropertyOperation,
+    PropertyOrigin,
+    SymbolClassKind,
+    parse_method_kind,
+    parse_symbol_class_kind,
+    property_binding,
+)
 from archkeel.ir.facts_codec import RawData as RecordData
 from archkeel.ir.facts_codec import RawEvidence, RawRecord, classified
 from archkeel.ir.model import (
@@ -75,7 +85,7 @@ def _is_broad_boundary_type(
     )
 
 
-_EXEMPT_CLASS_KINDS: Final = frozenset({"enum", "pydantic_model"})
+_EXEMPT_CLASS_KINDS: Final = frozenset({SymbolClassKind.ENUM, SymbolClassKind.PYDANTIC_MODEL})
 
 
 # Issue #9 names a builtin as an acceptable boundary type, and a builtin needs no import and
@@ -95,20 +105,22 @@ _BROAD_BOUNDARY_REASON: Final = "instead of a typed model"
 # to resolve, but one failed because nothing defines it and the other because two records do --
 # a reader who sees only the count needs the two kept apart to tell "unreadable annotation"
 # from "this name is bound twice".
-_UNDECIDABLE_KINDS: Final = (
-    "missing_annotation",
-    "inherited_surface",
-    "forward_reference",
-    "dotted_name",
-    "generic",
-    "union",
-    "ambiguous_binding",
-    "ambiguous_facade",
-    "unresolved_name",
-    "external_type",
-    "nested_type",
-    "other",
-)
+class _Cause(StrEnum):
+    MISSING_ANNOTATION = "missing_annotation"
+    INHERITED_SURFACE = "inherited_surface"
+    FORWARD_REFERENCE = "forward_reference"
+    DOTTED_NAME = "dotted_name"
+    GENERIC = "generic"
+    UNION = "union"
+    AMBIGUOUS_BINDING = "ambiguous_binding"
+    AMBIGUOUS_FACADE = "ambiguous_facade"
+    UNRESOLVED = "unresolved_name"
+    EXTERNAL = "external_type"
+    NESTED_TYPE = "nested_type"
+    OTHER = "other"
+
+
+_UNDECIDABLE_KINDS: Final = tuple(str(reason) for reason in _Cause)
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,7 +147,7 @@ class _Position:
     """
 
     violation: str | None = None
-    undecidable: str | None = None
+    undecidable: _Cause | None = None
     unknown_context: str | None = None
     referenced_members_static: bool = True
     contains_callable: bool = False
@@ -153,6 +165,10 @@ class _Position:
     bound_alias: _BoundAliasBody | None = None
     typed_mapping_union: _TypedMappingUnion | None = None
     typed_union_checked: bool = False
+
+    def __post_init__(self) -> None:
+        if self.undecidable is not None:
+            builtins.object.__setattr__(self, "undecidable", _Cause(self.undecidable))
 
 
 @dataclass(frozen=True, slots=True)
@@ -220,33 +236,6 @@ _COLLECTION_CONTAINERS: Final = frozenset(
 )
 
 
-def _split_type_parameters(inner: str) -> list[str] | None:
-    """Split one subscript's parameters on its top-level commas.
-
-    None when the brackets do not balance, which is how `Sequence[int] | list[str]` is told
-    apart from a single subscript: both end in `]`, only one of them is one (AD-67).
-    """
-    parameters: list[str] = []
-    current = ""
-    depth = 0
-    for character in inner:
-        if character == "[":
-            depth += 1
-        elif character == "]":
-            depth -= 1
-            if depth < 0:
-                return None
-        if character == "," and depth == 0:
-            parameters.append(current.strip())
-            current = ""
-        else:
-            current += character
-    if depth:
-        return None
-    parameters.append(current.strip())
-    return parameters
-
-
 def _typing_module_binding(module: str, binding: str, imports_by_binding: BindingIndex) -> bool:
     imported = imports_by_binding.get((module, binding))
     return (
@@ -287,9 +276,9 @@ def _proven_type_head(
         return False
     key = (module, binding)
     if _has_star_import(module, imports_by_binding):
-        return _Position(undecidable="other")
+        return _Position(undecidable=_Cause.OTHER)
     if _binding_is_ambiguous(key, imports_by_binding, classes_by_location):
-        return _Position(undecidable="ambiguous_binding")
+        return _Position(undecidable=_Cause.AMBIGUOUS_BINDING)
     if (
         member is None
         and ("builtins", binding) in origins
@@ -307,16 +296,16 @@ def _proven_type_head(
         else:
             # Import records cannot distinguish a dotted module from an alias to its root.
             if symbol is None and target == "collections.abc" and binding == "collections":
-                return _Position(undecidable="dotted_name")
+                return _Position(undecidable=_Cause.DOTTED_NAME)
             origin_module = f"{target}.{symbol}" if symbol else target
             origin_name = member
     if (origin_module, origin_name) not in origins:
         return False
     imported = imports_by_binding.get(key)
     if isinstance(imported, dict) and imported.get("source_binding_unique") is False:
-        return _Position(undecidable="ambiguous_binding")
+        return _Position(undecidable=_Cause.AMBIGUOUS_BINDING)
     if (origin_module, origin_name) in classes_by_location:
-        return _Position(undecidable="ambiguous_binding")
+        return _Position(undecidable=_Cause.AMBIGUOUS_BINDING)
     return True
 
 
@@ -339,13 +328,13 @@ def _mapping_parameters(
     if not proven:
         return None
     if not expression.tuple_arguments or len(expression.arguments) != 2:
-        return _Position(undecidable="generic")
+        return _Position(undecidable=_Cause.GENERIC)
     if any(
         isinstance(arg, TypeUnpack)
         or (isinstance(arg, TypeLiteral) and arg.kind is LiteralKind.ELLIPSIS)
         for arg in expression.arguments
     ):
-        return _Position(undecidable="generic")
+        return _Position(undecidable=_Cause.GENERIC)
     return [arg.text for arg in expression.arguments]
 
 
@@ -450,23 +439,22 @@ def _collection_parameters(
     annotation: str,
     module: str,
     imports_by_binding: BindingIndex,
+    *,
+    type_shapes: TypeShapeIndex,
 ) -> list[str] | None:
-    """The type parameters of `Container[...]` when the container is a known collection.
-
-    None when the annotation is not exactly one such subscript, so dotted containers without a
-    proven `typing` import, a union around one and a mapping all stay where they were. The
-    `...` of `tuple[X, ...]` is an arity, not a type, and is dropped (AD-67).
-    """
-    head, bracket, rest = annotation.partition("[")
-    if "." in head:
-        binding = annotation.split(".", 1)[0]
-        container = head[len(binding) + 1 :]
+    """Read known collection arguments from carried syntax, excluding ellipsis arity."""
+    expression = type_shapes.get(annotation)
+    if not isinstance(expression, TypeApplication) or not expression.arguments:
+        return None
+    head = expression.head
+    if isinstance(head, TypeMember) and isinstance(head.owner, TypeName):
+        binding, container = head.owner.name, head.member
         if container not in _COLLECTION_CONTAINERS or not _typing_module_binding(
             module, binding, imports_by_binding
         ):
             return None
-    else:
-        container = head
+    elif isinstance(head, TypeName):
+        container = head.name
         imported = imports_by_binding.get((module, container))
         if container not in _COLLECTION_CONTAINERS and (
             not isinstance(imported, dict)
@@ -476,24 +464,27 @@ def _collection_parameters(
             return None
         if isinstance(imported, dict) and imported["target_module"] == "typing":
             container = imported["symbol"] or container
-    if not bracket or not rest.endswith("]") or container not in _COLLECTION_CONTAINERS:
+    else:
         return None
-    parameters = _split_type_parameters(rest[:-1])
-    if parameters is None:
+    if container not in _COLLECTION_CONTAINERS:
         return None
-    return [parameter for parameter in parameters if parameter != "..."]
+    return [
+        argument.text
+        for argument in expression.arguments
+        if not (isinstance(argument, TypeLiteral) and argument.kind is LiteralKind.ELLIPSIS)
+    ]
 
 
-def _unresolvable_shape(annotation: str) -> str:
+def _unresolvable_shape(annotation: str) -> _Cause:
     """Name why an annotation that is not one bare identifier cannot be decided (AD-67)."""
     head = annotation.split("[", 1)[0]
     if "." in head:
-        return "dotted_name"
+        return _Cause.DOTTED_NAME
     if "[" in annotation:
-        return "generic"
+        return _Cause.GENERIC
     if "|" in annotation:
-        return "union"
-    return "other"
+        return _Cause.UNION
+    return _Cause.OTHER
 
 
 def _union_parameters(
@@ -865,7 +856,7 @@ def _boundary_type_verdict(
             scoped_classes.module_bindings = classes_by_location.module_bindings
         classes_by_location = scoped_classes
     if not annotation:
-        return _Position(undecidable="missing_annotation")
+        return _Position(undecidable=_Cause.MISSING_ANNOTATION)
     if annotation.startswith(("'", '"')):
         decoded = type_shapes.get(annotation)
         if decoded is not None and _quoted_builtin_type(
@@ -886,7 +877,7 @@ def _boundary_type_verdict(
                 _require_static_constant=_require_static_constant,
             )
             return _without_literal_mapping_arms(quoted)
-        return _Position(undecidable="forward_reference")
+        return _Position(undecidable=_Cause.FORWARD_REFERENCE)
     wrapped = _typing_wrapper_verdict(
         annotation,
         module,
@@ -1006,7 +997,7 @@ def _enum_member_verdict(
         symbol = classes_by_location.get(resolved)
         if not isinstance(symbol, dict):
             return None
-        if symbol.get("class_kind") == "enum":
+        if parse_symbol_class_kind(symbol.get("class_kind")) is SymbolClassKind.ENUM:
             if enum_origin is not None:
                 return None
             enum_origin = resolved
@@ -1261,9 +1252,9 @@ def _type_alias_verdict(
     reached: tuple[tuple[str, str], ...] = (resolved,)
     alias = symbol.get("alias")
     if not _alias_binding_static(symbol):
-        return _Position(undecidable="other", resolved=reached, named_origins=reached)
+        return _Position(undecidable=_Cause.OTHER, resolved=reached, named_origins=reached)
     if resolved in aliases_seen or not isinstance(alias, str) or alias == annotation:
-        return _Position(undecidable="other", resolved=reached, named_origins=reached)
+        return _Position(undecidable=_Cause.OTHER, resolved=reached, named_origins=reached)
     if classes_by_location.module_bindings is not None:
         classes_by_location = classes_by_location.module_bindings
     expanded = _boundary_type_verdict(
@@ -1330,8 +1321,8 @@ def _unresolved_named_verdict(
     ):
         return _Position()
     if require_static_constant:
-        return _Position(undecidable="other")
-    return _Position(undecidable="unresolved_name")
+        return _Position(undecidable=_Cause.OTHER)
+    return _Position(undecidable=_Cause.UNRESOLVED)
 
 
 def _is_static_literal_constant(symbol: RecordData | _AmbiguousBinding | None) -> bool:
@@ -1351,7 +1342,9 @@ def _imported_alias_verdict(
     imported = imports_by_binding.get((module, annotation))
     if imported is not None and not _alias_binding_static(imported):
         return _Position(
-            undecidable="other", resolved=alias.named_origins, named_origins=alias.named_origins
+            undecidable=_Cause.OTHER,
+            resolved=alias.named_origins,
+            named_origins=alias.named_origins,
         )
     if isinstance(imported, dict) and len(imported["reexport_chain"] or ()) > 1:
         return replace(alias, bound_alias=None, typed_mapping_union=None)
@@ -1394,7 +1387,7 @@ def _named_type_verdict(
         # Distinct records bind this name in `module`: Python picks whichever is textually last,
         # and nothing the scanner recorded says which that is, so the position is undecidable,
         # not a guess at either candidate (AD-74).
-        return _Position(undecidable="ambiguous_binding")
+        return _Position(undecidable=_Cause.AMBIGUOUS_BINDING)
     if resolved is None:
         return _unresolved_named_verdict(
             annotation,
@@ -1410,7 +1403,7 @@ def _named_type_verdict(
         return (
             _Position()
             if _is_static_literal_constant(origin_symbol)
-            else _Position(undecidable="other")
+            else _Position(undecidable=_Cause.OTHER)
         )
     alias = _type_alias_verdict(
         origin_symbol,
@@ -1429,14 +1422,14 @@ def _named_type_verdict(
     )
     if alias is not None:
         return _imported_alias_verdict(alias, module, annotation, imports_by_binding)
-    if isinstance(origin_symbol, dict) and origin_symbol.get("record_kind") == "static_constant":
-        return _Position(undecidable="other", resolved=reached, named_origins=reached)
-    if isinstance(origin_symbol, dict) and origin_symbol.get("record_kind") == "dynamic_binding":
-        return _Position(undecidable="other", resolved=reached, named_origins=reached)
-    # `resolve_named_type` ruled out an ambiguous location; the surviving class record carries
-    # `class_kind` (AD-30).
-    class_kind = origin_symbol["class_kind"] if isinstance(origin_symbol, dict) else None
-    if class_kind == "enum":
+    class_kind: SymbolClassKind | None = None
+    if isinstance(origin_symbol, dict):
+        if origin_symbol.get("record_kind") in {"static_constant", "dynamic_binding"}:
+            return _Position(undecidable=_Cause.OTHER, resolved=reached, named_origins=reached)
+        # `resolve_named_type` ruled out an ambiguous location; the surviving class record carries
+        # `class_kind` (AD-30).
+        class_kind = parse_symbol_class_kind(origin_symbol["class_kind"])
+    if class_kind is SymbolClassKind.ENUM:
         return _Position(resolved=reached, named_origins=reached)
     return _owned_type_verdict(
         origin_symbol,
@@ -1458,7 +1451,7 @@ def _owned_type_verdict(
     origin_symbol: RecordData | _AmbiguousBinding | None,
     origin_module: str,
     origin_name: str,
-    class_kind: str | None,
+    class_kind: SymbolClassKind | None,
     reached: tuple[tuple[str, str], ...],
     contract: ArchitectureContract,
     exports_by_module: dict[str, frozenset[str]],
@@ -1478,12 +1471,12 @@ def _owned_type_verdict(
             if component_owns_module(component, origin_module)
         ]
         if len(claims) > 1:
-            return _Position(undecidable="other", resolved=reached, named_origins=(resolved,))
+            return _Position(undecidable=_Cause.OTHER, resolved=reached, named_origins=(resolved,))
         if claims:
             origin_component = claims[0]
             break
     if origin_component is None:
-        return _Position(undecidable="external_type", resolved=reached, named_origins=(resolved,))
+        return _Position(undecidable=_Cause.EXTERNAL, resolved=reached, named_origins=(resolved,))
     owner_facade_proof = imports_by_binding.owner_facade_type_states.get(
         (origin_component.id, origin_module, origin_name)
     )
@@ -1492,7 +1485,7 @@ def _owned_type_verdict(
         owner_facade_proof is False
         or (owner_facade_proof is True and not isinstance(origin_symbol, dict))
     ):
-        return _Position(undecidable="unresolved_name", resolved=reached, named_origins=(resolved,))
+        return _Position(undecidable=_Cause.UNRESOLVED, resolved=reached, named_origins=(resolved,))
     if directly_public or owner_facade_proof is True:
         if resolved in visited:
             return _Position(resolved=reached, named_origins=(resolved,))
@@ -1654,7 +1647,7 @@ def _named_reference_position(
     return replace(
         verdict,
         referenced_members_static=static,
-        undecidable="other" if late_unknown else verdict.undecidable,
+        undecidable=_Cause.OTHER if late_unknown else verdict.undecidable,
         unknown_context=f"Callable reference {annotation}"
         if late_unknown
         else verdict.unknown_context,
@@ -1705,7 +1698,7 @@ def _callable_signature_verdict(
     type_shapes: TypeShapeIndex,
 ) -> _Position:
     if len(shape.arguments) != 2 or not isinstance(shape.arguments[0], TypeList):
-        return _Position(undecidable="generic")
+        return _Position(undecidable=_Cause.GENERIC)
     parameters = [
         (f"argument[{index}]", element) for index, element in enumerate(shape.arguments[0].elements)
     ]
@@ -1729,7 +1722,7 @@ def _callable_signature_verdict(
             )
         )
         if not verdict.referenced_members_static:
-            verdict = replace(verdict, undecidable=verdict.undecidable or "other")
+            verdict = replace(verdict, undecidable=verdict.undecidable or _Cause.OTHER)
         decided.append((parameter.text, _callable_leaf_position(route, parameter.text, verdict)))
     return replace(_combine_position_verdicts(decided), contains_callable=True)
 
@@ -2763,20 +2756,14 @@ def _collection_verdict(
     enter_fields: bool = True,
     _aliases_seen: frozenset[tuple[str, str]] = frozenset(),
 ) -> _Position | None:
-    """Decide `Container[Name]` from its parameters, or None when it is not one (AD-67).
+    """Decide a measured collection's parameter types (AD-67).
 
-    The refactoring hole this closes: `execute(context: InternalContext)` was reported and
-    `execute(contexts: list[InternalContext])` was silent, because a generic's parameters were
-    never inspected, so moving a parameter into a list dropped the check. The container's own
-    element type is the whole of what crosses the boundary, so it is decided by exactly the
-    `resolve_named_type` lookup the rule already runs on a bare name -- one level in, never a
-    general descent into name resolution: a nested subscript, a dotted name, a forward
-    reference and a type no component owns stay undecidable, and now say so.
-
-    Member violations and UNKNOWNs both survive, so an exact allowance cannot hide uncertainty.
-    `resolved` includes every parameter's named types for `facade_types` (AD-65).
+    Keep member violations and UNKNOWNs together so an exact allowance cannot hide
+    uncertainty. Carry each parameter's named types in `resolved` for `facade_types` (AD-65).
     """
-    parameters = _collection_parameters(annotation, module, imports_by_binding)
+    parameters = _collection_parameters(
+        annotation, module, imports_by_binding, type_shapes=type_shapes
+    )
     if parameters is None:
         return None
     verdict = _combined_annotation_verdict(
@@ -2963,7 +2950,10 @@ def _property_chains(symbols: Sequence[RawRecord]) -> frozenset[str]:
         name = data["qualified_name"]
         group: list[RawRecord] = grouped[name]
         group.append(item)
-        if "property_binding" in data and data["property_binding"]["operation"] != "create":
+        if (
+            "property_binding" in data
+            and property_binding(data["property_binding"]).operation is not PropertyOperation.CREATE
+        ):
             chains.add(name)
     return frozenset(
         chains | {name for name, group in grouped.items() if _ambiguous_method_group(group)}
@@ -3150,7 +3140,7 @@ def _method_signature_positions(data: RecordData) -> list[tuple[str, str]]:
     parameters = data["parameters"]
     receiver_parameter = data.get("receiver_parameter")
     if (
-        data["method_kind"] != "static"
+        parse_method_kind(data["method_kind"]) is not MethodKind.STATIC
         and isinstance(receiver_parameter, str)
         and parameters
         and parameters[0]["name"] == receiver_parameter
@@ -3657,7 +3647,7 @@ def _declared_field_reach(
             and chain_static
             and shape is not None
             and _base_route_member_static(shape, module, bindings, classes)
-            and verdict.undecidable not in {"ambiguous_binding", "unresolved_name"}
+            and verdict.undecidable not in {_Cause.AMBIGUOUS_BINDING, _Cause.UNRESOLVED}
         )
         if certain:
             names.update(reached)
@@ -3743,28 +3733,30 @@ def _apply_property_methods(
         if any("property_binding" not in item["data"] for item in group):
             return None
         local: dict[int, _PropertyMethods] = {}
-        for method in sorted(group, key=lambda item: item["data"]["property_binding"]["line"]):
+        bindings = [
+            (method, property_binding(method["data"]["property_binding"])) for method in group
+        ]
+        for method, binding in sorted(bindings, key=lambda item: item[1].line):
             method_data = method["data"]
-            binding = method_data["property_binding"]
             bound = _BoundMethod(method, data, imports, classes)
-            if binding["operation"] == "create":
+            if binding.operation is PropertyOperation.CREATE:
                 if method_data.get("signature_decorators_proven") is not True:
                     return None
                 selected = _PropertyMethods(bound)
             else:
                 origin = (
                     inherited.get(name)
-                    if binding["source"] == "base"
-                    else local.get(binding["source_line"])
+                    if binding.source is PropertyOrigin.BASE
+                    else local.get(binding.source_line)
                 )
                 if not isinstance(origin, _PropertyMethods):
                     return None
                 selected = (
                     _PropertyMethods(bound, origin.setter)
-                    if binding["operation"] == "getter"
+                    if binding.operation is PropertyOperation.GETTER
                     else _PropertyMethods(origin.getter, bound)
                 )
-            local[binding["line"]] = selected
+            local[binding.line] = selected
             surface[name] = selected
     return surface
 
@@ -3977,7 +3969,7 @@ def _declared_chain_positions(
                 method["id"],
                 position,
                 annotation,
-                _Position(undecidable="inherited_surface"),
+                _Position(undecidable=_Cause.INHERITED_SURFACE),
             )
             for position, annotation in _method_signature_positions(method_data)
         )
@@ -5061,7 +5053,7 @@ def _boundary_types_violations(
             )
             for position, annotation in positions:
                 verdict = (
-                    _Position(undecidable="ambiguous_facade")
+                    _Position(undecidable=_Cause.AMBIGUOUS_FACADE)
                     if ambiguous_facade
                     else _boundary_type_verdict(
                         annotation,
@@ -5354,7 +5346,7 @@ def _uncertain_facade_position_records(
                 "qualified_name": qualname,
                 "position": position,
                 "annotation": annotation,
-                "reason": "ambiguous_facade",
+                "reason": _Cause.AMBIGUOUS_FACADE,
                 "occurrence": occurrence,
             }
             records.append((detail, _boundary_type_position_record(rule, item, detail)))
@@ -5780,9 +5772,9 @@ def _undecidable_declared_positions(
     details: list[tuple[dict[str, object], str | None]] = []
     for position, annotation in positions:
         verdict = (
-            _Position(undecidable="inherited_surface")
+            _Position(undecidable=_Cause.INHERITED_SURFACE)
             if position == "inherited methods"
-            else _Position(undecidable="ambiguous_facade")
+            else _Position(undecidable=_Cause.AMBIGUOUS_FACADE)
             if ambiguous_facade
             else _boundary_type_verdict(
                 annotation,
@@ -5936,7 +5928,7 @@ def _public_api_field_positions(
                 for position in positions
                 if visited
                 and position.undecidable is not None
-                and position.undecidable != "external_type"
+                and position.undecidable != _Cause.EXTERNAL
             }
         )
     ]
@@ -6072,7 +6064,7 @@ def _public_api_base(
             module,
             base_name,
             verdict.named_origins,
-            verdict.undecidable == "ambiguous_binding",
+            verdict.undecidable == _Cause.AMBIGUOUS_BINDING,
             type_shapes=type_shapes,
         )
         if base is None or base["kind"] != "class":
@@ -6194,7 +6186,7 @@ def public_api_exposed_types(
         module, _, name = entry.partition(":")
         position = declared_positions[entry]
         ambiguous = (
-            position.undecidable == "ambiguous_binding" and not position.named_origins
+            position.undecidable == _Cause.AMBIGUOUS_BINDING and not position.named_origins
         ) or _binding_is_ambiguous((module, name), imports_by_binding, classes_by_location)
         symbol = _public_api_symbol(
             symbols, module, name, position.named_origins, ambiguous, type_shapes=type_shapes

@@ -20,24 +20,24 @@ ci-check: ci-artifacts-clean ci-core-check ci-report-check
 
 ci-core-check: PYTEST_EXTRA = --with playwright==$(PLAYWRIGHT_VERSION)
 ci-core-check: PYTEST_STOP := --maxfail=1
-ci-core-check: browser-install gate typescript-compiler-check ci-typescript browser-runtime-check
+ci-core-check: browser-install gate typescript-compiler-check browser-graph-check ci-typescript browser-runtime-check
 
 ci-report-check: report-timing report-browser-proof
 
 ci-pr-check: $(if $(strip $(BASE)),against,self-validate) lint typecheck pr-test
 
-ci-pr-report-check: browser-install browser-runtime-check pr-report-test
+ci-pr-report-check: browser-install browser-runtime-check browser-graph-check pr-report-test
 
 pr-test:
 	$(UV) run --locked python -m pytest -n 2 --dist=loadfile --max-worker-restart=0 \
 		-q --durations=10 --junitxml=test-artifacts/pytest/pr-core.xml \
 		tests/test_ci_changes.py tests/test_make_gate.py tests/test_repository_hygiene.py \
 		tests/test_responsibility_validation.py \
-		tests/test_contract_model.py tests/test_contract_version_types.py tests/test_dependency_selectors.py tests/test_requires_symbol_ports.py tests/test_typed_dependency_api.py tests/test_dependency_api_target.py tests/test_module_object_grants.py tests/test_dependency_typed_control.py tests/test_typed_state_protocol.py tests/test_typed_python_bindings.py tests/test_typed_python_receivers.py tests/test_typed_graph_vocabulary.py tests/test_typed_diagnostic_owner.py tests/test_state_facts.py tests/test_boundary_type_nested_mapping.py tests/test_decisions.py \
+		tests/test_contract_model.py tests/test_contract_version_types.py tests/test_dependency_selectors.py tests/test_requires_symbol_ports.py tests/test_typed_dependency_api.py tests/test_dependency_api_target.py tests/test_module_object_grants.py tests/test_dependency_typed_control.py tests/test_typed_state_protocol.py tests/test_typed_python_bindings.py tests/test_typed_python_receivers.py tests/test_typed_method_descriptors.py tests/test_typed_graph_vocabulary.py tests/test_typed_diagnostic_owner.py tests/test_state_facts.py tests/test_boundary_type_nested_mapping.py tests/test_decisions.py tests/test_typed_python_properties.py tests/test_typed_contract_rule_grammar.py tests/test_typed_contract_rule_native.py tests/test_core_command_result.py tests/test_typed_measurement_controls.py tests/test_typed_parameter_kinds.py tests/test_atlas_deviation_target.py tests/test_definition_context_types.py tests/test_permission_status_types.py tests/test_snapshot_language_types.py tests/test_source_resolution_types.py tests/test_known_delta_action_types.py tests/test_typed_symbol_class_kinds.py tests/test_source_name_visibility.py tests/test_git_blob_types.py tests/test_typed_structure_levels.py tests/test_classifier_projections.py tests/test_unresolved_call_change_types.py \
 		tests/test_target_graph.py::test_contract_corpus_preserves_version_and_uml_presence \
-		tests/test_collection_protocol.py tests/test_typed_collector_protocol.py tests/test_typed_collector_native.py tests/test_source_trust_boundary.py \
-		tests/test_typescript_owned_types.py tests/test_typescript_syntax_types.py tests/test_typescript_syntax_compatibility.py tests/test_typescript_json_fields.py tests/test_typescript_control_target.py \
-		tests/test_python_source_evidence_lines.py tests/test_analyzer.py tests/test_typescript_config.py tests/test_typescript_resolve.py \
+		tests/test_collection_protocol.py tests/test_typed_collector_protocol.py tests/test_typed_collector_native.py tests/test_source_trust_boundary.py tests/test_shared_runtime_bootstrap.py \
+		tests/test_typescript_owned_types.py tests/test_typescript_syntax_types.py tests/test_typescript_syntax_compatibility.py tests/test_typescript_json_fields.py tests/test_typescript_control_target.py tests/test_typescript_source_input.py tests/test_typescript_string_constructs.py \
+		tests/test_python_source_evidence_lines.py tests/test_analyzer.py tests/test_typescript_config.py tests/test_typescript_resolve.py tests/test_type_shapes.py \
 		tests/test_typescript_array_constants.py \
 		tests/test_typescript_decorated_inventory.py \
 		tests/test_typescript_parameter_properties.py \
@@ -63,20 +63,20 @@ pr-test:
 		tests/test_runtime.py \
 		tests/test_codec.py tests/test_codec_compatibility.py tests/test_source_provenance_acceptance.py \
 		tests/test_collection_process.py tests/test_collection_conformance.py tests/test_schema_drift.py \
-		tests/test_runtime_delta.py tests/test_nullable_profile_measurements.py \
+		tests/test_runtime_delta.py tests/test_delta_version_types.py tests/test_comparison_support_types.py tests/test_nullable_profile_measurements.py tests/test_source_section_types.py tests/test_graph_topology_level_types.py \
 		tests/test_collection_runtime_gate.py tests/test_ratchets.py tests/test_model.py tests/test_trace.py tests/test_violations.py \
 		tests/test_typescript_demo.py tests/test_onboarding_guidance.py \
-		tests/test_references.py tests/test_levels.py tests/test_widening.py tests/test_measurement_budgets.py \
-		tests/test_onboarding.py tests/test_terminal.py \
+		tests/test_references.py tests/test_levels.py tests/test_widening.py tests/test_measurement_budgets.py tests/test_typed_amendment_artifact.py \
+		tests/test_onboarding.py tests/test_terminal.py tests/test_summary_badge_types.py tests/test_summary_badge_target.py \
 		tests/test_onboarding_demo.py tests/test_pypi_description.py tests/test_typescript_onboarding.py \
 		tests/test_unknown_positions.py tests/test_inside_rule_coverage.py tests/test_report_159_160.py \
 		tests/test_target_navigation_graph.py \
-		tests/test_absent_import_namespace.py tests/test_string_comparison_observation.py tests/test_local_string_comparisons.py
+		tests/test_absent_import_namespace.py tests/test_string_comparison_observation.py tests/test_local_string_comparisons.py tests/test_string_predicate_observation.py tests/test_python_string_predicate_target.py tests/test_typed_host_events.py
 
 pr-report-test:
 	$(UV) run --locked --with playwright==$(PLAYWRIGHT_VERSION) python -m pytest -n 2 --dist=loadfile --max-worker-restart=0 -q \
 		--junitxml=test-artifacts/pytest/pr-report.xml \
-		tests/test_report_renderer_units.py \
+		tests/test_report_renderer_units.py tests/test_graph_scene_protocol.py tests/test_atlas_deviation_boundary.py \
 		tests/test_explorer_report.py \
 		tests/test_report_interactions.py::test_native_card_drag_reroutes_all_hits_and_keeps_architecture_unchanged \
 		tests/test_uml_rendering.py::test_standard_uml_ignores_stale_layout_and_retries_rejected_layout \
@@ -163,8 +163,8 @@ typescript-native:
 	$(UV) run --locked python -m pytest -q tests/test_typescript_parse.py \
 		tests/test_typescript_inner.py tests/test_typescript_uml_acceptance.py \
 		tests/test_typescript_namespace_identities.py \
-		tests/test_typescript_collect.py tests/test_typescript_owned_types.py tests/test_typescript_syntax_types.py tests/test_typescript_syntax_compatibility.py \
-		tests/test_typescript_json_fields.py tests/test_typescript_control_target.py tests/test_typescript_config.py \
+		tests/test_typescript_collect.py tests/test_typescript_owned_types.py tests/test_typescript_syntax_types.py tests/test_typescript_syntax_compatibility.py tests/test_typescript_source_input.py \
+		tests/test_typescript_json_fields.py tests/test_typescript_control_target.py tests/test_typescript_config.py tests/test_typescript_string_constructs.py \
 		tests/test_typescript_config_reference.py \
 		tests/test_typescript_resolve.py tests/test_typescript_provenance.py \
 		tests/test_typescript_init_acceptance.py tests/test_typescript_demo.py
@@ -185,7 +185,7 @@ LINT_PATHS := src tests tools/terminal_svg.py tools/interface_profile.py tools/r
 	fixtures/reproduce_dart.py fixtures/reproduce_snapshot_check.py fixtures/consume_result.py fixtures/reproduce_github.py \
 	fixtures/reproduce_typescript.py fixtures/typescript_differential.py fixtures/typescript_scenarios.py fixtures/typescript_realworld.py \
 	fixtures/architecture_demo.py fixtures/demo_catalog_*.py \
-	tools/architecture_graph_schema.py tools/report_timing.py tools/report_artifact_retention.py tools/browser_runtime.py
+	tools/architecture_graph_schema.py tools/report_timing.py tools/report_artifact_retention.py tools/browser_runtime.py tools/browser_graph_protocol.py
 
 # The same commit measured 80-96s on hosted runners; allow for runner noise.
 REPORT_MAX_SECONDS ?= 120
@@ -328,3 +328,20 @@ browser-runtime-check: browser-runtime-install
 	uv run --locked mypy --strict tools/browser_runtime.py
 	uv run --locked python -m tools.browser_runtime --check
 	uv run --locked python -m pytest -q tests/test_flow_runtime_publication.py
+
+.PHONY: browser-graph-generate browser-graph-check
+BROWSER_GRAPH_PROTOCOL := src/archkeel/render/assets/report-graph-vocabulary.ts src/archkeel/render/assets/report-graph-protocol.ts
+BROWSER_GRAPH_COMPILER := npx --yes --package typescript@5.9.3 tsc --strict --target ES2022 --module none --newLine lf
+
+browser-graph-generate:
+	$(UV) run --locked python -m tools.browser_graph_protocol
+	$(BROWSER_GRAPH_COMPILER) --outFile src/archkeel/render/assets/report-graph-protocol.js $(BROWSER_GRAPH_PROTOCOL)
+
+browser-graph-check:
+	$(UV) run --locked mypy --strict tools/browser_graph_protocol.py
+	$(UV) run --locked python -m tools.browser_graph_protocol --check
+	@set -e; browser_graph_stage=$$(mktemp -d); \
+		trap 'rm -rf "$$browser_graph_stage"' EXIT; \
+		$(BROWSER_GRAPH_COMPILER) --outFile "$$browser_graph_stage/protocol.js" $(BROWSER_GRAPH_PROTOCOL); \
+		cmp src/archkeel/render/assets/report-graph-protocol.js "$$browser_graph_stage/protocol.js"
+	$(BROWSER_GRAPH_COMPILER) --allowJs --checkJs --noEmit $(BROWSER_GRAPH_PROTOCOL) src/archkeel/render/assets/report-graph-scene.js tests/browser_graph_scene_target.ts src/archkeel/render/assets/report-atlas-deviations.js

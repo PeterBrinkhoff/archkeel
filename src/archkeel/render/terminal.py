@@ -17,15 +17,17 @@ from rich.table import Table
 from rich.text import Text
 
 from archkeel.ir.diagnostics import Diagnostic as Diagnostic
+from archkeel.ir.model import RuleAssessmentStatus as _RuleAssessmentStatus
 from archkeel.ir.model import RunResult
 
-from .summary import Badge, State, Summary, badge
+from .summary import Summary
+from .summary_badges import Badge, BadgeState, badge
 
-_COLORS: Final[dict[State, str]] = {
-    "pass": "green",
-    "fail": "red",
-    "info": "cyan",
-    "unknown": "yellow",
+_COLORS: Final[dict[BadgeState, str]] = {
+    BadgeState.PASS: "green",
+    BadgeState.FAIL: "red",
+    BadgeState.INFO: "cyan",
+    BadgeState.UNKNOWN: "yellow",
 }
 
 
@@ -61,7 +63,7 @@ def _diagnostic(item: Diagnostic) -> Panel:
         fields,
         title=Text(f"Diagnostic · {item.code or item.kind}"),
         title_align="left",
-        border_style=_COLORS["unknown"],
+        border_style=_COLORS[BadgeState.UNKNOWN],
         box=box.ROUNDED,
     )
 
@@ -99,7 +101,7 @@ def print_result(
     unknown_details = tuple(
         Text(line, overflow="fold")
         for item in result.rule_assessments or ()
-        if item.status == "UNKNOWN"
+        if item.status is _RuleAssessmentStatus.UNKNOWN
         for line in (item.id, item.reason)
     )
     output.print(

@@ -158,7 +158,13 @@
         "archkeel.ir.diagnostics:DiagnosticCode",
         "archkeel.ir.diagnostics:Diagnostic",
         "archkeel.ir.diagnostics:DiagnosticError",
-        "archkeel.ir.diagnostics:ReportLocation"
+        "archkeel.ir.diagnostics:ReportLocation",
+        "archkeel.ir.amendment:AmendmentVersion",
+        "archkeel.ir.amendment:AmendmentStatus",
+        "archkeel.ir.amendment:Amendment",
+        "archkeel.ir.amendment:verify_amendment",
+        "archkeel.ir.architecture_graph:RuleAssessmentStatus",
+        "archkeel.ir.architecture_projection:PermissionStatus"
       ],
       "responsibilities": [
         "Own immutable source facts, protocol values, governance models and pure derivations."
@@ -244,7 +250,8 @@
         {
           "component": "ir",
           "through": [
-            "archkeel.ir.codec"
+            "archkeel.ir.codec",
+            "archkeel.ir.model:Command"
           ],
           "rationale": "Serialize the typed observation to the legacy JSON payload at the CLI compatibility boundary."
         },
@@ -352,13 +359,14 @@
       ],
       "public": [
         "archkeel.render.html",
-        "archkeel.render.summary:Badge",
+        "archkeel.render.summary_badges:Badge",
         "archkeel.render.summary:VerdictRow",
         "archkeel.render.summary:check_summary",
         "archkeel.render.summary:init_summary",
         "archkeel.render.summary:Summary",
         "archkeel.render.summary:report_summary",
-        "archkeel.render.terminal"
+        "archkeel.render.terminal",
+        "archkeel.render.summary_badges:BadgeState"
       ],
       "responsibilities": [
         "Deterministic HTML and terminal projections of typed Archkeel evidence.",
@@ -808,11 +816,35 @@
         "archkeel.analyzer.dart.resolve",
         "archkeel.analyzer.dart.snapshot",
         "archkeel.analyzer.dart.collect",
-        "archkeel.ir.diagnostics"
+        "archkeel.ir.diagnostics",
+        "archkeel.analyzer.bootstrap",
+        "archkeel.ir.amendment",
+        "archkeel.render.summary_badges",
+        "archkeel.ir.measurements",
+        "archkeel.analyzer.python.constructs",
+        "archkeel.analyzer.typescript.source_input",
+        "archkeel.check.evaluation.boundary_types",
+        "archkeel.render.atlas_deviations",
+        "archkeel.analyzer.python.source",
+        "archkeel.ir.architecture_projection",
+        "archkeel.ir.host_records",
+        "archkeel.check.snapshot",
+        "archkeel.ir.structure",
+        "archkeel.analyzer.process"
       ],
-      "rationale": "Each closed vocabulary belongs to its domain or wire boundary: shared state and source facts own domain controls; codecs own private wire tags; TypeScript parser and collector own their private controls and share the published syntax port; consumers use published nominal types. Contract versions and feature availability belong to contract_version. The Python Source binding model owns import, lexical binding and compiler-scope control types.",
+      "rationale": "Each closed vocabulary belongs to its domain or wire boundary: shared state and source facts own domain controls; codecs own private wire tags; TypeScript parser and collector own their private controls and share the published syntax port; consumers use published nominal types. Contract versions and feature availability belong to contract_version. The Python Source binding model owns import, lexical binding and compiler-scope control types. Amendment versions and verification outcomes belong to the coherent immutable amendment artifact owner. Measurement budgets, availability and metric comparisons stay with their existing measurement DTO owner. The Python construct owner holds its private written predicate syntax vocabulary. TypeScript source_input owns shared filename/specifier grammar and source/format metadata. The Core boundary evaluator owns its private undecidable-position reasons. Atlas deviation values, deterministic pair derivation and wire emission belong to render.atlas_deviations. The Python Source adapter owns the private AST field grammar that feeds definition contexts; shared context kinds remain facts-owned. Compact architecture projection values own component-pair permission states. Host replay evidence owns its closed expectation publication and candidate submission events. The existing snapshot owner owns the supported regular Git blob byte-pair grammar shared by immutable input readers; the Git consumer does not own that enum. Structure measurement levels belong to the existing pure ir.structure measurement owner. The existing collector process owner owns its recognized POSIX/Windows lifecycle controls; other OS names keep their existing open fallback.",
       "provenance": [
-        "docs/architecture/archkeel.md"
+        "docs/architecture/archkeel.md",
+        "docs/architecture/typed-amendment-artifact.md",
+        "docs/architecture/measurement-control-types.md",
+        "docs/architecture/boundary-reason-types.md",
+        "docs/superpowers/specs/2026-10-16-atlas-deviation-boundary.md",
+        "docs/architecture/definition-context-ports.md",
+        "docs/superpowers/specs/2026-10-17-permission-status-types.md",
+        "docs/architecture/host-event-types.md",
+        "docs/superpowers/specs/2026-10-17-git-blob-kind.md",
+        "docs/architecture/structure-level-types.md",
+        "docs/architecture/language-adapter-target.md"
       ],
       "decided_by": "architect"
     },
@@ -1184,6 +1216,175 @@
       "rationale": "The diagnostic owner normalizes kind and code once and uses nominal decisions; parser and protocol strings have no exception.",
       "provenance": [
         "docs/architecture/typed-diagnostic-owner.md"
+      ],
+      "decided_by": "architect"
+    },
+    {
+      "id": "BOOTSTRAP-TYPED-BOOTSTRAP",
+      "kind": "forbidden_construct",
+      "source": "archkeel.analyzer.bootstrap",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "The shared bootstrap owns nominal direct-start classification; language entries use its explicit decision port.",
+      "provenance": [
+        "docs/architecture/shared-runtime-bootstrap.md"
+      ],
+      "decided_by": "architect"
+    },
+    {
+      "id": "BOOTSTRAP-TYPED-PYTHON-ENTRY",
+      "kind": "forbidden_construct",
+      "source": "archkeel.analyzer.python.entry",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "The shared bootstrap owns nominal direct-start classification; language entries use its explicit decision port.",
+      "provenance": [
+        "docs/architecture/shared-runtime-bootstrap.md"
+      ],
+      "decided_by": "architect"
+    },
+    {
+      "id": "BOOTSTRAP-TYPED-DART-ENTRY",
+      "kind": "forbidden_construct",
+      "source": "archkeel.analyzer.dart.entry",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "The shared bootstrap owns nominal direct-start classification; language entries use its explicit decision port.",
+      "provenance": [
+        "docs/architecture/shared-runtime-bootstrap.md"
+      ],
+      "decided_by": "architect"
+    },
+    {
+      "id": "BOOTSTRAP-TYPED-TYPESCRIPT-ENTRY",
+      "kind": "forbidden_construct",
+      "source": "archkeel.analyzer.typescript.entry",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "The shared bootstrap owns nominal direct-start classification; language entries use its explicit decision port.",
+      "provenance": [
+        "docs/architecture/shared-runtime-bootstrap.md"
+      ],
+      "decided_by": "architect"
+    },
+    {
+      "id": "AMENDMENT-ARTIFACT-TYPED-CONTROL",
+      "kind": "forbidden_construct",
+      "source": "archkeel.ir.amendment",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "Amendment artifact and wire decisions use their canonical nominal types, including parser/protocol tags.",
+      "provenance": [
+        "docs/architecture/typed-amendment-artifact.md"
+      ],
+      "decided_by": "architect"
+    },
+    {
+      "id": "AMENDMENT-CODEC-TYPED-CONTROL",
+      "kind": "forbidden_construct",
+      "source": "archkeel.ir.amendment_codec",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "Amendment artifact and wire decisions use their canonical nominal types, including parser/protocol tags.",
+      "provenance": [
+        "docs/architecture/typed-amendment-artifact.md"
+      ],
+      "decided_by": "architect"
+    },
+    {
+      "id": "IR-CONTRACT-TYPED-CONTROL",
+      "kind": "forbidden_construct",
+      "source": "archkeel.ir.codec_contract",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "Decode closed contract grammar through canonical nominal types. JSON field names and arbitrary identities remain data.",
+      "provenance": [
+        "docs/architecture/contract-rule-grammar.md"
+      ],
+      "decided_by": "architect"
+    },
+    {
+      "id": "MEASUREMENT-TYPED-CONTROL",
+      "kind": "forbidden_construct",
+      "source": "archkeel.ir.measurements",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "Owned measurement tags and metric outcomes drive decisions nominally.",
+      "provenance": [
+        "docs/architecture/measurement-control-types.md"
+      ],
+      "decided_by": "architect"
+    },
+    {
+      "id": "GIT-BLOB-TYPED-INGRESS",
+      "kind": "forbidden_construct",
+      "source": "archkeel.check.snapshot.regular_git_blob_kind",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "Closed Git blob mode/type grammar is recognized by its nominal input owner; arbitrary paths, revisions and object IDs remain data.",
+      "provenance": [
+        "docs/superpowers/plans/2026-10-17-git-blob-kind.md"
+      ],
+      "decided_by": "architect"
+    },
+    {
+      "id": "GIT-BLOB-TYPED-ARCHIVE",
+      "kind": "forbidden_construct",
+      "source": "archkeel.check.snapshot._git_archive_bytes",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "Closed Git blob mode/type grammar is recognized by its nominal input owner; arbitrary paths, revisions and object IDs remain data.",
+      "provenance": [
+        "docs/superpowers/plans/2026-10-17-git-blob-kind.md"
+      ],
+      "decided_by": "architect"
+    },
+    {
+      "id": "GIT-BLOB-TYPED-READER",
+      "kind": "forbidden_construct",
+      "source": "archkeel.check.git.read_blob",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "Closed Git blob mode/type grammar is recognized by its nominal input owner; arbitrary paths, revisions and object IDs remain data.",
+      "provenance": [
+        "docs/superpowers/plans/2026-10-17-git-blob-kind.md"
+      ],
+      "decided_by": "architect"
+    },
+    {
+      "id": "PROCESS-PLATFORM-DECODE-CONTROL",
+      "kind": "forbidden_construct",
+      "source": "archkeel.analyzer.process._process_platform",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "Known process platform decisions use the owned nominal port; OS-name parsing has no raw-string control exception and other platform names preserve direct-process fallback.",
+      "provenance": [
+        "docs/architecture/language-adapter-target.md"
+      ],
+      "decided_by": "architect"
+    },
+    {
+      "id": "PROCESS-PLATFORM-CLEANUP-CONTROL",
+      "kind": "forbidden_construct",
+      "source": "archkeel.analyzer.process._terminate_process_tree",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "Known process platform decisions use the owned nominal port; OS-name parsing has no raw-string control exception and other platform names preserve direct-process fallback.",
+      "provenance": [
+        "docs/architecture/language-adapter-target.md"
       ],
       "decided_by": "architect"
     }

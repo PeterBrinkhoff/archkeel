@@ -13,15 +13,27 @@ from collections import Counter
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field
+from enum import StrEnum
 from pathlib import Path
-from typing import Final, Literal, Protocol, TypedDict
+from typing import Final, Literal, NamedTuple, Protocol, TypedDict
 
-from archkeel.ir.facts import EvidenceClass, stable_id
+from archkeel.ir.facts import (
+    DefinitionBranchKind,
+    DefinitionContextKind,
+    EvidenceClass,
+    MethodDescriptor,
+    MethodKind,
+    PropertyBinding,
+    PropertyOperation,
+    PropertyOrigin,
+    stable_id,
+)
 from archkeel.ir.facts_codec import RawData as RecordData
 from archkeel.ir.facts_codec import (
     RawEvidence,
     RawRecord,
     classified,
+    method_descriptor_data,
 )
 from archkeel.ir.facts_codec import (
     file_evidence as file_evidence,
@@ -47,25 +59,45 @@ class _PropertyBinding(TypedDict):
 
 FunctionNode = ast.FunctionDef | ast.AsyncFunctionDef
 DefinitionNode = ast.ClassDef | FunctionNode
-DefinitionContexts = tuple[tuple[ast.AST, str, str], ...]
 
+
+class DefinitionFrame(NamedTuple):
+    """One AST context; Graph owns its separate evidence-bearing representation."""
+
+    node: ast.AST
+    kind: DefinitionContextKind
+    branch: DefinitionBranchKind
+
+
+DefinitionContexts = tuple[DefinitionFrame, ...]
+
+
+class _DefinitionField(StrEnum):
+    BODY = "body"
+    ELSE = "orelse"
+    HANDLER = "handlers"
+    FINALLY = "finalbody"
+    CASE = "cases"
+
+
+_DEFINITION_FIELDS = {str(item): item for item in _DefinitionField}
 _CONTROL_FLOW_KINDS = {
-    ast.If: "if",
-    ast.For: "for",
-    ast.AsyncFor: "async_for",
-    ast.While: "while",
-    ast.Try: "try",
-    ast.TryStar: "try_star",
-    ast.With: "with",
-    ast.AsyncWith: "async_with",
-    ast.Match: "match",
+    ast.If: DefinitionContextKind.IF,
+    ast.For: DefinitionContextKind.FOR,
+    ast.AsyncFor: DefinitionContextKind.ASYNC_FOR,
+    ast.While: DefinitionContextKind.WHILE,
+    ast.Try: DefinitionContextKind.TRY,
+    ast.TryStar: DefinitionContextKind.TRY_STAR,
+    ast.With: DefinitionContextKind.WITH,
+    ast.AsyncWith: DefinitionContextKind.ASYNC_WITH,
+    ast.Match: DefinitionContextKind.MATCH,
 }
 _DEFINITION_BRANCHES = {
-    "body": "body",
-    "orelse": "else",
-    "handlers": "handler",
-    "finalbody": "finally",
-    "cases": "case",
+    _DefinitionField.BODY: DefinitionBranchKind.BODY,
+    _DefinitionField.ELSE: DefinitionBranchKind.ELSE,
+    _DefinitionField.HANDLER: DefinitionBranchKind.HANDLER,
+    _DefinitionField.FINALLY: DefinitionBranchKind.FINALLY,
+    _DefinitionField.CASE: DefinitionBranchKind.CASE,
 }
 
 NATIVE_DATACLASS_DECORATOR: Final = "dataclasses.dataclass"
@@ -107,23 +139,37 @@ def definition_id(module: ParsedModule, node: ast.AST, qualified_name: str) -> s
 def definition_sites(
     node: ast.AST,
     parent: DefinitionNode | None = None,
-    contexts: DefinitionContexts = (),
+    contexts: tuple[tuple[ast.AST, str, str], ...] = (),
+) -> Iterator[tuple[DefinitionNode, DefinitionNode | None, DefinitionContexts]]:
+    """Normalize the public legacy triple protocol once, before typed recursion."""
+    normalized = tuple(
+        DefinitionFrame(site, DefinitionContextKind(kind), DefinitionBranchKind(branch))
+        for site, kind, branch in contexts
+    )
+    yield from _definition_sites(node, parent, normalized)
+
+
+def _definition_sites(
+    node: ast.AST,
+    parent: DefinitionNode | None,
+    contexts: DefinitionContexts,
 ) -> Iterator[tuple[DefinitionNode, DefinitionNode | None, DefinitionContexts]]:
     if isinstance(node, ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef):
         yield node, parent, contexts
         parent = node
     for field_name, children in ast.iter_fields(node):
-        if field_name not in _DEFINITION_BRANCHES or not isinstance(children, list):
+        field = _DEFINITION_FIELDS.get(field_name)
+        if field is None or not isinstance(children, list):
             continue
         for child in children:
             if isinstance(child, ast.AST):
                 nested = contexts
                 if type(node) in _CONTROL_FLOW_KINDS:
-                    nested = (*contexts, _branch_context(node, child, field_name))
-                yield from definition_sites(child, parent, nested)
+                    nested = (*contexts, _branch_context(node, child, field))
+                yield from _definition_sites(child, parent, nested)
 
 
-def _branch_context(node: ast.AST, child: ast.AST, field_name: str) -> tuple[ast.AST, str, str]:
+def _branch_context(node: ast.AST, child: ast.AST, field_name: _DefinitionField) -> DefinitionFrame:
     site = (
         child
         if isinstance(child, ast.ExceptHandler)
@@ -131,21 +177,18 @@ def _branch_context(node: ast.AST, child: ast.AST, field_name: str) -> tuple[ast
         if isinstance(child, ast.match_case)
         else node
     )
-    return site, _CONTROL_FLOW_KINDS[type(node)], _DEFINITION_BRANCHES[field_name]
+    return DefinitionFrame(site, _CONTROL_FLOW_KINDS[type(node)], _DEFINITION_BRANCHES[field_name])
 
 
 def control_flow_contexts(node: ast.AST, parents: Mapping[ast.AST, ast.AST]) -> DefinitionContexts:
-    contexts: list[tuple[ast.AST, str, str]] = []
+    contexts: list[DefinitionFrame] = []
     while node in parents:
         parent = parents[node]
         if type(parent) in _CONTROL_FLOW_KINDS:
             for field_name, children in ast.iter_fields(parent):
-                if (
-                    field_name in _DEFINITION_BRANCHES
-                    and isinstance(children, list)
-                    and node in children
-                ):
-                    contexts.append(_branch_context(parent, node, field_name))
+                field = _DEFINITION_FIELDS.get(field_name)
+                if field is not None and isinstance(children, list) and node in children:
+                    contexts.append(_branch_context(parent, node, field))
                     break
         node = parent
     return tuple(reversed(contexts))
@@ -731,8 +774,7 @@ def unproven_class_body(
             child.name in {"__init_subclass__", "__class_getitem__"}
             or (
                 child not in properties
-                and method_decorator_data(module, child, node)["signature_decorators_proven"]
-                is not True
+                and method_descriptor(module, child, node).signature_decorators_proven is not True
             )
         ):
             return True
@@ -780,10 +822,10 @@ def unproven_class_body(
 
 def property_bindings(
     module: ParsedModule, parent: ast.ClassDef
-) -> dict[FunctionNode, _PropertyBinding]:
+) -> dict[FunctionNode, PropertyBinding]:
     if parent not in module.tree.body:
         return {}
-    bindings: dict[FunctionNode, _PropertyBinding] = {}
+    bindings: dict[FunctionNode, PropertyBinding] = {}
     previous: dict[str, FunctionNode] = {}
     for child in parent.body:
         names = _class_statement_bindings(child)
@@ -803,28 +845,28 @@ def _property_operation(
     node: FunctionNode,
     parent: ast.ClassDef,
     previous: dict[str, FunctionNode],
-    bindings: dict[FunctionNode, _PropertyBinding],
-) -> _PropertyBinding | None:
+    bindings: dict[FunctionNode, PropertyBinding],
+) -> PropertyBinding | None:
     if len(node.decorator_list) != 1 or isinstance(node, ast.AsyncFunctionDef):
         return None
     decorator = node.decorator_list[0]
     if is_proven_decorator(
         module, decorator, node, parent, frozenset({"property", "builtins.property"})
     ) and not isinstance(decorator, ast.Call):
-        return {"operation": "create", "source": "new", "line": node.lineno, "source_line": 0}
-    if not isinstance(decorator, ast.Attribute) or decorator.attr not in {"getter", "setter"}:
+        return PropertyBinding(PropertyOperation.CREATE, PropertyOrigin.NEW, node.lineno, 0)
+    if not isinstance(decorator, ast.Attribute):
         return None
-    operation: Literal["getter", "setter"] = "getter" if decorator.attr == "getter" else "setter"
+    try:
+        operation = PropertyOperation(decorator.attr)
+    except ValueError:
+        return None
+    if operation is PropertyOperation.CREATE:
+        return None
     descriptor = decorator.value
     if isinstance(descriptor, ast.Name) and descriptor.id == node.name:
         origin = previous.get(node.name)
         if origin is not None and origin in bindings:
-            return {
-                "operation": operation,
-                "source": "local",
-                "line": node.lineno,
-                "source_line": origin.lineno,
-            }
+            return PropertyBinding(operation, PropertyOrigin.LOCAL, node.lineno, origin.lineno)
     if (
         isinstance(descriptor, ast.Attribute)
         and descriptor.attr == node.name
@@ -837,7 +879,7 @@ def _property_operation(
         if isinstance(root, ast.Name) and not binding_may_exist_before(
             module, parent.body, node, root.id
         ):
-            return {"operation": operation, "source": "base", "line": node.lineno, "source_line": 0}
+            return PropertyBinding(operation, PropertyOrigin.BASE, node.lineno, 0)
     return None
 
 
@@ -850,7 +892,7 @@ def setter_local_references(module: ParsedModule) -> frozenset[ast.AST]:
         for method, binding in bindings.items():
             positional = (*method.args.posonlyargs, *method.args.args)
             parameters = (*positional[1:], *method.args.kwonlyargs)
-            if binding["operation"] != "setter" or method.name not in {
+            if binding.operation is not PropertyOperation.SETTER or method.name not in {
                 argument.arg for argument in parameters
             }:
                 continue
@@ -874,44 +916,39 @@ def setter_local_references(module: ParsedModule) -> frozenset[ast.AST]:
     return frozenset(references)
 
 
-def method_decorator_data(
+_METHOD_DECORATORS: Final[dict[str, MethodKind | None]] = {
+    "staticmethod": MethodKind.STATIC,
+    "builtins.staticmethod": MethodKind.STATIC,
+    "classmethod": MethodKind.CLASS,
+    "builtins.classmethod": MethodKind.CLASS,
+    "property": MethodKind.INSTANCE,
+    "builtins.property": MethodKind.INSTANCE,
+    "typing.overload": None,
+    "typing_extensions.overload": None,
+    "abc.abstractmethod": None,
+}
+
+
+def method_descriptor(
     module: ParsedModule,
     node: ast.FunctionDef | ast.AsyncFunctionDef,
     parent: ast.ClassDef | None,
-) -> RecordData:
-    method_kind = "instance"
+) -> MethodDescriptor:
+    method_kind = MethodKind.INSTANCE
     signature_proven = True
     descriptor_count = 0
-    targets = frozenset(
-        {
-            "staticmethod",
-            "builtins.staticmethod",
-            "classmethod",
-            "builtins.classmethod",
-            "property",
-            "builtins.property",
-            "typing.overload",
-            "typing_extensions.overload",
-            "abc.abstractmethod",
-        }
-    )
+    targets = frozenset(_METHOD_DECORATORS)
     for decorator in node.decorator_list:
         proven = not isinstance(decorator, ast.Call) and is_proven_decorator(
             module, decorator, node, parent, targets
         )
         signature_proven = signature_proven and proven
         if proven:
-            resolved = resolve_static_name(module, decorator)
-            if resolved not in {
-                "typing.overload",
-                "typing_extensions.overload",
-                "abc.abstractmethod",
-            }:
+            effect = _METHOD_DECORATORS[resolve_static_name(module, decorator)]
+            if effect is not None:
                 descriptor_count += 1
-            if resolved in {"staticmethod", "builtins.staticmethod"}:
-                method_kind = "static"
-            elif resolved in {"classmethod", "builtins.classmethod"}:
-                method_kind = "class"
+                if effect in (MethodKind.STATIC, MethodKind.CLASS):
+                    method_kind = effect
     properties = property_bindings(module, parent) if parent is not None else {}
     binding = properties.get(node)
     if (
@@ -920,17 +957,26 @@ def method_decorator_data(
         and parent.name not in stable_direct_module_bindings(module)
     ):
         binding = None
-    return {
-        "method_kind": method_kind,
-        "signature_decorators_proven": signature_proven and descriptor_count <= 1,
-        "source_final_method_binding": not node.decorator_list
+    return MethodDescriptor(
+        method_kind,
+        signature_proven and descriptor_count <= 1,
+        not node.decorator_list
         and parent is not None
         and parent in module.tree.body
         and parent.name in stable_direct_module_bindings(module)
         and binding_may_exist_before(module, parent.body, node, node.name)
         and not binding_may_exist_before(module, tuple(reversed(parent.body)), node, node.name),
-        **({"property_binding": binding} if binding is not None else {}),
-    }
+        binding,
+    )
+
+
+def method_decorator_data(
+    module: ParsedModule,
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+    parent: ast.ClassDef | None,
+) -> RecordData:
+    """Retain the raw dict port for callers assembling source wire records."""
+    return method_descriptor_data(method_descriptor(module, node, parent))
 
 
 def explicit_provider_escapes(module: ParsedModule) -> frozenset[str]:
@@ -993,9 +1039,11 @@ def _class_members_receive_owner(module: ParsedModule, owner: ast.ClassDef) -> b
         if exposes_dynamic_namespace(module, node, local_namespace=True):
             return True
         if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
-            if method_decorator_data(module, node, owner)[
-                "signature_decorators_proven"
-            ] is not True and node not in property_bindings(module, owner):
+            if method_descriptor(
+                module, node, owner
+            ).signature_decorators_proven is not True and node not in property_bindings(
+                module, owner
+            ):
                 return True
         elif isinstance(node, ast.ClassDef):
             if not class_header_static(node) or node.bases:
@@ -1100,7 +1148,7 @@ def _native_method_header_static(module: ParsedModule, node: FunctionNode) -> bo
         *(item for item in (node.args.vararg, node.args.kwarg) if item is not None),
     ]
     return (
-        method_decorator_data(module, node, None)["signature_decorators_proven"] is True
+        method_descriptor(module, node, None).signature_decorators_proven is True
         and all(
             _inert_creation_operand(value)
             for value in [
@@ -1542,8 +1590,7 @@ def _unproven_member_roots(
                 )
                 or isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
                 and node not in properties
-                and method_decorator_data(module, node, None)["signature_decorators_proven"]
-                is not True
+                and method_descriptor(module, node, None).signature_decorators_proven is not True
             )
         }
         if member_surface and include_creation_uncertainty

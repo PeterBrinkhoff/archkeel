@@ -11,7 +11,6 @@ import re
 from enum import StrEnum
 from math import isfinite
 from pathlib import PurePosixPath, PureWindowsPath
-from typing import TypeAlias
 
 from .facts import (
     EVIDENCE_FIELDS,
@@ -32,6 +31,8 @@ from .facts import (
     JsonValue,
     Language,
     LocalTarget,
+    MethodDescriptor,
+    PropertyBinding,
     Record,
     RecordData,
     ResolutionInput,
@@ -45,6 +46,9 @@ from .facts import (
     UnresolvedTarget,
     parse_runtime_requirement_state,
     source_dirty,
+)
+from .facts import (
+    RawJson as RawJson,
 )
 from .facts_validation import validate_source_facts
 from .protocol import (
@@ -92,7 +96,29 @@ from .type_shapes import (
     UnresolvedType,
 )
 
-RawJson: TypeAlias = str | int | float | bool | None | list["RawJson"] | dict[str, "RawJson"]
+
+def property_binding_data(binding: PropertyBinding) -> RawData:
+    """Write the unchanged JSON shape; the facts owner validates its meaning."""
+    return {
+        "operation": binding.operation.value,
+        "source": binding.source.value,
+        "line": binding.line,
+        "source_line": binding.source_line,
+    }
+
+
+def method_descriptor_data(descriptor: MethodDescriptor) -> RawData:
+    """Write the existing method payload without changing its proof or optional fields."""
+    return {
+        "method_kind": descriptor.method_kind.value,
+        "signature_decorators_proven": descriptor.signature_decorators_proven,
+        "source_final_method_binding": descriptor.source_final_method_binding,
+        **(
+            {"property_binding": property_binding_data(descriptor.property_binding)}
+            if descriptor.property_binding is not None
+            else {}
+        ),
+    }
 
 
 class _TargetKind(StrEnum):

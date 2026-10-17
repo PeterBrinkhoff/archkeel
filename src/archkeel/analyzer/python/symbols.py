@@ -13,7 +13,18 @@ import sys
 from collections.abc import Sequence
 from types import EllipsisType
 
-from archkeel.ir.facts import EvidenceClass, InventoryStatus, MemberInventory, MemberKind, stable_id
+from archkeel.ir.facts import (
+    EvidenceClass,
+    InventoryStatus,
+    MemberInventory,
+    MemberKind,
+    ParameterKind,
+    SourceNameVisibility,
+    SourceResolution,
+    SymbolClassKind,
+    parse_symbol_class_kind,
+    stable_id,
+)
 from archkeel.ir.facts_codec import RawData as RecordData
 from archkeel.ir.facts_codec import RawEvidence, RawRecord, classified, member_inventory_data
 
@@ -57,12 +68,12 @@ from .source import (
 
 _BUILTIN_NAMES = frozenset(dir(builtins))
 _KNOWN_CLASS_KINDS = {
-    "typing.Protocol": "protocol",
-    "typing_extensions.Protocol": "protocol",
-    "enum.Enum": "enum",
-    "enum.IntEnum": "enum",
-    "enum.StrEnum": "enum",
-    "pydantic.BaseModel": "pydantic_model",
+    "typing.Protocol": SymbolClassKind.PROTOCOL,
+    "typing_extensions.Protocol": SymbolClassKind.PROTOCOL,
+    "enum.Enum": SymbolClassKind.ENUM,
+    "enum.IntEnum": SymbolClassKind.ENUM,
+    "enum.StrEnum": SymbolClassKind.ENUM,
+    "pydantic.BaseModel": SymbolClassKind.PYDANTIC_MODEL,
 }
 
 
@@ -72,19 +83,21 @@ def _function_signature(node: ast.FunctionDef | ast.AsyncFunctionDef) -> RecordD
     parameters = [
         _parameter(
             argument,
-            "positional_only" if index < len(node.args.posonlyargs) else "positional",
+            ParameterKind.POSITIONAL_ONLY
+            if index < len(node.args.posonlyargs)
+            else ParameterKind.POSITIONAL,
             defaults[index],
         )
         for index, argument in enumerate(positional)
     ]
     if node.args.vararg:
-        parameters.append(_parameter(node.args.vararg, "varargs", None, "*"))
+        parameters.append(_parameter(node.args.vararg, ParameterKind.VARARGS, None, "*"))
     parameters.extend(
-        _parameter(argument, "keyword_only", default)
+        _parameter(argument, ParameterKind.KEYWORD_ONLY, default)
         for argument, default in zip(node.args.kwonlyargs, node.args.kw_defaults, strict=True)
     )
     if node.args.kwarg:
-        parameters.append(_parameter(node.args.kwarg, "kwargs", None, "**"))
+        parameters.append(_parameter(node.args.kwarg, ParameterKind.KWARGS, None, "**"))
     return {
         "parameters": parameters,
         "receiver_parameter": positional[0].arg if positional else None,
@@ -94,7 +107,7 @@ def _function_signature(node: ast.FunctionDef | ast.AsyncFunctionDef) -> RecordD
 
 
 def _parameter(
-    argument: ast.arg, kind: str, default: ast.expr | None, prefix: str = ""
+    argument: ast.arg, kind: ParameterKind, default: ast.expr | None, prefix: str = ""
 ) -> RecordData:
     return {
         "name": prefix + argument.arg,
@@ -245,7 +258,9 @@ def _symbol_data(
         "module": module.module,
         "package": module.package,
         "name": node.name,
-        "visibility": "private" if node.name.startswith("_") else "public_name",
+        "visibility": SourceNameVisibility.PRIVATE
+        if node.name.startswith("_")
+        else SourceNameVisibility.PUBLIC_NAME,
         "visibility_detail": _python_visibility(node.name),
         "declared_in_all": node.name in module.all_exports,
         "parent": parent,
@@ -592,25 +607,26 @@ def _resolve_class_kinds(
             continue
         definitions: list[RawRecord] = by_name.setdefault(data["qualified_name"], [])
         definitions.append(item)
+    class_kinds: dict[str, SymbolClassKind] = {}
     changed = True
     while changed:
         changed = False
         for identity, node in classes.items():
             item = symbol_by_id[identity]
-            current = item["data"].get("class_kind")
+            current = class_kinds.get(identity)
             data = item["data"]
             if data.get("definition_contexts"):
                 continue
-            candidates: set[str] = set()
+            candidates: set[SymbolClassKind] = set()
             for resolved_base in item["data"]["base_roots"]:
                 tail = resolved_base.rsplit(".", 1)[-1]
                 if resolved_base in _KNOWN_CLASS_KINDS:
                     candidates.add(_KNOWN_CLASS_KINDS[resolved_base])
                 local_target = f"{owners[node].module}.{tail}"
                 bases = by_name.get(resolved_base) or by_name.get(local_target) or []
-                inherited = bases[0]["data"].get("class_kind") if len(bases) == 1 else None
+                inherited = class_kinds.get(bases[0]["id"]) if len(bases) == 1 else None
                 # A Protocol subclass is a normal class unless Protocol is an explicit base.
-                if inherited and inherited not in {"class", "protocol"}:
+                if inherited and inherited not in {SymbolClassKind.CLASS, SymbolClassKind.PROTOCOL}:
                     candidates.add(inherited)
             if any(
                 _resolve_static_name(
@@ -620,12 +636,13 @@ def _resolve_class_kinds(
                 in DATACLASS_DECORATORS
                 for decorator in node.decorator_list
             ):
-                candidates.add("dataclass")
-            class_kind = sorted(candidates)[0] if candidates else "class"
+                candidates.add(SymbolClassKind.DATACLASS)
+            class_kind = sorted(candidates)[0] if candidates else SymbolClassKind.CLASS
             if current != class_kind:
+                class_kinds[identity] = class_kind
                 item["data"]["class_kind"] = class_kind
                 changed = True
-            if class_kind == "enum":
+            if class_kind is SymbolClassKind.ENUM:
                 item["data"]["enum_members"] = _static_enum_members(node)
     for identity, node in classes.items():
         item = symbol_by_id[identity]
@@ -633,7 +650,7 @@ def _resolve_class_kinds(
         item["data"]["frozen_object"] = _class_is_frozen(
             node,
             owners[node],
-            allow_pydantic=item["data"].get("class_kind") == "pydantic_model",
+            allow_pydantic=class_kinds.get(identity) is SymbolClassKind.PYDANTIC_MODEL,
         )
 
 
@@ -644,11 +661,14 @@ def _base_binding(
     base: ast.expr,
     by_name: dict[str, list[RawRecord]],
     stable_bindings: frozenset[str],
-) -> tuple[str, list[str], str]:
+) -> tuple[SourceResolution, list[str], str]:
     classifier = base.value if isinstance(base, ast.Subscript) else base
     dotted: str = dotted_expression(classifier) or ""
     targets: list[str] = []
-    status, reason = "unresolved", "dynamic base expression has no proven classifier binding"
+    status, reason = (
+        SourceResolution.UNRESOLVED,
+        "dynamic base expression has no proven classifier binding",
+    )
     if dotted:
         root, _, tail = dotted.partition(".")
         alias = module.aliases.get(root)
@@ -668,34 +688,43 @@ def _base_binding(
         if alias or known:
             targets = [target]
             status, reason = (
-                "partially_resolved",
+                SourceResolution.PARTIALLY_RESOLVED,
                 "base name has candidates without a proven binding",
             )
             if proven and (alias or (len(known) == 1 and known[0]["kind"] == "class")):
-                status, reason = "resolved", "explicit base with a stable direct module binding"
+                status, reason = (
+                    SourceResolution.RESOLVED,
+                    "explicit base with a stable direct module binding",
+                )
                 if len(known) > 1 or (known and known[0]["kind"] != "class"):
                     status, reason = (
-                        "partially_resolved",
+                        SourceResolution.PARTIALLY_RESOLVED,
                         "imported classifier identity is ambiguous or unavailable",
                     )
                 elif _base_namespace_uncertain(target, by_name):
-                    status, reason = "partially_resolved", "classifier or qualifier may be replaced"
+                    status, reason = (
+                        SourceResolution.PARTIALLY_RESOLVED,
+                        "classifier or qualifier may be replaced",
+                    )
                 elif not known and target not in _KNOWN_CLASS_KINDS and target != "builtins.object":
-                    status, reason = "partially_resolved", "external classifier kind is unavailable"
+                    status, reason = (
+                        SourceResolution.PARTIALLY_RESOLVED,
+                        "external classifier kind is unavailable",
+                    )
         elif (
             dotted == "object"
             and owner["data"]["lexical_parent_id"] is None
             and not _binding_may_exist_before(module, module.tree.body, node, root)
         ):
             targets = ["builtins.object"]
-            status, reason = "resolved", "unshadowed builtin object base"
+            status, reason = SourceResolution.RESOLVED, "unshadowed builtin object base"
         if (
             isinstance(base, ast.Subscript)
-            and status == "resolved"
+            and status == SourceResolution.RESOLVED
             and target not in {"typing.Protocol", "typing_extensions.Protocol"}
         ):
             status, reason = (
-                "partially_resolved",
+                SourceResolution.PARTIALLY_RESOLVED,
                 "generic base may replace its classifier through __class_getitem__",
             )
     return status, targets, reason
@@ -715,10 +744,10 @@ def _base_declaration(
     known = by_name.get(targets[0], []) if targets else []
     kind = "inherits"
     if (
-        status == "resolved"
+        status == SourceResolution.RESOLVED
         and len(known) == 1
-        and known[0]["data"]["class_kind"] == "protocol"
-        and owner["data"]["class_kind"] != "protocol"
+        and parse_symbol_class_kind(known[0]["data"]["class_kind"]) is SymbolClassKind.PROTOCOL
+        and parse_symbol_class_kind(owner["data"]["class_kind"]) is not SymbolClassKind.PROTOCOL
     ):
         kind = "realizes"
     line, _, column = location(base)
@@ -754,7 +783,7 @@ def _base_namespace_uncertain(
                     data["class_header_static"] is not True
                     or data["class_body_control_flow"]
                     or any(
-                        base["status"] != "resolved"
+                        base["status"] != SourceResolution.RESOLVED
                         or any(
                             _base_namespace_uncertain(parent, by_name, ancestors)
                             for parent in base["targets"]
@@ -791,10 +820,10 @@ def _record_class_bases(
         if item["kind"] != "class":
             continue
         for base in item["data"]["base_declarations"]:
-            if base["status"] == "resolved" and any(
+            if base["status"] == SourceResolution.RESOLVED and any(
                 _base_namespace_uncertain(target, by_name) for target in base["targets"]
             ):
-                base["status"] = "partially_resolved"
+                base["status"] = SourceResolution.PARTIALLY_RESOLVED
                 base["reason"] = "classifier or qualifier may be replaced"
 
 
@@ -855,7 +884,9 @@ def _assignment_symbol(
             "module": module.module,
             "name": name,
             "parent": None,
-            "visibility": "private" if name.startswith("_") else "public_name",
+            "visibility": SourceNameVisibility.PRIVATE
+            if name.startswith("_")
+            else SourceNameVisibility.PUBLIC_NAME,
             "visibility_detail": _python_visibility(name),
             **(
                 {
@@ -989,11 +1020,11 @@ def _definition_symbol(
         )
     data["definition_contexts"] = [
         {
-            "kind": kind,
-            "branch": branch,
-            "evidence_ids": [add_evidence(evidence, module, statement)],
+            "kind": context.kind,
+            "branch": context.branch,
+            "evidence_ids": [add_evidence(evidence, module, context.node)],
         }
-        for statement, kind, branch in contexts
+        for context in contexts
     ]
     data["lexical_parent_id"] = (
         definition_id(module, parent_node, parent) if parent_node and parent else None

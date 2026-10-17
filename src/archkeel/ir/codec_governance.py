@@ -10,6 +10,10 @@ import json
 import re
 from dataclasses import asdict
 
+from archkeel.ir.amendment import AMENDMENT_SCHEMA_VERSION as AMENDMENT_SCHEMA_VERSION
+from archkeel.ir.amendment import Amendment as Amendment
+from archkeel.ir.amendment_codec import amendment_bytes as amendment_bytes
+from archkeel.ir.amendment_codec import parse_amendment as parse_amendment
 from archkeel.ir.baseline import (
     BASELINE_SCHEMA_VERSION,
     LEGACY_BASELINE_SCHEMA_VERSION,
@@ -41,8 +45,8 @@ from archkeel.ir.measurements import (
     RatchetScalars,
     count,
 )
+from archkeel.ir.measurements import MeasurementResolution as _MeasurementResolution
 from archkeel.ir.model import RawJson as RawJson
-from archkeel.ir.widening import AMENDMENT_SCHEMA_VERSION, Amendment
 
 
 def _measurement_payload(value: Measurements, *, legacy_calls: bool = False) -> dict[str, RawJson]:
@@ -89,13 +93,24 @@ def parse_measurements(raw: object, label: str, *, nullable_calls: bool = True) 
     # Older unmeasured payloads used zero; measured zero remains a count.
     if total == 0 and counts.calls_unresolved is None:
         total = None
-    if total:
-        if value.get("resolution") != "measured":
-            raise RatchetError(f"{label}.resolution must be measured")
-        return Measurements(counts, total, "measured")
-    if value.get("resolution") != "n/a":
-        raise RatchetError(f"{label}.resolution must be n/a")
-    return Measurements(counts, total, "n/a")
+    expected = _MeasurementResolution.MEASURED if total else _MeasurementResolution.NOT_APPLICABLE
+    return Measurements(
+        counts, total, _measurement_resolution(value.get("resolution"), label, expected)
+    )
+
+
+def _measurement_resolution(
+    raw: RawJson, label: str, expected: _MeasurementResolution
+) -> _MeasurementResolution:
+    if not isinstance(raw, str):
+        raise RatchetError(f"{label}.resolution must be {expected}")
+    try:
+        resolution = _MeasurementResolution(raw)
+    except ValueError as error:
+        raise RatchetError(f"{label}.resolution must be {expected}") from error
+    if resolution is not expected:
+        raise RatchetError(f"{label}.resolution must be {expected}")
+    return resolution
 
 
 def parse_lock(payload: bytes) -> AcceptedLock:
@@ -184,27 +199,17 @@ def _known_violation(raw: RawJson, label: str, *, with_roles: bool) -> KnownViol
 
 def _measurement_budget_name(raw: object, label: str) -> MeasurementBudgetName:
     value = _string(raw, label)
-    if value == "cycle_edges":
-        return "cycle_edges"
-    if value == "private_crossings":
-        return "private_crossings"
-    if value == "typing_positions":
-        return "typing_positions"
-    if value == "calls_unresolved":
-        return "calls_unresolved"
-    if value == "untyped_private_accesses":
-        return "untyped_private_accesses"
-    if value == "unknown_positions":
-        return "unknown_positions"
-    raise ValueError(f"{label} is not a supported measurement budget")
+    try:
+        return MeasurementBudgetName(value)
+    except ValueError as error:
+        raise ValueError(f"{label} is not a supported measurement budget") from error
 
 
 def _name_budget_kind(raw: str) -> NameBudgetKind | None:
-    if raw == "facade_names":
-        return "facade_names"
-    if raw == "coupling_names":
-        return "coupling_names"
-    return None
+    try:
+        return NameBudgetKind(raw)
+    except ValueError:
+        return None
 
 
 def _name_budgets(kind: NameBudgetKind, raw: RawJson, label: str) -> list[MeasurementBudget]:
@@ -330,13 +335,6 @@ def baseline_bytes(
     )
 
 
-def _amendment_digest(raw: RawJson, label: str) -> str:
-    value = _string(raw, label)
-    if re.fullmatch("[0-9a-f]{64}", value) is None:
-        raise ValueError(f"{label} must be a lowercase SHA-256 digest")
-    return value
-
-
 def baseline_digest(
     violations: tuple[KnownViolation, ...], budgets: tuple[MeasurementBudget, ...]
 ) -> str:
@@ -345,46 +343,3 @@ def baseline_digest(
 
 def absent_baseline_digest(path: str) -> str:
     return hashlib.sha256(b"\0no baseline at " + path.encode()).hexdigest()
-
-
-def parse_amendment(raw: object) -> Amendment:
-    document = _object(raw, "amendment")
-    version = document.get("schema_version")
-    fields = {"schema_version", "before_digest", "after_digest", "decided_by", "rationale"}
-    if version == AMENDMENT_SCHEMA_VERSION:
-        fields |= {"before_baseline_digest", "after_baseline_digest"}
-    elif version != "1.0.0":
-        raise ValueError(f"unsupported amendment schema {version!r}")
-    document = _exact(raw, fields, "amendment")
-    before_baseline = document.get("before_baseline_digest")
-    after_baseline = document.get("after_baseline_digest")
-    return Amendment(
-        _amendment_digest(document["before_digest"], "amendment.before_digest"),
-        _amendment_digest(document["after_digest"], "amendment.after_digest"),
-        _nonempty(document["decided_by"], "amendment.decided_by"),
-        _nonempty(document["rationale"], "amendment.rationale"),
-        None
-        if before_baseline is None
-        else _amendment_digest(before_baseline, "amendment.before_baseline_digest"),
-        None
-        if after_baseline is None
-        else _amendment_digest(after_baseline, "amendment.after_baseline_digest"),
-        "1.0.0" if version == "1.0.0" else AMENDMENT_SCHEMA_VERSION,
-    )
-
-
-def amendment_bytes(amendment: Amendment) -> bytes:
-    """Write the amendment indented and sorted: this file is read and reviewed in diffs."""
-    payload: dict[str, RawJson] = {
-        "schema_version": amendment.schema_version,
-        "before_digest": amendment.before_digest,
-        "after_digest": amendment.after_digest,
-        "decided_by": amendment.decided_by,
-        "rationale": amendment.rationale,
-    }
-    if amendment.schema_version == AMENDMENT_SCHEMA_VERSION:
-        payload["before_baseline_digest"] = amendment.before_baseline_digest
-        payload["after_baseline_digest"] = amendment.after_baseline_digest
-    return (json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode(
-        "utf-8"
-    )

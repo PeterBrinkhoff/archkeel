@@ -14,10 +14,18 @@ from typing import Final, TypeAlias, assert_never
 from typing import Literal as _Literal
 
 from archkeel.ir.architecture_graph import AssessmentStatus as _Verdict
-from archkeel.ir.facts import ConstructCapability, ConstructSupport
+from archkeel.ir.architecture_graph import EntityKind as _EntityKind
+from archkeel.ir.facts import (
+    ConstructCapability,
+    ConstructSupport,
+    SourceNameVisibility,
+    parse_source_name_visibility,
+    parse_symbol_class_kind,
+)
 from archkeel.ir.facts_codec import RawData as RecordData
 from archkeel.ir.facts_codec import RawRecord, classified
 from archkeel.ir.graph import strongly_connected_components
+from archkeel.ir.measurements import MeasurementBudgetName as _MeasurementBudgetName
 from archkeel.ir.model import (
     AllowedDependencyRule,
     ArchitectureContract,
@@ -28,6 +36,7 @@ from archkeel.ir.model import (
     CompleteRequiresRule,
     ContractComponent,
     ContractDeclarations,
+    CycleLevel,
     DependencyTargetKind,
     EvidenceClass,
     ExternalDependencyScopeRule,
@@ -142,7 +151,6 @@ from .boundary_types import _resolved_position_types as _resolved_position_types
 from .boundary_types import _root_broad_count as _root_broad_count
 from .boundary_types import _scoped_facade_signature_types as _scoped_facade_signature_types
 from .boundary_types import _selected_facade as _selected_facade
-from .boundary_types import _split_type_parameters as _split_type_parameters
 from .boundary_types import _substituted_type_bindings as _substituted_type_bindings
 from .boundary_types import _symbol_source_location as _symbol_source_location
 from .boundary_types import _type_alias_verdict as _type_alias_verdict
@@ -536,7 +544,7 @@ def _module_placement_violations(
 
 
 def _cycle_rules(
-    contract: ArchitectureContract, level: _Literal["module"] | None
+    contract: ArchitectureContract, level: _Literal[CycleLevel.MODULE] | None
 ) -> list[NoComponentCyclesRule]:
     return [
         rule
@@ -638,7 +646,7 @@ def _module_cycle_violations(
 ) -> list[RawRecord]:
     """Report measured module SCCs that touch the rule's scope (AD-98)."""
     violations: list[RawRecord] = []
-    for rule in _cycle_rules(contract, "module"):
+    for rule in _cycle_rules(contract, CycleLevel.MODULE):
         scope = (
             None
             if rule.components is None
@@ -731,7 +739,11 @@ def _interface_verdict(
     if data["symbols_known"]:
         if _interface_allows(data, target, exports_by_module):
             return _Verdict.PASS
-        if "reexport_candidates" in data and data["symbol_visibility"] == "public_name":
+        if (
+            "reexport_candidates" in data
+            and parse_source_name_visibility(data["symbol_visibility"])
+            is SourceNameVisibility.PUBLIC_NAME
+        ):
             return _Verdict.UNKNOWN
         return _Verdict.FAIL
     module = data["target_module"]
@@ -1028,6 +1040,31 @@ def _planned_subject_modules(contract: ArchitectureContract) -> frozenset[str]:
     )
 
 
+def _construct_subject_symbols(
+    source: str, symbols: Sequence[RawRecord], module_names: AbstractSet[str]
+) -> tuple[RawRecord, ...]:
+    """Read actual construct owners only within the observed physical module domain."""
+    selected: list[RawRecord] = []
+    for item in symbols:
+        data = item["data"]
+        module, name = data.get("module"), data.get("qualified_name")
+        if (
+            not isinstance(module, str)
+            or module not in module_names
+            or not isinstance(name, str)
+            or not in_scope(name, module)
+            or not in_scope(name, source)
+        ):
+            continue
+        try:
+            kind = _EntityKind(item["kind"])
+        except ValueError:
+            continue
+        if kind in {_EntityKind.CLASS, _EntityKind.FUNCTION, _EntityKind.METHOD}:
+            selected.append(item)
+    return tuple(selected)
+
+
 def _rule_subject_matches(
     rule: ArchitectureRule,
     contract: ArchitectureContract | None,
@@ -1082,6 +1119,7 @@ def rule_subject_failures(
 
     For `boundary_types`, a public facade function or matching planned entry is a subject. A rule
     that can only pass by finding neither must report UNKNOWN, not PASS (AD-63, AD-79).
+    For `forbidden_construct`, an observed class/function/method is also a real subject.
     A `forbidden_dependency` target naming one of the profile's SDK libraries is a subject no
     scan can list as a module, yet an import of it is observed like any other (AD-97).
     """
@@ -1098,6 +1136,14 @@ def rule_subject_failures(
             scopes = {"source": scopes["source"]}
         source_subjects: AbstractSet[str] = module_names | planned_subjects
         target_subjects: AbstractSet[str] = (target_module_names or module_names) | planned_subjects
+        if isinstance(rule, ForbiddenConstructRule):
+            owner_modules = (
+                module_names if source_modules is None else module_names & source_modules
+            )
+            source_subjects = source_subjects | {
+                item["data"]["qualified_name"]
+                for item in _construct_subject_symbols(rule.source, symbols, owner_modules)
+            }
         facade_scoped = False
         if isinstance(rule, BoundaryTypesRule) and contract is not None:
             source_subjects = _boundary_type_subject_modules(
@@ -1212,7 +1258,7 @@ def profile_failures(
         *(
             (f"declarations.measurement_budgets.{budget.name}", [], f"budget {budget.name}")
             for budget in declarations.measurement_budgets
-            if budget.name in profile.unmeasured
+            if budget.name in {_MeasurementBudgetName(name) for name in profile.unmeasured}
         ),
     ]
 
@@ -1309,10 +1355,13 @@ def _symbol_placement_violations(
     for rule in rules:
         if not isinstance(rule, SymbolPlacementRule):
             continue
-        kinds = frozenset(kind.value for kind in rule.class_kinds)
+        kinds = frozenset(rule.class_kinds)
         for item in symbols:
             data = item["data"]
-            if item["kind"] != "class" or data.get("class_kind") not in kinds:
+            if (
+                item["kind"] != "class"
+                or parse_symbol_class_kind(data.get("class_kind")) not in kinds
+            ):
                 continue
             qualname = data["qualified_name"]
             module = data["module"]
@@ -1691,6 +1740,7 @@ def _collect_rule_violations(
                 source_modules=source_modules,
                 blank_modules=blank_modules,
                 receipt_scope_complete=receipt_scope_complete,
+                symbols=symbols,
             )
         )
     return sorted(result, key=lambda item: item["id"])
@@ -1979,12 +2029,14 @@ def rule_evaluation_facts(
     source_modules: frozenset[str] | None,
     blank_modules: frozenset[str],
     receipt_scope_complete: bool,
+    symbols: Sequence[RawRecord] = (),
 ) -> list[RawRecord]:
     """Record completed evaluations or ownership blockers for one observation scope.
 
     Only `rule_evaluation` records certify completion. Blocker facts explain missing receipts
     without turning an incomplete scope into PASS. Declaration-only and unsupported rules
-    have no evaluation receipt.
+    have no evaluation receipt. Named construct owners additionally require actual symbols;
+    omitted symbol evidence preserves module receipts without certifying a named owner.
     """
     observed = tuple(
         item
@@ -2000,6 +2052,7 @@ def rule_evaluation_facts(
         if isinstance(rule, LayerOrderRule):
             facts.extend(_layer_order_evaluation_facts(contract, rule, scope))
             continue
+        subjects: Sequence[str] | None = None
         if isinstance(rule, ExternalDependencyScopeRule):
             # allowed_sources is an exception list, not the rule's observed scope.
             selected = observed
@@ -2029,18 +2082,23 @@ def rule_evaluation_facts(
             selected = tuple(
                 item for item in observed if in_scope(item["data"]["qualified_name"], rule.root)
             )
+        elif isinstance(rule, ForbiddenConstructRule):
+            selected = _modules_for_rule_source(rule.source, observed, contract)
+            if not selected:
+                selected = _construct_subject_symbols(
+                    rule.source,
+                    symbols,
+                    frozenset(item["data"]["qualified_name"] for item in observed),
+                )
+                subjects = [item["data"]["qualified_name"] for item in selected]
         elif isinstance(
-            rule,
-            ForbiddenConstructRule
-            | CompleteAssignmentRule
-            | CompleteExternalScopeRule
-            | SymbolPlacementRule,
+            rule, CompleteAssignmentRule | CompleteExternalScopeRule | SymbolPlacementRule
         ):
             selected = _modules_for_rule_source(rule.source, observed, contract)
         else:
             assert_never(rule)
         if selected:
-            facts.append(_rule_evaluation_receipt(rule, scope, selected))
+            facts.append(_rule_evaluation_receipt(rule, scope, selected, subjects=subjects))
     return facts
 
 

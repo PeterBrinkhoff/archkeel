@@ -7,8 +7,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Literal
 
+from archkeel.ir.amendment import Amendment, AmendmentStatus, verify_amendment
 from archkeel.ir.baseline import (
     KnownViolation,
     ValidationBaseline,
@@ -52,6 +52,7 @@ from archkeel.ir.measurements import (
     name_drift,
     selected_budgets,
 )
+from archkeel.ir.measurements import MeasurementBudgetName as _MeasurementBudgetName
 from archkeel.ir.model import (
     ArchitectureContract,
     ContractDeclarations,
@@ -65,15 +66,23 @@ from archkeel.ir.model import (
     WideningFinding,
     text_value,
 )
+from archkeel.ir.model import (
+    AssessmentStatus as _AssessmentStatus,
+)
+from archkeel.ir.model import (
+    Command as _Command,
+)
 from archkeel.ir.model import DiagnosticCode as _DiagnosticCode
+from archkeel.ir.model import (
+    ExpectationOutcome as _ExpectationOutcome,
+)
+from archkeel.ir.model import KnownSemanticChangeKind as _KnownSemanticChangeKind
 from archkeel.ir.renames import Renamed, module_layouts, observed_names, renames_since
 from archkeel.ir.widening import (
-    Amendment,
     WideningChange,
     baseline_widening_changes,
     contract_widening_changes,
     measurement_budget_changes,
-    verify_amendment,
 )
 
 from ..git import GitError, MissingBlobError, read_blob, tracked_paths, working_tree_paths
@@ -205,7 +214,7 @@ def _compared_budgets(
 
 def invalid_result(subject: str, error: Exception, pointer: str = "") -> RunResult:
     return RunResult(
-        "validate",
+        _Command.VALIDATE,
         2,
         diagnostics=(
             _diagnostic(
@@ -275,7 +284,7 @@ def _observed_result(
     baseline_resolved: int | None = None,
     interface_budgets: tuple[InterfaceBudgetResult, ...] | None = None,
     widenings: tuple[WideningFinding, ...] | None = None,
-    amendment_status: Literal["valid", "stale"] | None = None,
+    amendment_status: AmendmentStatus | None = None,
     compact_open_decisions: bool = False,
 ) -> RunResult:
     """The validate result once a complete observation has produced its diagnostics.
@@ -306,11 +315,15 @@ def _observed_result(
     # AD-51: a rejected run is where the breakdown is read, so it carries it too.
     counted = violation_counts(observation)
     return RunResult(
-        "validate",
+        _Command.VALIDATE,
         2 if diagnostics else 1 if failures else 0,
-        observation_complete="PASS" if measurements is not None else "UNKNOWN",
+        observation_complete=_AssessmentStatus.PASS
+        if measurements is not None
+        else _AssessmentStatus.UNKNOWN,
         declared_rules=declared,
-        expectation_fulfilled="n/a" if measurements is not None else "UNKNOWN",
+        expectation_fulfilled=_ExpectationOutcome.NOT_APPLICABLE
+        if measurements is not None
+        else _ExpectationOutcome.UNKNOWN,
         diagnostics=_sorted(diagnostics),
         coverage=observation.coverage,
         python_version=observation.python_version,
@@ -367,7 +380,9 @@ def _unresolved_calls_since(
     except (GitError, SnapshotError, RatchetError):
         return None, _UNCOMPARED
     named = tuple(
-        item for item in changes if item.change == "removed" or item.path not in one_sided
+        item
+        for item in changes
+        if item.change is _KnownSemanticChangeKind.REMOVED or item.path not in one_sided
     )
     if len(named) < len(changes):
         return named, _ONE_SIDED
@@ -388,7 +403,10 @@ def _one_sided_paths(
     archived, and one the revision tracks was left out by its own `export-ignore`.
     """
     archived = {text_value(record.data.get("file")) for record in before.records("modules") or ()}
-    added = frozenset(item.path for item in changes if item.change == "added") - archived
+    added = (
+        frozenset(item.path for item in changes if item.change is _KnownSemanticChangeKind.ADDED)
+        - archived
+    )
     if not added:
         return frozenset()
     tracked = tracked_paths(root, before.source.git_head, config.roots)
@@ -397,7 +415,10 @@ def _one_sided_paths(
 
 
 def _calls_unresolved(budgets: tuple[MeasurementBudget, ...]) -> int | None:
-    return next((item.value for item in budgets if item.name == "calls_unresolved"), None)
+    return next(
+        (item.value for item in budgets if item.name is _MeasurementBudgetName.CALLS_UNRESOLVED),
+        None,
+    )
 
 
 _BASELINE_WRITE = (
@@ -413,7 +434,7 @@ _BASELINE_INSIDE_ROOT = "Pass a --baseline path inside --root, relative to it or
 
 def _baseline_invalid(path: Path, error: Exception, remedy: str) -> RunResult:
     return RunResult(
-        "validate",
+        _Command.VALIDATE,
         2,
         diagnostics=(
             _diagnostic(
@@ -429,7 +450,7 @@ def _baseline_invalid(path: Path, error: Exception, remedy: str) -> RunResult:
 
 def _budget_baseline_missing() -> RunResult:
     return RunResult(
-        "validate",
+        _Command.VALIDATE,
         2,
         diagnostics=(
             _diagnostic(
@@ -448,7 +469,7 @@ def _against_invalid(against: str, error: Exception) -> RunResult:
     pointer = error.pointer if isinstance(error, ContractInputError) else ""
     subject = error.subject if isinstance(error, ContractInputError) else against
     return RunResult(
-        "validate",
+        _Command.VALIDATE,
         2,
         diagnostics=(
             _diagnostic(
@@ -465,7 +486,7 @@ def _against_invalid(against: str, error: Exception) -> RunResult:
 
 def _amendment_invalid(path: Path, error: Exception) -> RunResult:
     return RunResult(
-        "validate",
+        _Command.VALIDATE,
         2,
         diagnostics=(
             _diagnostic(
@@ -486,7 +507,7 @@ def _parse_contract_or_invalid(root: Path, config: ScanConfig) -> ArchitectureCo
         return parse_contract(decode_json((root / config.contract).read_bytes()))
     except ContractVersionError as error:
         return RunResult(
-            "validate",
+            _Command.VALIDATE,
             2,
             diagnostics=(
                 _diagnostic(
@@ -532,14 +553,14 @@ def _observed_or_invalid(
                 *extra,
             ]
             return RunResult(
-                "validate",
+                _Command.VALIDATE,
                 2,
                 diagnostics=tuple(dict.fromkeys(diagnostics)),
                 coverage=observed.coverage,
                 python_version=observation.python_version,
             )
         return RunResult(
-            "validate",
+            _Command.VALIDATE,
             2,
             diagnostics=tuple(
                 replace(item, pointer=item.pointer or "") for item in observed.diagnostics
@@ -840,7 +861,7 @@ def _widening_failures(
     after_policy_digest: str | None,
     *,
     amendment_written: bool,
-) -> tuple[tuple[str, ...], tuple[WideningFinding, ...], Literal["valid", "stale"] | None]:
+) -> tuple[tuple[str, ...], tuple[WideningFinding, ...], AmendmentStatus | None]:
     """Every unamended widening from `ctx.contract` to `contract` (AD-61, #11).
 
     A recognised rename is applied to the old side first (AD-105), so only what it does not
@@ -888,11 +909,11 @@ def _widening_failures(
         return (
             messages or ("amendment does not bind this contract and baseline comparison",),
             coded_findings,
-            "stale",
+            AmendmentStatus.STALE,
         )
-    status: Literal["valid", "stale"] | None = None
+    status: AmendmentStatus | None = None
     if ctx.parsed_amendment is not None and amended:
-        status = "valid"
+        status = AmendmentStatus.VALID
     if findings and not amended:
         return tuple(item.message for item in findings), coded_findings, status
     empty_messages: tuple[str, ...] = ()
@@ -1104,7 +1125,7 @@ def run_validate(
         return against_error, FilesToWrite()
     references = reference_diagnostics(root, config, contract)
     if references:
-        return RunResult("validate", 2, diagnostics=references), FilesToWrite()
+        return RunResult(_Command.VALIDATE, 2, diagnostics=references), FilesToWrite()
     observed = _observed_or_invalid(root, config, analyzer, contract)
     if isinstance(observed, RunResult):
         return observed, FilesToWrite()

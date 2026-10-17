@@ -120,7 +120,7 @@
       "requires": [
         {
           "component": "evaluation",
-          "rationale": "Use the evaluator\u2019s public API type derivation when projecting declarations.",
+          "rationale": "Use the evaluator’s public API type derivation when projecting declarations.",
           "decided_by": "agent"
         }
       ],
@@ -288,6 +288,58 @@
         "docs/architecture/language-adapter-target.md"
       ],
       "decided_by": "agent"
+    },
+    {
+      "id": "SOURCE-NAME-VISIBILITY-ONBOARDING-CONTROL",
+      "kind": "forbidden_construct",
+      "source": "archkeel.check.onboarding.public_top_level_names",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "This complete function reads source-name visibility through the Facts owner; foreign language visibility remains distinct.",
+      "provenance": [
+        "docs/architecture/source-name-visibility.md"
+      ],
+      "decided_by": "architect"
+    },
+    {
+      "id": "GRAPH-TOPOLOGY-AGGREGATE-CONTROL",
+      "kind": "forbidden_construct",
+      "source": "archkeel.check.evaluation.topology.aggregate_edges",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "The owned aggregation decision uses the canonical topology domain, distinct from cycle policy and structure-report levels.",
+      "provenance": [
+        "docs/architecture/graph-topology-level-types.md"
+      ],
+      "decided_by": "architect"
+    },
+    {
+      "id": "CALL-CHANGE-VALIDATION-FILTER",
+      "kind": "forbidden_construct",
+      "source": "archkeel.check.validation._unresolved_calls_since",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "Select owned control members at the actual consumer; paths, rendered text and JSON keys remain data.",
+      "provenance": [
+        "docs/architecture/unresolved-call-change-types.md"
+      ],
+      "decided_by": "architect"
+    },
+    {
+      "id": "CALL-CHANGE-VALIDATION-SIDES",
+      "kind": "forbidden_construct",
+      "source": "archkeel.check.validation._one_sided_paths",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "Select owned control members at the actual consumer; paths, rendered text and JSON keys remain data.",
+      "provenance": [
+        "docs/architecture/unresolved-call-change-types.md"
+      ],
+      "decided_by": "architect"
     }
   ],
   "declarations": {
@@ -428,6 +480,645 @@
           "presence": "referenced",
           "provenance": [
             "docs/architecture/language-adapter-target.md"
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/boundary-reason-types.md",
+            "docs/architecture/collection-type-shapes.md"
+          ],
+          "id": "BOUNDARY-REASON-MODULE",
+          "kind": "module",
+          "qualified_name": "archkeel.check.evaluation.boundary_types",
+          "parent_id": "TARGET-EVALUATION",
+          "responsibilities": [
+            "Own the interpretation and diagnostic reasons of annotated boundary positions."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/boundary-reason-types.md"
+          ],
+          "id": "BOUNDARY-REASON-ENUM",
+          "kind": "enum",
+          "qualified_name": "archkeel.check.evaluation.boundary_types._Cause",
+          "parent_id": "BOUNDARY-REASON-MODULE",
+          "visibility": {
+            "kind": "private",
+            "basis": "declared"
+          },
+          "responsibilities": [
+            "Name the existing closed causes of an undecidable annotated position."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/boundary-reason-types.md"
+          ],
+          "id": "BOUNDARY-POSITION",
+          "kind": "class",
+          "qualified_name": "archkeel.check.evaluation.boundary_types._Position",
+          "parent_id": "BOUNDARY-REASON-MODULE",
+          "visibility": {
+            "kind": "private",
+            "basis": "declared"
+          },
+          "responsibilities": [
+            "Carry the one position interpretation and its independent diagnostic and type origins."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/boundary-reason-types.md"
+          ],
+          "id": "BOUNDARY-POSITION-REASON",
+          "kind": "attribute",
+          "qualified_name": "archkeel.check.evaluation.boundary_types._Position.undecidable",
+          "parent_id": "BOUNDARY-POSITION",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "annotation": "_Cause | None",
+          "responsibilities": [
+            "Identify why this position stayed undecidable, or retain its decided absence."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/boundary-reason-types.md"
+          ],
+          "id": "BOUNDARY-REASON-CLASSIFIER",
+          "kind": "function",
+          "qualified_name": "archkeel.check.evaluation.boundary_types._unresolvable_shape",
+          "parent_id": "BOUNDARY-REASON-MODULE",
+          "visibility": {
+            "kind": "private",
+            "basis": "declared"
+          },
+          "signature": {
+            "parameters": [
+              {
+                "name": "annotation",
+                "annotation": "str",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              }
+            ],
+            "returns": "_Cause"
+          },
+          "responsibilities": [
+            "Classify an otherwise unresolved written annotation using existing diagnostic categories."
+          ]
+        },
+        {
+          "language": "python",
+          "provenance": [
+            "docs/superpowers/plans/2026-10-17-snapshot-language.md"
+          ],
+          "id": "SNAPSHOT-LANGUAGE-MODULE",
+          "kind": "module",
+          "qualified_name": "archkeel.check.snapshot",
+          "parent_id": "TARGET-INPUTS",
+          "presence": "planned",
+          "responsibilities": [
+            "Materialize exact committed source and resolver inputs through the canonical language port."
+          ]
+        },
+        {
+          "language": "python",
+          "provenance": [
+            "docs/superpowers/plans/2026-10-17-snapshot-language.md"
+          ],
+          "id": "SNAPSHOT-LANGUAGE-FACTS",
+          "kind": "enum",
+          "qualified_name": "archkeel.ir.facts.Language",
+          "presence": "referenced"
+        },
+        {
+          "language": "python",
+          "provenance": [
+            "docs/superpowers/plans/2026-10-17-snapshot-language.md"
+          ],
+          "id": "SNAPSHOT-LANGUAGE-RESULT",
+          "kind": "class",
+          "qualified_name": "archkeel.check.snapshot.ArchivedSnapshot",
+          "parent_id": "SNAPSHOT-LANGUAGE-MODULE",
+          "presence": "referenced"
+        },
+        {
+          "language": "python",
+          "provenance": [
+            "docs/superpowers/plans/2026-10-17-snapshot-language.md"
+          ],
+          "id": "SNAPSHOT-LANGUAGE-ENTRY",
+          "kind": "function",
+          "qualified_name": "archkeel.check.snapshot.materialize_git_snapshot",
+          "parent_id": "SNAPSHOT-LANGUAGE-MODULE",
+          "presence": "planned",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "signature": {
+            "parameters": [
+              {
+                "name": "root",
+                "annotation": "Path",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "revision",
+                "annotation": "str",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "roots",
+                "annotation": "tuple[str, ...]",
+                "kind": "keyword_only",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "language",
+                "annotation": "Language",
+                "kind": "keyword_only",
+                "default": "Language.PYTHON",
+                "default_known": true
+              },
+              {
+                "name": "tsconfig",
+                "annotation": "str | None",
+                "kind": "keyword_only",
+                "default": "None",
+                "default_known": true
+              }
+            ],
+            "returns": "Iterator[ArchivedSnapshot]"
+          },
+          "responsibilities": [
+            "Accept canonical Facts Language while keeping legacy input normalization at the archive ingress."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/known-delta-action-types.md"
+          ],
+          "responsibilities": [
+            "Keep known Delta actions nominal at production and governance ports while preserving future-open wire data."
+          ],
+          "id": "KNOWN-ACTION-delta",
+          "kind": "module",
+          "qualified_name": "archkeel.check.delta"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/known-delta-action-types.md"
+          ],
+          "responsibilities": [
+            "Keep known Delta actions nominal at production and governance ports while preserving future-open wire data."
+          ],
+          "id": "KNOWN-ACTION-producer",
+          "kind": "function",
+          "qualified_name": "archkeel.check.delta._change",
+          "parent_id": "KNOWN-ACTION-delta",
+          "signature": {
+            "parameters": [
+              {
+                "name": "dimension",
+                "annotation": "str",
+                "kind": "positional",
+                "default_known": true
+              },
+              {
+                "name": "kind",
+                "annotation": "_KnownSemanticChangeKind",
+                "kind": "positional",
+                "default_known": true
+              },
+              {
+                "name": "fingerprint",
+                "annotation": "str",
+                "kind": "positional",
+                "default_known": true
+              },
+              {
+                "name": "before",
+                "annotation": "tuple[_DeltaRecord, ...]",
+                "kind": "positional",
+                "default_known": true
+              },
+              {
+                "name": "after",
+                "annotation": "tuple[_DeltaRecord, ...]",
+                "kind": "positional",
+                "default_known": true
+              }
+            ],
+            "returns": "SemanticChange"
+          }
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/known-delta-action-types.md"
+          ],
+          "responsibilities": [
+            "Keep known Delta actions nominal at production and governance ports while preserving future-open wire data."
+          ],
+          "id": "KNOWN-ACTION-expectation",
+          "kind": "module",
+          "qualified_name": "archkeel.check.expectation"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/known-delta-action-types.md"
+          ],
+          "responsibilities": [
+            "Keep known Delta actions nominal at production and governance ports while preserving future-open wire data."
+          ],
+          "id": "KNOWN-ACTION-selected",
+          "kind": "class",
+          "qualified_name": "archkeel.check.expectation.ExpectedSemanticChange",
+          "parent_id": "KNOWN-ACTION-expectation",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "modifiers": [
+            "frozen"
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/known-delta-action-types.md"
+          ],
+          "responsibilities": [
+            "Keep known Delta actions nominal at production and governance ports while preserving future-open wire data."
+          ],
+          "id": "KNOWN-ACTION-selected-change",
+          "kind": "attribute",
+          "qualified_name": "archkeel.check.expectation.ExpectedSemanticChange.change",
+          "parent_id": "KNOWN-ACTION-selected",
+          "annotation": "_KnownSemanticChangeKind",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          }
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/known-delta-action-types.md"
+          ],
+          "responsibilities": [
+            "Keep known Delta actions nominal at production and governance ports while preserving future-open wire data."
+          ],
+          "id": "KNOWN-ACTION-ingress",
+          "kind": "function",
+          "qualified_name": "archkeel.check.expectation._require_change_kind",
+          "parent_id": "KNOWN-ACTION-expectation",
+          "signature": {
+            "parameters": [
+              {
+                "name": "value",
+                "annotation": "object",
+                "kind": "positional",
+                "default_known": true
+              },
+              {
+                "name": "label",
+                "annotation": "str",
+                "kind": "positional",
+                "default_known": true
+              }
+            ],
+            "returns": "_KnownSemanticChangeKind"
+          }
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/known-delta-action-types.md"
+          ],
+          "responsibilities": [
+            "Keep known Delta actions nominal at production and governance ports while preserving future-open wire data."
+          ],
+          "id": "KNOWN-ACTION-counts",
+          "kind": "function",
+          "qualified_name": "archkeel.check.expectation._validate_change_counts",
+          "parent_id": "KNOWN-ACTION-expectation",
+          "signature": {
+            "parameters": [
+              {
+                "name": "change",
+                "annotation": "_KnownSemanticChangeKind",
+                "kind": "positional",
+                "default_known": true
+              },
+              {
+                "name": "before_count",
+                "annotation": "int",
+                "kind": "positional",
+                "default_known": true
+              },
+              {
+                "name": "after_count",
+                "annotation": "int",
+                "kind": "positional",
+                "default_known": true
+              },
+              {
+                "name": "label",
+                "annotation": "str",
+                "kind": "positional",
+                "default_known": true
+              }
+            ],
+            "returns": "None"
+          }
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/source-section-consumer-types.md"
+          ],
+          "id": "PROFILE-SECTIONS-evaluate",
+          "kind": "module",
+          "qualified_name": "archkeel.check.evaluation.evaluate",
+          "parent_id": "TARGET-EVALUATION",
+          "responsibilities": [
+            "Keep validated source section identity through Core scan results."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/source-section-consumer-types.md"
+          ],
+          "id": "PROFILE-SECTIONS-ScanResult",
+          "kind": "class",
+          "qualified_name": "archkeel.check.evaluation.evaluate.ScanResult",
+          "parent_id": "PROFILE-SECTIONS-evaluate",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "responsibilities": [
+            "Carry one Core source evaluation result."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/source-section-consumer-types.md"
+          ],
+          "id": "PROFILE-SECTIONS-ScanResult.observed_sections",
+          "kind": "attribute",
+          "qualified_name": "archkeel.check.evaluation.evaluate.ScanResult.observed_sections",
+          "parent_id": "PROFILE-SECTIONS-ScanResult",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "annotation": "frozenset[SourceSectionName]",
+          "responsibilities": [
+            "Retain canonical source section identities after one legacy constructor normalization."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/graph-topology-level-types.md"
+          ],
+          "id": "GRAPH-TOPOLOGY-module",
+          "kind": "module",
+          "qualified_name": "archkeel.check.evaluation.topology",
+          "parent_id": "TARGET-EVALUATION",
+          "responsibilities": [
+            "Derive graph topology at the canonical module or package level."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/graph-topology-level-types.md"
+          ],
+          "id": "GRAPH-TOPOLOGY-aggregate",
+          "kind": "function",
+          "qualified_name": "archkeel.check.evaluation.topology.aggregate_edges",
+          "parent_id": "GRAPH-TOPOLOGY-module",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "signature": {
+            "parameters": [
+              {
+                "name": "imports",
+                "annotation": "Sequence[RawRecord]",
+                "kind": "positional",
+                "default_known": true
+              },
+              {
+                "name": "level",
+                "annotation": "GraphTopologyLevel",
+                "kind": "keyword_only",
+                "default_known": true
+              },
+              {
+                "name": "internal_modules",
+                "annotation": "set[str]",
+                "kind": "keyword_only",
+                "default_known": true
+              },
+              {
+                "name": "namespace",
+                "annotation": "str",
+                "kind": "keyword_only",
+                "default_known": true
+              }
+            ],
+            "returns": "tuple[list[RawRecord], list[tuple[str, str]]]"
+          },
+          "responsibilities": [
+            "Aggregate observed import edges using the canonical topology level."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/graph-topology-level-types.md"
+          ],
+          "id": "GRAPH-TOPOLOGY-cycles",
+          "kind": "function",
+          "qualified_name": "archkeel.check.evaluation.topology._cycle_records",
+          "parent_id": "GRAPH-TOPOLOGY-module",
+          "visibility": {
+            "kind": "private",
+            "basis": "declared"
+          },
+          "signature": {
+            "parameters": [
+              {
+                "name": "level",
+                "annotation": "GraphTopologyLevel",
+                "kind": "keyword_only",
+                "default_known": true
+              },
+              {
+                "name": "nodes",
+                "annotation": "Iterable[str]",
+                "kind": "keyword_only",
+                "default_known": true
+              },
+              {
+                "name": "edges",
+                "annotation": "Sequence[tuple[str, str]]",
+                "kind": "keyword_only",
+                "default_known": true
+              },
+              {
+                "name": "edge_records",
+                "annotation": "Sequence[RawRecord]",
+                "kind": "keyword_only",
+                "default_known": true
+              }
+            ],
+            "returns": "list[RawRecord]"
+          },
+          "responsibilities": [
+            "Emit SCC records at the canonical module or package topology level."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/superpowers/plans/2026-10-17-git-blob-kind.md"
+          ],
+          "id": "GIT-BLOB-KIND",
+          "kind": "enum",
+          "qualified_name": "archkeel.check.snapshot.RegularGitBlobKind",
+          "parent_id": "SNAPSHOT-LANGUAGE-MODULE",
+          "responsibilities": [
+            "Name exactly the two regular Git blob mode/type pairs accepted by immutable input readers."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/superpowers/plans/2026-10-17-git-blob-kind.md"
+          ],
+          "id": "GIT-BLOB-PARSER",
+          "kind": "function",
+          "qualified_name": "archkeel.check.snapshot.regular_git_blob_kind",
+          "parent_id": "SNAPSHOT-LANGUAGE-MODULE",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "signature": {
+            "parameters": [
+              {
+                "name": "mode",
+                "annotation": "bytes",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "kind",
+                "annotation": "bytes",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              }
+            ],
+            "returns": "RegularGitBlobKind | None"
+          },
+          "responsibilities": [
+            "Recognize a supported regular Git blob pair once without changing path selection or reader errors."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/collection-type-shapes.md"
+          ],
+          "id": "COLLECTION-SHAPE-PARAMETERS",
+          "kind": "function",
+          "qualified_name": "archkeel.check.evaluation.boundary_types._collection_parameters",
+          "parent_id": "BOUNDARY-REASON-MODULE",
+          "visibility": {
+            "kind": "private",
+            "basis": "declared"
+          },
+          "signature": {
+            "parameters": [
+              {
+                "name": "annotation",
+                "annotation": "str",
+                "kind": "positional",
+                "default_known": true
+              },
+              {
+                "name": "module",
+                "annotation": "str",
+                "kind": "positional",
+                "default_known": true
+              },
+              {
+                "name": "imports_by_binding",
+                "annotation": "BindingIndex",
+                "kind": "positional",
+                "default_known": true
+              },
+              {
+                "name": "type_shapes",
+                "annotation": "TypeShapeIndex",
+                "kind": "keyword_only",
+                "default_known": true
+              }
+            ],
+            "returns": "list[str] | None"
+          },
+          "responsibilities": [
+            "Select collection parameters from carried type syntax while retaining existing name and binding policy."
           ]
         }
       ],

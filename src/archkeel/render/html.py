@@ -14,7 +14,14 @@ from importlib.resources import files
 from pathlib import PurePosixPath as _PurePosixPath
 from typing import TypeAlias
 
-from archkeel.ir.architecture_graph import ArchitectureReport, RuleAssessment
+from archkeel.ir.architecture_graph import (
+    ArchitectureReport,
+    RuleAssessment,
+    RuleAssessmentStatus,
+)
+from archkeel.ir.architecture_graph import CoverageStatus as _CoverageStatus
+from archkeel.ir.architecture_graph import EntityKind as _EntityKind
+from archkeel.ir.architecture_graph import PresenceKind as _PresenceKind
 from archkeel.ir.architecture_projection import ArchitectureProjection
 from archkeel.ir.bindings import BindingReads, unread_bindings
 from archkeel.ir.codec import decode_canonical_model, parse_observation
@@ -30,6 +37,7 @@ from archkeel.ir.interfaces import (
     interface_profile,
     owner_of,
 )
+from archkeel.ir.measurements import MeasurementResolution as _MeasurementResolution
 from archkeel.ir.measurements import Measurements
 from archkeel.ir.model import (
     BaselineViolationComparison,
@@ -40,9 +48,11 @@ from archkeel.ir.model import (
     RunResult,
     stable_id,
 )
+from archkeel.ir.model import ComparisonStatus as _ComparisonStatus
 from archkeel.ir.module_explore import ModuleExploreLevel, module_exploration
 from archkeel.ir.references import SymbolReferences, unreferenced_symbols
 from archkeel.ir.report_graph import architecture_report
+from archkeel.ir.structure import StructureLevel as _StructureLevel
 from archkeel.ir.structure import (
     StructureMetric,
     oversized_insides,
@@ -54,11 +64,11 @@ from .atlas import atlas_payload, boundary_permissions_payload
 from .summary import (
     Comparison,
     VerdictRow,
-    badge,
     check_summary,
     report_summary,
     report_violates_rules,
 )
+from .summary_badges import BadgeState, badge
 
 
 def _asset(name: str) -> bytes:
@@ -356,7 +366,13 @@ def _violation_group(
 def _rule_assessments(items: tuple[RuleAssessment, ...] | None) -> str:
     if items is None:
         return ""
-    ranked = sorted(items, key=lambda item: (item.status != "FAIL", item.status != "UNKNOWN"))
+    ranked = sorted(
+        items,
+        key=lambda item: (
+            item.status != RuleAssessmentStatus.FAIL,
+            item.status != RuleAssessmentStatus.UNKNOWN,
+        ),
+    )
     rows = "".join(_rule_assessment_row(item) for item in ranked)
     return f"""
     <section class="report-section" aria-labelledby="rule-assessments-heading">
@@ -370,7 +386,11 @@ def _rule_assessments(items: tuple[RuleAssessment, ...] | None) -> str:
 
 
 def _rule_assessment_row(item: RuleAssessment) -> str:
-    state = "info" if item.status == "DECLARATION" else badge(item.status).state
+    state = (
+        BadgeState.INFO
+        if item.status is RuleAssessmentStatus.DECLARATION
+        else badge(item.status).state
+    )
     provenance = ", ".join(item.provenance) or "—"
     components = ", ".join(item.components) or "—"
     details = " ".join(
@@ -696,6 +716,9 @@ def _explorer_section(payload: str, *, atlas: bool = False) -> str:
     scripts: list[str] = []
     for name, attributes in (
         ("elkjs-0.12.0.bundled.js", ' data-elkjs-version="0.12.0"'),
+        ("report-graph-protocol.js", ' data-report-asset="graph-protocol"'),
+        ("report-graph-scene.js", ' data-report-asset="graph-scene"'),
+        ("report-atlas-deviations.js", ' data-report-asset="atlas-deviations"'),
         ("report-scene.js", ' data-report-asset="scene"'),
         ("report-layout.js", ' data-report-asset="layout"'),
         ("flow.runtime.js", ""),
@@ -730,14 +753,20 @@ def _atlas_section(payload: dict[str, object]) -> str:
 
 def _atlas_rule_status_cards(result: RunResult) -> str:
     meanings = (
-        ("PASS", "Required evaluator evidence is complete; decided positions have no violations."),
-        ("FAIL", "A rule violation was found. Undecided evidence can coexist with that failure."),
         (
-            "UNKNOWN",
+            RuleAssessmentStatus.PASS,
+            "Required evaluator evidence is complete; decided positions have no violations.",
+        ),
+        (
+            RuleAssessmentStatus.FAIL,
+            "A rule violation was found. Undecided evidence can coexist with that failure.",
+        ),
+        (
+            RuleAssessmentStatus.UNKNOWN,
             "Available evidence does not establish the result. Missing scope proof is not a pass.",
         ),
         (
-            "NOT CHECKED",
+            None,
             "A check was not performed or could not be completed. Read its scope and explanation. "
             "This status definition does not itself say which occurred.",
         ),
@@ -745,18 +774,22 @@ def _atlas_rule_status_cards(result: RunResult) -> str:
     cards = []
     for status, reason in meanings:
         count = (
-            sum(item.status == status for item in result.rule_assessments)
-            if result.rule_assessments is not None and status != "NOT CHECKED"
+            sum(item.status is status for item in result.rule_assessments)
+            if result.rule_assessments is not None and status is not None
             else None
         )
         label = (
             "Status definition"
-            if status == "NOT CHECKED"
+            if status is None
             else f"{count} rule{'s' if count != 1 else ''}"
             if count is not None
             else "No recorded count"
         )
-        cards.append(_verdict_card(VerdictRow(label, "", status, reason)))
+        cards.append(
+            _verdict_card(
+                VerdictRow(label, "", status if status is not None else "NOT CHECKED", reason)
+            )
+        )
     return "".join(cards)
 
 
@@ -919,7 +952,7 @@ def _component_navigation(
         and all(
             module.symbols is not None
             and module.symbol_coverage
-            and all(entry.status == "complete" for entry in module.symbol_coverage)
+            and all(entry.status == _CoverageStatus.COMPLETE for entry in module.symbol_coverage)
             for module in levels[0].modules
         ),
         "target_module_ids": target_modules,
@@ -943,7 +976,7 @@ def render_architecture_details(
         raise ValueError("Atlas requires its matching authenticated Core projection")
     report = architecture_report(observation)
     target_modules = (
-        tuple(item.id for item in report.target.entities if item.kind == "module")
+        tuple(item.id for item in report.target.entities if item.kind == _EntityKind.MODULE)
         if report.target
         else ()
     )
@@ -958,7 +991,7 @@ def render_architecture_details(
         tuple(
             item.id
             for item in (report.observed.entities if report.observed else ())
-            if item.kind == "module" and item.presence == "defined"
+            if item.kind == _EntityKind.MODULE and item.presence == _PresenceKind.DEFINED
         ),
         target_modules,
         repository=repository,
@@ -992,7 +1025,8 @@ def _measurements(measurements: Measurements | None) -> str:
     )
     ratio = (
         "n/a"
-        if measurements.resolution == "n/a" or measurements.scalars.calls_unresolved is None
+        if measurements.resolution is _MeasurementResolution.NOT_APPLICABLE
+        or measurements.scalars.calls_unresolved is None
         else f"{measurements.scalars.calls_unresolved}/{measurements.calls_total}"
     )
     total = "n/a" if measurements.scalars.calls_unresolved is None else measurements.calls_total
@@ -1445,7 +1479,9 @@ def _semantic_changes(result: RunResult) -> str:
 def _unavailable_dimensions(result: RunResult) -> str:
     if result.delta is None:
         return ""
-    dimensions = [item for item in result.delta.dimensions if item.status == "UNKNOWN"]
+    dimensions = [
+        item for item in result.delta.dimensions if item.status is _ComparisonStatus.UNKNOWN
+    ]
     if not dimensions:
         return ""
     reasons = {item.dimension: item.reason for item in result.delta.unknowns}
@@ -1578,7 +1614,7 @@ def _structure_row(
 
 
 def _claim_body(claim: SymbolReferences, observation: Observation) -> str:
-    if claim.status == "UNKNOWN":
+    if claim.status is _ComparisonStatus.UNKNOWN:
         return (
             "<p>Not available: this observation carries no reference signal, so a call graph "
             "alone would report every symbol that is only handed to a table as unreferenced.</p>"
@@ -1612,7 +1648,7 @@ def _claim_body(claim: SymbolReferences, observation: Observation) -> str:
 
 
 def _binding_claim_body(claim: BindingReads) -> str:
-    if claim.status == "UNKNOWN":
+    if claim.status is _ComparisonStatus.UNKNOWN:
         return (
             "<p>Not available: this observation carries no binding signal, so nothing here can "
             "list which parameter or local the collector found unread.</p>"
@@ -1638,7 +1674,7 @@ def _binding_claim_body(claim: BindingReads) -> str:
 
 
 def _repetition_claim_body(claim: OwnedLogic) -> str:
-    if claim.status == "UNKNOWN":
+    if claim.status is _ComparisonStatus.UNKNOWN:
         return (
             "<p>Not available: this observation carries no shape signal, so nothing here can say "
             "which function repeats another.</p>"
@@ -1671,7 +1707,7 @@ def _repetition_claim_body(claim: OwnedLogic) -> str:
 
 
 def _fanin_claim_body(claim: TypeFanin) -> str:
-    if claim.status == "UNKNOWN":
+    if claim.status is _ComparisonStatus.UNKNOWN:
         return (
             "<p>Not available: this observation carries no symbols or imports section, so "
             "nothing here can say which type crosses which component boundary.</p>"
@@ -1710,7 +1746,7 @@ def _structure_overview_body(
         f"Top-level context: {components} declared components and "
         f"{sizes.component_edges} observed cross-component "
         f"edge{'s' if sizes.component_edges != 1 else ''}."
-        if sizes.status != "UNKNOWN"
+        if sizes.status is not _ComparisonStatus.UNKNOWN
         else f"Top-level context: {components} declared components; "
         "observed cross-component edges: n/a."
     )
@@ -1726,7 +1762,7 @@ def _structure_overview_body(
     metrics = tuple(
         metric
         for metric in structure_metrics(observation)
-        if packages or metric.level == "component"
+        if packages or metric.level is _StructureLevel.COMPONENT
     )
     if not metrics:
         return f"<p>{context}</p>{unavailable}<p>No owned modules measured in this observation.</p>"

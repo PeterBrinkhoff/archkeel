@@ -20,6 +20,7 @@ CI_CHECK_STEPS = [
     "browser-install",
     *GATE_STEPS,
     "typescript-compiler-check",
+    "browser-graph-check",
     "demo-typescript",
     "browser-runtime-check",
     "report-timing",
@@ -210,11 +211,12 @@ def test_pr_core_uses_representative_dart_and_flutter_checks() -> None:
 
 
 @pytest.mark.parametrize(
-    "failed", [None, "browser-install", "browser-runtime-check", "pr-report-test"]
+    "failed",
+    [None, "browser-install", "browser-runtime-check", "browser-graph-check", "pr-report-test"],
 )
 def test_pr_report_gate_runs_its_browser_sample_and_propagates_failure(tmp_path, failed):
     result, steps = _run_gate(tmp_path, "ci-pr-report-check", failed, 2, False)
-    expected = ["browser-install", "browser-runtime-check", "pr-report-test"]
+    expected = ["browser-install", "browser-runtime-check", "browser-graph-check", "pr-report-test"]
     if failed is not None:
         expected = expected[: expected.index(failed) + 1]
     assert steps == expected
@@ -237,6 +239,8 @@ def test_pr_report_sample_uses_two_loadfile_workers_and_keeps_selected_tests() -
     assert "--junitxml=test-artifacts/pytest/pr-report.xml" in command
     for selector in (
         "tests/test_report_renderer_units.py",
+        "tests/test_graph_scene_protocol.py",
+        "tests/test_atlas_deviation_boundary.py",
         "tests/test_report_interactions.py::test_native_card_drag_reroutes_all_hits_and_keeps_architecture_unchanged",
         "tests/test_uml_rendering.py::test_standard_uml_ignores_stale_layout_and_retries_rejected_layout",
         "tests/test_atlas_report.py::test_target_content_is_independent_of_observed_evidence",
@@ -362,7 +366,7 @@ def test_ci_workflow_keeps_fast_required_checks_and_routes_full_verification() -
     assert "typescript-native:" not in workflow
     assert "dart-native:" not in workflow
 
-    for job_id, next_job, area, make_target, junit_name, junit_path in (
+    for job_id, next_job, area, make_target, junit_name, junit_path, timeout in (
         (
             "pr-core-check",
             "pr-report-check",
@@ -370,6 +374,7 @@ def test_ci_workflow_keeps_fast_required_checks_and_routes_full_verification() -
             "ci-pr-check",
             "pytest-results-pr-core",
             "pr-core.xml",
+            35,
         ),
         (
             "pr-report-check",
@@ -378,6 +383,7 @@ def test_ci_workflow_keeps_fast_required_checks_and_routes_full_verification() -
             "ci-pr-report-check",
             "pytest-results-pr-report",
             "pr-report.xml",
+            25,
         ),
     ):
         job = workflow.split(f"  {job_id}:\n", 1)[1].split(f"\n  {next_job}:\n", 1)[0]
@@ -385,7 +391,7 @@ def test_ci_workflow_keeps_fast_required_checks_and_routes_full_verification() -
         assert "github.event_name == 'pull_request' || github.event_name == 'push'" in job
         assert f"needs.changes.outputs.{area} == 'true'" in job
         assert "runs-on: ubuntu-latest" in job
-        assert "timeout-minutes: 25" in job
+        assert f"timeout-minutes: {timeout}" in job
         assert "permissions:\n      contents: read" in job
         assert "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1" in job
         assert "astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9" in job

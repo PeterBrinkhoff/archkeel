@@ -38,10 +38,18 @@ from archkeel.ir.facts import (
     SOURCE_RESOLUTION_GAP_KIND,
     InventoryStatus,
     MemberKind,
+    MethodKind,
     ResolutionInput,
     ResolutionRole,
+    SourceResolution,
+    SourceSectionName,
+    SymbolClassKind,
     member_inventories,
+    parse_method_kind,
+    parse_source_resolution,
+    parse_symbol_class_kind,
 )
+from archkeel.ir.facts import RuntimeRequirementState as _RuntimeRequirementState
 from archkeel.ir.model import (
     TARGET_GRAPH_RECORD_KINDS,
     EvidenceClass,
@@ -53,7 +61,7 @@ from archkeel.ir.model import (
     Verdict,
     stable_id,
 )
-from archkeel.ir.profiles import PROFILES, profile_for
+from archkeel.ir.profiles import PROFILES, UnmeasurableScalar, profile_for
 
 _CLASSIFIER_RELATIONSHIPS = (
     RelationshipKind.INHERITS,
@@ -111,7 +119,7 @@ def _inventory_selected_inputs(model: Observation, inputs: tuple[RecordData, ...
         runtime is None
         or runtime.name != "python"
         or runtime.required != ">=3.11"
-        or runtime.requirement_state != "declared"
+        or runtime.requirement_state != _RuntimeRequirementState.DECLARED
         or re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version) is None
         or tuple(int(v) for v in version.split(".")) < (3, 11, 0)
     ):
@@ -276,7 +284,7 @@ def _inventory_owners(model: Observation, selected: set[str]) -> tuple[str, ...]
             and module in libraries
             and not libraries[module] & gaps
             and any(
-                inv.status == "complete"
+                inv.status == InventoryStatus.COMPLETE
                 for inv in member_inventories(item.data.get("member_inventories"))
             )
         )
@@ -434,6 +442,23 @@ def _definition_contexts(value: JsonValue) -> tuple[DefinitionContext, ...]:
     return tuple(result)
 
 
+def _classifier_kind(value: JsonValue) -> EntityKind | None:
+    """Read known source classifiers without promoting unrelated or future graph tags."""
+    classifier = parse_symbol_class_kind(value)
+    if classifier is not None:
+        return {
+            SymbolClassKind.PROTOCOL: EntityKind.INTERFACE,
+            SymbolClassKind.ENUM: EntityKind.ENUM,
+        }.get(classifier)
+    if not isinstance(value, str):
+        return None
+    try:
+        kind = EntityKind(value)
+    except ValueError:
+        return None
+    return kind if kind is EntityKind.MIXIN else None
+
+
 def _symbol(record: Record, language: str) -> Entity:
     data = record.data
     category = _text(data.get("symbol_category", record.kind))
@@ -441,22 +466,18 @@ def _symbol(record: Record, language: str) -> Entity:
     kind = aliases.get(category or "")
     if kind is None:
         kind = EntityKind(_vocabulary_text(category, default=EntityKind.SYMBOL))
-    if kind == EntityKind.CLASS:
-        classifier_kinds = {
-            "protocol": EntityKind.INTERFACE,
-            "enum": EntityKind.ENUM,
-            "mixin": EntityKind.MIXIN,
-        }
-        kind = classifier_kinds.get(_text(data.get("class_kind")) or "", kind)
+    if kind is EntityKind.CLASS:
+        kind = _classifier_kind(_text(data.get("class_kind"))) or kind
     modifiers: list[ModifierKind] = []
     if data.get("mixin_capable") is True:
         modifiers.append(ModifierKind.MIXIN)
     for key, modifier in (("async", ModifierKind.ASYNC), ("frozen_object", ModifierKind.FROZEN)):
         if data.get(key) is True:
             modifiers.append(modifier)
-    if data.get("method_kind") in {"static", "class"}:
+    method_kind = parse_method_kind(data.get("method_kind"))
+    if method_kind in (MethodKind.STATIC, MethodKind.CLASS):
         modifiers.append(
-            ModifierKind.STATIC if data.get("method_kind") == "static" else ModifierKind.CLASS
+            ModifierKind.STATIC if method_kind is MethodKind.STATIC else ModifierKind.CLASS
         )
     return Entity(
         record.id,
@@ -572,17 +593,14 @@ def _source_entities(observation: Observation, language: str) -> list[Entity]:
 
 
 def _source_resolution(value: JsonValue, message: str) -> ResolutionKind:
-    resolutions = {
-        "resolved": ResolutionKind.RESOLVED,
-        "partially_resolved": ResolutionKind.PARTIAL,
-        "unresolved": ResolutionKind.UNRESOLVED,
-    }
-    if not isinstance(value, str):
+    status = parse_source_resolution(value)
+    if status is None:
         raise ValueError(message)
-    try:
-        return resolutions[value]
-    except KeyError as exc:
-        raise ValueError(message) from exc
+    return {
+        SourceResolution.RESOLVED: ResolutionKind.RESOLVED,
+        SourceResolution.PARTIALLY_RESOLVED: ResolutionKind.PARTIAL,
+        SourceResolution.UNRESOLVED: ResolutionKind.UNRESOLVED,
+    }[status]
 
 
 def _site_relationship(
@@ -825,7 +843,11 @@ def _construction_sites(
         raise ValueError("invalid construction resolution")
     if not set(names) <= set(_texts(record.data.get("targets"))) or (
         status == ResolutionKind.RESOLVED
-        and (record.data.get("status") != "resolved" or truncated or len(names) != 1)
+        and (
+            parse_source_resolution(record.data.get("status")) is not SourceResolution.RESOLVED
+            or truncated
+            or len(names) != 1
+        )
     ):
         raise ValueError("construction resolution conflicts with its call site")
     targets = tuple(
@@ -1001,7 +1023,7 @@ def _relationships(
 def _section_coverage(
     observation: Observation,
     scope_id: str,
-    section: str,
+    section: SourceSectionName,
     entity_kinds: tuple[EntityKind, ...],
     relationships: tuple[RelationshipKind, ...],
     available: bool,
@@ -1013,19 +1035,19 @@ def _section_coverage(
     elif observation.coverage.status != Verdict.PASS:
         status, reason = CoverageStatus.PARTIAL, "source observation is incomplete"
     elif (
-        section == "calls"
-        and "calls_unresolved" in profile_for(observation.analyzer.name).unmeasured
+        section == SourceSectionName.CALLS
+        and UnmeasurableScalar.CALLS_UNRESOLVED in profile_for(observation.analyzer.name).unmeasured
     ):
         status, reason = (
             CoverageStatus.PARTIAL,
             "observed call sites do not certify an exhaustive module call inventory",
         )
-    elif section == "symbols":
+    elif section == SourceSectionName.SYMBOLS:
         status, reason = (
             CoverageStatus.PARTIAL,
             "symbol records do not certify an exhaustive module-level lexical inventory",
         )
-    elif section == "references":
+    elif section == SourceSectionName.REFERENCES:
         status, reason = (
             CoverageStatus.PARTIAL,
             "reference collector omits unresolved and external symbol uses",
@@ -1099,7 +1121,8 @@ def _member_inventory_coverage(
         for inventory in member_inventories(item.data.get("member_inventories")):
             kinds: tuple[EntityKind, ...] = (
                 (EntityKind.ATTRIBUTE, EntityKind.ENUM_LITERAL)
-                if inventory.kind == MemberKind.ATTRIBUTE and item.data.get("class_kind") == "enum"
+                if inventory.kind == MemberKind.ATTRIBUTE
+                and parse_symbol_class_kind(item.data.get("class_kind")) is SymbolClassKind.ENUM
                 else (EntityKind(inventory.kind),)
             )
             actual = {
@@ -1149,11 +1172,13 @@ def _coverage(observation: Observation, entities: list[Entity]) -> tuple[Coverag
         EntityKind.TYPE_ALIAS,
         EntityKind.CONSTANT,
     )
-    sections: tuple[tuple[str, tuple[EntityKind, ...], tuple[RelationshipKind, ...]], ...] = (
-        ("symbols", source_kinds, ()),
-        ("imports", (), (RelationshipKind.IMPORTS,)),
-        ("calls", (), (RelationshipKind.CALLS,)),
-        ("references", (), (RelationshipKind.REFERENCES,)),
+    sections: tuple[
+        tuple[SourceSectionName, tuple[EntityKind, ...], tuple[RelationshipKind, ...]], ...
+    ] = (
+        (SourceSectionName.SYMBOLS, source_kinds, ()),
+        (SourceSectionName.IMPORTS, (), (RelationshipKind.IMPORTS,)),
+        (SourceSectionName.CALLS, (), (RelationshipKind.CALLS,)),
+        (SourceSectionName.REFERENCES, (), (RelationshipKind.REFERENCES,)),
     )
     profile = profile_for(observation.analyzer.name)
     value_modules = {
@@ -1174,7 +1199,8 @@ def _coverage(observation: Observation, entities: list[Entity]) -> tuple[Coverag
             continue
         bases = _records(item.data.get("base_declarations"))
         complete = observation.coverage.status == Verdict.PASS and all(
-            base.get("status") == "resolved" for base in bases
+            parse_source_resolution(base.get("status")) is SourceResolution.RESOLVED
+            for base in bases
         )
         result.append(
             Coverage(
@@ -1202,7 +1228,7 @@ def _coverage(observation: Observation, entities: list[Entity]) -> tuple[Coverag
                     else "source observation is incomplete",
                 )
             )
-        if entity.kind != EntityKind.MODULE or entity.presence != "defined":
+        if entity.kind != EntityKind.MODULE or entity.presence != PresenceKind.DEFINED:
             continue
         for section, entity_kinds, relationships in sections:
             available = (

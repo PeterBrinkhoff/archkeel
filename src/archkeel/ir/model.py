@@ -10,8 +10,11 @@ import hashlib
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import TYPE_CHECKING, Final, Literal, TypeAlias, get_args, get_type_hints
+from typing import TYPE_CHECKING, Final, Literal, TypeAlias
 
+from .amendment import AmendmentStatus as AmendmentStatus
+from .architecture_graph import ArchitectureRuleGrammar, TargetDefinition
+from .architecture_graph import ArchitectureRuleKind as ArchitectureRuleKind
 from .architecture_graph import AssessmentStatus as AssessmentStatus
 from .architecture_graph import ComponentRole as ComponentRole
 from .architecture_graph import ContractModuleTarget as ContractModuleTarget
@@ -20,7 +23,6 @@ from .architecture_graph import ExternalDependencyScopeRule as ExternalDependenc
 from .architecture_graph import RootLayoutRule as RootLayoutRule
 from .architecture_graph import RuleAssessment as RuleAssessment
 from .architecture_graph import RuleAssessmentStatus as RuleAssessmentStatus
-from .architecture_graph import TargetDefinition
 from .architecture_graph import contract_relative_path as contract_relative_path
 from .contract_version import ContractVersion as ContractVersion
 from .dependency import ComponentOwnership as ComponentOwnership
@@ -70,6 +72,10 @@ from .facts import (
 from .facts import (
     SourceInfo as SourceInfo,
 )
+from .facts import SourceResolution, parse_source_resolution
+from .facts import (
+    SymbolClassKind as SymbolClassKind,
+)
 from .facts import (
     in_scope as in_scope,
 )
@@ -77,7 +83,9 @@ from .facts import (
     stable_id as stable_id,
 )
 from .host_records import InitialPRHeadEvidence
-from .measurements import MeasurementBudgetName, Measurements, NameBudgetKind
+from .measurements import MeasurementBudgetName as MeasurementBudgetName
+from .measurements import Measurements
+from .measurements import NameBudgetKind as NameBudgetKind
 
 if TYPE_CHECKING:
     from .architecture_projection import ArchitectureProjection
@@ -93,6 +101,34 @@ SCHEMA_VERSION = "2.0.0"
 DELTA_SCHEMA_VERSION = "2.0.0"
 
 
+class DeltaVersion(StrEnum):
+    V1_2 = "1.2.0"
+    V1_3 = "1.3.0"
+    V1_4 = "1.4.0"
+    V2_0 = DELTA_SCHEMA_VERSION
+
+
+def supports_nullable_delta_counts(version: DeltaVersion) -> bool:
+    """Nullable call/dimension counts entered the Delta wire in 1.4."""
+    return version in {DeltaVersion.V1_4, DeltaVersion.V2_0}
+
+
+class Command(StrEnum):
+    REPORT = "report"
+    VALIDATE = "validate"
+    CHECK = "check"
+    INIT = "init"
+    SKILL = "skill"
+    ARGUMENTS = "arguments"
+
+
+class ExpectationOutcome(StrEnum):
+    PASS = "PASS"
+    FAIL = "FAIL"
+    UNKNOWN = "UNKNOWN"
+    NOT_APPLICABLE = "n/a"
+
+
 class Verdict(StrEnum):
     PASS = "PASS"
     FAIL = "FAIL"
@@ -101,7 +137,18 @@ class Verdict(StrEnum):
 PackageComponentOwnership: TypeAlias = tuple[str, tuple[str, ...]]
 ComponentOwnershipInput: TypeAlias = ComponentOwnership | PackageComponentOwnership
 RuleVerdict: TypeAlias = AssessmentStatus
-ComparisonStatus: TypeAlias = Literal["SUPPORTED", "UNKNOWN"]
+
+
+class GraphTopologyLevel(StrEnum):
+    MODULE = "module"
+    PACKAGE = "package"
+
+
+class ComparisonStatus(StrEnum):
+    SUPPORTED = "SUPPORTED"
+    UNKNOWN = "UNKNOWN"
+
+
 CLASSIFIED_SECTIONS = (
     "metrics",
     "declarations",
@@ -182,6 +229,10 @@ class ContractComponent:
     exact_modules: tuple[str, ...] | None = None
     layer: str | None = None
 
+    def __post_init__(self) -> None:
+        if self.decided_by is not None:
+            builtins.object.__setattr__(self, "decided_by", DecisionMaker(self.decided_by))
+
 
 def facade_covers(
     module: str,
@@ -234,6 +285,10 @@ class RequiredComponent:
     rationale: str
     through: tuple[str, ...] = ()
     decided_by: DecisionMaker | None = None
+
+    def __post_init__(self) -> None:
+        if self.decided_by is not None:
+            builtins.object.__setattr__(self, "decided_by", DecisionMaker(self.decided_by))
 
 
 def requires_covers(
@@ -337,7 +392,9 @@ class ContractOwner:
     provenance: tuple[str, ...]
 
 
-CompatibilityLifetime: TypeAlias = Literal["permanent", "migration"]
+class CompatibilityLifetime(StrEnum):
+    PERMANENT = "permanent"
+    MIGRATION = "migration"
 
 
 @dataclass(frozen=True, slots=True)
@@ -348,11 +405,17 @@ class CompatibilityShim:
     target: str
     lifetime: CompatibilityLifetime
 
+    def __post_init__(self) -> None:
+        builtins.object.__setattr__(self, "lifetime", CompatibilityLifetime(self.lifetime))
+
 
 @dataclass(frozen=True, slots=True)
 class ContractMeasurementBudget:
     name: MeasurementBudgetName
     provenance: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        builtins.object.__setattr__(self, "name", MeasurementBudgetName(self.name))
 
 
 @dataclass(frozen=True, slots=True)
@@ -383,15 +446,15 @@ class CouplingBudget:
 
 
 @dataclass(frozen=True, slots=True)
-class ForbiddenDependencyRule:
+class ForbiddenDependencyRule(ArchitectureRuleGrammar):
     id: str
-    kind: Literal["forbidden_dependency"]
+    kind: Literal[ArchitectureRuleKind.FORBIDDEN_DEPENDENCY]
     source: str
     target: str
     include_type_checking: bool
     rationale: str
     provenance: tuple[str, ...]
-    decided_by: Literal["architect", "agent"]
+    decided_by: DecisionMaker
     target_symbol: str | None = None
     allowed_sources: tuple[str, ...] = ()
     source_match: SelectorMatch = SelectorMatch.PREFIX
@@ -411,26 +474,16 @@ class ForbiddenDependencyRule:
 
 
 @dataclass(frozen=True, slots=True)
-class AllowedDependencyRule:
+class AllowedDependencyRule(ArchitectureRuleGrammar):
     """AD-15: a decision that a component pair may depend; it adds no report violation."""
 
     id: str
-    kind: Literal["allowed_dependency"]
+    kind: Literal[ArchitectureRuleKind.ALLOWED_DEPENDENCY]
     source: str
     target: str
     rationale: str
     provenance: tuple[str, ...]
-    decided_by: Literal["architect", "agent"]
-
-
-class SymbolClassKind(StrEnum):
-    """The five values `class_kind` resolves to (`analyzer.embedded.symbols`'s fixpoint)."""
-
-    PROTOCOL = "protocol"
-    ENUM = "enum"
-    PYDANTIC_MODEL = "pydantic_model"
-    DATACLASS = "dataclass"
-    CLASS = "class"
+    decided_by: DecisionMaker
 
 
 class RuleUncertaintyCause(StrEnum):
@@ -452,68 +505,73 @@ class TypeIgnoreAllowance:
 
 
 @dataclass(frozen=True, slots=True)
-class ForbiddenConstructRule:
+class ForbiddenConstructRule(ArchitectureRuleGrammar):
     """`allowed_sources` match an owner scope by prefix, `exact_sources` only the scope named."""
 
     id: str
-    kind: Literal["forbidden_construct"]
+    kind: Literal[ArchitectureRuleKind.FORBIDDEN_CONSTRUCT]
     source: str
     constructs: tuple[ForbiddenConstructKind, ...]
     rationale: str
     provenance: tuple[str, ...]
-    decided_by: Literal["architect", "agent"]
+    decided_by: DecisionMaker
     allowed_sources: tuple[str, ...] = ()
     exact_sources: tuple[str, ...] = ()
     allowed_type_ignores: tuple[TypeIgnoreAllowance, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
-class CompleteAssignmentRule:
+class CompleteAssignmentRule(ArchitectureRuleGrammar):
     id: str
-    kind: Literal["complete_assignment"]
+    kind: Literal[ArchitectureRuleKind.COMPLETE_ASSIGNMENT]
     source: str
     rationale: str
     provenance: tuple[str, ...]
-    decided_by: Literal["architect", "agent"]
+    decided_by: DecisionMaker
 
 
 @dataclass(frozen=True, slots=True)
-class CompleteRequiresRule:
+class CompleteRequiresRule(ArchitectureRuleGrammar):
     """AD-32: a cross-component import no `requires` entry covers is a violation."""
 
     id: str
-    kind: Literal["complete_requires"]
+    kind: Literal[ArchitectureRuleKind.COMPLETE_REQUIRES]
     rationale: str
     provenance: tuple[str, ...]
-    decided_by: Literal["architect", "agent"]
+    decided_by: DecisionMaker
     include_type_checking: bool = True
 
 
 @dataclass(frozen=True, slots=True)
-class LayerOrderRule:
+class LayerOrderRule(ArchitectureRuleGrammar):
     """Declared requires permissions run from outer to inner layers, or stay in one layer."""
 
     id: str
-    kind: Literal["layer_order"]
+    kind: Literal[ArchitectureRuleKind.LAYER_ORDER]
     layers: tuple[str, ...]
     rationale: str
     provenance: tuple[str, ...]
-    decided_by: Literal["architect", "agent"]
+    decided_by: DecisionMaker
     components: tuple[str, ...] | None = None
 
 
 @dataclass(frozen=True, slots=True)
-class CompleteExternalScopeRule:
+class CompleteExternalScopeRule(ArchitectureRuleGrammar):
     id: str
-    kind: Literal["complete_external_scope"]
+    kind: Literal[ArchitectureRuleKind.COMPLETE_EXTERNAL_SCOPE]
     source: str
     rationale: str
     provenance: tuple[str, ...]
-    decided_by: Literal["architect", "agent"]
+    decided_by: DecisionMaker
+
+
+class CycleLevel(StrEnum):
+    COMPONENT = "component"
+    MODULE = "module"
 
 
 @dataclass(frozen=True, slots=True)
-class NoComponentCyclesRule:
+class NoComponentCyclesRule(ArchitectureRuleGrammar):
     """No import cycle at the declared level, among cycles touching `components` (AD-98).
 
     `level` None is the component level every contract before AD-98 declares, and
@@ -522,12 +580,20 @@ class NoComponentCyclesRule:
     """
 
     id: str
-    kind: Literal["no_component_cycles"]
+    kind: Literal[ArchitectureRuleKind.NO_COMPONENT_CYCLES]
     rationale: str
     provenance: tuple[str, ...]
-    decided_by: Literal["architect", "agent"]
-    level: Literal["module"] | None = None
+    decided_by: DecisionMaker
+    level: Literal[CycleLevel.MODULE] | None = None
     components: tuple[str, ...] | None = None
+
+    def __post_init__(self) -> None:
+        ArchitectureRuleGrammar.__post_init__(self)
+        if self.level is not None:
+            level = CycleLevel(self.level)
+            builtins.object.__setattr__(
+                self, "level", None if level is CycleLevel.COMPONENT else level
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -539,29 +605,29 @@ class ModuleObjectGrant:
 
 
 @dataclass(frozen=True, slots=True)
-class InterfaceBoundaryRule:
+class InterfaceBoundaryRule(ArchitectureRuleGrammar):
     id: str
-    kind: Literal["interface_boundary"]
+    kind: Literal[ArchitectureRuleKind.INTERFACE_BOUNDARY]
     rationale: str
     provenance: tuple[str, ...]
-    decided_by: Literal["architect", "agent"]
+    decided_by: DecisionMaker
     include_type_checking: bool = True
     module_object_grants: tuple[ModuleObjectGrant, ...] | None = None
 
 
 @dataclass(frozen=True, slots=True)
-class SiblingIsolationRule:
+class SiblingIsolationRule(ArchitectureRuleGrammar):
     id: str
-    kind: Literal["sibling_isolation"]
+    kind: Literal[ArchitectureRuleKind.SIBLING_ISOLATION]
     members: tuple[str, ...]
     rationale: str
     provenance: tuple[str, ...]
-    decided_by: Literal["architect", "agent"]
+    decided_by: DecisionMaker
     include_type_checking: bool = True
 
 
 @dataclass(frozen=True, slots=True)
-class SymbolPlacementRule:
+class SymbolPlacementRule(ArchitectureRuleGrammar):
     """A class of a named kind below `source` must be defined in an allowed module.
 
     `allowed_sources` match a defining module by prefix, `exact_sources` only the module
@@ -570,12 +636,12 @@ class SymbolPlacementRule:
     """
 
     id: str
-    kind: Literal["symbol_placement"]
+    kind: Literal[ArchitectureRuleKind.SYMBOL_PLACEMENT]
     source: str
     class_kinds: tuple[SymbolClassKind, ...]
     rationale: str
     provenance: tuple[str, ...]
-    decided_by: Literal["architect", "agent"]
+    decided_by: DecisionMaker
     allowed_sources: tuple[str, ...] = ()
     exact_sources: tuple[str, ...] = ()
 
@@ -622,7 +688,7 @@ class BoundaryTypeAllowance:
 
 
 @dataclass(frozen=True, slots=True)
-class BoundaryTypesRule:
+class BoundaryTypesRule(ArchitectureRuleGrammar):
     """A component's declared facade function below `source` takes and returns no bare
     `dict`/`object`, and no named type outside a builtin, an enum, a Pydantic model, or a type
     some component's own `public` list already declares (AD-58, amended by AD-63).
@@ -634,11 +700,11 @@ class BoundaryTypesRule:
     """
 
     id: str
-    kind: Literal["boundary_types"]
+    kind: Literal[ArchitectureRuleKind.BOUNDARY_TYPES]
     source: str
     rationale: str
     provenance: tuple[str, ...]
-    decided_by: Literal["architect", "agent"]
+    decided_by: DecisionMaker
     allowed_sources: tuple[str, ...] = ()
     exact_sources: tuple[str, ...] = ()
     allowed_positions: tuple[BoundaryTypeAllowance, ...] = ()
@@ -665,17 +731,23 @@ ArchitectureRule: TypeAlias = (
 UML_TARGET_KIND: Final = "uml_target"
 ARCHITECTURE_TARGET_KIND: Final = "architecture_target"
 TARGET_GRAPH_RECORD_KINDS: Final = frozenset({UML_TARGET_KIND, ARCHITECTURE_TARGET_KIND})
-RULE_KINDS: Final[frozenset[str]] = frozenset(
-    kind
-    for rule_type in get_args(ArchitectureRule)
-    for kind in get_args(get_type_hints(rule_type)["kind"])
-)
+RULE_KINDS: Final[frozenset[ArchitectureRuleKind]] = frozenset(ArchitectureRuleKind)
 RULE_RECORD_KINDS: Final = RULE_KINDS | {UML_TARGET_KIND}
 
 
 # The symbol kinds that carry a signature. One set, because a record's `kind` and its
 # older `symbol_category` field hold the same three values and two copies may drift apart.
 FUNCTION_KINDS = frozenset({"function", "method"})
+
+
+def parse_graph_topology_level(value: JsonValue | RawJson) -> GraphTopologyLevel | None:
+    """Recognize the owned topology domain while leaving other record metadata opaque."""
+    if not isinstance(value, str):
+        return None
+    try:
+        return GraphTopologyLevel(value)
+    except ValueError:
+        return None
 
 
 def text_value(value: object) -> str:
@@ -1141,6 +1213,15 @@ class Projection:
     evidence: tuple[Evidence, ...]
 
 
+class KnownSemanticChangeKind(StrEnum):
+    """Actions understood by current Delta production and governance, not an open wire schema."""
+
+    ADDED = "added"
+    REMOVED = "removed"
+    RELOCATED = "relocated"
+    CHANGED = "changed"
+
+
 @dataclass(frozen=True, slots=True)
 class SemanticChange:
     dimension: str
@@ -1164,6 +1245,10 @@ class DimensionDelta:
     removed: tuple[str, ...] = ()
     relocated: tuple[str, ...] = ()
     changed: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.status, ComparisonStatus):
+            builtins.object.__setattr__(self, "status", ComparisonStatus(self.status))
 
 
 @dataclass(frozen=True, slots=True)
@@ -1210,14 +1295,18 @@ class RatchetObservations:
     reason: str | None = None
 
     def __post_init__(self) -> None:
+        if not isinstance(self.status, ComparisonStatus):
+            builtins.object.__setattr__(self, "status", ComparisonStatus(self.status))
         measured = (self.baseline is not None, self.head is not None)
-        if measured != ((True, True) if self.status == "SUPPORTED" else (False, False)):
+        if measured != (
+            (True, True) if self.status is ComparisonStatus.SUPPORTED else (False, False)
+        ):
             raise ValueError("measurements exist exactly when regression checks are SUPPORTED")
 
 
 @dataclass(frozen=True, slots=True)
 class ArchitectureDelta:
-    schema_version: str
+    schema_version: DeltaVersion
     analyzer: AnalyzerInfo
     provenance: DeltaProvenance
     baseline: SnapshotSummary
@@ -1228,6 +1317,9 @@ class ArchitectureDelta:
     ratchets: RatchetObservations
     semantic_changes: tuple[SemanticChange, ...]
     unknowns: tuple[DeltaUnknown, ...]
+
+    def __post_init__(self) -> None:
+        builtins.object.__setattr__(self, "schema_version", DeltaVersion(self.schema_version))
 
 
 @dataclass(frozen=True, slots=True)
@@ -1328,6 +1420,9 @@ class InterfaceBudgetResult:
     new_names: tuple[str, ...] | None = None
     removed_names: tuple[str, ...] | None = None
 
+    def __post_init__(self) -> None:
+        builtins.object.__setattr__(self, "budget", NameBudgetKind(self.budget))
+
 
 @dataclass(frozen=True, slots=True)
 class ReportFilter:
@@ -1373,7 +1468,7 @@ class BaselineViolationComparison:
     status: Literal["known", "new", "reduced", "resolved", "contracted", "unknown"]
 
 
-CallStatus: TypeAlias = Literal["unresolved", "partially_resolved"]
+CallStatus: TypeAlias = Literal[SourceResolution.UNRESOLVED, SourceResolution.PARTIALLY_RESOLVED]
 
 
 @dataclass(frozen=True, slots=True)
@@ -1392,6 +1487,18 @@ class CallRow:
     path: str
     line: int
 
+    def __post_init__(self) -> None:
+        status = parse_source_resolution(self.status)
+        if status not in {
+            SourceResolution.UNRESOLVED,
+            SourceResolution.PARTIALLY_RESOLVED,
+        }:
+            raise ValueError("call row needs an unresolved or partially resolved status")
+        builtins.object.__setattr__(self, "status", status)
+
+
+CallChangeKind: TypeAlias = Literal[KnownSemanticChangeKind.ADDED, KnownSemanticChangeKind.REMOVED]
+
 
 @dataclass(frozen=True, slots=True)
 class UnresolvedCallChange:
@@ -1403,7 +1510,7 @@ class UnresolvedCallChange:
     which one is new cannot be decided. A removed call's lines are those of the older revision.
     """
 
-    change: Literal["added", "removed"]
+    change: CallChangeKind
     caller: str
     expression: str
     reason: str
@@ -1413,14 +1520,22 @@ class UnresolvedCallChange:
     before: int
     after: int
 
+    def __post_init__(self) -> None:
+        change = KnownSemanticChangeKind(self.change)
+        if change not in {KnownSemanticChangeKind.ADDED, KnownSemanticChangeKind.REMOVED}:
+            raise ValueError("call change needs an added or removed direction")
+        builtins.object.__setattr__(self, "change", change)
+
 
 @dataclass(frozen=True, slots=True)
 class RunResult:
-    command: str
+    command: Command
     exit_code: Literal[0, 1, 2]
-    observation_complete: Literal["PASS", "UNKNOWN"] = "UNKNOWN"
+    observation_complete: Literal[AssessmentStatus.PASS, AssessmentStatus.UNKNOWN] = (
+        AssessmentStatus.UNKNOWN
+    )
     declared_rules: AssessmentStatus = AssessmentStatus.UNKNOWN
-    expectation_fulfilled: Literal["PASS", "FAIL", "UNKNOWN", "n/a"] = "UNKNOWN"
+    expectation_fulfilled: ExpectationOutcome = ExpectationOutcome.UNKNOWN
     diagnostics: tuple[Diagnostic, ...] = ()
     coverage: Coverage | None = None
     observation: Observation | None = None
@@ -1433,7 +1548,7 @@ class RunResult:
     failures: tuple[str, ...] = ()
     # Present as null without --against; otherwise only unamended/rejected changes.
     widenings: tuple[WideningFinding, ...] | None = None
-    amendment_status: Literal["valid", "stale"] | None = None
+    amendment_status: AmendmentStatus | None = None
     # AD-77: baseline drift is reported as deterministic fingerprint counts.
     baseline_new: int | None = None
     baseline_resolved: int | None = None
@@ -1480,7 +1595,20 @@ class RunResult:
     renames: tuple[tuple[str, str], ...] | None = None
 
     def __post_init__(self) -> None:
+        if self.amendment_status is not None:
+            builtins.object.__setattr__(
+                self, "amendment_status", AmendmentStatus(self.amendment_status)
+            )
         if self.exit_code == 2 and not self.diagnostics:
             raise ValueError("exit 2 requires at least one Diagnostic")
         if self.diagnostics and self.exit_code != 2:
             raise ValueError("diagnostics require exit 2")
+        completion = AssessmentStatus(self.observation_complete)
+        if completion not in {AssessmentStatus.PASS, AssessmentStatus.UNKNOWN}:
+            raise ValueError("observation_complete must be PASS or UNKNOWN")
+        builtins.object.__setattr__(self, "command", Command(self.command))
+        builtins.object.__setattr__(self, "observation_complete", completion)
+        builtins.object.__setattr__(self, "declared_rules", AssessmentStatus(self.declared_rules))
+        builtins.object.__setattr__(
+            self, "expectation_fulfilled", ExpectationOutcome(self.expectation_fulfilled)
+        )

@@ -9,7 +9,7 @@ import re
 from bisect import bisect_right
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, replace
-from enum import StrEnum
+from enum import Enum, StrEnum
 from typing import Literal, overload
 
 import tree_sitter_dart
@@ -217,6 +217,7 @@ class _Lexeme(StrEnum):
     LESS_EQUAL = "<="
     GREATER_EQUAL = ">="
     COALESCE_ASSIGN = "??="
+    NULLABLE = "?"
 
 
 def _lexeme(value: str) -> _Lexeme | None:
@@ -510,6 +511,19 @@ def _decode_dart_string(raw: str) -> str | None:
     return "".join(decoded) if end == len(content) else None
 
 
+class _CommentDelimiter(Enum):
+    LINE = b"//"
+    OPEN = b"/*"
+    CLOSE = b"*/"
+
+
+_COMMENT_DELIMITERS = {item.value: item for item in _CommentDelimiter}
+
+
+def _comment_delimiter(data: bytes, index: int) -> _CommentDelimiter | None:
+    return _COMMENT_DELIMITERS.get(data[index : index + 2])
+
+
 def _unclosed_block_comment(content: bytes) -> int | None:
     index = 0
     block_start: int | None = None
@@ -517,11 +531,12 @@ def _unclosed_block_comment(content: bytes) -> int | None:
     quote = b""
     raw_string = False
     while index < len(content):
+        delimiter = _comment_delimiter(content, index)
         if block_depth:
-            if content.startswith(b"/*", index):
+            if delimiter is _CommentDelimiter.OPEN:
                 block_depth += 1
                 index += 2
-            elif content.startswith(b"*/", index):
+            elif delimiter is _CommentDelimiter.CLOSE:
                 block_depth -= 1
                 index += 2
                 if block_depth == 0:
@@ -539,11 +554,11 @@ def _unclosed_block_comment(content: bytes) -> int | None:
             else:
                 index += 1
             continue
-        if content.startswith(b"//", index):
+        if delimiter is _CommentDelimiter.LINE:
             newline = content.find(b"\n", index + 2)
             index = len(content) if newline < 0 else newline + 1
             continue
-        if content.startswith(b"/*", index):
+        if delimiter is _CommentDelimiter.OPEN:
             block_start = index
             block_depth = 1
             index += 2
@@ -590,19 +605,21 @@ def _string_sequence(data: bytes, start: int, end: int) -> str | None:
 
 def _skip_trivia(data: bytes, index: int, end: int) -> int:
     while index < end:
+        delimiter = _comment_delimiter(data, index)
         if re.match(rb"[ \t\r\n]", data[index : index + 1]) is not None:
             index += 1
-        elif data.startswith(b"//", index):
+        elif delimiter is _CommentDelimiter.LINE:
             newline = data.find(b"\n", index + 2, end)
             index = end if newline < 0 else newline + 1
-        elif data.startswith(b"/*", index):
+        elif delimiter is _CommentDelimiter.OPEN:
             depth = 1
             index += 2
             while index < end and depth:
-                if data.startswith(b"/*", index):
+                delimiter = _comment_delimiter(data, index)
+                if delimiter is _CommentDelimiter.OPEN:
                     depth += 1
                     index += 2
-                elif data.startswith(b"*/", index):
+                elif delimiter is _CommentDelimiter.CLOSE:
                     depth -= 1
                     index += 2
                 else:
@@ -829,7 +846,7 @@ def _classifier(node: _Node, source: _Source) -> Definition:
         name,
         kind,
         source.span(node),
-        _visibility(name),
+        Visibility.from_name(name),
         type_parameters,
         extends,
         with_types,
@@ -999,7 +1016,7 @@ def _member_declaration(node: _Node, source: _Source) -> list[Member]:
                 name,
                 MemberKind.CONSTRUCTOR,
                 _member_span(node, None, source),
-                visibility=_visibility(name),
+                visibility=Visibility.from_name(name),
                 parameters=params,
                 constructor_initializers=tuple(
                     source.text(item) for item in initializers.named_children
@@ -1012,7 +1029,8 @@ def _member_declaration(node: _Node, source: _Source) -> list[Member]:
                     _NodeKind.FACTORY_CONSTRUCTOR_SIGNATURE,
                     _NodeKind.REDIRECTING_FACTORY_CONSTRUCTOR_SIGNATURE,
                 },
-                constant=source.text(node).lstrip().startswith("const"),
+                constant=constructor.kind == _NodeKind.CONSTANT_CONSTRUCTOR_SIGNATURE
+                or any(child.kind == _NodeKind.CONST_BUILTIN for child in constructor.children),
             )
         ]
     signature = next(
@@ -1071,7 +1089,7 @@ def _member_method(node: _Node, body: _Node | None, source: _Source) -> Member:
         kind,
         _member_span(node, body, source),
         return_type=return_type,
-        visibility=_visibility(name),
+        visibility=Visibility.from_name(name),
         static=re.search(r"\bstatic\b", modifiers) is not None,
         abstract=body is None or re.search(r"\babstract\b", modifiers) is not None,
         parameters=params,
@@ -1150,7 +1168,7 @@ def _top_level_accessor(node: _Node, source: _Source) -> Definition:
         name,
         kind,
         source.span(node),
-        _visibility(name),
+        Visibility.from_name(name),
         return_type=_return_type(node, name_node, source),
         parameters=_parameters(_parameter_list(node), source),
     )
@@ -1165,7 +1183,7 @@ def _function(node: _Node, source: _Source) -> Definition:
         name,
         DefinitionKind.FUNCTION,
         source.span(node),
-        _visibility(name),
+        Visibility.from_name(name),
         parameters=_parameters(_parameter_list(signature), source),
         return_type=return_type,
     )
@@ -1192,7 +1210,7 @@ def _parameters(node: _Node | None, source: _Source) -> tuple[Parameter, ...]:
         elif group.kind == _NodeKind.OPTIONAL_FORMAL_PARAMETERS:
             kind: ParameterKind = (
                 ParameterKind.NAMED
-                if source.text(group).lstrip().startswith("{")
+                if _lexeme(source.text(group).lstrip()[:1]) is _Lexeme.OPEN_BRACE
                 else ParameterKind.POSITIONAL
             )
             result.extend(
@@ -1239,10 +1257,12 @@ def _parameter(node: _Node, kind: ParameterKind, source: _Source) -> Parameter:
     required = re.search(rb"\brequired\b", before.rsplit(b",", 1)[-1]) is not None
     optional = kind == ParameterKind.NAMED and not required
     if node.parent is not None and node.parent.kind == _NodeKind.OPTIONAL_FORMAL_PARAMETERS:
-        optional = source.text(node.parent).lstrip().startswith("[") or optional
+        optional = (
+            _lexeme(source.text(node.parent).lstrip()[:1]) is _Lexeme.OPEN_BRACKET or optional
+        )
     nullable_or_dynamic = (
         annotation is None
-        or annotation.endswith("?")
+        or _lexeme(annotation[-1:]) is _Lexeme.NULLABLE
         or re.fullmatch(r"dynamic", annotation) is not None
     )
     if default is None and optional and nullable_or_dynamic:
@@ -1354,7 +1374,7 @@ def _field_members(node: _Node, items: Sequence[_Node], source: _Source) -> list
                 MemberKind.FIELD,
                 source.span(item),
                 annotation=_annotation_before(node, name_node, source),
-                visibility=_visibility(name),
+                visibility=Visibility.from_name(name),
                 static=re.search(r"\bstatic\b", declaration_text) is not None,
                 initializer=value,
                 literal=value,
@@ -1382,7 +1402,7 @@ def _top_level_variables(node: _Node, items: Sequence[_Node], source: _Source) -
                 name,
                 DefinitionKind.VARIABLE,
                 source.span(item),
-                _visibility(name),
+                Visibility.from_name(name),
                 return_type=_annotation_before(node, name_node, source),
                 initializer=value,
                 literal=value,
@@ -1451,10 +1471,6 @@ def _prefix(node: _Node, source: _Source) -> str:
     position = next((index for index, item in enumerate(siblings) if item == node), -1)
     start = siblings[position - 1].end_byte if position > 0 else node.parent.start_byte
     return source.data[start : node.start_byte].decode("utf-8", "replace")
-
-
-def _visibility(name: str) -> Visibility:
-    return Visibility.PRIVATE if name.startswith("_") else Visibility.PUBLIC
 
 
 def _sites(
@@ -1846,7 +1862,7 @@ def _canonical_range(root: _Node, source: _Source, start: int, end: int) -> str:
         }:
             output = output.rstrip() + value
             prefix = output[:-1].rstrip()
-            if closes_group and prefix.endswith(","):
+            if closes_group and _lexeme(prefix[-1:]) is _Lexeme.COMMA:
                 output = prefix[:-1].rstrip() + value
             previous_word = closes_group
         elif lexeme in {_Lexeme.OPEN_PAREN, _Lexeme.OPEN_BRACKET, _Lexeme.OPEN_BRACE}:
@@ -2262,7 +2278,7 @@ def _call_site(
 
 def _call_name(text: str) -> tuple[str | None, str | None, bool]:
     value = text.rstrip()
-    if value.endswith("."):
+    if _lexeme(value[-1:]) is _Lexeme.DOT:
         value = value[:-1]
     if re.search(r"\.", value) is not None:
         receiver, name = value.rsplit(".", 1)

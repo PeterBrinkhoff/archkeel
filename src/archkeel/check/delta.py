@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import builtins as _builtins
 import hashlib
 from collections import Counter, defaultdict
 from dataclasses import dataclass
@@ -19,6 +20,7 @@ from archkeel.ir.model import (
     DeltaCoverage,
     DeltaProvenance,
     DeltaUnknown,
+    DeltaVersion,
     Diagnostic,
     DiagnosticError,
     DimensionDelta,
@@ -35,7 +37,9 @@ from archkeel.ir.model import (
     identity_is_known,
     stable_id,
 )
+from archkeel.ir.model import ComparisonStatus as _ComparisonStatus
 from archkeel.ir.model import DiagnosticKind as _DiagnosticKind
+from archkeel.ir.model import KnownSemanticChangeKind as _KnownSemanticChangeKind
 from archkeel.ir.profiles import delta_dimension_applicable, profile_for
 
 from .python_profile import crossing_imports
@@ -277,23 +281,25 @@ def _delta_records(observation: Observation, dimension: str) -> tuple[_DeltaReco
 
 def _change(
     dimension: str,
-    kind: str,
+    kind: _KnownSemanticChangeKind,
     fingerprint: str,
     before: tuple[_DeltaRecord, ...],
     after: tuple[_DeltaRecord, ...],
 ) -> SemanticChange:
     return SemanticChange(
         dimension,
-        kind,
+        str(kind),
         fingerprint,
         len(before),
         len(after),
         before[0].projection if before else None,
         after[0].projection if after else None,
         tuple(sorted({item.semantic_fingerprint for item in before}))
-        if kind == "changed"
+        if kind is _KnownSemanticChangeKind.CHANGED
         else None,
-        tuple(sorted({item.semantic_fingerprint for item in after})) if kind == "changed" else None,
+        tuple(sorted({item.semantic_fingerprint for item in after}))
+        if kind is _KnownSemanticChangeKind.CHANGED
+        else None,
     )
 
 
@@ -342,7 +348,11 @@ def _compare_records(
             if count:
                 changes.append(
                     _change(
-                        dimension, "relocated", semantic, tuple(left[:count]), tuple(right[:count])
+                        dimension,
+                        _KnownSemanticChangeKind.RELOCATED,
+                        semantic,
+                        tuple(left[:count]),
+                        tuple(right[:count]),
                     )
                 )
             changed_old.extend(left[count:])
@@ -352,7 +362,7 @@ def _compare_records(
             changes.append(
                 _change(
                     dimension,
-                    "changed",
+                    _KnownSemanticChangeKind.CHANGED,
                     logical,
                     tuple(changed_old[:count]),
                     tuple(changed_new[:count]),
@@ -366,7 +376,7 @@ def _compare_records(
             changes.append(
                 _change(
                     dimension,
-                    "removed",
+                    _KnownSemanticChangeKind.REMOVED,
                     semantic,
                     tuple(item for item in removed if item.semantic_fingerprint == semantic)[
                         :count
@@ -378,7 +388,7 @@ def _compare_records(
             changes.append(
                 _change(
                     dimension,
-                    "added",
+                    _KnownSemanticChangeKind.ADDED,
                     semantic,
                     (),
                     tuple(item for item in added if item.semantic_fingerprint == semantic)[:count],
@@ -523,14 +533,16 @@ def build_architecture_delta(
                 "Regression checks require the same known schema, scope, analyzer and contract"
             )
         ratchets = RatchetObservations(
-            "SUPPORTED", measure_python_ratchets(baseline), measure_python_ratchets(head)
+            _ComparisonStatus.SUPPORTED,
+            measure_python_ratchets(baseline),
+            measure_python_ratchets(head),
         )
     except RatchetError as exc:
-        ratchets = RatchetObservations("UNKNOWN", reason=str(exc))
+        ratchets = RatchetObservations(_ComparisonStatus.UNKNOWN, reason=str(exc))
     dimensions: list[DimensionDelta] = []
     changes: list[SemanticChange] = []
     unknowns: list[DeltaUnknown] = []
-    available = ratchets.status == "SUPPORTED"
+    available = ratchets.status is _ComparisonStatus.SUPPORTED
     if not available:
         unknowns.append(
             _unknown(
@@ -540,7 +552,7 @@ def build_architecture_delta(
         )
     for dimension in SUPPORTED_DIMENSIONS:
         if not delta_dimension_applicable(profile, dimension):
-            dimensions.append(DimensionDelta(dimension, "UNKNOWN", None, None))
+            dimensions.append(DimensionDelta(dimension, _ComparisonStatus.UNKNOWN, None, None))
             unknowns.append(
                 _unknown(dimension, f"{profile.analyzer} lacks complete {dimension} evidence")
             )
@@ -564,7 +576,7 @@ def build_architecture_delta(
             dimensions.append(
                 DimensionDelta(
                     dimension,
-                    "UNKNOWN",
+                    _ComparisonStatus.UNKNOWN,
                     None if before is None else len(before),
                     None if after is None else len(after),
                 )
@@ -572,23 +584,31 @@ def build_architecture_delta(
             continue
         current = _compare_records(dimension, before, after)
         changes.extend(current)
+        fingerprints_by_kind: dict[_KnownSemanticChangeKind, list[str]] = {
+            kind: [] for kind in _KnownSemanticChangeKind
+        }
+        for item in current:
+            fingerprints: list[str] = fingerprints_by_kind[_KnownSemanticChangeKind(item.change)]
+            _builtins.list.append(fingerprints, item.fingerprint)
         before_count = len(baseline.coverage.failures) if dimension == "coverage" else len(before)
         after_count = len(head.coverage.failures) if dimension == "coverage" else len(after)
         dimensions.append(
             DimensionDelta(
                 dimension,
-                "SUPPORTED",
+                _ComparisonStatus.SUPPORTED,
                 before_count,
                 after_count,
-                tuple(item.fingerprint for item in current if item.change == "added"),
-                tuple(item.fingerprint for item in current if item.change == "removed"),
-                tuple(item.fingerprint for item in current if item.change == "relocated"),
-                tuple(item.fingerprint for item in current if item.change == "changed"),
+                tuple(fingerprints_by_kind[_KnownSemanticChangeKind.ADDED]),
+                tuple(fingerprints_by_kind[_KnownSemanticChangeKind.REMOVED]),
+                tuple(fingerprints_by_kind[_KnownSemanticChangeKind.RELOCATED]),
+                tuple(fingerprints_by_kind[_KnownSemanticChangeKind.CHANGED]),
             )
         )
-    unknown_dimensions = tuple(item.name for item in dimensions if item.status == "UNKNOWN")
+    unknown_dimensions = tuple(
+        item.name for item in dimensions if item.status is _ComparisonStatus.UNKNOWN
+    )
     return ArchitectureDelta(
-        DELTA_SCHEMA_VERSION,
+        DeltaVersion.V2_0,
         head.analyzer,
         DeltaProvenance(
             checker_digest, analyzer_digest, contract_digest, baseline_digest, head_digest
@@ -615,14 +635,14 @@ def build_architecture_delta(
             if coverage_complete
             and available
             and all(
-                item.status == "SUPPORTED"
+                item.status is _ComparisonStatus.SUPPORTED
                 for item in dimensions
                 if delta_dimension_applicable(profile, item.name)
             )
             else Verdict.FAIL,
             baseline.coverage.status,
             head.coverage.status,
-            tuple(item.name for item in dimensions if item.status == "SUPPORTED"),
+            tuple(item.name for item in dimensions if item.status is _ComparisonStatus.SUPPORTED),
             unknown_dimensions,
         ),
         tuple(dimensions),

@@ -19,7 +19,15 @@ from archkeel.ir.codec import (
 )
 from archkeel.ir.decisions import dependency_binding_id
 from archkeel.ir.digest import package_digest
-from archkeel.ir.facts import RuntimeRequirementState, SourceFacts, dart_module_name
+from archkeel.ir.facts import ResolutionRole as _ResolutionRole
+from archkeel.ir.facts import (
+    RuntimeRequirementState,
+    SourceFacts,
+    SourceResolution,
+    SourceSectionName,
+    dart_module_name,
+    parse_source_resolution,
+)
 from archkeel.ir.facts_codec import (
     RawRecord,
     classified,
@@ -33,19 +41,17 @@ from archkeel.ir.model import (
     SCHEMA_VERSION,
     ArchitectureContract,
     EvidenceClass,
+    GraphTopologyLevel,
     LayerOrderRule,
     Observation,
     Section,
     contract_relative_path,
+    parse_graph_topology_level,
     stable_id,
 )
-from archkeel.ir.profiles import PROFILES, Language, Profile
+from archkeel.ir.profiles import PROFILES, Language, Profile, UnmeasurableScalar
 
-from .declarations import (
-    load_contract,
-    project_declarations,
-    project_inside_declarations,
-)
+from .declarations import load_contract, project_declarations, project_inside_declarations
 from .evaluation.evaluate import ScanResult, evaluate_source
 from .ports import SourceCollector
 from .runtime import has_invalid_python_requirement, runtime_diagnostic
@@ -153,11 +159,27 @@ def _metrics(scan: ScanResult, contract: ArchitectureContract, profile: Profile)
     private_attribute_limits = [
         item for item in scan.unknowns if item["kind"] == "private_attribute_access_limit"
     ]
-    package_cycles = [item for item in scan.cycles if item["data"]["level"] == "package"]
-    module_cycles = [item for item in scan.cycles if item["data"]["level"] == "module"]
+    package_cycles = [
+        item
+        for item in scan.cycles
+        if parse_graph_topology_level(item["data"]["level"]) is GraphTopologyLevel.PACKAGE
+    ]
+    module_cycles = [
+        item
+        for item in scan.cycles
+        if parse_graph_topology_level(item["data"]["level"]) is GraphTopologyLevel.MODULE
+    ]
     rollup_only = [item for item in package_cycles if not item["data"]["backed_by"]]
-    unresolved_calls = [item for item in scan.calls if item["data"]["status"] == "unresolved"]
-    resolved_calls = [item for item in scan.calls if item["data"]["status"] == "resolved"]
+    unresolved_calls = [
+        item
+        for item in scan.calls
+        if parse_source_resolution(item["data"]["status"]) is SourceResolution.UNRESOLVED
+    ]
+    resolved_calls = [
+        item
+        for item in scan.calls
+        if parse_source_resolution(item["data"]["status"]) is SourceResolution.RESOLVED
+    ]
     evidence_by_id = {item["id"]: item for item in scan.evidence}
     violating_import_sites = {
         (
@@ -236,19 +258,19 @@ def _metrics(scan: ScanResult, contract: ArchitectureContract, profile: Profile)
                 "symbols",
                 "Symbols",
                 None
-                if "symbols" in profile.absent_sections
+                if SourceSectionName.SYMBOLS in profile.absent_sections
                 or (
-                    "symbols" in profile.optional_sections
-                    and "symbols" not in scan.observed_sections
+                    SourceSectionName.SYMBOLS in profile.optional_sections
+                    and SourceSectionName.SYMBOLS not in scan.observed_sections
                 )
                 else len(scan.symbols),
                 "components",
                 fact_ids=(
                     [item["id"] for item in scan.symbols]
-                    if "symbols" not in profile.absent_sections
+                    if SourceSectionName.SYMBOLS not in profile.absent_sections
                     and not (
-                        "symbols" in profile.optional_sections
-                        and "symbols" not in scan.observed_sections
+                        SourceSectionName.SYMBOLS in profile.optional_sections
+                        and SourceSectionName.SYMBOLS not in scan.observed_sections
                     )
                     else None
                 ),
@@ -308,18 +330,21 @@ def _metrics(scan: ScanResult, contract: ArchitectureContract, profile: Profile)
                 fact_ids=[
                     item["id"]
                     for item in scan.dependency_edges
-                    if item["data"]["level"] == "package"
+                    if parse_graph_topology_level(item["data"]["level"])
+                    is GraphTopologyLevel.PACKAGE
                     and (item["data"]["source"], item["data"]["target"]) in forbidden_package_edges
                 ],
             ),
             _metric(
                 "private_crossings",
                 "Confirmed private symbol crossings",
-                None if "private_crossings" in profile.unmeasured else len(private_crossings),
+                None
+                if UnmeasurableScalar.PRIVATE_CROSSINGS in profile.unmeasured
+                else len(private_crossings),
                 "api",
                 fact_ids=(
                     [item["id"] for item in private_crossings]
-                    if "private_crossings" not in profile.unmeasured
+                    if UnmeasurableScalar.PRIVATE_CROSSINGS not in profile.unmeasured
                     else None
                 ),
             ),
@@ -327,7 +352,7 @@ def _metrics(scan: ScanResult, contract: ArchitectureContract, profile: Profile)
                 "untyped_private_accesses",
                 "Private attribute accesses through untyped or Any parameters",
                 None
-                if "untyped_private_accesses" in profile.unmeasured
+                if UnmeasurableScalar.UNTYPED_PRIVATE_ACCESSES in profile.unmeasured
                 else len(private_attribute_limits),
                 "api",
             ),
@@ -335,14 +360,14 @@ def _metrics(scan: ScanResult, contract: ArchitectureContract, profile: Profile)
                 "typing_signals",
                 "Typing & dynamic signals",
                 None
-                if "typing_signals" in profile.absent_sections
-                or "typing_positions" in profile.unmeasured
+                if SourceSectionName.TYPING_SIGNALS in profile.absent_sections
+                or UnmeasurableScalar.TYPING_POSITIONS in profile.unmeasured
                 else len(scan.typing_signals),
                 "types",
                 fact_ids=(
                     [item["id"] for item in scan.typing_signals]
-                    if "typing_signals" not in profile.absent_sections
-                    and "typing_positions" not in profile.unmeasured
+                    if SourceSectionName.TYPING_SIGNALS not in profile.absent_sections
+                    and UnmeasurableScalar.TYPING_POSITIONS not in profile.unmeasured
                     else None
                 ),
             ),
@@ -352,12 +377,12 @@ def _metrics(scan: ScanResult, contract: ArchitectureContract, profile: Profile)
                 if profile.analyzer == "archkeel-typescript-imports"
                 else "Unresolved calls",
                 None
-                if "calls" not in scan.observed_sections
+                if SourceSectionName.CALLS not in scan.observed_sections
                 else scan.coverage["calls_unresolved"],
                 "calls",
                 fact_ids=(
                     [item["id"] for item in unresolved_calls]
-                    if "calls" in scan.observed_sections
+                    if SourceSectionName.CALLS in scan.observed_sections
                     else None
                 ),
             ),
@@ -374,12 +399,12 @@ def _metrics(scan: ScanResult, contract: ArchitectureContract, profile: Profile)
                 if profile.analyzer == "archkeel-typescript-imports"
                 else "Uniquely resolved calls",
                 None
-                if "calls" not in scan.observed_sections
+                if SourceSectionName.CALLS not in scan.observed_sections
                 else f"{scan.coverage['call_resolution_percent']}%",
                 "calls",
                 fact_ids=(
                     [item["id"] for item in resolved_calls]
-                    if "calls" in scan.observed_sections
+                    if SourceSectionName.CALLS in scan.observed_sections
                     else None
                 ),
             ),
@@ -456,7 +481,7 @@ def _declaration_records(
             contract_path,
             unknowns=scan.unknowns,
             type_shapes=scan.type_shapes,
-            measured_types="symbols" in scan.observed_sections,
+            measured_types=SourceSectionName.SYMBOLS in scan.observed_sections,
         ),
         *inside_records,
     ]
@@ -677,7 +702,7 @@ def _certify_dependency_scopes(
         or scan.coverage["rules"] != "PASS"
         or facts.coverage.files_read != len(selected)
         or facts.coverage.files_parsed != len(selected)
-        or selected != {item.path for item in facts.inputs if item.role == "selected"}
+        or selected != {item.path for item in facts.inputs if item.role == _ResolutionRole.SELECTED}
         or runtime_diagnostic(facts.runtime) is not None
     ):
         return
