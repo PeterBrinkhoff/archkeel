@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: MIT
 """Source resolution stays nominal across producers without closing open record data."""
 
+import copy
 import json
 from enum import StrEnum
 from pathlib import Path
@@ -20,8 +21,10 @@ from archkeel.check.ports import ScanConfig
 from archkeel.ir import facts
 from archkeel.ir.architecture_graph import ResolutionKind
 from archkeel.ir.decisions import rule_assessments
+from archkeel.ir.codec import parse_contract
 from archkeel.ir.facts_codec import parse_record, record_payload
 from archkeel.ir.model import CallRow
+from archkeel.ir.report_graph import architecture_report
 from archkeel.ir.source_graph import _source_resolution
 from archkeel.ir.trace import trace_valid_violations
 
@@ -101,20 +104,53 @@ def test_call_rows_normalize_only_the_unresolved_source_subset():
             CallRow(invalid, "caller", "call", "reason", None, "source.py", 1)
 
 
-def _native_repository(tmp_path, *, raw_control=False, widen_field=False):
+def _authored_target(*, include_guard=True):
+    ir = json.loads((ROOT / "docs/architecture/contracts/ir.json").read_text())
+    python = json.loads((ROOT / "docs/architecture/contracts/python.json").read_text())
+    target = copy.deepcopy(ir)
+    target.pop("$schema", None)
+    target["components"].extend(python["components"])
+    target["declarations"]["modules"] = []
+    uml = target["declarations"]["uml"]
+    wanted = {
+        "archkeel.ir.facts",
+        "IR-DEPENDENCY-model",
+        "IR-SOURCE-RESOLUTION-enum",
+        "IR-SOURCE-RESOLUTION-parse",
+        "IR-SOURCE-RESOLUTION-CallStatus",
+        "IR-SOURCE-RESOLUTION-CallRow",
+        "IR-SOURCE-RESOLUTION-CallRow.status",
+        "PYTHON-SOURCE-RESOLUTION-module",
+        "PYTHON-SOURCE-RESOLUTION-producer",
+    }
+    entities = [*uml["entities"], *python["declarations"]["uml"]["entities"]]
+    uml["entities"] = [entity for entity in entities if entity["id"] in wanted]
+    assert {entity["id"] for entity in uml["entities"]} == wanted
+    uml["relationships"] = []
+    uml["scopes"] = []
+    target["rules"] = [rule for rule in python["rules"] if include_guard and rule["id"] == GUARD]
+    assert len(target["rules"]) == int(include_guard)
+    return target
+
+
+def _native_repository(tmp_path, *, raw_control=False, widen_field=False, include_guard=True):
     sources = (
         "ir/facts.py",
         "ir/model.py",
         "analyzer/python/resolve.py",
         "analyzer/python/calls.py",
     )
+    target = _authored_target(include_guard=include_guard)
     files = {
         "archkeel/__init__.py": "",
         "archkeel/ir/__init__.py": "",
         "archkeel/analyzer/__init__.py": "",
         "archkeel/analyzer/python/__init__.py": "",
-        "docs/target.md": "Source resolution has one nominal owner and a narrow call-row port.\n",
+        "contract.json": json.dumps(target),
     }
+    for item in [*target["components"], *target["rules"], *target["declarations"]["uml"]["entities"]]:
+        for path in item["provenance"]:
+            files[path] = (ROOT / path).read_text()
     for path in sources:
         text = (ROOT / "src/archkeel" / path).read_text()
         if path == "analyzer/python/resolve.py" and raw_control:
@@ -124,85 +160,6 @@ def _native_repository(tmp_path, *, raw_control=False, widen_field=False):
         if path == "ir/model.py" and widen_field:
             text = text.replace("status: CallStatus", "status: str")
         files["archkeel/" + path] = text
-    intent = {"presence": "planned", "language": "python", "provenance": ["docs/target.md"]}
-    entities = [
-        {
-            **intent,
-            "id": "facts",
-            "kind": "module",
-            "qualified_name": "archkeel.ir.facts",
-            "parent_id": "core",
-            "responsibilities": ["Own source fact vocabulary."],
-        },
-        {
-            **intent,
-            "id": "resolution",
-            "kind": "enum",
-            "qualified_name": "archkeel.ir.facts.SourceResolution",
-            "parent_id": "facts",
-            "responsibilities": ["Own the three source-resolution states."],
-        },
-        {
-            **intent,
-            "id": "model",
-            "kind": "module",
-            "qualified_name": "archkeel.ir.model",
-            "parent_id": "core",
-            "responsibilities": ["Own report values."],
-        },
-        {
-            **intent,
-            "id": "call-row",
-            "kind": "class",
-            "qualified_name": "archkeel.ir.model.CallRow",
-            "parent_id": "model",
-            "responsibilities": ["Carry calls that lack a unique proven target."],
-        },
-        {
-            **intent,
-            "id": "call-status",
-            "kind": "attribute",
-            "qualified_name": "archkeel.ir.model.CallRow.status",
-            "parent_id": "call-row",
-            "annotation": "CallStatus",
-            "visibility": {"kind": "public", "basis": "declared"},
-            "responsibilities": ["Retain the unresolved and partially resolved subset."],
-        },
-    ]
-    contract = {
-        "schema_version": "3.5.0",
-        "components": [
-            {
-                "id": "core",
-                "label": "Core",
-                "role": "component",
-                "packages": ["archkeel.ir", "archkeel.analyzer"],
-                "responsibilities": ["Own immutable source facts and typed producer ports."],
-                "forbidden_responsibilities": [],
-                "provenance": ["docs/target.md"],
-            }
-        ],
-        "rules": [
-            {
-                "id": GUARD,
-                "kind": "forbidden_construct",
-                "source": "archkeel.analyzer.python.resolve._scoped_binding",
-                "constructs": ["string_literal_compare"],
-                "rationale": "Source-resolution producer dispatch uses its nominal domain.",
-                "decided_by": "architect",
-                "provenance": ["docs/target.md"],
-            }
-        ],
-        "declarations": {
-            "uml": {
-                "schema_version": "1.0.0",
-                "entities": entities,
-                "relationships": [],
-                "scopes": [],
-            }
-        },
-    }
-    files["contract.json"] = json.dumps(contract)
     root = _prepare_repo(tmp_path, files)
     return root, ScanConfig(("archkeel",), "archkeel", "contract.json", "0" * 64)
 
@@ -237,6 +194,70 @@ def test_native_call_row_target_rejects_actual_status_type_weakening(tmp_path):
         for row in trace_valid_violations(model)
     )
     assert (root / "contract.json").read_bytes() == original
+
+
+
+def test_authored_source_resolution_targets_keep_owned_api_and_required_test_selection():
+    target = _authored_target()
+    parse_contract(target)
+    by_name = {
+        entity["qualified_name"]: entity for entity in target["declarations"]["uml"]["entities"]
+    }
+    assert by_name["archkeel.ir.facts.parse_source_resolution"]["signature"] == {
+        "parameters": [
+            {"name": "value", "kind": "positional", "default_known": True,
+             "annotation": "JsonValue | RawJson"}
+        ],
+        "returns": "SourceResolution | None",
+    }
+    assert by_name["archkeel.ir.model.CallRow.status"]["annotation"] == "CallStatus"
+    assert by_name["archkeel.analyzer.python.resolve.resolve_name"]["signature"]["returns"] == (
+        "tuple[SourceResolution, list[str], str, int]"
+    )
+    assert tuple(member.value for member in facts.SourceResolution) == (
+        "resolved", "partially_resolved", "unresolved"
+    )
+    required = (ROOT / "Makefile").read_text().split("pr-test:", 1)[1].split("pr-report-test:", 1)[0]
+    assert "tests/test_source_resolution_types.py" in required
+
+
+def test_actual_source_resolution_ports_fulfil_the_unchanged_authored_targets(tmp_path):
+    root, config = _native_repository(tmp_path, include_guard=False)
+    comparison = architecture_report(_model(root, config)).comparison
+    assert comparison is not None and comparison.status == "PASS", comparison
+
+
+@pytest.mark.parametrize("producer", [False, True])
+def test_native_source_resolution_return_weakening_fails_unchanged_authored_target(
+    tmp_path, producer
+):
+    root, config = _native_repository(tmp_path, include_guard=False)
+    path = root / ("archkeel/analyzer/python/resolve.py" if producer else "archkeel/ir/facts.py")
+    source = path.read_text()
+    if producer:
+        prefix, separator, operation = source.partition("def resolve_name(")
+        assert separator
+        nominal = ") -> tuple[SourceResolution, list[str], str, int]:"
+        assert nominal in operation
+        source = prefix + separator + operation.replace(
+            nominal, ") -> tuple[str, list[str], str, int]:", 1
+        )
+    else:
+        nominal = "-> SourceResolution | None:"
+        assert nominal in source
+        source = source.replace(nominal, "-> str | None:", 1)
+    path.write_text(source)
+    authored = (root / "contract.json").read_bytes()
+    comparison = architecture_report(_model(root, config)).comparison
+    subject = (
+        "archkeel.analyzer.python.resolve.resolve_name"
+        if producer else "archkeel.ir.facts.parse_source_resolution"
+    )
+    assert comparison is not None and any(
+        row.status == "FAIL" and row.aspect == "signature" and row.subject_id == subject
+        for row in comparison.assessments
+    ), comparison
+    assert (root / "contract.json").read_bytes() == authored
 
 
 def test_future_call_status_survives_actual_source_protocol_without_becoming_proof():
