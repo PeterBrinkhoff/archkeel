@@ -776,7 +776,9 @@ def _atlas_rule_status_cards(result: RunResult) -> str:
             else "No recorded count"
         )
         cards.append(
-            _verdict_card(VerdictRow(label, "", status if status is not None else "NOT CHECKED", reason))
+            _verdict_card(
+                VerdictRow(label, "", status if status is not None else "NOT CHECKED", reason)
+            )
         )
     return "".join(cards)
 
