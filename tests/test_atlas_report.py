@@ -6,6 +6,7 @@
 import json
 import re
 import sys
+from cProfile import Profile
 from dataclasses import replace
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
@@ -57,6 +58,26 @@ def _page(model):
         repository="One target",
         architecture_href="architecture.json",
     ).decode()
+
+
+def test_report_pages_derive_one_graph_per_page(tmp_path):
+    from archkeel.render.html import render_architecture_details
+
+    model = _sample(tmp_path, uml=True)
+    result = _result(model)
+    encoded = canonical_report_bytes(model)
+    with Profile() as work:
+        page = render_architecture_html(
+            result, encoded, repository="One target", architecture_href="architecture.json"
+        )
+        details = render_architecture_details(
+            result, encoded, repository="One target", architecture_href="architecture.json"
+        )
+    assert page and len(details) == 1
+    graph_builds = sum(
+        entry.callcount for entry in work.getstats() if entry.code is architecture_report.__code__
+    )
+    assert graph_builds == 2
 
 
 def test_atlas_structure_overview_retains_canonical_component_route(tmp_path):

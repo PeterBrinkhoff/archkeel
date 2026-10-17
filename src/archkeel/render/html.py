@@ -987,7 +987,7 @@ def render_architecture_details(
     data["initial_view"] = "diagram"
     data["navigation"] = _component_navigation(
         result.architecture_projection,
-        module_exploration(observation),
+        module_exploration(observation, report=report),
         tuple(
             item.id
             for item in (report.observed.entities if report.observed else ())
