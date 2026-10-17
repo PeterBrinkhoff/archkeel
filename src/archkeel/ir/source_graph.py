@@ -41,8 +41,10 @@ from archkeel.ir.facts import (
     MethodKind,
     ResolutionInput,
     ResolutionRole,
+    SymbolClassKind,
     member_inventories,
     parse_method_kind,
+    parse_symbol_class_kind,
 )
 from archkeel.ir.model import (
     TARGET_GRAPH_RECORD_KINDS,
@@ -1102,7 +1104,8 @@ def _member_inventory_coverage(
         for inventory in member_inventories(item.data.get("member_inventories")):
             kinds: tuple[EntityKind, ...] = (
                 (EntityKind.ATTRIBUTE, EntityKind.ENUM_LITERAL)
-                if inventory.kind == MemberKind.ATTRIBUTE and item.data.get("class_kind") == "enum"
+                if inventory.kind == MemberKind.ATTRIBUTE
+                and parse_symbol_class_kind(item.data.get("class_kind")) is SymbolClassKind.ENUM
                 else (EntityKind(inventory.kind),)
             )
             actual = {
