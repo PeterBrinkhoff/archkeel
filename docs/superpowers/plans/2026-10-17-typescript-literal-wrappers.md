@@ -18,3 +18,8 @@ The Syntax.StringComparison port, wire schema, Core projection, authored Target 
 ## Deliberate boundaries
 
 This increment does not identify protocol meaning from literal spelling. Names, paths and JSON keys remain data. A blanket forbidden_construct rule also selects data-literal comparisons; policy must follow actual module/component responsibility. Imported value flow, aliases, named collections, methods and nominal erasure remain separate reviewed follow-ups within #542.
+
+## Initial receipts
+
+- Genuine native RED: [38985799039 / 117256856602](https://github.com/rapiddweller/archkeel/actions/runs/38985799039/job/117256856602), parser unchanged: 8 missing-construct assertion failures, 62 passes, zero errors. All 14 compiler inputs passed TypeScript 5.9.3. Actual wrapper children and absence of obsolete cross-component import paths were printed.
+- First focused GREEN: [38986456716 / 117258963489](https://github.com/rapiddweller/archkeel/actions/runs/38986456716/job/117258963489), 71 native construct cases passed. Its formatter step exported the canonical formatting subsequently applied to product source and tests; it is not the final quality gate.

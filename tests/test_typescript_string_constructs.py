@@ -334,7 +334,7 @@ def test_construct_evidence_keeps_the_real_utf16_literal_location(tmp_path, exte
         'return ("active" satisfies string) !== value;',
         'return value === ("active"!);',
         'return value === ((("active" as const)!) satisfies string);',
-        'return value === (`active` as const);',
+        "return value === (`active` as const);",
         'switch (value) { case ("active" as const): return true; default: return false; }',
         'switch (value) { case ("active"! satisfies string): return true; default: return false; }',
     ],
@@ -345,7 +345,7 @@ def test_ts_value_preserving_literal_wrappers_keep_native_original_evidence(tmp_
     records = _constructs(facts)
     assert len(records) == 1
     evidence = next(row for row in facts.evidence if row.id == records[0].evidence_ids[0])
-    literal = '"active"' if '"active"' in body else '`active`'
+    literal = '"active"' if '"active"' in body else "`active`"
     second_line = source.splitlines()[1]
     prefix = second_line[: second_line.index(literal)]
     assert (evidence.file, evidence.line, evidence.end_line) == ("src/main.ts", 2, 2)
@@ -365,10 +365,10 @@ def test_ts_value_preserving_literal_wrappers_keep_native_original_evidence(tmp_
     [
         '(left as "active")',
         '(left satisfies "active")',
-        '(left as string)!',
-        '(`active-${left}` as string)',
-        '(Mode.Active as Mode)',
-        '(Mode.Active! satisfies Mode)',
+        "(left as string)!",
+        "(`active-${left}` as string)",
+        "(Mode.Active as Mode)",
+        "(Mode.Active! satisfies Mode)",
     ],
 )
 def test_ts_literal_wrappers_do_not_turn_types_names_or_dynamic_values_into_proof(
@@ -390,7 +390,11 @@ def test_unknown_ts_literal_wrapper_kind_cannot_promote_its_type_literal(
     tmp_path, monkeypatch, expression
 ):
     original = parser._NODE_KINDS
-    monkeypatch.setattr(parser, "_NODE_KINDS", {key: value for key, value in original.items() if key != "as_expression"})
+    monkeypatch.setattr(
+        parser,
+        "_NODE_KINDS",
+        {key: value for key, value in original.items() if key != "as_expression"},
+    )
     facts, model = _model(
         tmp_path,
         "export function decide(value: any, left: any) { return value === " + expression + "; }",

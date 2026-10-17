@@ -1315,8 +1315,10 @@ def _written_string(node: _RawNode | None) -> _RawNode | None:
         # as const has no named type child; other as/satisfies forms carry a type.
         # Only the first expression child can supply a value, never the type syntax.
         kind = _node_kind(node)
-        expected = (1, 2) if kind is _NodeKind.AS_EXPRESSION else (
-            (2,) if kind is _NodeKind.SATISFIES_EXPRESSION else (1,)
+        expected = (
+            (1, 2)
+            if kind is _NodeKind.AS_EXPRESSION
+            else ((2,) if kind is _NodeKind.SATISFIES_EXPRESSION else (1,))
         )
         node = children[0] if len(children) in expected else None
     if node is None:
