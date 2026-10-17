@@ -143,6 +143,11 @@ def test_classifier_port_weakening_fails_the_existing_authored_target(tmp_path, 
         lines = text.splitlines(keepends=True)
         definition = "".join(lines[node.lineno - 1 : node.end_lineno])
         text = "".join(lines[: node.lineno - 1] + lines[node.end_lineno :])
+        text = text.replace(
+            "from __future__ import annotations",
+            "from __future__ import annotations\nfrom .model import SymbolClassKind",
+            1,
+        )
         (project / "archkeel/ir/model.py").write_text("from enum import StrEnum\n\n" + definition)
         subject = "IR-SYMBOL-CLASS-KIND"
     else:
