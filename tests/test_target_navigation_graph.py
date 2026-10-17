@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 from test_architecture_demo import _prepare_repo
+from test_dependency_api_target import _source_members
 from test_target_graph import _nested_repository
 
 from archkeel.check.ports import ScanConfig
@@ -62,7 +63,15 @@ def test_own_render_contract_enforces_output_direction(tmp_path, backward_import
             + ("from . import html\n" if backward_importer == "atlas" else "")
         ),
         "src/archkeel/render/summary.py": (
+            "from archkeel.ir.model import AssessmentStatus as _AssessmentStatus\n"
+            "from archkeel.ir.model import Command as _Command\n"
+            "from archkeel.ir.model import RunResult\n"
             "def report_summary(): return None\n"
+            + _source_members(
+                "src/archkeel/render/summary.py",
+                {"report_violates_rules", "report_leaves_rules_undecided", "_decision_badge"},
+            )
+            + "\n"
             + ("from . import html\n" if backward_importer == "summary" else "")
         ),
         # The full render contract also guards this real pure display owner.
@@ -80,8 +89,12 @@ def test_own_render_contract_enforces_output_direction(tmp_path, backward_import
         "src/archkeel/render/html.py": (
             "from .atlas import atlas_payload\n"
             "from .summary import report_summary\n"
+            "from archkeel.ir.architecture_graph import RuleAssessmentStatus\n"
+            "from archkeel.ir.model import RunResult\n"
             "def _flow_section(observation):\n    return ''\n"
+            + _source_members("src/archkeel/render/html.py", {"_atlas_rule_status_cards"})
         ),
+        "docs/architecture/core-command-result-types.md": "Own result control types.\n",
         provenance: "One report input; summary has no output dependency.\n",
         "docs/architecture/render-target.md": "Payload and summary do not depend on HTML.\n",
         "docs/architecture/decisions/ad-213-renderer-responsibility-boundaries.md": (
