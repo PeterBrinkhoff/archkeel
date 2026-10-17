@@ -1,0 +1,9 @@
+{
+  "after_baseline_digest": "888f5284947cd2bf3ba1d56f2d18411a397d9f20788e5d2b6e8f9c4ee9316587",
+  "after_digest": "b7c35b06dbe291b288a456ce000396117b3e3fc23003469f236b062947e20db1",
+  "before_baseline_digest": "a97dae6915b19cba4ee68c12f1db23d2b8849d49029b44831d006b8845b109db",
+  "before_digest": "bf800ad96b6f327877de59c2dab9772e650ae2cda5a91d15f63ce2efbd08401d",
+  "decided_by": "ake2l",
+  "rationale": "Publish the reviewed direct nominal TypeScript syntax port and consumed controls while preserving legacy DTO and SourceFacts wire APIs, conservative grammar evidence and actual merged Main governance without additional allowances or ceiling increases.",
+  "schema_version": "2.0.0"
+}
