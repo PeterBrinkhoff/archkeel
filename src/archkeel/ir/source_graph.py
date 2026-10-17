@@ -41,8 +41,10 @@ from archkeel.ir.facts import (
     MethodKind,
     ResolutionInput,
     ResolutionRole,
+    SourceResolution,
     member_inventories,
     parse_method_kind,
+    parse_source_resolution,
 )
 from archkeel.ir.model import (
     TARGET_GRAPH_RECORD_KINDS,
@@ -575,17 +577,14 @@ def _source_entities(observation: Observation, language: str) -> list[Entity]:
 
 
 def _source_resolution(value: JsonValue, message: str) -> ResolutionKind:
-    resolutions = {
-        "resolved": ResolutionKind.RESOLVED,
-        "partially_resolved": ResolutionKind.PARTIAL,
-        "unresolved": ResolutionKind.UNRESOLVED,
-    }
-    if not isinstance(value, str):
+    status = parse_source_resolution(value)
+    if status is None:
         raise ValueError(message)
-    try:
-        return resolutions[value]
-    except KeyError as exc:
-        raise ValueError(message) from exc
+    return {
+        SourceResolution.RESOLVED: ResolutionKind.RESOLVED,
+        SourceResolution.PARTIALLY_RESOLVED: ResolutionKind.PARTIAL,
+        SourceResolution.UNRESOLVED: ResolutionKind.UNRESOLVED,
+    }[status]
 
 
 def _site_relationship(
@@ -828,7 +827,7 @@ def _construction_sites(
         raise ValueError("invalid construction resolution")
     if not set(names) <= set(_texts(record.data.get("targets"))) or (
         status == ResolutionKind.RESOLVED
-        and (record.data.get("status") != "resolved" or truncated or len(names) != 1)
+        and (parse_source_resolution(record.data.get("status")) is not SourceResolution.RESOLVED or truncated or len(names) != 1)
     ):
         raise ValueError("construction resolution conflicts with its call site")
     targets = tuple(
@@ -1177,7 +1176,7 @@ def _coverage(observation: Observation, entities: list[Entity]) -> tuple[Coverag
             continue
         bases = _records(item.data.get("base_declarations"))
         complete = observation.coverage.status == Verdict.PASS and all(
-            base.get("status") == "resolved" for base in bases
+            parse_source_resolution(base.get("status")) is SourceResolution.RESOLVED for base in bases
         )
         result.append(
             Coverage(

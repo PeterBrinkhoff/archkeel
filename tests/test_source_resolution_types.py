@@ -41,7 +41,9 @@ def test_actual_python_call_and_base_producers_return_nominal_source_resolution(
     assert statuses["missing"] is resolution.UNRESOLVED
     assert statuses["obj.target"] is resolution.PARTIALLY_RESOLVED
     assert statuses["Base"] is resolution.RESOLVED
-    construction = next(item["data"]["construction"] for item in calls if item["data"]["expression"] == "Base")
+    construction = next(
+        item["data"]["construction"] for item in calls if item["data"]["expression"] == "Base"
+    )
     assert construction["status"] is resolution.RESOLVED
     module = _parsed_module("class Base: pass\nclass Child(Base): pass\n", module="sample.core")
     symbols, _, _ = collect_symbols([module], {})
@@ -53,9 +55,16 @@ def test_actual_python_call_and_base_producers_return_nominal_source_resolution(
 @pytest.mark.parametrize("raw", ["resolved", "partially_resolved", "unresolved", "future", None, 1])
 def test_resolution_boundary_preserves_open_wire_metadata(raw):
     record = {
-        "id": "future-record", "evidence_class": "FACT", "area": "source",
-        "kind": "future-kind", "title": "future record", "subjects": [],
-        "evidence_ids": [], "rule_ids": [], "fact_ids": [], "provenance": [],
+        "id": "future-record",
+        "evidence_class": "FACT",
+        "area": "source",
+        "kind": "future-kind",
+        "title": "future record",
+        "subjects": [],
+        "evidence_ids": [],
+        "rule_ids": [],
+        "fact_ids": [],
+        "provenance": [],
         "data": {"status": raw, "metadata": {"status": "future-nested"}},
     }
     parsed = parse_record(record)
@@ -84,7 +93,8 @@ def test_call_rows_normalize_only_the_unresolved_source_subset():
     assert isinstance(row.status, StrEnum), type(row.status)
     assert row.status is facts.SourceResolution.UNRESOLVED
     assert set(get_args(get_type_hints(CallRow)["status"])) == {
-        facts.SourceResolution.UNRESOLVED, facts.SourceResolution.PARTIALLY_RESOLVED,
+        facts.SourceResolution.UNRESOLVED,
+        facts.SourceResolution.PARTIALLY_RESOLVED,
     }
     for invalid in ("resolved", "future", None):
         with pytest.raises(ValueError, match="call row"):
@@ -93,12 +103,16 @@ def test_call_rows_normalize_only_the_unresolved_source_subset():
 
 def _native_repository(tmp_path, *, raw_control=False, widen_field=False):
     sources = (
-        "ir/facts.py", "ir/model.py", "analyzer/python/resolve.py",
+        "ir/facts.py",
+        "ir/model.py",
+        "analyzer/python/resolve.py",
         "analyzer/python/calls.py",
     )
     files = {
-        "archkeel/__init__.py": "", "archkeel/ir/__init__.py": "",
-        "archkeel/analyzer/__init__.py": "", "archkeel/analyzer/python/__init__.py": "",
+        "archkeel/__init__.py": "",
+        "archkeel/ir/__init__.py": "",
+        "archkeel/analyzer/__init__.py": "",
+        "archkeel/analyzer/python/__init__.py": "",
         "docs/target.md": "Source resolution has one nominal owner and a narrow call-row port.\n",
     }
     for path in sources:
@@ -110,39 +124,81 @@ def _native_repository(tmp_path, *, raw_control=False, widen_field=False):
         files["archkeel/" + path] = text
     intent = {"presence": "planned", "language": "python", "provenance": ["docs/target.md"]}
     entities = [
-        {**intent, "id": "facts", "kind": "module", "qualified_name": "archkeel.ir.facts",
-         "parent_id": "core", "responsibilities": ["Own source fact vocabulary."]},
-        {**intent, "id": "resolution", "kind": "enum",
-         "qualified_name": "archkeel.ir.facts.SourceResolution", "parent_id": "facts",
-         "responsibilities": ["Own the three source-resolution states."]},
-        {**intent, "id": "model", "kind": "module", "qualified_name": "archkeel.ir.model",
-         "parent_id": "core", "responsibilities": ["Own report values."]},
-        {**intent, "id": "call-row", "kind": "class",
-         "qualified_name": "archkeel.ir.model.CallRow", "parent_id": "model",
-         "responsibilities": ["Carry calls that lack a unique proven target."]},
-        {**intent, "id": "call-status", "kind": "attribute",
-         "qualified_name": "archkeel.ir.model.CallRow.status", "parent_id": "call-row",
-         "annotation": "CallStatus", "visibility": {"kind": "public", "basis": "declared"},
-         "responsibilities": ["Retain the unresolved and partially resolved subset."]},
+        {
+            **intent,
+            "id": "facts",
+            "kind": "module",
+            "qualified_name": "archkeel.ir.facts",
+            "parent_id": "core",
+            "responsibilities": ["Own source fact vocabulary."],
+        },
+        {
+            **intent,
+            "id": "resolution",
+            "kind": "enum",
+            "qualified_name": "archkeel.ir.facts.SourceResolution",
+            "parent_id": "facts",
+            "responsibilities": ["Own the three source-resolution states."],
+        },
+        {
+            **intent,
+            "id": "model",
+            "kind": "module",
+            "qualified_name": "archkeel.ir.model",
+            "parent_id": "core",
+            "responsibilities": ["Own report values."],
+        },
+        {
+            **intent,
+            "id": "call-row",
+            "kind": "class",
+            "qualified_name": "archkeel.ir.model.CallRow",
+            "parent_id": "model",
+            "responsibilities": ["Carry calls that lack a unique proven target."],
+        },
+        {
+            **intent,
+            "id": "call-status",
+            "kind": "attribute",
+            "qualified_name": "archkeel.ir.model.CallRow.status",
+            "parent_id": "call-row",
+            "annotation": "CallStatus",
+            "visibility": {"kind": "public", "basis": "declared"},
+            "responsibilities": ["Retain the unresolved and partially resolved subset."],
+        },
     ]
     contract = {
         "schema_version": "3.5.0",
-        "components": [{
-            "id": "core", "label": "Core", "role": "component",
-            "packages": ["archkeel.ir", "archkeel.analyzer"],
-            "responsibilities": ["Own immutable source facts and typed producer ports."],
-            "forbidden_responsibilities": [], "provenance": ["docs/target.md"],
-        }],
-        "rules": [{
-            "id": GUARD, "kind": "forbidden_construct",
-            "source": "archkeel.analyzer.python.resolve",
-            "constructs": ["string_literal_compare"],
-            "rationale": "Source-resolution producer dispatch uses its nominal domain.",
-            "decided_by": "architect", "provenance": ["docs/target.md"],
-        }],
-        "declarations": {"uml": {
-            "schema_version": "1.0.0", "entities": entities, "relationships": [], "scopes": [],
-        }},
+        "components": [
+            {
+                "id": "core",
+                "label": "Core",
+                "role": "component",
+                "packages": ["archkeel.ir", "archkeel.analyzer"],
+                "responsibilities": ["Own immutable source facts and typed producer ports."],
+                "forbidden_responsibilities": [],
+                "provenance": ["docs/target.md"],
+            }
+        ],
+        "rules": [
+            {
+                "id": GUARD,
+                "kind": "forbidden_construct",
+                "source": "archkeel.analyzer.python.resolve",
+                "constructs": ["string_literal_compare"],
+                "rationale": "Source-resolution producer dispatch uses its nominal domain.",
+                "decided_by": "architect",
+                "provenance": ["docs/target.md"],
+            }
+        ],
+        "declarations": {
+            "uml": {
+                "schema_version": "1.0.0",
+                "entities": entities,
+                "relationships": [],
+                "scopes": [],
+            }
+        },
     }
     files["contract.json"] = json.dumps(contract)
     root = _prepare_repo(tmp_path, files)
