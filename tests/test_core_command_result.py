@@ -129,7 +129,8 @@ def _contract():
         row
         for row in contract["declarations"]["uml"]["entities"]
         if row["id"].startswith("IR-RESULT-")
-        or row["id"] in {"IR-DEPENDENCY-model", "IR-GRAPH-RunResult", "IR-GRAPH-RunResult.declared_rules"}
+        or row["id"]
+        in {"IR-DEPENDENCY-model", "IR-GRAPH-RunResult", "IR-GRAPH-RunResult.declared_rules"}
     ]
     contract["declarations"]["uml"]["relationships"] = []
     contract["declarations"]["uml"]["scopes"] = []
@@ -247,6 +248,7 @@ def test_result_declared_rules_rejects_values_outside_its_closed_domain(invalid)
     with pytest.raises(ValueError):
         model.RunResult("report", 0, declared_rules=invalid)
 
+
 RESULT_GUARDS = {
     "IR-RESULT-ASSESSMENT-CONTROL": "archkeel.ir.model.RunResult",
     "RENDER-RULE-LEGEND-CONTROL": "archkeel.render.html._atlas_rule_status_cards",
@@ -260,9 +262,9 @@ def _owned_result_rules():
     return [
         rule
         for name in ("ir", "render")
-        for rule in json.loads(
-            (ROOT / f"docs/architecture/contracts/{name}.json").read_text()
-        )["rules"]
+        for rule in json.loads((ROOT / f"docs/architecture/contracts/{name}.json").read_text())[
+            "rules"
+        ]
         if rule["id"] in RESULT_GUARDS
     ]
 
@@ -331,9 +333,7 @@ def test_native_actual_result_control_owners_reject_literal_regressions(
     module, name = owner.rsplit(".", 1)
     source = root.joinpath(*module.split(".")).with_suffix(".py")
     content = source.read_text()
-    member = next(
-        node for node in ast.parse(content).body if getattr(node, "name", None) == name
-    )
+    member = next(node for node in ast.parse(content).body if getattr(node, "name", None) == name)
     if isinstance(member, ast.ClassDef):
         member = next(
             node for node in member.body if getattr(node, "name", None) == "__post_init__"
