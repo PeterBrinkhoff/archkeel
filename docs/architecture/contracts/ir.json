@@ -11009,6 +11009,84 @@
           "responsibilities": [
             "Retain the canonical nominal component-pair permission state."
           ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/host-event-types.md"
+          ],
+          "id": "IR-HOST-module",
+          "kind": "module",
+          "qualified_name": "archkeel.ir.host_records",
+          "parent_id": "TARGET-GOVERNANCE",
+          "responsibilities": [
+            "Own replayable host evidence and its ordering vocabulary."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/host-event-types.md"
+          ],
+          "id": "IR-HOST-event",
+          "kind": "enum",
+          "qualified_name": "archkeel.ir.host_records.HostEvent",
+          "parent_id": "IR-HOST-module",
+          "responsibilities": [
+            "Own the closed expectation publication and candidate submission replay events."
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          }
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/host-event-types.md"
+          ],
+          "id": "IR-HOST-record",
+          "kind": "class",
+          "qualified_name": "archkeel.ir.host_records.HostRecord",
+          "parent_id": "IR-HOST-module",
+          "responsibilities": [
+            "Retain legacy replay fields and expose their typed ordering meaning."
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          }
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/host-event-types.md"
+          ],
+          "id": "IR-HOST-ordering-event",
+          "kind": "method",
+          "qualified_name": "archkeel.ir.host_records.HostRecord.ordering_event",
+          "parent_id": "IR-HOST-record",
+          "responsibilities": [
+            "Validate the legacy replay event when ordering consumes its closed meaning."
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "signature": {
+            "parameters": [
+              {
+                "name": "self",
+                "kind": "positional",
+                "default_known": true
+              }
+            ],
+            "returns": "HostEvent"
+          }
         }
       ],
       "relationships": [
