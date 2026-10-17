@@ -313,7 +313,8 @@ def test_native_placement_is_an_exact_source_owner_not_an_adapter_namespace(tmp_
         assert not violations
         return
     found = [
-        row for row in violations
+        row
+        for row in violations
         if row.data.get("qualified_name") == "archkeel.analyzer.python.unrelated.Unrelated"
     ]
     assert len(found) == 1 and found[0].rule_ids == ("TYPES-ENUM-IN-MODEL",)
