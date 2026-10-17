@@ -25,6 +25,7 @@ from archkeel.ir.model import (
     UmlEligibility,
     stable_id,
 )
+from archkeel.ir.model import DiagnosticKind as _DiagnosticKind
 from archkeel.ir.source_graph import (
     MEMBER_INVENTORY_PROOF,
     observed_graph,
@@ -314,7 +315,7 @@ def evaluate_uml(result: ObservationResult) -> ObservationResult:
             diagnostics=(
                 *result.diagnostics,
                 Diagnostic(
-                    "parse_error",
+                    _DiagnosticKind.PARSE_ERROR,
                     model.contract.path,
                     f"UML comparison cannot be established: {error}",
                     "Repair the recorded facts or intent and repeat the observation.",

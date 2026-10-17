@@ -29,6 +29,7 @@ from archkeel.ir.model import (
     in_scope,
     text_value,
 )
+from archkeel.ir.model import DiagnosticCode as _DiagnosticCode
 
 from .diagnostics import _diagnostic
 
@@ -401,7 +402,7 @@ def _public_entry_diagnostics(
         ):
             diagnostics.append(
                 _diagnostic(
-                    "interface.usage_unknown",
+                    _DiagnosticCode.INTERFACE_USAGE_UNKNOWN,
                     f"{pointer_root}/{index}/public/{item}",
                     entry,
                     "An unproven publication or inherited signature may expose this public entry.",
@@ -418,7 +419,7 @@ def _public_entry_diagnostics(
         else:
             diagnostics.append(
                 _diagnostic(
-                    "interface.unused",
+                    _DiagnosticCode.INTERFACE_UNUSED,
                     f"{pointer_root}/{index}/public/{item}",
                     entry,
                     "No cross-component import and no declared facade signature "
@@ -433,7 +434,7 @@ def _missing_public_entry(pointer: str, entry: str, modules: frozenset[str]) -> 
     if _entry_module(entry) in modules:
         return None
     return _diagnostic(
-        "interface.missing",
+        _DiagnosticCode.INTERFACE_MISSING,
         pointer,
         entry,
         "The public entry's module has not been scanned; it does not exist yet.",
@@ -456,7 +457,7 @@ def _planned_entry_diagnostics(
     """
     return [
         _diagnostic(
-            "interface.planned_built",
+            _DiagnosticCode.INTERFACE_PLANNED_BUILT,
             f"{pointer_root}/{index}/planned/{item}",
             entry,
             "The planned entry's module has been scanned; it is no longer planned.",
@@ -506,7 +507,7 @@ def _public_api_entry_diagnostics(
     if module not in modules:
         return [
             _diagnostic(
-                "api_surface.missing",
+                _DiagnosticCode.API_SURFACE_MISSING,
                 pointer,
                 entry,
                 "The declared public API entry's module has not been scanned; "
@@ -517,7 +518,7 @@ def _public_api_entry_diagnostics(
     if name and (exported := exports.get(module)) is not None and name not in exported:
         return [
             _diagnostic(
-                "api_surface.missing",
+                _DiagnosticCode.API_SURFACE_MISSING,
                 pointer,
                 entry,
                 "The module declares __all__ and the promised name is not in it.",
@@ -526,7 +527,7 @@ def _public_api_entry_diagnostics(
         ]
     return [
         _diagnostic(
-            "api_surface.missing",
+            _DiagnosticCode.API_SURFACE_MISSING,
             pointer,
             entry,
             f"{entry} exposes {leaked.rpartition(':')[2]}, which declarations.public_api "
@@ -596,7 +597,7 @@ def _compatibility_import_diagnostics(
     ):
         diagnostics.append(
             _diagnostic(
-                "compatibility.invalid",
+                _DiagnosticCode.COMPATIBILITY_INVALID,
                 pointer,
                 shim.module,
                 "The compatibility module has no observed import of its declared target.",
@@ -618,7 +619,7 @@ def _compatibility_import_diagnostics(
         ):
             diagnostics.append(
                 _diagnostic(
-                    "compatibility.invalid",
+                    _DiagnosticCode.COMPATIBILITY_INVALID,
                     pointer,
                     shim.module,
                     "Every compatibility export must resolve only to the declared target.",
@@ -633,7 +634,7 @@ def _compatibility_import_diagnostics(
     ):
         diagnostics.append(
             _diagnostic(
-                "compatibility.invalid",
+                _DiagnosticCode.COMPATIBILITY_INVALID,
                 pointer,
                 shim.module,
                 "Product code imports a compatibility module.",
@@ -661,7 +662,7 @@ def compatibility_diagnostics(
         if facts is None:
             diagnostics.append(
                 _diagnostic(
-                    "compatibility.invalid",
+                    _DiagnosticCode.COMPATIBILITY_INVALID,
                     pointer,
                     shim.module,
                     "The declared compatibility module was not scanned.",
@@ -677,7 +678,7 @@ def compatibility_diagnostics(
         ):
             diagnostics.append(
                 _diagnostic(
-                    "compatibility.invalid",
+                    _DiagnosticCode.COMPATIBILITY_INVALID,
                     pointer,
                     shim.module,
                     "A compatibility module must contain only imports and a literal __all__.",
@@ -687,7 +688,7 @@ def compatibility_diagnostics(
         if shim.target not in modules:
             diagnostics.append(
                 _diagnostic(
-                    "compatibility.invalid",
+                    _DiagnosticCode.COMPATIBILITY_INVALID,
                     pointer,
                     shim.target,
                     "The declared compatibility target was not scanned.",
@@ -726,7 +727,7 @@ def interface_diagnostics(
             if records:
                 diagnostics.append(
                     _diagnostic(
-                        "interface.undeclared",
+                        _DiagnosticCode.INTERFACE_UNDECLARED,
                         f"/components/{index}",
                         component.label,
                         "The component receives cross-component imports but declares "
@@ -771,7 +772,7 @@ def interface_budget_diagnostics(
         if report_exceeded and item.over_target:
             diagnostics.append(
                 _diagnostic(
-                    "budget.exceeded",
+                    _DiagnosticCode.BUDGET_EXCEEDED,
                     item.pointer,
                     item.subject,
                     f"{counted}, {item.over_target} over max_names {item.max_names}: "
@@ -782,7 +783,7 @@ def interface_budget_diagnostics(
         elif item.uncounted:
             diagnostics.append(
                 _diagnostic(
-                    "budget.unknown",
+                    _DiagnosticCode.BUDGET_UNKNOWN,
                     item.pointer,
                     item.subject,
                     f"{counted} against max_names {item.max_names}; not enumerated: "

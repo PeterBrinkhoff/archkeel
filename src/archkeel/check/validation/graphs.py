@@ -8,6 +8,7 @@ from __future__ import annotations
 import re
 
 from archkeel.ir.model import ArchitectureContract, Diagnostic, Observation
+from archkeel.ir.model import DiagnosticCode as _DiagnosticCode
 
 from .closed_world import observed_component_edges, target_component_edges
 from .diagnostics import _diagnostic
@@ -263,7 +264,7 @@ def _marker_diagnostics(
     if len(graphs) != 1:
         return (
             _diagnostic(
-                "graph.count",
+                _DiagnosticCode.GRAPH_COUNT,
                 "/components",
                 f"architecture {noun} graph",
                 f"Expected one marked Mermaid {noun} graph, found {len(graphs)}.",
@@ -280,7 +281,7 @@ def _marker_diagnostics(
     gone_edges = ", ".join(f"{a}->{b}" for a, b in sorted(declared - edges)) or "none"
     return (
         _diagnostic(
-            "graph.drift",
+            _DiagnosticCode.GRAPH_DRIFT,
             "/components",
             f"{path} ({noun} graph)",
             f"The marked {noun} graph differs from {claim_source}; "
