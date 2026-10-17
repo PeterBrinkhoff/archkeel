@@ -792,9 +792,10 @@
         "archkeel.check.runtime",
         "archkeel.ir.contract_version",
         "archkeel.cli.arguments",
-        "archkeel.cli.skill"
+        "archkeel.cli.skill",
+        "archkeel.analyzer.python.binding_types"
       ],
-      "rationale": "Each closed vocabulary belongs to its domain or wire boundary: shared state and source facts own domain controls; codecs own private wire tags and consumers use published nominal types. Contract versions and feature availability belong to contract_version.",
+      "rationale": "Each closed vocabulary belongs to its domain or wire boundary: shared state and source facts own domain controls; codecs own private wire tags and consumers use published nominal types. Contract versions and feature availability belong to contract_version. The Python Source binding model owns import, lexical binding and compiler-scope control types.",
       "provenance": [
         "docs/architecture/archkeel.md"
       ],
@@ -1064,6 +1065,19 @@
       "rationale": "Version and feature control uses the owned nominal API, with no parser or constant-string exemption.",
       "provenance": [
         "docs/architecture/contract-version-types.md"
+      ],
+      "decided_by": "architect"
+    },
+    {
+      "id": "PYTHON-BINDINGS-TYPED-CONTROL",
+      "kind": "forbidden_construct",
+      "source": "archkeel.analyzer.python.binding_types",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "The Python binding model owns nominal controls and decodes compiler protocol values without raw-string dispatch. Other Python grammar modules remain pending.",
+      "provenance": [
+        "docs/architecture/typed-python-bindings.md"
       ],
       "decided_by": "architect"
     }
