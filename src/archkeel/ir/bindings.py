@@ -14,6 +14,7 @@ not establish that removal is safe.
 
 from __future__ import annotations
 
+import builtins as _builtins
 from dataclasses import dataclass
 
 from .model import FUNCTION_KINDS, ComparisonStatus, Observation, text_value
@@ -39,7 +40,9 @@ class BindingReads:
     candidates: tuple[UnreadBinding, ...] = ()
 
     def __post_init__(self) -> None:
-        if self.status == "UNKNOWN" and (self.functions or self.candidates):
+        if not isinstance(self.status, ComparisonStatus):
+            _builtins.object.__setattr__(self, "status", ComparisonStatus(self.status))
+        if self.status is ComparisonStatus.UNKNOWN and (self.functions or self.candidates):
             raise ValueError("an unsupported claim names no binding")
 
 
@@ -48,7 +51,7 @@ def unread_bindings(observation: Observation) -> BindingReads:
     records = observation.records("bindings")
     profile = profile_for(observation.analyzer.name)
     if records is None or not profile.complete_unread_binding_inventory:
-        return BindingReads("UNKNOWN")
+        return BindingReads(ComparisonStatus.UNKNOWN)
     functions = sum(
         1 for record in observation.records("symbols") or () if record.kind in FUNCTION_KINDS
     )
@@ -66,4 +69,4 @@ def unread_bindings(observation: Observation) -> BindingReads:
             key=lambda item: (item.owner, item.name),
         )
     )
-    return BindingReads("SUPPORTED", functions=functions, candidates=candidates)
+    return BindingReads(ComparisonStatus.SUPPORTED, functions=functions, candidates=candidates)

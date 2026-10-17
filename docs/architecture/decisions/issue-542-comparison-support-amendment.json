@@ -1,0 +1,9 @@
+{
+  "after_baseline_digest": "ce0214aa53088d46512d9c71a8fe5fe51597afadb50bd8e5b6629be012533ef7",
+  "after_digest": "34e3910c1b30ee76868dfb1a8564bb9c300a9ca74eeca587ae4500dba1bf368f",
+  "before_baseline_digest": "ce0214aa53088d46512d9c71a8fe5fe51597afadb50bd8e5b6629be012533ef7",
+  "before_digest": "dab25d75835c23eeb498f3d9c9c7c33e7c940917f3a9e33764b075aeb0c0c7ba",
+  "decided_by": "ake2l (explicit parser/protocol typing request); Codex implementation, independent Astra review before merge",
+  "rationale": "Own the shared support-availability domain at its existing model, seven DTO and five claim producer boundaries; convert actual Delta ingress once, preserve legacy bytes and open extension data without allowance changes; docs/architecture/comparison-support-types.md.",
+  "schema_version": "2.0.0"
+}
