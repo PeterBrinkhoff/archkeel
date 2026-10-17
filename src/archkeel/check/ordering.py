@@ -8,9 +8,11 @@ from __future__ import annotations
 from datetime import datetime
 
 from archkeel.ir.host_records import (
+    HostEvent,
     HostRecord,
     InitialPRHeadEvidence,
     OrderingError,
+    parse_event,
     parse_timestamp,
     validate_sha,
 )
@@ -40,11 +42,12 @@ def check_order(
         if not isinstance(record, HostRecord):
             raise OrderingError("host record is invalid")
         when = parse_timestamp(record.timestamp)
-        if record.event == "expectation_published":
+        event = parse_event(record.event)
+        if event is HostEvent.EXPECTATION_PUBLISHED:
             if record.sha != expectation_sha:
                 raise OrderingError("expectation publication SHA does not match")
             published.append(when)
-        elif record.event == "candidate_submitted":
+        elif event is HostEvent.CANDIDATE_SUBMITTED:
             if record.sha != candidate_sha:
                 raise OrderingError("candidate submission SHA does not match")
             submitted.append(when)
