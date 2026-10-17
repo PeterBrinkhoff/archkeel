@@ -76,8 +76,8 @@ from archkeel.ir.command_view import (
 )
 from archkeel.ir.decisions import rule_assessment_applies_to_component
 from archkeel.ir.dependency import DependencyOwner, DependencySelector
-from archkeel.ir.facts import Record
 from archkeel.ir.facts import EvidenceClass as _EvidenceClass
+from archkeel.ir.facts import Record
 from archkeel.ir.model import (
     RULE_KINDS,
     Diagnostic,

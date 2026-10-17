@@ -25,8 +25,8 @@ from archkeel.ir.graph_codec import (
     parse_public_api_entry,
     parse_target,
 )
-from archkeel.ir.model import Observation, Record, RecordData, stable_id
 from archkeel.ir.model import EvidenceClass as _EvidenceClass
+from archkeel.ir.model import Observation, Record, RecordData, stable_id
 from archkeel.ir.target_graph import component_permissions, intent_graph
 
 
