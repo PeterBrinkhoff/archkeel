@@ -148,11 +148,16 @@ def test_proven_imported_literal_constants_have_native_failure(tmp_path, express
         },
     )
     assert result.diagnostics == () and result.observation is not None
-    assert len([
-        row
-        for row in result.observation.records("constructs")
-        if row.kind == "string_literal_compare"
-    ]) == 1
+    assert (
+        len(
+            [
+                row
+                for row in result.observation.records("constructs")
+                if row.kind == "string_literal_compare"
+            ]
+        )
+        == 1
+    )
     assert [(row.kind, row.rule_ids) for row in trace_valid_violations(result.observation)] == [
         ("forbidden_construct", ("RULE",))
     ]
@@ -373,14 +378,25 @@ def test_native_simple_enum_retains_literal_value_evidence(tmp_path, base):
         ("import sample.cli as vocabulary\n", "value == vocabulary.Token.IMPORT.value", "compare"),
         ("from .cli import Token\n", "Token.IMPORT.value in value", "membership"),
         ("from sample.bridge import Token\n", "value == Token.IMPORT.value", "compare"),
-        ("import sample.bridge as vocabulary\n", "value == vocabulary.Token.IMPORT.value", "compare"),
+        (
+            "import sample.bridge as vocabulary\n",
+            "value == vocabulary.Token.IMPORT.value",
+            "compare",
+        ),
         ("from sample.cli import Token\n", "value in (Token.IMPORT.value,)", "membership"),
         ("from sample.cli import Token\n", "value.startswith(Token.IMPORT.value)", "startswith"),
         ("from sample.cli import Token\n", "value.endswith((Token.IMPORT.value,))", "endswith"),
     ],
     ids=[
-        "symbol", "symbol-alias", "module-alias", "relative", "stable-reexport",
-        "module-reexport", "membership", "prefix", "suffix",
+        "symbol",
+        "symbol-alias",
+        "module-alias",
+        "relative",
+        "stable-reexport",
+        "module-reexport",
+        "membership",
+        "prefix",
+        "suffix",
     ],
 )
 def test_imported_enum_value_leaf_reaches_native_scoped_policy(tmp_path, prefix, expression, form):
@@ -395,7 +411,8 @@ def test_imported_enum_value_leaf_reaches_native_scoped_policy(tmp_path, prefix,
     )
     assert not result.diagnostics and result.observation is not None
     records = [
-        row for row in result.observation.records("constructs")
+        row
+        for row in result.observation.records("constructs")
         if row.kind == "string_literal_compare"
     ]
     assert [row.data.get("form") for row in records] == [form]
@@ -407,25 +424,36 @@ def test_imported_enum_value_leaf_reaches_native_scoped_policy(tmp_path, prefix,
 @pytest.mark.parametrize(
     "body,form",
     [
-        ("def parse(value):\n    match value:\n        case Token.IMPORT.value:\n"
-         "            return True\n        case _:\n            return False\n", "match"),
-        ("TOKENS = {Token.IMPORT.value}\ndef parse(value):\n    return value in TOKENS\n",
-         "membership"),
-        ("TOKENS = [Token.IMPORT.value]\ndef parse(value):\n    return value in TOKENS\n",
-         "membership"),
-        ("TOKENS = (Token.IMPORT.value,)\ndef parse(value):\n    return value.startswith(TOKENS)\n",
-         "startswith"),
+        (
+            "def parse(value):\n    match value:\n        case Token.IMPORT.value:\n"
+            "            return True\n        case _:\n            return False\n",
+            "match",
+        ),
+        (
+            "TOKENS = {Token.IMPORT.value}\ndef parse(value):\n    return value in TOKENS\n",
+            "membership",
+        ),
+        (
+            "TOKENS = [Token.IMPORT.value]\ndef parse(value):\n    return value in TOKENS\n",
+            "membership",
+        ),
+        (
+            "TOKENS = (Token.IMPORT.value,)\ndef parse(value):\n    return value.startswith(TOKENS)\n",
+            "startswith",
+        ),
         ("def parse(value):\n    tag = Token.IMPORT.value\n    return value == tag\n", "compare"),
     ],
 )
 def test_imported_value_cannot_hide_in_existing_literal_forms(tmp_path, body, form):
     result = _observe_one_rule(
-        tmp_path, RULE,
+        tmp_path,
+        RULE,
         {"core.py": "from sample.cli import Token\n" + body, "cli.py": ENUM},
     )
     assert not result.diagnostics and result.observation is not None
     records = [
-        row for row in result.observation.records("constructs")
+        row
+        for row in result.observation.records("constructs")
         if row.kind == "string_literal_compare"
     ]
     assert [row.data.get("form") for row in records] == [form]
@@ -435,42 +463,75 @@ def test_imported_value_cannot_hide_in_existing_literal_forms(tmp_path, body, fo
 @pytest.mark.parametrize(
     "provider,prefix,body",
     [
-        ('class Token:\n    IMPORT = "import"\n', "from sample.cli import Token\n",
-         "return value == Token.IMPORT.value"),
-        ('from enum import IntEnum\nclass Token(IntEnum):\n    IMPORT = "1"\n',
-         "from sample.cli import Token\n", "return value == Token.IMPORT.value"),
-        ("from enum import Enum\nclass Token(Enum):\n"
-         '    IMPORT = "import"\n    @property\n    def value(self):\n        return 1\n',
-         "from sample.cli import Token\n", "return value == Token.IMPORT.value"),
-        ("from enum import Enum\n@change\nclass Token(Enum):\n"
-         '    IMPORT = "import"\n', "from sample.cli import Token\n",
-         "return value == Token.IMPORT.value"),
+        (
+            'class Token:\n    IMPORT = "import"\n',
+            "from sample.cli import Token\n",
+            "return value == Token.IMPORT.value",
+        ),
+        (
+            'from enum import IntEnum\nclass Token(IntEnum):\n    IMPORT = "1"\n',
+            "from sample.cli import Token\n",
+            "return value == Token.IMPORT.value",
+        ),
+        (
+            "from enum import Enum\nclass Token(Enum):\n"
+            '    IMPORT = "import"\n    @property\n    def value(self):\n        return 1\n',
+            "from sample.cli import Token\n",
+            "return value == Token.IMPORT.value",
+        ),
+        (
+            'from enum import Enum\n@change\nclass Token(Enum):\n    IMPORT = "import"\n',
+            "from sample.cli import Token\n",
+            "return value == Token.IMPORT.value",
+        ),
         (ENUM, "from external import Token\n", "return value == Token.IMPORT.value"),
-        (ENUM, "from sample.cli import Token\nToken = other\n",
-         "return value == Token.IMPORT.value"),
-        (ENUM, "import sample.cli as vocabulary\nvocabulary = other\n",
-         "return value == vocabulary.Token.IMPORT.value"),
-        (ENUM, "if condition:\n    from sample.cli import Token\n",
-         "return value == Token.IMPORT.value"),
+        (
+            ENUM,
+            "from sample.cli import Token\nToken = other\n",
+            "return value == Token.IMPORT.value",
+        ),
+        (
+            ENUM,
+            "import sample.cli as vocabulary\nvocabulary = other\n",
+            "return value == vocabulary.Token.IMPORT.value",
+        ),
+        (
+            ENUM,
+            "if condition:\n    from sample.cli import Token\n",
+            "return value == Token.IMPORT.value",
+        ),
         (ENUM, "from sample.cli import Token\n", "return value is Token.IMPORT"),
         (ENUM, "from sample.cli import Token\n", "return Token.IMPORT.value"),
-        (ENUM, "from sample.cli import Token\n",
-         "TOKENS = {Token.IMPORT.value}\n    TOKENS.add(value)\n    return value in TOKENS"),
+        (
+            ENUM,
+            "from sample.cli import Token\n",
+            "TOKENS = {Token.IMPORT.value}\n    TOKENS.add(value)\n    return value in TOKENS",
+        ),
     ],
     ids=[
-        "non-enum", "intenum", "custom-value", "decorated", "unscanned",
-        "rebound-symbol", "rebound-module", "conditional-import", "enum-identity",
-        "wire-serialization", "mutated-local-set",
+        "non-enum",
+        "intenum",
+        "custom-value",
+        "decorated",
+        "unscanned",
+        "rebound-symbol",
+        "rebound-module",
+        "conditional-import",
+        "enum-identity",
+        "wire-serialization",
+        "mutated-local-set",
     ],
 )
 def test_imported_value_observation_does_not_guess_runtime_types(tmp_path, provider, prefix, body):
     result = _observe_one_rule(
-        tmp_path, RULE,
+        tmp_path,
+        RULE,
         {"core.py": prefix + "def parse(value):\n    " + body + "\n", "cli.py": provider},
     )
     assert not result.diagnostics and result.observation is not None
     assert not [
-        row for row in result.observation.records("constructs")
+        row
+        for row in result.observation.records("constructs")
         if row.kind == "string_literal_compare"
     ]
     assert not trace_valid_violations(result.observation)
@@ -478,7 +539,8 @@ def test_imported_value_observation_does_not_guess_runtime_types(tmp_path, provi
 
 def test_imported_value_named_collection_escape_is_not_a_literal_proof(tmp_path):
     result = _observe_one_rule(
-        tmp_path, RULE,
+        tmp_path,
+        RULE,
         {
             "core.py": "from sample.cli import Token\nTOKENS = {Token.IMPORT.value}\n"
             "other = TOKENS\nother.clear()\ndef parse(value):\n    return value in TOKENS\n",
@@ -487,4 +549,83 @@ def test_imported_value_named_collection_escape_is_not_a_literal_proof(tmp_path)
     )
     assert not result.diagnostics and result.observation is not None
     assert not result.observation.records("constructs")
+    assert not trace_valid_violations(result.observation)
+
+
+@pytest.mark.parametrize(
+    "prefix,expression",
+    [
+        ("from sample.facade import Token as Event\n", "value == Event.IMPORT.value"),
+        ("import sample.facade as vocabulary\n", "value == vocabulary.Token.IMPORT.value"),
+    ],
+)
+def test_transitive_import_value_routes_keep_the_canonical_provider(tmp_path, prefix, expression):
+    result = _observe_one_rule(
+        tmp_path,
+        RULE,
+        {
+            "core.py": prefix + f"def parse(value):\n    return {expression}\n",
+            "cli.py": ENUM,
+            "bridge.py": 'from sample.cli import Token\n__all__ = ["Token"]\n',
+            "facade.py": 'from sample.bridge import Token\n__all__ = ["Token"]\n',
+        },
+    )
+    assert not result.diagnostics and result.observation is not None
+    assert [row.subjects for row in trace_valid_violations(result.observation)] == [
+        ("sample.core.parse",)
+    ]
+
+
+@pytest.mark.parametrize(
+    "prefix,expression",
+    [
+        ("from sample.cli import TOKEN as WORD\n", "value == WORD"),
+        ("import sample.cli as words\n", "value != words.TOKEN"),
+        ("from sample.bridge import TOKEN\n", "TOKEN in value"),
+        ("from sample.cli import Words\n", "value == Words.IMPORT"),
+    ],
+)
+def test_imported_scalar_leaves_reuse_the_existing_literal_provider_proof(
+    tmp_path, prefix, expression
+):
+    result = _observe_one_rule(
+        tmp_path,
+        RULE,
+        {
+            "core.py": prefix + f"def parse(value):\n    return {expression}\n",
+            "cli.py": 'TOKEN = b"import"\nclass Words:\n    IMPORT = "import"\n',
+            "bridge.py": 'from sample.cli import TOKEN\n__all__ = ["TOKEN"]\n',
+        },
+    )
+    assert not result.diagnostics and result.observation is not None
+    assert len(trace_valid_violations(result.observation)) == 1
+
+
+@pytest.mark.parametrize(
+    "provider",
+    [
+        ENUM + "Token = other\n",
+        ENUM.replace("class Token", "ProtocolEnum = other\nclass Token"),
+        ENUM.replace('IMPORT = "import"', 'IMPORT = "im" + "port"'),
+        "if condition:\n    from enum import Enum\n"
+        '    class Token(Enum):\n        IMPORT = "import"\n',
+    ],
+    ids=["rebound-provider", "rebound-stdlib-base", "computed-member", "conditional-class"],
+)
+def test_module_alias_does_not_turn_an_unproven_provider_into_an_enum(tmp_path, provider):
+    result = _observe_one_rule(
+        tmp_path,
+        RULE,
+        {
+            "core.py": "import sample.cli as vocabulary\n"
+            "def parse(value):\n    return value == vocabulary.Token.IMPORT.value\n",
+            "cli.py": provider,
+        },
+    )
+    assert not result.diagnostics and result.observation is not None
+    assert not [
+        row
+        for row in result.observation.records("constructs")
+        if row.kind == "string_literal_compare"
+    ]
     assert not trace_valid_violations(result.observation)

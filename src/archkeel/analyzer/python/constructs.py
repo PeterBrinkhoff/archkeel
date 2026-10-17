@@ -457,7 +457,10 @@ class ConstructCollector(ast.NodeVisitor):
     """Walk one module, recording each construct under the scope that owns it."""
 
     def __init__(
-        self, module: ParsedModule, evidence: dict[str, RawEvidence], comparisons: _LiteralComparisons
+        self,
+        module: ParsedModule,
+        evidence: dict[str, RawEvidence],
+        comparisons: _LiteralComparisons,
     ) -> None:
         self.module = module
         self.evidence = evidence

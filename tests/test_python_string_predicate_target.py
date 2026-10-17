@@ -76,6 +76,7 @@ def test_actual_predicate_enum_and_decoder_satisfy_independent_native_target(tmp
     [
         ("class _StringPredicate(Enum):", "class _StringPredicate:"),
         ("imports: Sequence[RawRecord] = (),", "imports: Sequence[str] = (),"),
+        (") -> list[RawRecord]:", ") -> list[str]:"),
         ("-> _StringPredicate | None:", "-> str | None:"),
         (
             "def _predicate_matches(literals: _LiteralComparisons, node: ast.expr) -> bool:",
@@ -86,7 +87,14 @@ def test_actual_predicate_enum_and_decoder_satisfy_independent_native_target(tmp
             "def _predicate_matches(literals: _LiteralComparisons, node: ast.expr) -> str:",
         ),
     ],
-    ids=["enum-kind", "collector-imports", "nominal-return", "query-context", "query-result"],
+    ids=[
+        "enum-kind",
+        "collector-imports",
+        "collector-result",
+        "nominal-return",
+        "query-context",
+        "query-result",
+    ],
 )
 def test_actual_decoder_type_widening_fails_fixed_native_target(tmp_path, old, new):
     source = (ROOT / SOURCE).read_text()
