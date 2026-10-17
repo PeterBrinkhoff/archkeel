@@ -51,7 +51,7 @@ pr-test:
 		tests/test_typescript_namespace_identities.py \
 		tests/test_result_schema.py \
 		tests/test_dart_parse.py tests/test_dart_snapshot.py tests/test_dart_resolve.py \
-		tests/test_dart_typed_controls.py \
+		tests/test_dart_typed_controls.py tests/test_dart_local_callable_shadowing.py \
 		tests/test_dart_sdk_free.py tests/test_dart_inner_collect.py tests/test_dart_target.py \
 		tests/test_dart_uml_acceptance.py::test_checkout_cli_report_fulfills_independent_target \
 		tests/test_dart_unknowns.py::test_no_show_import_hiding_a_real_crossing_is_unknown_not_pass \
