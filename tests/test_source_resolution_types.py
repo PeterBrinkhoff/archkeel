@@ -264,9 +264,7 @@ def test_native_source_resolution_return_weakening_fails_unchanged_authored_targ
     path.write_text(source)
     authored = (root / "contract.json").read_bytes()
     comparison = architecture_report(_model(root, config)).comparison
-    subject = (
-        "PYTHON-SOURCE-RESOLUTION-producer" if producer else "IR-SOURCE-RESOLUTION-parse"
-    )
+    subject = "PYTHON-SOURCE-RESOLUTION-producer" if producer else "IR-SOURCE-RESOLUTION-parse"
     assert comparison is not None and any(
         row.status == "FAIL" and row.aspect == "signature" and row.subject_id == subject
         for row in comparison.assessments
