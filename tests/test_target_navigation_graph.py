@@ -71,6 +71,7 @@ def test_own_render_contract_enforces_output_direction(tmp_path, backward_import
                 "src/archkeel/render/summary.py",
                 {"report_violates_rules", "report_leaves_rules_undecided", "_decision_badge"},
             )
+            + "\n"
             + ("from . import html\n" if backward_importer == "summary" else "")
         ),
         # The full render contract also guards this real pure display owner.
