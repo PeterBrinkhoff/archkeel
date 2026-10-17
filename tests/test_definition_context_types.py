@@ -291,3 +291,34 @@ def test_native_actual_frame_widening_fails_unchanged_authored_port(tmp_path, ol
         for row in _comparison(observed).assessments
     )
     assert trace_valid_violations(observed)
+
+
+@pytest.mark.parametrize("unrelated", [False, True])
+def test_native_placement_is_an_exact_source_owner_not_an_adapter_namespace(tmp_path, unrelated):
+    text = (ROOT / "src/archkeel/analyzer/python/source.py").read_text()
+    root, config = _repository(tmp_path, text)
+    target_path = root / "contract.json"
+    target = json.loads(target_path.read_text())
+    policy = json.loads((ROOT / "architecture-contract.json").read_text())
+    target["rules"] = [row for row in policy["rules"] if row["id"] == "TYPES-ENUM-IN-MODEL"]
+    assert len(target["rules"]) == 1
+    target_path.write_text(json.dumps(target))
+    if unrelated:
+        (root / "archkeel/analyzer/python/unrelated.py").write_text(
+            "from enum import StrEnum\nclass Unrelated(StrEnum):\n    VALUE = 'value'\n"
+        )
+    model = _model(root, config)
+    violations = trace_valid_violations(model)
+    if not unrelated:
+        assert not violations
+        return
+    found = [
+        row for row in violations
+        if row.data.get("qualified_name") == "archkeel.analyzer.python.unrelated.Unrelated"
+    ]
+    assert len(found) == 1 and found[0].rule_ids == ("TYPES-ENUM-IN-MODEL",)
+    evidence = {row.id: row for row in model.evidence}
+    assert any(
+        evidence[item].file == "archkeel/analyzer/python/unrelated.py"
+        for item in found[0].evidence_ids
+    )
