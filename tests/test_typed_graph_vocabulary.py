@@ -199,14 +199,15 @@ def _repository(tmp_path):
         "from __future__ import annotations\nimport hashlib\nfrom dataclasses import dataclass\n"
         "from enum import StrEnum\nfrom typing import Literal, TypeAlias\n\n"
         + _source_members(
-            "src/archkeel/ir/facts.py", {
+            "src/archkeel/ir/facts.py",
+            {
                 "Evidence",
                 "Language",
                 "ParameterKind",
                 "DefinitionContextKind",
                 "DefinitionBranchKind",
                 "stable_id",
-            }
+            },
         )
     )
     model = (
