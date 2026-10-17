@@ -15,6 +15,8 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from tempfile import TemporaryDirectory
 
+from archkeel.ir.facts import Language
+
 _FULL_GIT_SHA = re.compile(r"^[0-9a-f]{40}$")
 _GLOB_SYNTAX = frozenset("*?[]{}!")
 _METADATA_PATH = PurePosixPath("pyproject.toml")
@@ -23,9 +25,9 @@ _TS_RESOLVER_SUFFIXES = frozenset(
     {".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs", ".json"}
 )
 _LANGUAGE_SUFFIXES = {
-    "python": frozenset({".py"}),
-    "dart": frozenset({".dart"}),
-    "typescript": frozenset({".ts", ".tsx", ".mts", ".cts"}),
+    Language.PYTHON: frozenset({".py"}),
+    Language.DART: frozenset({".dart"}),
+    Language.TYPESCRIPT: frozenset({".ts", ".tsx", ".mts", ".cts"}),
 }
 
 
@@ -86,13 +88,15 @@ def _git_archive_bytes(
     git_head: str,
     *,
     roots: tuple[PurePosixPath, ...],
-    language: str = "python",
+    language: Language = Language.PYTHON,
     tsconfig: str | None = None,
 ) -> bytes:
     """Build a tar from tree blobs; Git export attributes must not change evidence."""
-    if language not in _LANGUAGE_SUFFIXES:
-        raise SnapshotError(f"unsupported snapshot language: {language}")
-    metadata_path = _METADATA_PATH if language == "python" else _PUBSPEC_PATH
+    try:
+        language = Language(language)
+    except ValueError as exc:
+        raise SnapshotError(f"unsupported snapshot language: {language}") from exc
+    metadata_path = _METADATA_PATH if language is Language.PYTHON else _PUBSPEC_PATH
     try:
         completed = subprocess.run(
             ["git", "ls-tree", "-r", "-z", git_head],
@@ -106,13 +110,13 @@ def _git_archive_bytes(
                 if not entry:
                     continue
                 metadata, raw_path = entry.split(b"\t", 1)
-                if language == "typescript" and not (
+                if language is Language.TYPESCRIPT and not (
                     raw_path.endswith(tuple(suffix.encode() for suffix in _TS_RESOLVER_SUFFIXES))
                     or (tsconfig is not None and raw_path == tsconfig.encode())
                 ):
                     continue
                 if (
-                    language != "typescript"
+                    language is not Language.TYPESCRIPT
                     and raw_path != metadata_path.as_posix().encode()
                     and not (
                         raw_path.endswith(
@@ -133,9 +137,9 @@ def _git_archive_bytes(
                 )
                 resolver = (
                     path.suffix in _TS_RESOLVER_SUFFIXES or name == tsconfig
-                    if language == "typescript"
+                    if language is Language.TYPESCRIPT
                     else path == _PUBSPEC_PATH
-                    if language == "dart"
+                    if language is Language.DART
                     else path == _METADATA_PATH
                 )
                 if not scoped and not resolver:
@@ -172,12 +176,14 @@ def _materialize_archive(
     destination: Path,
     *,
     roots: tuple[str, ...],
-    language: str = "python",
+    language: Language = Language.PYTHON,
     tsconfig: str | None = None,
 ) -> None:
     """Extract scoped sources and commit-bound resolver inputs for one language."""
-    if language not in _LANGUAGE_SUFFIXES:
-        raise SnapshotError(f"unsupported snapshot language: {language}")
+    try:
+        language = Language(language)
+    except ValueError as exc:
+        raise SnapshotError(f"unsupported snapshot language: {language}") from exc
     validated_roots = _validated_roots(roots)
     scoped_files = 0
     seen: set[PurePosixPath] = set()
@@ -190,7 +196,7 @@ def _materialize_archive(
                 seen.add(path)
                 target = destination.joinpath(*path.parts)
                 if member.isdir():
-                    if language != "typescript" and not any(
+                    if language is not Language.TYPESCRIPT and not any(
                         path.is_relative_to(root) or root.is_relative_to(path)
                         for root in validated_roots
                     ):
@@ -200,15 +206,15 @@ def _materialize_archive(
                 is_scoped_source = path.suffix in _LANGUAGE_SUFFIXES[language] and any(
                     path.is_relative_to(root) for root in validated_roots
                 )
-                if language == "python":
+                if language is Language.PYTHON:
                     allowed_metadata = path == _METADATA_PATH
-                elif language == "dart":
+                elif language is Language.DART:
                     allowed_metadata = path == _PUBSPEC_PATH
                 else:
                     allowed_metadata = path.name in {"package.json", "tsconfig.json"} or (
                         tsconfig is not None and path.as_posix() == tsconfig
                     )
-                resolver_input = language == "typescript" and path.suffix in _TS_RESOLVER_SUFFIXES
+                resolver_input = language is Language.TYPESCRIPT and path.suffix in _TS_RESOLVER_SUFFIXES
                 if not member.isfile() or not (
                     is_scoped_source or allowed_metadata or resolver_input
                 ):
@@ -232,7 +238,7 @@ def materialize_git_snapshot(
     revision: str,
     *,
     roots: tuple[str, ...],
-    language: str = "python",
+    language: Language = Language.PYTHON,
     tsconfig: str | None = None,
 ) -> Iterator[ArchivedSnapshot]:
     """Yield a safely extracted language snapshot for one resolved commit."""

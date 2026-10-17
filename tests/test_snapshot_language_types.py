@@ -23,7 +23,8 @@ ROOT = Path(__file__).parents[1]
 
 
 @pytest.mark.parametrize(
-    "entry", [snapshot.materialize_git_snapshot, snapshot._git_archive_bytes, snapshot._materialize_archive]
+    "entry",
+    [snapshot.materialize_git_snapshot, snapshot._git_archive_bytes, snapshot._materialize_archive],
 )
 def test_snapshot_language_ports_use_the_one_facts_type(entry):
     assert get_type_hints(entry)["language"] is Language
@@ -65,12 +66,12 @@ def test_snapshot_enum_and_legacy_ingress_preserve_exact_committed_files(
 @pytest.mark.parametrize("language", ["", "Python", "future"])
 @pytest.mark.parametrize("archive", [False, True])
 def test_unsupported_snapshot_language_keeps_exact_error_before_reading(tmp_path, language, archive):
-    with pytest.raises(SnapshotError := snapshot.SnapshotError) as error:
+    with pytest.raises(snapshot.SnapshotError) as error:
         if archive:
             snapshot._materialize_archive(b"not a tar", tmp_path, roots=(), language=language)
         else:
             snapshot._git_archive_bytes(tmp_path, "0" * 40, roots=(), language=language)
-    assert type(error.value) is SnapshotError
+    assert type(error.value) is snapshot.SnapshotError
     assert str(error.value) == f"unsupported snapshot language: {language}"
 
 
