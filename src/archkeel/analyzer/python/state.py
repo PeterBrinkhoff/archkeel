@@ -249,7 +249,11 @@ def collect_state(
                 node,
                 owner,
                 bool(symbol and symbol.data.get("frozen_object")),
-                bool(symbol and parse_symbol_class_kind(symbol.data.get("class_kind")) is SymbolClassKind.PROTOCOL),
+                bool(
+                    symbol
+                    and parse_symbol_class_kind(symbol.data.get("class_kind"))
+                    is SymbolClassKind.PROTOCOL
+                ),
                 evidence,
             )
         )

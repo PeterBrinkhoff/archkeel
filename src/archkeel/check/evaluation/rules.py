@@ -14,8 +14,7 @@ from typing import Final, TypeAlias, assert_never
 from typing import Literal as _Literal
 
 from archkeel.ir.architecture_graph import AssessmentStatus as _Verdict
-from archkeel.ir.facts import ConstructCapability, ConstructSupport
-from archkeel.ir.facts import parse_symbol_class_kind
+from archkeel.ir.facts import ConstructCapability, ConstructSupport, parse_symbol_class_kind
 from archkeel.ir.facts_codec import RawData as RecordData
 from archkeel.ir.facts_codec import RawRecord, classified
 from archkeel.ir.graph import strongly_connected_components
@@ -1315,7 +1314,10 @@ def _symbol_placement_violations(
         kinds = frozenset(rule.class_kinds)
         for item in symbols:
             data = item["data"]
-            if item["kind"] != "class" or parse_symbol_class_kind(data.get("class_kind")) not in kinds:
+            if (
+                item["kind"] != "class"
+                or parse_symbol_class_kind(data.get("class_kind")) not in kinds
+            ):
                 continue
             qualname = data["qualified_name"]
             module = data["module"]

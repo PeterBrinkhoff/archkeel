@@ -1453,7 +1453,11 @@ def _named_type_verdict(
         return _Position(undecidable=_Cause.OTHER, resolved=reached, named_origins=reached)
     # `resolve_named_type` ruled out an ambiguous location; the surviving class record carries
     # `class_kind` (AD-30).
-    class_kind = parse_symbol_class_kind(origin_symbol["class_kind"]) if isinstance(origin_symbol, dict) else None
+    class_kind = (
+        parse_symbol_class_kind(origin_symbol["class_kind"])
+        if isinstance(origin_symbol, dict)
+        else None
+    )
     if class_kind is SymbolClassKind.ENUM:
         return _Position(resolved=reached, named_origins=reached)
     return _owned_type_verdict(

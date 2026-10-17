@@ -19,7 +19,9 @@ TAGS = ("protocol", "enum", "pydantic_model", "dataclass", "class")
 def _api():
     kind = getattr(facts, "SymbolClassKind", None)
     reader = getattr(facts, "parse_symbol_class_kind", None)
-    assert kind is not None and reader is not None, "Facts must own the shared classifier vocabulary"
+    assert kind is not None and reader is not None, (
+        "Facts must own the shared classifier vocabulary"
+    )
     assert model.SymbolClassKind is kind
     assert kind.__module__ == facts.__name__
     assert tuple(item.value for item in kind) == TAGS

@@ -258,7 +258,6 @@ class SymbolClassKind(StrEnum):
     CLASS = "class"
 
 
-
 class MethodKind(Enum):
     INSTANCE = "instance"
     STATIC = "static"

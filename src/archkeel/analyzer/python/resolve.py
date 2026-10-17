@@ -106,7 +106,10 @@ def build_symbol_index(symbols: Sequence[RawRecord]) -> SymbolIndex:
     enum_members: dict[str, frozenset[str]] = {}
     for item in symbols:
         data = item["data"]
-        if parse_symbol_class_kind(data.get("class_kind")) is SymbolClassKind.ENUM and "enum_members" in data:
+        if (
+            parse_symbol_class_kind(data.get("class_kind")) is SymbolClassKind.ENUM
+            and "enum_members" in data
+        ):
             members = data["enum_members"]
             if isinstance(members, list):
                 enum_members[data["qualified_name"]] = frozenset(members)
