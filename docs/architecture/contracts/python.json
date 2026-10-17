@@ -437,14 +437,16 @@
           "language": "python",
           "presence": "planned",
           "provenance": [
-            "docs/architecture/typed-python-properties.md"
+            "docs/architecture/typed-python-properties.md",
+            "docs/architecture/definition-context-ports.md"
           ],
           "id": "PYTHON-PROPERTY-SOURCE",
           "kind": "module",
           "qualified_name": "archkeel.analyzer.python.source",
           "parent_id": "TARGET-SOURCE",
           "responsibilities": [
-            "Own Python syntax and source proof for standard property operations."
+            "Own Python syntax and source proof for standard property operations.",
+            "Own Python AST definition contexts, their field grammar and typed Source frames."
           ]
         },
         {
@@ -670,6 +672,136 @@
               }
             ],
             "returns": "bool"
+          }
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/definition-context-ports.md"
+          ],
+          "id": "PYTHON-CONTEXT-FRAME",
+          "kind": "class",
+          "qualified_name": "archkeel.analyzer.python.source.DefinitionFrame",
+          "parent_id": "PYTHON-PROPERTY-SOURCE",
+          "responsibilities": [
+            "Carry the actual AST node and nominal context/branch values through Source consumers."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/definition-context-ports.md"
+          ],
+          "id": "PYTHON-CONTEXT-FIELD",
+          "kind": "enum",
+          "qualified_name": "archkeel.analyzer.python.source._DefinitionField",
+          "parent_id": "PYTHON-PROPERTY-SOURCE",
+          "visibility": {
+            "kind": "private",
+            "basis": "declared"
+          },
+          "responsibilities": [
+            "Own only the five AST field labels traversed for definition contexts."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/definition-context-ports.md"
+          ],
+          "id": "PYTHON-CONTEXT-FRAME-NODE",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.python.source.DefinitionFrame.node",
+          "parent_id": "PYTHON-CONTEXT-FRAME",
+          "annotation": "ast.AST",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "responsibilities": [
+            "Retain the node of one source definition context."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/definition-context-ports.md"
+          ],
+          "id": "PYTHON-CONTEXT-FRAME-KIND",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.python.source.DefinitionFrame.kind",
+          "parent_id": "PYTHON-CONTEXT-FRAME",
+          "annotation": "DefinitionContextKind",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "responsibilities": [
+            "Retain the kind of one source definition context."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/definition-context-ports.md"
+          ],
+          "id": "PYTHON-CONTEXT-FRAME-BRANCH",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.python.source.DefinitionFrame.branch",
+          "parent_id": "PYTHON-CONTEXT-FRAME",
+          "annotation": "DefinitionBranchKind",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "responsibilities": [
+            "Retain the branch of one source definition context."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/definition-context-ports.md"
+          ],
+          "id": "PYTHON-CONTEXT-PRODUCER",
+          "kind": "function",
+          "qualified_name": "archkeel.analyzer.python.source._branch_context",
+          "parent_id": "PYTHON-PROPERTY-SOURCE",
+          "visibility": {
+            "kind": "private",
+            "basis": "declared"
+          },
+          "responsibilities": [
+            "Translate the owned AST field grammar into a typed definition frame with its existing source site."
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "node",
+                "annotation": "ast.AST",
+                "kind": "positional",
+                "default_known": true
+              },
+              {
+                "name": "child",
+                "annotation": "ast.AST",
+                "kind": "positional",
+                "default_known": true
+              },
+              {
+                "name": "field_name",
+                "annotation": "_DefinitionField",
+                "kind": "positional",
+                "default_known": true
+              }
+            ],
+            "returns": "DefinitionFrame"
           }
         }
       ],

@@ -33,3 +33,7 @@ The enum move itself is net zero. The Frame, small AST grammar and once-only pub
 ## Limits
 
 No claim of complete native whole-module control-string absence. No absence PASS invented for partial language capability. No replacement of Source collector comparison with two Core runtimes that secretly launch the same installed collector.
+
+## RED observation
+
+The first fixture attempts had incomplete nested UML metadata and are not product RED evidence. After correcting only the fixture, hosted run 38986030782/job117257587261 observed 15 expected failures and 39 passing controls on unchanged b06 production. All three native NamedTuple field/return mutation probes passed: the fixed Target observes those real ports and trace-valid violations survive actual written annotation widening. The real Source frame/nominal identity is still missing, as expected. Product implementation starts only after this result.

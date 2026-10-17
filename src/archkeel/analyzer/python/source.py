@@ -13,10 +13,13 @@ from collections import Counter
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field
+from enum import StrEnum
 from pathlib import Path
-from typing import Final, Literal, Protocol, TypedDict
+from typing import Final, Literal, NamedTuple, Protocol, TypedDict
 
 from archkeel.ir.facts import (
+    DefinitionBranchKind,
+    DefinitionContextKind,
     EvidenceClass,
     MethodDescriptor,
     MethodKind,
@@ -56,25 +59,45 @@ class _PropertyBinding(TypedDict):
 
 FunctionNode = ast.FunctionDef | ast.AsyncFunctionDef
 DefinitionNode = ast.ClassDef | FunctionNode
-DefinitionContexts = tuple[tuple[ast.AST, str, str], ...]
 
+
+class DefinitionFrame(NamedTuple):
+    """One AST context; Graph owns its separate evidence-bearing representation."""
+
+    node: ast.AST
+    kind: DefinitionContextKind
+    branch: DefinitionBranchKind
+
+
+DefinitionContexts = tuple[DefinitionFrame, ...]
+
+
+class _DefinitionField(StrEnum):
+    BODY = "body"
+    ELSE = "orelse"
+    HANDLER = "handlers"
+    FINALLY = "finalbody"
+    CASE = "cases"
+
+
+_DEFINITION_FIELDS = {str(item): item for item in _DefinitionField}
 _CONTROL_FLOW_KINDS = {
-    ast.If: "if",
-    ast.For: "for",
-    ast.AsyncFor: "async_for",
-    ast.While: "while",
-    ast.Try: "try",
-    ast.TryStar: "try_star",
-    ast.With: "with",
-    ast.AsyncWith: "async_with",
-    ast.Match: "match",
+    ast.If: DefinitionContextKind.IF,
+    ast.For: DefinitionContextKind.FOR,
+    ast.AsyncFor: DefinitionContextKind.ASYNC_FOR,
+    ast.While: DefinitionContextKind.WHILE,
+    ast.Try: DefinitionContextKind.TRY,
+    ast.TryStar: DefinitionContextKind.TRY_STAR,
+    ast.With: DefinitionContextKind.WITH,
+    ast.AsyncWith: DefinitionContextKind.ASYNC_WITH,
+    ast.Match: DefinitionContextKind.MATCH,
 }
 _DEFINITION_BRANCHES = {
-    "body": "body",
-    "orelse": "else",
-    "handlers": "handler",
-    "finalbody": "finally",
-    "cases": "case",
+    _DefinitionField.BODY: DefinitionBranchKind.BODY,
+    _DefinitionField.ELSE: DefinitionBranchKind.ELSE,
+    _DefinitionField.HANDLER: DefinitionBranchKind.HANDLER,
+    _DefinitionField.FINALLY: DefinitionBranchKind.FINALLY,
+    _DefinitionField.CASE: DefinitionBranchKind.CASE,
 }
 
 NATIVE_DATACLASS_DECORATOR: Final = "dataclasses.dataclass"
@@ -116,23 +139,39 @@ def definition_id(module: ParsedModule, node: ast.AST, qualified_name: str) -> s
 def definition_sites(
     node: ast.AST,
     parent: DefinitionNode | None = None,
-    contexts: DefinitionContexts = (),
+    contexts: tuple[tuple[ast.AST, str, str], ...] = (),
+) -> Iterator[tuple[DefinitionNode, DefinitionNode | None, DefinitionContexts]]:
+    """Normalize the public legacy triple protocol once, before typed recursion."""
+    normalized = tuple(
+        DefinitionFrame(site, DefinitionContextKind(kind), DefinitionBranchKind(branch))
+        for site, kind, branch in contexts
+    )
+    yield from _definition_sites(node, parent, normalized)
+
+
+def _definition_sites(
+    node: ast.AST,
+    parent: DefinitionNode | None,
+    contexts: DefinitionContexts,
 ) -> Iterator[tuple[DefinitionNode, DefinitionNode | None, DefinitionContexts]]:
     if isinstance(node, ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef):
         yield node, parent, contexts
         parent = node
     for field_name, children in ast.iter_fields(node):
-        if field_name not in _DEFINITION_BRANCHES or not isinstance(children, list):
+        field = _DEFINITION_FIELDS.get(field_name)
+        if field is None or not isinstance(children, list):
             continue
         for child in children:
             if isinstance(child, ast.AST):
                 nested = contexts
                 if type(node) in _CONTROL_FLOW_KINDS:
-                    nested = (*contexts, _branch_context(node, child, field_name))
-                yield from definition_sites(child, parent, nested)
+                    nested = (*contexts, _branch_context(node, child, field))
+                yield from _definition_sites(child, parent, nested)
 
 
-def _branch_context(node: ast.AST, child: ast.AST, field_name: str) -> tuple[ast.AST, str, str]:
+def _branch_context(
+    node: ast.AST, child: ast.AST, field_name: _DefinitionField
+) -> DefinitionFrame:
     site = (
         child
         if isinstance(child, ast.ExceptHandler)
@@ -140,21 +179,18 @@ def _branch_context(node: ast.AST, child: ast.AST, field_name: str) -> tuple[ast
         if isinstance(child, ast.match_case)
         else node
     )
-    return site, _CONTROL_FLOW_KINDS[type(node)], _DEFINITION_BRANCHES[field_name]
+    return DefinitionFrame(site, _CONTROL_FLOW_KINDS[type(node)], _DEFINITION_BRANCHES[field_name])
 
 
 def control_flow_contexts(node: ast.AST, parents: Mapping[ast.AST, ast.AST]) -> DefinitionContexts:
-    contexts: list[tuple[ast.AST, str, str]] = []
+    contexts: list[DefinitionFrame] = []
     while node in parents:
         parent = parents[node]
         if type(parent) in _CONTROL_FLOW_KINDS:
             for field_name, children in ast.iter_fields(parent):
-                if (
-                    field_name in _DEFINITION_BRANCHES
-                    and isinstance(children, list)
-                    and node in children
-                ):
-                    contexts.append(_branch_context(parent, node, field_name))
+                field = _DEFINITION_FIELDS.get(field_name)
+                if field is not None and isinstance(children, list) and node in children:
+                    contexts.append(_branch_context(parent, node, field))
                     break
         node = parent
     return tuple(reversed(contexts))

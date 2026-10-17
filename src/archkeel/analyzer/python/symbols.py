@@ -998,11 +998,11 @@ def _definition_symbol(
         )
     data["definition_contexts"] = [
         {
-            "kind": kind,
-            "branch": branch,
-            "evidence_ids": [add_evidence(evidence, module, statement)],
+            "kind": context.kind,
+            "branch": context.branch,
+            "evidence_ids": [add_evidence(evidence, module, context.node)],
         }
-        for statement, kind, branch in contexts
+        for context in contexts
     ]
     data["lexical_parent_id"] = (
         definition_id(module, parent_node, parent) if parent_node and parent else None

@@ -7195,15 +7195,15 @@
         {
           "id": "IR-GRAPH-DefinitionContextKind",
           "kind": "enum",
-          "qualified_name": "archkeel.ir.architecture_graph.DefinitionContextKind",
+          "qualified_name": "archkeel.ir.facts.DefinitionContextKind",
           "language": "python",
-          "parent_id": "IR-UML-architecture_graph",
+          "parent_id": "archkeel.ir.facts",
           "presence": "planned",
           "responsibilities": [
-            "Own the closed DefinitionContextKind vocabulary used by graph and UML responsibilities."
+            "Own the single definition-context vocabulary shared by source AST frames and graph evidence DTOs."
           ],
           "provenance": [
-            "docs/architecture/typed-graph-vocabulary.md"
+            "docs/architecture/definition-context-ports.md"
           ],
           "visibility": {
             "kind": "public",
@@ -7213,15 +7213,15 @@
         {
           "id": "IR-GRAPH-DefinitionBranchKind",
           "kind": "enum",
-          "qualified_name": "archkeel.ir.architecture_graph.DefinitionBranchKind",
+          "qualified_name": "archkeel.ir.facts.DefinitionBranchKind",
           "language": "python",
-          "parent_id": "IR-UML-architecture_graph",
+          "parent_id": "archkeel.ir.facts",
           "presence": "planned",
           "responsibilities": [
-            "Own the closed DefinitionBranchKind vocabulary used by graph and UML responsibilities."
+            "Own the single definition-context vocabulary shared by source AST frames and graph evidence DTOs."
           ],
           "provenance": [
-            "docs/architecture/typed-graph-vocabulary.md"
+            "docs/architecture/definition-context-ports.md"
           ],
           "visibility": {
             "kind": "public",
