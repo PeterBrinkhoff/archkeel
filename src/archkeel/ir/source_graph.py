@@ -41,6 +41,7 @@ from archkeel.ir.facts import (
     MethodKind,
     ResolutionInput,
     ResolutionRole,
+    SourceSectionName,
     member_inventories,
     parse_method_kind,
 )
@@ -56,7 +57,7 @@ from archkeel.ir.model import (
     Verdict,
     stable_id,
 )
-from archkeel.ir.profiles import PROFILES, profile_for
+from archkeel.ir.profiles import PROFILES, UnmeasurableScalar, profile_for
 
 _CLASSIFIER_RELATIONSHIPS = (
     RelationshipKind.INHERITS,
@@ -1005,7 +1006,7 @@ def _relationships(
 def _section_coverage(
     observation: Observation,
     scope_id: str,
-    section: str,
+    section: SourceSectionName,
     entity_kinds: tuple[EntityKind, ...],
     relationships: tuple[RelationshipKind, ...],
     available: bool,
@@ -1017,19 +1018,19 @@ def _section_coverage(
     elif observation.coverage.status != Verdict.PASS:
         status, reason = CoverageStatus.PARTIAL, "source observation is incomplete"
     elif (
-        section == "calls"
-        and "calls_unresolved" in profile_for(observation.analyzer.name).unmeasured
+        section == SourceSectionName.CALLS
+        and UnmeasurableScalar.CALLS_UNRESOLVED in profile_for(observation.analyzer.name).unmeasured
     ):
         status, reason = (
             CoverageStatus.PARTIAL,
             "observed call sites do not certify an exhaustive module call inventory",
         )
-    elif section == "symbols":
+    elif section == SourceSectionName.SYMBOLS:
         status, reason = (
             CoverageStatus.PARTIAL,
             "symbol records do not certify an exhaustive module-level lexical inventory",
         )
-    elif section == "references":
+    elif section == SourceSectionName.REFERENCES:
         status, reason = (
             CoverageStatus.PARTIAL,
             "reference collector omits unresolved and external symbol uses",
@@ -1153,11 +1154,11 @@ def _coverage(observation: Observation, entities: list[Entity]) -> tuple[Coverag
         EntityKind.TYPE_ALIAS,
         EntityKind.CONSTANT,
     )
-    sections: tuple[tuple[str, tuple[EntityKind, ...], tuple[RelationshipKind, ...]], ...] = (
-        ("symbols", source_kinds, ()),
-        ("imports", (), (RelationshipKind.IMPORTS,)),
-        ("calls", (), (RelationshipKind.CALLS,)),
-        ("references", (), (RelationshipKind.REFERENCES,)),
+    sections: tuple[tuple[SourceSectionName, tuple[EntityKind, ...], tuple[RelationshipKind, ...]], ...] = (
+        (SourceSectionName.SYMBOLS, source_kinds, ()),
+        (SourceSectionName.IMPORTS, (), (RelationshipKind.IMPORTS,)),
+        (SourceSectionName.CALLS, (), (RelationshipKind.CALLS,)),
+        (SourceSectionName.REFERENCES, (), (RelationshipKind.REFERENCES,)),
     )
     profile = profile_for(observation.analyzer.name)
     value_modules = {

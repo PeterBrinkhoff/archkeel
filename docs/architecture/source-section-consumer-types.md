@@ -14,3 +14,6 @@ Ruling: the local execution environment cannot fork; use an isolated Git branch 
 
 Progress:
 - Analysis: exact retained artifact rows joined to 31 distinct current owner/AST sites in six modules (run 38998618074/job 117296587329). Counts are sites, not defects.
+
+- RED: run38999235380/job117298426074: 14 expected failures, 1 pass; actual product strict144 and both authored Target schemas passed. The first attempt stopped before tests because rg was absent; it is not RED evidence.
+- Legacy ingress: ScanResult is explicitly published by TARGET-EVALUATION. It previously accepted source section strings; preserve all eight supported spellings and normalize once in its constructor. The only existing direct test constructor uses an empty set. Unsupported source-only sections remain outside this port; generic Observation sections remain open.

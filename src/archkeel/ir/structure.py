@@ -22,7 +22,7 @@ from typing import Literal, TypeAlias
 
 from .interfaces import component_owners, owner_of
 from .model import ComparisonStatus, ComponentOwnership, Observation, int_value, text_value
-from .profiles import profile_for
+from .profiles import UnmeasurableScalar, profile_for
 
 StructureLevel: TypeAlias = Literal["component", "package"]
 
@@ -71,7 +71,7 @@ def _calls_by_module(
 ) -> tuple[Counter[str] | None, Counter[str] | None]:
     if (
         observation.records("calls") is None
-        or "calls_unresolved" in profile_for(observation.analyzer.name).unmeasured
+        or UnmeasurableScalar.CALLS_UNRESOLVED in profile_for(observation.analyzer.name).unmeasured
     ):
         return None, None
     total: Counter[str] = Counter()

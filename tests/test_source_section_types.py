@@ -53,7 +53,9 @@ def test_scan_result_keeps_actual_producer_section_type():
 
 
 def test_legacy_scan_result_section_strings_normalize_at_constructor():
-    scan = replace(_scan(), observed_sections=frozenset(section.value for section in SourceSectionName))
+    scan = replace(
+        _scan(), observed_sections=frozenset(section.value for section in SourceSectionName)
+    )
     assert scan.observed_sections == frozenset(SourceSectionName)
     assert all(isinstance(section, SourceSectionName) for section in scan.observed_sections)
     assert replace(scan, observed_sections=frozenset()).observed_sections == frozenset()
@@ -110,7 +112,11 @@ def _native_repository(tmp_path, *, include_guard=True):
         "archkeel/check/evaluation/__init__.py": "",
         "contract.json": json.dumps(target),
     }
-    for item in [*target["components"], *target["rules"], *target["declarations"]["uml"]["entities"]]:
+    for item in [
+        *target["components"],
+        *target["rules"],
+        *target["declarations"]["uml"]["entities"],
+    ]:
         for path in item["provenance"]:
             files[path] = (ROOT / path).read_text()
     for path in (
@@ -127,7 +133,9 @@ def _native_repository(tmp_path, *, include_guard=True):
 
 def test_authored_section_ports_are_required_and_parse():
     parse_contract(_authored_target())
-    required = (ROOT / "Makefile").read_text().split("pr-test:", 1)[1].split("pr-report-test:", 1)[0]
+    required = (
+        (ROOT / "Makefile").read_text().split("pr-test:", 1)[1].split("pr-report-test:", 1)[0]
+    )
     assert "tests/test_source_section_types.py" in required
 
 
@@ -200,7 +208,8 @@ def test_actual_section_port_weakening_fails_unchanged_authored_target(
     authored = (root / "contract.json").read_bytes()
     comparison = architecture_report(_model(root, config)).comparison
     assert comparison is not None and any(
-        row.status == "FAIL" and row.subject_id == subject
+        row.status == "FAIL"
+        and row.subject_id == subject
         and row.aspect == ("annotation" if subject.endswith("observed_sections") else "signature")
         for row in comparison.assessments
     ), comparison
@@ -221,12 +230,15 @@ def check(scan: ScanResult, record: Record, observation: Observation, profile: P
     _source_record(record, SourceSectionName.SYMBOLS)
     _base_declarations(record, SourceSectionName.SYMBOLS)
     _section_coverage(observation, "scope", SourceSectionName.CALLS, (), (), True)
-    profile = Profile("future-analyzer", ".future", unmeasured=frozenset({UnmeasurableScalar.CALLS_UNRESOLVED}))
+    profile = Profile("future-analyzer", ".future",
+        unmeasured=frozenset({UnmeasurableScalar.CALLS_UNRESOLVED}))
 """,
         "raw-field": '    scan.observed_sections = frozenset({"calls"})\n',
         "wrong-field-domain": "    scan.observed_sections = frozenset({SourceProfile.PYTHON})\n",
         "raw-source-record": '    _source_record(record, "symbols")\n',
-        "wrong-base-domain": "    _base_declarations(record, UnmeasurableScalar.CALLS_UNRESOLVED)\n",
+        "wrong-base-domain": (
+            "    _base_declarations(record, UnmeasurableScalar.CALLS_UNRESOLVED)\n"
+        ),
         "raw-coverage": '    _section_coverage(observation, "scope", "calls", (), (), True)\n',
     }
     for name, body in cases.items():
@@ -234,7 +246,10 @@ def check(scan: ScanResult, record: Record, observation: Observation, profile: P
         path.write_text(common + body)
         result = subprocess.run(
             [sys.executable, "-m", "mypy", "--strict", "--no-incremental", str(path)],
-            cwd=ROOT, capture_output=True, text=True, check=False,
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
         )
         assert (result.returncode == 0) == (name == "canonical"), result.stdout + result.stderr
         if name != "canonical":
