@@ -28,7 +28,8 @@ Declare narrower component APIs and check more native source evidence.
   This removes repeated per-import scans; it does not guarantee a runtime budget
   on every project or runner.
 - **Report and review corrections.** Published browser assets include the current
-  runtime. Direct UML scopes use more edge spacing. Repeated-logic review
+  runtime. Module views reuse the report graph already derived by their caller.
+  Direct UML scopes use more edge spacing. Repeated-logic review
   candidates can distinguish complete, resolved call sequences; ambiguous
   evidence retains the candidate and proves no runtime equivalence.
 

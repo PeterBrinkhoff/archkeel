@@ -500,12 +500,15 @@ def _statistic(
     )
 
 
-def module_exploration(model: Observation) -> tuple[ModuleExploreLevel, ...]:
-    """Read authenticated memberships; existing Core ownership helpers explain gaps.
+def module_exploration(
+    model: Observation, *, report: ArchitectureReport | None = None
+) -> tuple[ModuleExploreLevel, ...]:
+    """Read authenticated memberships; supplied reports must match this observation.
 
     Hints stay provisional and do not establish policy.
     """
-    report = architecture_report(model)
+    if report is None:
+        report = architecture_report(model)
     if report.observed is None:
         return (
             ModuleExploreLevel(
