@@ -12,6 +12,8 @@ from enum import StrEnum
 from pathlib import PurePosixPath
 from typing import Literal
 
+from archkeel.ir.facts import DefinitionBranchKind as DefinitionBranchKind
+from archkeel.ir.facts import DefinitionContextKind as DefinitionContextKind
 from archkeel.ir.facts import Evidence, Language
 from archkeel.ir.facts import ParameterKind as ParameterKind
 
@@ -81,26 +83,6 @@ class ModifierKind(StrEnum):
     ASYNC = "async"
     FROZEN = "frozen"
     MIXIN = "mixin"
-
-
-class DefinitionContextKind(StrEnum):
-    IF = "if"
-    FOR = "for"
-    ASYNC_FOR = "async_for"
-    WHILE = "while"
-    TRY = "try"
-    TRY_STAR = "try_star"
-    WITH = "with"
-    ASYNC_WITH = "async_with"
-    MATCH = "match"
-
-
-class DefinitionBranchKind(StrEnum):
-    BODY = "body"
-    ELSE = "else"
-    HANDLER = "handler"
-    FINALLY = "finally"
-    CASE = "case"
 
 
 class CoverageStatus(StrEnum):

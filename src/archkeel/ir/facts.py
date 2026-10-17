@@ -23,6 +23,26 @@ class Language(StrEnum):
     TYPESCRIPT = "typescript"
 
 
+class DefinitionContextKind(StrEnum):
+    IF = "if"
+    FOR = "for"
+    ASYNC_FOR = "async_for"
+    WHILE = "while"
+    TRY = "try"
+    TRY_STAR = "try_star"
+    WITH = "with"
+    ASYNC_WITH = "async_with"
+    MATCH = "match"
+
+
+class DefinitionBranchKind(StrEnum):
+    BODY = "body"
+    ELSE = "else"
+    HANDLER = "handler"
+    FINALLY = "finally"
+    CASE = "case"
+
+
 class RuntimeRequirementState(StrEnum):
     DECLARED = "declared"
     METADATA_MISSING = "metadata_missing"

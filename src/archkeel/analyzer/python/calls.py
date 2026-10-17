@@ -213,11 +213,11 @@ class CallCollector(ast.NodeVisitor):
         targets = parent.targets if isinstance(parent, ast.Assign) else [parent.target]
         contexts = [
             {
-                "kind": kind,
-                "branch": branch,
-                "evidence_ids": [add_evidence(self.evidence, self.module, site)],
+                "kind": context.kind,
+                "branch": context.branch,
+                "evidence_ids": [add_evidence(self.evidence, self.module, context.node)],
             }
-            for site, kind, branch in control_flow_contexts(parent, self.parents)
+            for context in control_flow_contexts(parent, self.parents)
         ]
         result: list[RecordData] = []
         for target in targets:
