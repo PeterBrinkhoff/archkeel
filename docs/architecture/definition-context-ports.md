@@ -7,3 +7,5 @@ Python Source owns DefinitionFrame(node, kind, branch), an immutable NamedTuple 
 Source also owns only the five AST field labels it consumes. A single derived ingress lookup maps written field labels to its private nominal field type; the existing branch mapping translates those values into the shared vocabulary. Unknown fields remain unmatched. This creates neither compiler authority nor a new AST framework.
 
 The existing TYPES-ENUM-IN-MODEL rule names Source as the exact owner of that private field grammar. This is an authored responsibility with this provenance, not permission for unrelated adapter enums. The facts/Graph dependency direction and existing report CI routing remain intact.
+
+The migration removes fourteen duplicated Source control spellings (nine context kinds and five branch kinds) by consuming the existing shared definitions. The measured production delta is +36 lines in five existing modules; no new module or parser framework is introduced. Compatibility accounts for a small public legacy-input wrapper rather than changing the tuple protocol.
