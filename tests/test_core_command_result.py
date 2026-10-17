@@ -24,6 +24,7 @@ from archkeel.ir import model
 from archkeel.ir.architecture_graph import AssessmentStatus
 from archkeel.ir.architecture_projection import ArchitectureProjection
 from archkeel.ir.codec_result import result_payload
+from archkeel.ir.decisions import rule_assessments
 from archkeel.ir.report_graph import architecture_report
 from archkeel.ir.trace import trace_valid_violations
 
@@ -128,7 +129,7 @@ def _contract():
         row
         for row in contract["declarations"]["uml"]["entities"]
         if row["id"].startswith("IR-RESULT-")
-        or row["id"] in {"IR-DEPENDENCY-model", "IR-GRAPH-RunResult"}
+        or row["id"] in {"IR-DEPENDENCY-model", "IR-GRAPH-RunResult", "IR-GRAPH-RunResult.declared_rules"}
     ]
     contract["declarations"]["uml"]["relationships"] = []
     contract["declarations"]["uml"]["scopes"] = []
@@ -178,9 +179,9 @@ def _valid(value):
     assert not trace_valid_violations(value)
 
 
-def test_native_selected_core_source_matches_seven_independent_target_entities(tmp_path):
+def test_native_selected_core_source_matches_eight_independent_target_entities(tmp_path):
     root, config = _repository(tmp_path)
-    assert len(_contract()["declarations"]["uml"]["entities"]) == 7
+    assert len(_contract()["declarations"]["uml"]["entities"]) == 8
     _valid(_model(root, config))
 
 
@@ -193,6 +194,7 @@ def test_native_selected_core_source_matches_seven_independent_target_entities(t
             "observation_complete: AssessmentStatus",
         ),
         ("expectation_fulfilled: ExpectationOutcome", "expectation_fulfilled: str"),
+        ("declared_rules: AssessmentStatus", "declared_rules: str"),
         ("class Command(StrEnum):", "class Command(str):"),
         ("class ExpectationOutcome(StrEnum):", "class ExpectationOutcome(str):"),
     ],
@@ -244,3 +246,104 @@ def test_result_declared_rules_normalizes_legacy_values_at_its_real_ingress(decl
 def test_result_declared_rules_rejects_values_outside_its_closed_domain(invalid):
     with pytest.raises(ValueError):
         model.RunResult("report", 0, declared_rules=invalid)
+
+RESULT_GUARDS = {
+    "IR-RESULT-ASSESSMENT-CONTROL": "archkeel.ir.model.RunResult",
+    "RENDER-RULE-LEGEND-CONTROL": "archkeel.render.html._atlas_rule_status_cards",
+    "RENDER-REPORT-FAILURE-CONTROL": "archkeel.render.summary.report_violates_rules",
+    "RENDER-REPORT-UNKNOWN-CONTROL": "archkeel.render.summary.report_leaves_rules_undecided",
+    "RENDER-RESULT-BADGE-CONTROL": "archkeel.render.summary._decision_badge",
+}
+
+
+def _owned_result_rules():
+    return [
+        rule
+        for name in ("ir", "render")
+        for rule in json.loads(
+            (ROOT / f"docs/architecture/contracts/{name}.json").read_text()
+        )["rules"]
+        if rule["id"] in RESULT_GUARDS
+    ]
+
+
+def _result_guard_repository(tmp_path):
+    rules = _owned_result_rules()
+    assert {rule["id"]: rule["source"] for rule in rules} == RESULT_GUARDS
+    root, config = _repository(tmp_path)
+    contract = {
+        "schema_version": "2.2.0",
+        "components": [
+            {
+                "id": "RESULT-CONTROLS",
+                "label": "controls",
+                "role": "component",
+                "packages": ["archkeel"],
+                "responsibilities": ["Own the actual result control fixture."],
+                "provenance": ["docs/architecture/core-command-result-types.md"],
+                "decided_by": "architect",
+            }
+        ],
+        "rules": rules,
+    }
+    (root / "contract.json").write_text(json.dumps(contract))
+    graph = root / "archkeel/ir/architecture_graph.py"
+    graph.write_text(
+        graph.read_text()
+        + "\n\n"
+        + _source_members("src/archkeel/ir/architecture_graph.py", {"RuleAssessmentStatus"})
+    )
+    render = root / "archkeel/render"
+    render.mkdir()
+    (render / "__init__.py").write_text("")
+    (render / "html.py").write_text(
+        "from archkeel.ir.architecture_graph import RuleAssessmentStatus\n"
+        "from archkeel.ir.model import RunResult\n\n"
+        + _source_members("src/archkeel/render/html.py", {"_atlas_rule_status_cards"})
+    )
+    (render / "summary.py").write_text(
+        "from archkeel.ir.model import AssessmentStatus as _AssessmentStatus\n"
+        "from archkeel.ir.model import Command as _Command\n"
+        "from archkeel.ir.model import RunResult\n\n"
+        + _source_members(
+            "src/archkeel/render/summary.py",
+            {"report_violates_rules", "report_leaves_rules_undecided", "_decision_badge"},
+        )
+    )
+    return root, config
+
+
+def test_native_actual_result_control_owners_have_complete_guard_proof(tmp_path):
+    root, config = _result_guard_repository(tmp_path)
+    value = _model(root, config)
+    assessments = {row.id: row for row in rule_assessments(value, undecided_by_rule={})}
+    for identifier in RESULT_GUARDS:
+        assert assessments[identifier].status == "PASS"
+        assert assessments[identifier].evaluation_proven
+    assert not trace_valid_violations(value)
+
+
+@pytest.mark.parametrize("identifier,owner", RESULT_GUARDS.items())
+def test_native_actual_result_control_owners_reject_literal_regressions(
+    tmp_path, identifier, owner
+):
+    root, config = _result_guard_repository(tmp_path)
+    module, name = owner.rsplit(".", 1)
+    source = root.joinpath(*module.split(".")).with_suffix(".py")
+    content = source.read_text()
+    member = next(node for node in ast.parse(content).body if node.name == name)
+    if isinstance(member, ast.ClassDef):
+        member = next(node for node in member.body if node.name == "__post_init__")
+    line = member.body[0].lineno - 1
+    indent = " " * (member.col_offset + 4)
+    receiver = "self" if name == "RunResult" else "result"
+    lines = content.splitlines(keepends=True)
+    lines.insert(
+        line,
+        f'{indent}if {receiver}.declared_rules == "PASS":\n{indent}    pass\n',
+    )
+    source.write_text("".join(lines))
+    intent = (root / "contract.json").read_bytes()
+    value = _model(root, config)
+    assert any(identifier in row.rule_ids for row in trace_valid_violations(value))
+    assert (root / "contract.json").read_bytes() == intent
