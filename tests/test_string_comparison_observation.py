@@ -9,8 +9,8 @@ import pytest
 from test_analyzer import _observe_one_rule, _parsed_module
 
 from archkeel.analyzer.python.constructs import (
-    _LiteralComparisons,
     _literal_import_origins,
+    _LiteralComparisons,
     collect_constructs,
 )
 from archkeel.analyzer.python.imports import collect_imports, resolve_reexports
