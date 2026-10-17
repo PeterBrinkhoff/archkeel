@@ -1,0 +1,9 @@
+{
+  "after_baseline_digest": "88997cfa3cb80df503441ade0b414d5a70ccca5656ec959a07756b01a43f809f",
+  "after_digest": "c3a5495720e20af348894d48db11ba30c4e8a38b2568377c3aff63099c21550b",
+  "before_baseline_digest": "88997cfa3cb80df503441ade0b414d5a70ccca5656ec959a07756b01a43f809f",
+  "before_digest": "64b26c8d3fad38bb3e6d017960da92aa0bed3722c241b8222a54aa51c46f75fd",
+  "decided_by": "ake2l",
+  "rationale": "Own host ordering events and enforce their typed API.",
+  "schema_version": "2.0.0"
+}
