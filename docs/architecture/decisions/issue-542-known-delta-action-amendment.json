@@ -1,0 +1,9 @@
+{
+  "after_baseline_digest": "88997cfa3cb80df503441ade0b414d5a70ccca5656ec959a07756b01a43f809f",
+  "after_digest": "4e4aa1ba534a6b9300ce562be6e37a4e43e2fe2173fbccb064180f495aafaf33",
+  "before_baseline_digest": "88997cfa3cb80df503441ade0b414d5a70ccca5656ec959a07756b01a43f809f",
+  "before_digest": "64b26c8d3fad38bb3e6d017960da92aa0bed3722c241b8222a54aa51c46f75fd",
+  "decided_by": "ake2l (explicit parser/protocol typing request); Codex implementation, independent Astra review before merge",
+  "rationale": "Own the four current Delta actions at the existing semantic model, producer and actual governance ingress; keep public future action text open, preserve legacy bytes/errors and the narrower call-change domain without allowance changes; docs/architecture/known-delta-action-types.md.",
+  "schema_version": "2.0.0"
+}
