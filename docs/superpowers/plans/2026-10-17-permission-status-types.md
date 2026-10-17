@@ -28,9 +28,9 @@
 **Files:** tests/test_permission_status_types.py; authored additions in docs/architecture/contracts/ir.json; this spec/plan.
 **Interfaces:** PermissionProjection(target_id, status, rule_ids, reason); fixed native enum/class/status-field intent.
 
-- [ ] Add actual legacy constructor, invalid-value, producer-state and JSON controls; pin the canonical enum and actual status field in independent authored intent.
-- [ ] Run the unchanged production source in an isolated Actions checkout; record assertion/type-comparison REDs, not unrelated errors.
-- [ ] Commit tests/intent independently. Keep the fixed intent unchanged for subsequent source mutations.
+- [x] Add actual legacy constructor, invalid-value, producer-state and JSON controls; pin the canonical enum and actual status field in independent authored intent.
+- [x] Run the unchanged production source in an isolated Actions checkout; record assertion/type-comparison REDs, not unrelated errors.
+- [x] Commit tests/intent independently. Keep the fixed intent unchanged for subsequent source mutations.
 
 ## Task 2: Canonical owner and consumers
 
@@ -38,17 +38,17 @@
 **Interfaces:** PermissionStatus(StrEnum), PermissionProjection.status: PermissionStatus, existing constructor normalization.
 **Shared interface check:** Task1's fixed PermissionStatus/PermissionProjection names are exactly Task2's owner and field; no new module or alternate name.
 
-- [ ] Replace the alias with the three-member enum and normalize the real existing DTO constructor once with canonical builtins.object.__setattr__.
-- [ ] Use the enum in four actual producer branches, four permission decisions, the existing command grouping decision and the single Atlas allowed decision; preserve the existing serializer.
-- [ ] Run Task1 GREEN; count source changes and native call-site/UNKNOWN deltas before freezing.
+- [x] Replace the alias with the three-member enum and normalize the real existing DTO constructor once with canonical builtins.object.__setattr__.
+- [x] Use the enum in four actual producer branches, four permission decisions, the existing command grouping decision and the single Atlas allowed decision; preserve the existing serializer.
+- [x] Run Task1 GREEN; count source changes and native call-site/UNKNOWN deltas before freezing.
 
 ## Task 3: Permanent guards, verification and review
 
 **Files:** tests/test_permission_status_types.py; Makefile and only necessary authored Target/guard declarations; generated native baseline/amendment; this ledger.
 
-- [ ] Mutate the actual status annotation to str and real constructor controls to raw equality/membership/local-alias/match under unchanged authored intent; require trace-valid native failures.
-- [ ] Run relevant projection/command/result/Atlas suites, strict checks and the actual required report path; verify predecessor/new permission JSON and balances.
-- [ ] Generate the ordinary baseline/amendment against the exact 5fc94c10298c4bbcd98fd44f8ac72b321b03a0b4 predecessor; run identical NoWrite, document actual sites and budgets.
+- [x] Mutate the actual status annotation to str and real constructor controls to raw equality/membership/local-alias/match under unchanged authored intent; require trace-valid native failures.
+- [x] Run relevant projection/command/result/Atlas suites, strict checks and the actual required report path; verify predecessor/new permission JSON and balances.
+- [x] Generate the ordinary baseline/amendment against the exact 5fc94c10298c4bbcd98fd44f8ac72b321b03a0b4 predecessor; run identical NoWrite, document actual sites and budgets.
 - [ ] Run the appropriate project suite, freeze a separate Part-of-542 PR, obtain independent Astra review and hand Root the exact immutable delta for integration.
 
 ## Execution ledger
@@ -62,3 +62,12 @@ Task1 RED: run38987444254 / job117262089955 observed exactly11 assertion failure
 Task2 ruling: the first GREEN attempt passed115 tests but exposed a real outer IR interface violation and two invalid new test assumptions. The canonical enum must be published at both the existing inner Governance and outer IR facade, because Atlas actually imports it. The established command wire groups target_ids, so the new assertion now reads that real facade rather than inventing target_id rows. An additional existing command_view._permission_groups decision already consumes PermissionStatus and is migrated in the same small boundary; the actual grouped value is checked nominal. No second normalization is added to this derived internal DTO, whose producer already supplies the canonical state. No global fixture/assertion is loosened.
 
 Task2 GREEN: run38987966991 / job117263742098 passed all118 focused/native/projection/Core-command tests, Ruff512 and mypy150. Every authored source mutation passed its negative obligation under unchanged intent. The outer interface violation is repaired through the actual IR PermissionStatus port; no fixture or global verdict was relaxed. Product source is frozen for subsequent required gates and independent review.
+
+
+Task3 native/report proof: frozen product bcf1d367a2f742ba98cb85d4bad1e4991c1dbd31 was checked by run [38988511389](https://github.com/rapiddweller/archkeel/actions/runs/38988511389). Ordinary baseline writing, amendment writing against exact5fc94c10298c4bbcd98fd44f8ac72b321b03a0b4 and identical NoWrite all exited0 in job117265423455, with838 unresolved calls,52 typing positions,58 UNKNOWN positions and0 violations. The generated baseline is byte-identical to the predecessor baseline; the normal amendment is committed verbatim from the runner. No allowances or budgets changed. Widenings, failures and diagnostics were empty; unresolved_call_changes and unresolved_call_note were null.
+
+Actual site proof: job117265423706 compared the canonical observations of actual5fc and frozenbcf. The unresolved/PARTIAL call-row multisets were identical (838/2508 on both sides), and UNKNOWN record IDs had no additions/removals. This ID result does not claim complete UNKNOWN payload equality. Total calls18892→18894 and resolved calls15546→15548; no unresolved/PARTIAL call exists in architecture_projection, so the two canonical normalization calls are resolved. Required report job117265423327 passed5 Publisher tests and81 report tests; the unchanged authentic repository2MB/400KB budget control passed separately. No browser asset or generator changed.
+
+Broader verification exposed inherited test dependencies: required ci-pr-check passed4200 tests with1 skip, but failed the existing NameBudgetKind Literal/get_args catalog assertion and three existing render-direction fixture cases; an auxiliary-only Python script also lacked its license header. Run [38992319771](https://github.com/rapiddweller/archkeel/actions/runs/38992319771), job117277184706, reproduced all four assertion failures on the exact unchanged5fc predecessor, then passed17 Navigation/catalog/hygiene controls after supplying the actual guarded Atlas owner/spec and using nominal enum iteration. The feature carries the separately Astra-reviewed catalog correction exactly from3e50a1764bffa24100892bf231e208e15919dacc, plus the narrowly corrected render fixture from809263d0b311033428b54f05a396032a39da25ef. No expectations, direction assertions, contracts or policies were weakened. These are test-only dependency corrections; Permission product remains frozen. The final required core rerun and independent final Astra review remain pending.
+
+Cost: manual Python product source +24/-13 (net+11), including all real consumers. architecture_projection grows147→156 lines. No new product module, browser domain, asset, generation framework or historical snapshot. Tests and independently authored intent are counted separately from product source. Whole-module raw-literal absence is asserted only for architecture_projection; remaining report/UI/version domains are explicitly pending.

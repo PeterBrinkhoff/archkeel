@@ -1,0 +1,9 @@
+{
+  "after_baseline_digest": "88997cfa3cb80df503441ade0b414d5a70ccca5656ec959a07756b01a43f809f",
+  "after_digest": "723f08adc7722c7c74054900ecdbb755e7f8cae11202f4fb61ae7eb4a9657faf",
+  "before_baseline_digest": "88997cfa3cb80df503441ade0b414d5a70ccca5656ec959a07756b01a43f809f",
+  "before_digest": "288fd3cf2678cc4bb1f1554e404ad96ca47ded34c47059ca470e008ba95b39c3",
+  "decided_by": "ake2l",
+  "rationale": "Own component-pair permission states at their existing projection value boundary and expose the canonical type to its real consumers without changing wire decisions.",
+  "schema_version": "2.0.0"
+}
