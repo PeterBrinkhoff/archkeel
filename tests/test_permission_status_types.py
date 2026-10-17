@@ -55,7 +55,9 @@ def test_existing_permission_constructor_rejects_unknown_states(value):
 def test_permission_vocabulary_has_exact_existing_wire_values():
     assert isinstance(PermissionStatus, type) and issubclass(PermissionStatus, StrEnum)
     assert [(row.name, row.value) for row in PermissionStatus] == [
-        ("ALLOWED", "allowed"), ("FORBIDDEN", "forbidden"), ("UNDECIDED", "undecided")
+        ("ALLOWED", "allowed"),
+        ("FORBIDDEN", "forbidden"),
+        ("UNDECIDED", "undecided"),
     ]
 
 
@@ -67,35 +69,78 @@ def test_real_permission_producer_preserves_states_wire_and_atlas_balance(tmp_pa
     view = result.architecture_projection
     core = next(row for row in view.components if row.id == "CORE")
     assert all(type(row.status) is PermissionStatus for row in core.permissions)
-    expected = {"IDLE": "forbidden" if closed else "undecided", "OTHER": "forbidden", "STORE": "allowed"}
+    expected = {
+        "IDLE": "forbidden" if closed else "undecided",
+        "OTHER": "forbidden",
+        "STORE": "allowed",
+    }
     assert {row.target_id: row.status.value for row in core.permissions} == expected
     encoded = json.loads(result_bytes(result))
-    wire_core = next(row for row in encoded["architecture_projection"]["components"] if row["id"] == "CORE")
+    wire_core = next(
+        row for row in encoded["architecture_projection"]["components"] if row["id"] == "CORE"
+    )
     assert {row["target_id"]: row["status"] for row in wire_core["permissions"]} == expected
     assert all(type(row["status"]) is str for row in wire_core["permissions"])
     model = parse_observation(decode_canonical_model(json.loads(architecture)))
-    payload = atlas_payload(model, architecture_report(model), view, result,
-                            repository="same fixture", architecture_href="architecture.json")
+    payload = atlas_payload(
+        model,
+        architecture_report(model),
+        view,
+        result,
+        repository="same fixture",
+        architecture_href="architecture.json",
+    )
     top = next(row for row in view.levels if row.parent_id is None)
-    assert payload["balance"] == {"declared": top.declared, "used": top.used,
-        "allowed_unused": top.unused, "undeclared": top.undeclared}
+    assert payload["balance"] == {
+        "declared": top.declared,
+        "used": top.used,
+        "allowed_unused": top.unused,
+        "undeclared": top.undeclared,
+    }
     assert core.status == ("FAIL" if closed else "UNKNOWN")
 
 
 def _native_repository(tmp_path):
     contract = json.loads((ROOT / "docs/architecture/contracts/ir.json").read_text())
-    component = copy.deepcopy(next(row for row in contract["components"] if row["id"] == "TARGET-GOVERNANCE"))
-    component.update(packages=[], exact_modules=[OWNER], requires=[], public=[
-        OWNER + ":PermissionProjection", OWNER + ":PermissionStatus"], provenance=[SPEC])
-    intent = {"schema_version": contract["schema_version"], "components": [component],
-        "declarations": {"uml": {"schema_version": "1.2.0", "entities": [
-            row for row in contract["declarations"]["uml"]["entities"] if row["id"].startswith("IR-PERMISSION-")
-        ], "relationships": [], "scopes": []}},
-        "rules": [row for row in contract["rules"] if row["id"] == GUARD]}
-    root = _prepare_repo(tmp_path, {
-        "archkeel/__init__.py": "", "archkeel/ir/__init__.py": "",
-        "archkeel/ir/architecture_projection.py": (ROOT / "src/archkeel/ir/architecture_projection.py").read_text(),
-        SPEC: (ROOT / SPEC).read_text(), "contract.json": json.dumps(intent)})
+    component = copy.deepcopy(
+        next(row for row in contract["components"] if row["id"] == "TARGET-GOVERNANCE")
+    )
+    component.update(
+        packages=[],
+        exact_modules=[OWNER],
+        requires=[],
+        public=[OWNER + ":PermissionProjection", OWNER + ":PermissionStatus"],
+        provenance=[SPEC],
+    )
+    intent = {
+        "schema_version": contract["schema_version"],
+        "components": [component],
+        "declarations": {
+            "uml": {
+                "schema_version": "1.2.0",
+                "entities": [
+                    row
+                    for row in contract["declarations"]["uml"]["entities"]
+                    if row["id"].startswith("IR-PERMISSION-")
+                ],
+                "relationships": [],
+                "scopes": [],
+            }
+        },
+        "rules": [row for row in contract["rules"] if row["id"] == GUARD],
+    }
+    root = _prepare_repo(
+        tmp_path,
+        {
+            "archkeel/__init__.py": "",
+            "archkeel/ir/__init__.py": "",
+            "archkeel/ir/architecture_projection.py": (
+                ROOT / "src/archkeel/ir/architecture_projection.py"
+            ).read_text(),
+            SPEC: (ROOT / SPEC).read_text(),
+            "contract.json": json.dumps(intent),
+        },
+    )
     return root, ScanConfig(("archkeel",), "archkeel", "contract.json", "0" * 64)
 
 
@@ -129,12 +174,16 @@ def test_actual_permission_field_widening_fails_fixed_native_intent(tmp_path):
     assert (root / "contract.json").read_bytes() == intent
 
 
-@pytest.mark.parametrize("control", [
-    '        if self.status == "allowed":\n            pass\n',
-    '        if self.status in ("allowed", "forbidden"):\n            pass\n',
-    '        marker = "allowed"\n        if self.status == marker:\n            pass\n',
-    '        match self.status:\n            case "allowed":\n                pass\n',
-], ids=["equality", "membership", "local-alias", "match"])
+@pytest.mark.parametrize(
+    "control",
+    [
+        '        if self.status == "allowed":\n            pass\n',
+        '        if self.status in ("allowed", "forbidden"):\n            pass\n',
+        '        marker = "allowed"\n        if self.status == marker:\n            pass\n',
+        '        match self.status:\n            case "allowed":\n                pass\n',
+    ],
+    ids=["equality", "membership", "local-alias", "match"],
+)
 def test_real_permission_constructor_raw_control_fails_native_guard(tmp_path, control):
     root, config = _native_repository(tmp_path)
     intent = (root / "contract.json").read_bytes()

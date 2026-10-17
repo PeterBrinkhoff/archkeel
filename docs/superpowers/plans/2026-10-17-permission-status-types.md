@@ -56,3 +56,5 @@
 Base: 5fc94c10298c4bbcd98fd44f8ac72b321b03a0b4. Its inherited integration receipt is not assumed valid; this stage generates its own normal receipt against that actual predecessor.
 
 Ruling: the parent requires remote GitHub/Actions only, so isolation uses this dedicated feature branch and fresh Actions checkouts rather than local worktree/scripts. No shared Root/Main/Publisher refs are mutated. The skill's auxiliary writing-good-tests resource is unavailable; the main TDD rules remain applied. Design and inline execution were explicitly authorized before this plan.
+
+Task1 RED: run38987444254 / job117262089955 observed exactly11 assertion failures and1 passing whole-module guard control on unchanged production. Known constructors/actual producers still held plain strings, invalid values were accepted, PermissionStatus was not an enum, and the independent native comparison was genuinely FAIL (not an unrelated parse error or absent-module UNKNOWN). The fixed Target and actual original source are retained for GREEN/mutation proofs.
