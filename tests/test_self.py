@@ -274,6 +274,7 @@ def test_self_analyzer_inside_covers_its_modules(self_observation: Observation) 
         "analyzer:python",
         "analyzer:typescript",
         "check",
+        "cli",
         "ir",
         "render",
     }
@@ -326,6 +327,18 @@ def test_self_analyzer_inside_covers_its_modules(self_observation: Observation) 
     assert levels["analyzer:dart"].unassigned == ()
     assert levels["analyzer:typescript"].unassigned == ()
     assert levels["ir"].unassigned == ()
+    cli_modules = {item.label: set(item.modules) for item in levels["cli"].components}
+    assert cli_modules == {
+        "arguments": {"archkeel.cli.arguments"},
+        "installer": {"archkeel.cli.skill"},
+        "composition": {
+            "archkeel.cli",
+            "archkeel.cli.__main__",
+            "archkeel.cli.config",
+            "archkeel.cli.observe",
+        },
+    }
+    assert levels["cli"].unassigned == ()
     assert all(
         ".embedded" not in module for modules in modules_by_component.values() for module in modules
     )
