@@ -340,7 +340,7 @@ def test_construct_evidence_keeps_the_real_utf16_literal_location(tmp_path, exte
     ],
 )
 def test_ts_value_preserving_literal_wrappers_keep_native_original_evidence(tmp_path, body):
-    source = 'const emoji = "😀";\nexport function decide(value: any) { ' + body + " }"
+    source = 'export function decide(value: any) {\nconst emoji = "😀"; ' + body + " }"
     facts, model = _model(tmp_path, source)
     records = _constructs(facts)
     assert len(records) == 1
@@ -385,12 +385,15 @@ def test_ts_literal_wrappers_do_not_turn_types_names_or_dynamic_values_into_proo
     assert facts.capabilities.constructs[0].status is ConstructSupport.PARTIAL
 
 
-def test_unknown_ts_literal_wrapper_kind_cannot_promote_its_type_literal(tmp_path, monkeypatch):
+@pytest.mark.parametrize("expression", ['("active" as const)', '(left as "active")'])
+def test_unknown_ts_literal_wrapper_kind_cannot_promote_its_type_literal(
+    tmp_path, monkeypatch, expression
+):
     original = parser._NODE_KINDS
     monkeypatch.setattr(parser, "_NODE_KINDS", {key: value for key, value in original.items() if key != "as_expression"})
     facts, model = _model(
         tmp_path,
-        'export function decide(value: any, left: any) { return value === (left as "active"); }',
+        "export function decide(value: any, left: any) { return value === " + expression + "; }",
     )
     assert not _constructs(facts)
     assert not trace_valid_violations(model)
