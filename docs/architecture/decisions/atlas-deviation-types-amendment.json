@@ -1,0 +1,9 @@
+{
+  "after_baseline_digest": "ce0214aa53088d46512d9c71a8fe5fe51597afadb50bd8e5b6629be012533ef7",
+  "after_digest": "8e83049e17ec32344753775d3b92b4ce7863d396c984d91771bfb2208a329ad1",
+  "before_baseline_digest": "02279ca79283191bc1137034db4191abc1850cf3f290e974ec1caed594f95600",
+  "before_digest": "360d24c0e65e127f2296d95b8b78ec36dd0fea7acf0ffe2b89a8e3a8dfdb4baf",
+  "decided_by": "ake2l",
+  "rationale": "Own immutable recorded Atlas deviations and their deterministic producer, preserve existing wire dictionaries and expose the real checked Scene consumer.",
+  "schema_version": "2.0.0"
+}
