@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import ast
 from collections import Counter
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from enum import Enum
 
 from archkeel.ir.facts import EvidenceClass, stable_id
@@ -209,9 +209,10 @@ def _static_string_constants(
 
 
 def _literal_collections(
-    module: ParsedModule, scopes: LexicalScopes, scalar: Callable[[ast.expr], bool]
+    literals: _LiteralComparisons,
 ) -> dict[str, ast.Tuple | ast.List | ast.Set]:
     """Retain qualified literal nodes; only tuples also serve predicate arguments."""
+    module, scopes = literals.module, literals.scopes
     candidates: dict[str, ast.Tuple | ast.List | ast.Set] = {}
     for statement in module.tree.body:
         if not isinstance(statement, ast.Assign | ast.AnnAssign):
@@ -222,7 +223,7 @@ def _literal_collections(
         if not (
             isinstance(value, ast.Tuple | ast.List | ast.Set)
             and value.elts
-            and all(scalar(item) for item in value.elts)
+            and all(literals.scalar(item) for item in value.elts)
         ):
             continue
         targets = statement.targets if isinstance(statement, ast.Assign) else [statement.target]
@@ -290,10 +291,10 @@ class _LiteralComparisons:
     def __init__(self, module: ParsedModule) -> None:
         self.module = module
         self.scopes = LexicalScopes(module)
-        self.module_values, self.class_values, self.enum_classes = _static_string_constants(module)
+        module_values, class_values, enum_classes = _static_string_constants(module)
         self.origins: dict[str, str] = {}
         stable_names = stable_direct_module_bindings(module)
-        self.enum_value_classes = frozenset(
+        enum_value_classes = frozenset(
             f"{module.module}.{node.name}"
             for node in module.tree.body
             if isinstance(node, ast.ClassDef)
@@ -306,21 +307,21 @@ class _LiteralComparisons:
         )
         self.scalar_names = frozenset(
             f"{module.module}.{name}"
-            for name, value in self.module_values.items()
+            for name, value in module_values.items()
             if value is not None and name in stable_names
         ) | frozenset(
             f"{owner}.{name}"
-            for owner, values in self.class_values.items()
-            if owner not in self.enum_classes
+            for owner, values in class_values.items()
+            if owner not in enum_classes
             and owner[len(module.module) + 1 :].split(".")[0] in stable_names
             for name, value in values.items()
             if value is not None
         )
         self.enum_member_names = frozenset(
             f"{owner}.{name}"
-            for owner in self.enum_value_classes
-            for name, value in self.class_values[owner].items()
-            if "value" not in self.class_values[owner] and value is not None
+            for owner in enum_value_classes
+            for name, value in class_values[owner].items()
+            if "value" not in class_values[owner] and value is not None
         )
         self.collections: dict[str, ast.Tuple | ast.List | ast.Set] = {}
 
@@ -640,7 +641,7 @@ def collect_constructs(
         context.scalar_names = scalar_names
         context.enum_member_names = enum_member_names
         context.origins = origins
-        context.collections = _literal_collections(module, context.scopes, context.scalar)
+        context.collections = _literal_collections(context)
         collector = ConstructCollector(module, evidence, context)
         collector.visit(module.tree)
         items.extend(collector.items)
