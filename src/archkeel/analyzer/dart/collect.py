@@ -9,6 +9,7 @@ import hashlib
 import json
 import re
 from collections import Counter
+from enum import StrEnum
 
 from archkeel.analyzer.runtime import collector_provenance
 from archkeel.ir.facts import (
@@ -19,9 +20,13 @@ from archkeel.ir.facts import (
     ExternalPackageTarget,
     FactSection,
     FileFact,
+    InventoryStatus,
+    InventoryVersion,
+    JsonValue,
     Language,
     LocalTarget,
     Record,
+    RuntimeRequirementState,
     SourceFacts,
     SourceInfo,
     SourceProfile,
@@ -29,19 +34,92 @@ from archkeel.ir.facts import (
     UnresolvedTarget,
     stable_id,
 )
+from archkeel.ir.facts import (
+    MemberKind as InventoryMemberKind,
+)
 from archkeel.ir.facts_codec import RawEvidence, RawRecord, parse_evidence, parse_record
 from archkeel.ir.protocol import CollectionRequest, DartSettings
 from archkeel.ir.source_records import RawData, classified, file_evidence, record_evidence
 
-from .parse import Definition, Member, Parameter, Site, Span, Syntax, parse
+from .parse import parse
 from .resolve import (
+    BindingRole,
     ConstructionResolution,
+    ResolutionProblemKind,
+    ResolutionStatus,
     ResolvedBinding,
     ResolvedParameter,
     ResolvedSite,
     Resolver,
 )
 from .snapshot import Snapshot, read_snapshot
+from .syntax import (
+    Combinator,
+    ConcernKind,
+    Definition,
+    DefinitionKind,
+    Directive,
+    DirectiveKind,
+    Member,
+    MemberKind,
+    Modifier,
+    Parameter,
+    ParameterKind,
+    Site,
+    SiteKind,
+    SiteUse,
+    Span,
+    Syntax,
+    Visibility,
+)
+
+
+class _SymbolKind(StrEnum):
+    CLASS = "class"
+    FUNCTION = "function"
+    METHOD = "method"
+    ALIAS = "alias"
+    ATTRIBUTE = "attribute"
+    CONSTANT = "constant"
+    BINDING = "binding"
+
+
+class _FactStatus(StrEnum):
+    RESOLVED = ResolutionStatus.RESOLVED
+    PARTIALLY_RESOLVED = "partially_resolved"
+    UNRESOLVED = ResolutionStatus.UNRESOLVED
+
+
+class _ClassKind(StrEnum):
+    CLASS = DefinitionKind.CLASS
+    PROTOCOL = "protocol"
+    MIXIN = DefinitionKind.MIXIN
+    ENUM = DefinitionKind.ENUM
+
+
+def _class_kind(value: JsonValue) -> _ClassKind | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        return _ClassKind(value)
+    except ValueError:
+        return None
+
+
+class _BaseKind(StrEnum):
+    EXTENDS = "inherits"
+    REALIZES = "realizes"
+    MIXES_IN = "mixes_in"
+
+
+class _ConstraintOperator(StrEnum):
+    CARET = "^"
+    GREATER_EQUAL = ">="
+    GREATER = ">"
+    LESS_EQUAL = "<="
+    LESS = "<"
+    EQUAL = "="
+
 
 _SECTIONS: tuple[SourceSectionName, ...] = (
     SourceSectionName.IMPORTS,
@@ -118,24 +196,16 @@ class _Collection:
                     "syntax errors prevent complete source facts",
                 )
             for concern in syntax.concerns:
-                if concern.kind == "syntax_error" and syntax.first_error is not None:
+                if concern.kind == ConcernKind.SYNTAX_ERROR and syntax.first_error is not None:
                     continue
                 kind = {
-                    "unsupported_directive": "DirectiveError",
-                    "unsupported_declaration": "UnsupportedDeclaration",
-                    "unsupported_member": "UnsupportedMember",
-                    "unsupported_parameter": "UnsupportedParameter",
+                    ConcernKind.UNSUPPORTED_DIRECTIVE: "DirectiveError",
+                    ConcernKind.UNSUPPORTED_DECLARATION: "UnsupportedDeclaration",
                 }.get(concern.kind, concern.kind)
                 self._gap(source.rel_path, concern.span, kind, concern.message)
 
         for problem in self.snapshot.problems:
-            kind = {
-                "SymlinkError": "DartSourceLink"
-                if problem.path.endswith(".dart")
-                else problem.kind,
-                "ModuleIdCollision": "DartModuleCollision",
-            }.get(problem.kind, problem.kind)
-            self._gap(problem.path, _file_span(), kind, problem.message)
+            self._gap(problem.path, _file_span(), problem.kind, problem.message)
         self._sdk_constraints()
 
         for rel in tuple(self.parsed):
@@ -161,8 +231,7 @@ class _Collection:
     def _resolver_gaps(self) -> None:
         for problem in self.resolver.problems:
             kind = {
-                "ImportError": "DirectiveError",
-                "PartError": "PartError",
+                ResolutionProblemKind.IMPORT_ERROR: "DirectiveError",
             }.get(problem.kind, problem.kind)
             self._gap(
                 problem.path,
@@ -212,7 +281,7 @@ class _Collection:
                 self.request.snapshot.dirty,
                 hashlib.sha256(listing).hexdigest(),
                 tuple(
-                    f"{root}/**/*.dart" if root != "." else "**/*.dart"
+                    f"{root}/**/*.dart" if re.fullmatch(r"\.", root) is None else "**/*.dart"
                     for root in self.snapshot.roots
                 ),
             ),
@@ -240,9 +309,9 @@ class _Collection:
                 self._definition(rel, module, definition, None, None)
 
     def _sdk_constraints(self) -> None:
-        if self.snapshot.sdk_constraint_state == "requirement_missing":
+        if self.snapshot.sdk_constraint_state == RuntimeRequirementState.REQUIREMENT_MISSING:
             return
-        if self.snapshot.sdk_constraint_state != "declared":
+        if self.snapshot.sdk_constraint_state != RuntimeRequirementState.DECLARED:
             self.sdk_supported = False
             self._gap(
                 "pubspec.yaml",
@@ -337,42 +406,48 @@ class _Collection:
         name = definition.name
         qualified = f"{parent}.{name}" if parent else f"{module}.{name}"
         kind = definition.kind
-        record_kind = {
-            "typedef": "alias",
-            "mixin": "class",
-            "enum": "class",
-            "interface": "class",
-            "getter": "function",
-            "setter": "function",
-        }.get(kind, kind)
+        record_kinds: dict[DefinitionKind, DefinitionKind | _SymbolKind] = {
+            DefinitionKind.TYPEDEF: _SymbolKind.ALIAS,
+            DefinitionKind.MIXIN: DefinitionKind.CLASS,
+            DefinitionKind.ENUM: DefinitionKind.CLASS,
+            DefinitionKind.INTERFACE: DefinitionKind.CLASS,
+            DefinitionKind.GETTER: DefinitionKind.FUNCTION,
+            DefinitionKind.SETTER: DefinitionKind.FUNCTION,
+        }
+        record_kind = record_kinds.get(kind, kind)
         symbol_id = stable_id("DARTDEF", rel, definition.span.start_byte, qualified, record_kind)
         self.definition_ids[(rel, definition.span.line, definition.span.column)] = symbol_id
         data = self._meta(
             rel, module, name, kind, qualified, parent, parent_id, definition.visibility
         )
-        data["symbol_category"] = "type_alias" if kind in {"typedef", "alias"} else record_kind
+        data["symbol_category"] = "type_alias" if kind == DefinitionKind.TYPEDEF else record_kind
         data["modifiers"] = list(definition.modifiers)
-        if kind in {"class", "mixin", "enum", "interface"}:
+        if kind in {
+            DefinitionKind.CLASS,
+            DefinitionKind.MIXIN,
+            DefinitionKind.ENUM,
+            DefinitionKind.INTERFACE,
+        }:
             self._class_definition(rel, module, definition, qualified, symbol_id, data)
-        elif kind in {"function", "getter", "setter"}:
+        elif kind in {DefinitionKind.FUNCTION, DefinitionKind.GETTER, DefinitionKind.SETTER}:
             parameters = self._parameters(definition.parameters)
-            if kind in {"getter", "setter"}:
+            if kind in {DefinitionKind.GETTER, DefinitionKind.SETTER}:
                 qualified = f"{qualified}::{kind}"
                 data["qualified_name"] = qualified
                 data["accessor_kind"] = kind
             data.update(
                 annotation=None,
                 returns="void"
-                if kind == "setter" and definition.return_type is None
+                if kind == DefinitionKind.SETTER and definition.return_type is None
                 else definition.return_type,
                 parameters=parameters,
                 method_kind="static",
                 signature_complete=all(p["default_known"] for p in parameters),
             )
-        elif kind in {"typedef", "alias"}:
+        elif kind == DefinitionKind.TYPEDEF:
             data.update(symbol_category="type_alias", annotation=definition.alias, constant=None)
-        elif kind in {"variable", "constant", "attribute"}:
-            record_kind = "constant" if definition.constant else "attribute"
+        elif kind == DefinitionKind.VARIABLE:
+            record_kind = _SymbolKind.CONSTANT if definition.constant else _SymbolKind.ATTRIBUTE
             data.update(
                 symbol_category=record_kind,
                 annotation=definition.return_type,
@@ -385,7 +460,7 @@ class _Collection:
                 rel,
                 definition.span,
                 "UnsupportedDeclaration",
-                f"declaration kind {kind!r} is not represented",
+                f"declaration kind {str(kind)!r} is not represented",
             )
             return symbol_id
         self._publish_definition(
@@ -398,8 +473,8 @@ class _Collection:
         rel: str,
         name: str,
         qualified: str,
-        kind: str,
-        record_kind: str,
+        kind: DefinitionKind,
+        record_kind: DefinitionKind | _SymbolKind,
         symbol_id: str,
         definition: Definition,
         data: RawData,
@@ -416,7 +491,7 @@ class _Collection:
             )
         )
         self.definition_names[(rel, definition.span.start_byte)] = qualified
-        if kind in {"function", "getter", "setter"}:
+        if kind in {DefinitionKind.FUNCTION, DefinitionKind.GETTER, DefinitionKind.SETTER}:
             scope_end = min(
                 (
                     item.span.start_byte
@@ -447,14 +522,14 @@ class _Collection:
         data: RawData,
     ) -> None:
         class_kind = {
-            "class": "class",
-            "interface": "protocol",
-            "mixin": "mixin",
-            "enum": "enum",
+            DefinitionKind.CLASS: _ClassKind.CLASS,
+            DefinitionKind.INTERFACE: _ClassKind.PROTOCOL,
+            DefinitionKind.MIXIN: _ClassKind.MIXIN,
+            DefinitionKind.ENUM: _ClassKind.ENUM,
         }[definition.kind]
         attributes: list[RawData] = []
         methods: list[str] = []
-        if definition.kind == "enum":
+        if definition.kind == DefinitionKind.ENUM:
             for literal, span in zip(
                 definition.enum_members, definition.enum_member_spans, strict=True
             ):
@@ -462,7 +537,7 @@ class _Collection:
                     self._attribute(rel, span, qualified, literal, None, True, None, True)
                 )
         for member in definition.members:
-            if member.kind == "field":
+            if member.kind == MemberKind.FIELD:
                 attributes.append(
                     self._attribute(
                         rel,
@@ -475,7 +550,13 @@ class _Collection:
                         member.constant,
                     )
                 )
-            elif member.kind in {"method", "constructor", "getter", "setter", "operator"}:
+            elif member.kind in {
+                MemberKind.METHOD,
+                MemberKind.CONSTRUCTOR,
+                MemberKind.GETTER,
+                MemberKind.SETTER,
+                MemberKind.OPERATOR,
+            }:
                 methods.append(
                     self._member(rel, module, qualified, symbol_id, definition.name, member)
                 )
@@ -485,19 +566,23 @@ class _Collection:
                     rel,
                     member.span,
                     "UnsupportedMember",
-                    f"member kind {member.kind!r} is not represented",
+                    f"member kind {str(member.kind)!r} is not represented",
                 )
         data.update(
             class_kind=class_kind,
             enum_members=list(definition.enum_members),
             attribute_declarations=attributes,
             member_inventories=[
-                _inventory("attribute", [item["definition_id"] for item in attributes]),
-                _inventory("method", methods),
+                _inventory(
+                    InventoryMemberKind.ATTRIBUTE, [item["definition_id"] for item in attributes]
+                ),
+                _inventory(InventoryMemberKind.METHOD, methods),
             ],
         )
-        if definition.kind in {"class", "mixin"}:
-            data["mixin_capable"] = definition.kind == "mixin" or "mixin" in definition.modifiers
+        if definition.kind in {DefinitionKind.CLASS, DefinitionKind.MIXIN}:
+            data["mixin_capable"] = (
+                definition.kind == DefinitionKind.MIXIN or Modifier.MIXIN in definition.modifiers
+            )
 
     def _member(
         self,
@@ -509,15 +594,17 @@ class _Collection:
         member: Member,
     ) -> str:
         name = member.name
-        constructor = member.kind == "constructor"
+        constructor = member.kind == MemberKind.CONSTRUCTOR
         member_spelling = name.rsplit(".", 1)[-1]
-        accessor = f"::{member.kind}" if member.kind in {"getter", "setter"} else ""
+        accessor = (
+            f"::{member.kind}" if member.kind in {MemberKind.GETTER, MemberKind.SETTER} else ""
+        )
         qualified = f"{parent}.{member_spelling if constructor else name}{accessor}"
         identity = stable_id("DARTDEF", rel, member.span.start_byte, qualified, "method")
         owner = self._owner_definition(rel, module, parent)
         parameters = self._member_parameters(rel, owner, member, constructor, identity)
         returns = None if constructor else member.return_type
-        if member.kind == "setter" and returns is None:
+        if member.kind == MemberKind.SETTER and returns is None:
             returns = "void"
         if constructor:
             returns = (
@@ -530,11 +617,13 @@ class _Collection:
             for p in parameters
         )
         visibility = (
-            ("private" if member_spelling.startswith("_") else "public")
+            (Visibility.PRIVATE if member_spelling.startswith("_") else Visibility.PUBLIC)
             if constructor
             else member.visibility
         )
-        data = self._meta(rel, module, name, "method", qualified, parent, parent_id, visibility)
+        data = self._meta(
+            rel, module, name, MemberKind.METHOD, qualified, parent, parent_id, visibility
+        )
         data.update(
             annotation=None,
             returns=returns,
@@ -550,7 +639,7 @@ class _Collection:
             ),
             signature_complete=signature_complete,
         )
-        if member.kind in {"getter", "setter"}:
+        if member.kind in {MemberKind.GETTER, MemberKind.SETTER}:
             data["accessor_kind"] = member.kind
         self._add_symbol(
             self._record(
@@ -594,7 +683,9 @@ class _Collection:
                 problem.span or member.span,
                 problem.kind,
                 problem.message,
-                signature_id=identity if problem.kind == "source_resolution_gap" else None,
+                signature_id=identity
+                if problem.kind == ResolutionProblemKind.SOURCE_RESOLUTION_GAP
+                else None,
             )
         parameters = self._resolved_parameters(resolution.parameters)
         formals = {item.name: item for item in member.parameters if item.super_formal}
@@ -624,7 +715,7 @@ class _Collection:
             "name": name,
             "annotation": annotation,
             "visibility": {
-                "kind": "private" if name.startswith("_") else "public",
+                "kind": Visibility.PRIVATE if name.startswith("_") else Visibility.PUBLIC,
                 "basis": "language",
                 "spelling": name,
             },
@@ -639,11 +730,11 @@ class _Collection:
         rel: str,
         module: str,
         name: str,
-        kind: str,
+        kind: DefinitionKind | MemberKind | BindingRole,
         qualified: str,
         parent: str | None,
         parent_id: str | None,
-        visibility: str,
+        visibility: Visibility,
     ) -> RawData:
         return {
             "qualified_name": qualified,
@@ -654,11 +745,13 @@ class _Collection:
             "parent": parent,
             "lexical_parent_id": parent_id,
             "visibility_detail": {
-                "kind": "private" if visibility == "private" else "public",
+                "kind": Visibility.PRIVATE
+                if visibility == Visibility.PRIVATE
+                else Visibility.PUBLIC,
                 "basis": "language",
                 "spelling": name.rsplit(".", 1)[-1],
             },
-            "symbol_category": "type_alias" if kind in {"typedef", "alias"} else kind,
+            "symbol_category": "type_alias" if kind == DefinitionKind.TYPEDEF else kind,
             "source_binding_unique": True,
             "source_member_binding_static": True,
             "class_header_static": True,
@@ -672,7 +765,7 @@ class _Collection:
             {
                 "name": item.name,
                 "annotation": item.annotation,
-                "kind": "keyword_only" if item.kind == "named" else "positional",
+                "kind": "keyword_only" if item.kind == ParameterKind.NAMED else "positional",
                 "default": (
                     item.default if item.default is not None else "null" if item.optional else None
                 ),
@@ -687,7 +780,7 @@ class _Collection:
             {
                 "name": item.name,
                 "annotation": item.annotation,
-                "kind": "keyword_only" if item.kind == "named" else "positional",
+                "kind": "keyword_only" if item.kind == ParameterKind.NAMED else "positional",
                 "default": item.default,
                 "default_known": item.default_known,
             }
@@ -706,16 +799,10 @@ class _Collection:
                 continue
             module = self.modules[rel]
             for directive in syntax.directives:
-                if directive.kind not in {"import", "export"}:
+                if directive.kind not in {DirectiveKind.IMPORT, DirectiveKind.EXPORT}:
                     continue
                 resolved = self.resolver.resolve_directive(rel, directive)
-                selected: set[str] | None = None
-                for mode, values in directive.combinators:
-                    names = set(values)
-                    if mode == "show":
-                        selected = names if selected is None else selected & names
-                    elif selected is not None:
-                        selected -= names
+                selected = _selected_symbols(directive)
                 symbols: tuple[str | None, ...] = tuple(sorted(selected)) if selected else (None,)
                 for target in resolved:
                     for symbol in symbols:
@@ -744,13 +831,17 @@ class _Collection:
                                     ),
                                     "symbol": symbol,
                                     "binding": symbol
-                                    or (directive.prefix if directive.kind == "import" else None),
+                                    or (
+                                        directive.prefix
+                                        if directive.kind == DirectiveKind.IMPORT
+                                        else None
+                                    ),
                                     "symbols_known": known,
                                     "relative_level": 0,
                                     "under_type_checking": False,
                                     "ordinary_module": True,
                                     "module_level_import": True,
-                                    "reexport": directive.kind == "export",
+                                    "reexport": directive.kind == DirectiveKind.EXPORT,
                                     "reexport_chain": []
                                     if symbol is None
                                     else [f"{target_module}.{symbol}"],
@@ -759,7 +850,11 @@ class _Collection:
                                     else f"{target_module}.{symbol}",
                                     "symbol_visibility": None
                                     if symbol is None
-                                    else ("private" if symbol.startswith("_") else "public_name"),
+                                    else (
+                                        Visibility.PRIVATE
+                                        if symbol.startswith("_")
+                                        else "public_name"
+                                    ),
                                 },
                             )
                         )
@@ -767,7 +862,7 @@ class _Collection:
                             self.targets.append(
                                 LocalTarget(identity, target_module, target.rel_path)
                             )
-                        elif target.uri.startswith("dart:"):
+                        elif target.builtin:
                             self.targets.append(BuiltinTarget(identity, target_module))
                         elif target.package != self.snapshot.package_name:
                             self.targets.append(ExternalPackageTarget(identity, target.package))
@@ -782,7 +877,12 @@ class _Collection:
                 continue
             module = self.modules[rel]
             for definition in syntax.definitions:
-                if definition.kind not in {"class", "interface", "mixin", "enum"}:
+                if definition.kind not in {
+                    DefinitionKind.CLASS,
+                    DefinitionKind.INTERFACE,
+                    DefinitionKind.MIXIN,
+                    DefinitionKind.ENUM,
+                }:
                     continue
                 qualified = f"{module}.{definition.name}"
                 record = self.symbol_by_name.get(qualified)
@@ -790,9 +890,9 @@ class _Collection:
                     continue
                 bases = []
                 for kind, names in (
-                    ("inherits", definition.extends),
-                    ("mixes_in", definition.with_types),
-                    ("realizes", definition.implements),
+                    (_BaseKind.EXTENDS, definition.extends),
+                    (_BaseKind.MIXES_IN, definition.with_types),
+                    (_BaseKind.REALIZES, definition.implements),
                 ):
                     for name in names:
                         targets = self.resolver.resolve_name(rel, name)
@@ -801,22 +901,28 @@ class _Collection:
                             target_record = self.symbol_by_name.get(target)
                         else:
                             target, target_record = "", None
-                        is_class = target_record is not None and target_record["kind"] == "class"
+                        is_class = (
+                            target_record is not None
+                            and _SymbolKind(target_record["kind"]) == _SymbolKind.CLASS
+                        )
                         mixin_target = bool(
                             target_record is not None
                             and (
-                                target_record["data"].get("class_kind") == "mixin"
+                                _class_kind(target_record["data"].get("class_kind"))
+                                == _ClassKind.MIXIN
                                 or target_record["data"].get("mixin_capable") is True
                             )
                         )
-                        resolved = is_class and (kind != "mixes_in" or mixin_target)
+                        resolved = is_class and (kind != _BaseKind.MIXES_IN or mixin_target)
                         bases.append(
                             {
                                 "id": stable_id(
                                     "DARTBASE", rel, definition.span.start_byte, kind, name
                                 ),
                                 "relationship_kind": kind,
-                                "status": "resolved" if resolved else "unresolved",
+                                "status": _FactStatus.RESOLVED
+                                if resolved
+                                else _FactStatus.UNRESOLVED,
                                 "targets": [target] if resolved else [],
                                 "candidate_count": 1 if resolved else len(targets),
                                 "candidates_truncated": False,
@@ -826,7 +932,7 @@ class _Collection:
                                 else (
                                     "with target is not proven to be a local "
                                     "mixin-capable declaration"
-                                    if kind == "mixes_in"
+                                    if kind == _BaseKind.MIXES_IN
                                     else "base type is external or unresolved"
                                 ),
                                 "evidence_ids": [self._cite(rel, definition.span)],
@@ -836,7 +942,7 @@ class _Collection:
 
     def _canonical_target(self, qualified: str) -> str:
         record = self.symbol_by_name.get(qualified)
-        if record is None or record["kind"] != "alias":
+        if record is None or _SymbolKind(record["kind"]) != _SymbolKind.ALIAS:
             return qualified
         annotation = record["data"].get("annotation")
         if not isinstance(annotation, str) or self.resolver is None:
@@ -853,13 +959,13 @@ class _Collection:
             site_bindings = self._binding_sites(rel, module, resolved_sites)
             for resolved in resolved_sites:
                 if resolved.site.kind in {
-                    "binding",
-                    "assignment",
-                    "extends",
-                    "implements",
-                    "with",
-                    "field_formal",
-                    "super_formal",
+                    SiteKind.BINDING,
+                    SiteKind.ASSIGNMENT,
+                    SiteKind.EXTENDS,
+                    SiteKind.IMPLEMENTS,
+                    SiteKind.WITH,
+                    SiteKind.FIELD_FORMAL,
+                    SiteKind.SUPER_FORMAL,
                 }:
                     continue
                 self._site_record(rel, module, resolved, site_bindings)
@@ -869,11 +975,13 @@ class _Collection:
     ) -> list[tuple[Site, RawData]]:
         result: list[tuple[Site, RawData]] = []
         call_expressions = {
-            item.site.expression for item in sites if item.site.kind in {"call", "creation"}
+            item.site.expression
+            for item in sites
+            if item.site.kind in {SiteKind.CALL, SiteKind.CREATION}
         }
         for resolved in sites:
             site = resolved.site
-            if site.kind != "binding" or not site.assigned_name:
+            if site.kind != SiteKind.BINDING or not site.assigned_name:
                 continue
             scope, scope_id = self._scope(rel, module, site)
             name = site.assigned_name
@@ -890,17 +998,17 @@ class _Collection:
             annotation = site.assignment_annotation
             raw_initializer = site.initializer
             initializer = site.initializer_source or raw_initializer
-            if initializer and "=>" in initializer:
+            if initializer and re.search(r"=>", initializer) is not None:
                 initializer = None
             data = self._meta(
                 rel,
                 module,
                 name,
-                "binding",
+                BindingRole.BINDING,
                 qualified,
                 scope,
                 scope_id,
-                "private" if name.startswith("_") else "public",
+                Visibility.PRIVATE if name.startswith("_") else Visibility.PUBLIC,
             )
             data.update(
                 symbol_category="dynamic_binding",
@@ -945,7 +1053,7 @@ class _Collection:
     ) -> None:
         site = resolved.site
         scope, scope_id = self._scope(rel, module, site)
-        call = site.kind in {"call", "creation"}
+        call = site.kind in {SiteKind.CALL, SiteKind.CREATION}
         target_names, construction, status = self._site_target_state(rel, resolved, call)
         identity = stable_id(
             "DARTCALL" if call else "DARTREF",
@@ -961,7 +1069,7 @@ class _Collection:
             if binding_site.initializer == site.expression
             and binding_site.span.start_byte <= site.span.start_byte <= binding_site.span.end_byte
         ]
-        if not call and site.use in {"read", "read_write", "value"}:
+        if not call and site.use in {SiteUse.READ, SiteUse.READ_WRITE, SiteUse.VALUE}:
             for binding_site, binding in reversed(site_bindings):
                 if (
                     binding_site.scope_span == site.scope_span
@@ -977,19 +1085,19 @@ class _Collection:
             "source_file": rel,
             "expression": site.expression_source or site.expression,
             "status": status,
-            "targets": target_names if status != "unresolved" else [],
+            "targets": target_names if status != _FactStatus.UNRESOLVED else [],
             "candidate_count": len(target_names),
             "candidates_truncated": False,
             "reason": (
                 "Analyzer resolved the source element"
-                if status == "resolved"
+                if status == _FactStatus.RESOLVED
                 else "multiple local source candidates remain"
-                if status == "partially_resolved"
+                if status == _FactStatus.PARTIALLY_RESOLVED
                 else "target is external, dynamic, or unresolved"
             ),
         }
         if not call:
-            call_data["use"] = "read" if site.use == "value" else site.use
+            call_data["use"] = SiteUse.READ if site.use == SiteUse.VALUE else site.use
         if construction is not None:
             call_data["construction"] = construction
         if matching:
@@ -1018,82 +1126,90 @@ class _Collection:
 
     def _site_target_state(
         self, rel: str, resolved: ResolvedSite, call: bool
-    ) -> tuple[list[str], RawData | None, str]:
+    ) -> tuple[list[str], RawData | None, _FactStatus]:
         site = resolved.site
         target_names = sorted(
             {name for item in resolved.bindings if (name := self._binding_name(item)) is not None}
         )
         enum_binding = next(
-            (item for item in resolved.bindings if item.kind == "enum_member"), None
+            (item for item in resolved.bindings if item.kind == BindingRole.ENUM_MEMBER), None
         )
         if not call and enum_binding is not None:
             enum_name = enum_binding.name.split(".", 1)[0]
             enum_type = f"{enum_binding.module}.{enum_name}"
-            if self._symbol_kind(enum_type) == "class":
+            if self._symbol_kind(enum_type) == _SymbolKind.CLASS:
                 target_names = [enum_type]
         constructor_binding = next(
             (
                 item
                 for item in resolved.bindings
-                if item.kind in {"constructor", "implicit_constructor"}
+                if item.kind in {MemberKind.CONSTRUCTOR, BindingRole.IMPLICIT_CONSTRUCTOR}
             ),
             None,
         )
         construction_resolution = (
             self.resolver.resolve_construction(rel, site)
-            if call and (site.kind == "creation" or constructor_binding is not None)
+            if call and (site.kind == SiteKind.CREATION or constructor_binding is not None)
             else None
         )
-        construction = (
-            self._construction_record(construction_resolution) if construction_resolution else None
+        construction, construction_status = (
+            self._construction_record(construction_resolution)
+            if construction_resolution is not None
+            else (None, None)
         )
         if construction_resolution and construction_resolution.binding:
             class_name = construction_resolution.binding.name.split(".", 1)[0]
             qualified_class = f"{construction_resolution.binding.module}.{class_name}"
             target_names = (
-                [qualified_class] if self._symbol_kind(qualified_class) == "class" else []
+                [qualified_class] if self._symbol_kind(qualified_class) == _SymbolKind.CLASS else []
             )
         if call and construction is None:
             target_names = [
                 target
                 for target in target_names
-                if self._symbol_kind(target) in {"method", "function"}
+                if self._symbol_kind(target) in {_SymbolKind.METHOD, _SymbolKind.FUNCTION}
             ]
         status = (
-            "resolved"
+            _FactStatus.RESOLVED
             if len(target_names) == 1
             and (
                 not call
                 or construction is not None
-                or self._symbol_kind(target_names[0]) in {"method", "function"}
+                or self._symbol_kind(target_names[0]) in {_SymbolKind.METHOD, _SymbolKind.FUNCTION}
             )
-            else "unresolved"
+            else _FactStatus.UNRESOLVED
         )
-        if resolved.status != "resolved":
-            status = "partially_resolved" if call and target_names else "unresolved"
-        if construction is not None:
-            status = "resolved" if construction["status"] != "unresolved" else "unresolved"
+        if resolved.status != ResolutionStatus.RESOLVED:
+            status = (
+                _FactStatus.PARTIALLY_RESOLVED if call and target_names else _FactStatus.UNRESOLVED
+            )
+        if construction_status is not None:
+            status = (
+                _FactStatus.RESOLVED
+                if construction_status != _FactStatus.UNRESOLVED
+                else _FactStatus.UNRESOLVED
+            )
         return target_names, construction, status
 
     @staticmethod
     def _construction_record(
         resolution: ConstructionResolution,
-    ) -> RawData:
+    ) -> tuple[RawData, _FactStatus]:
         binding = resolution.binding
         class_name = binding.name.split(".", 1)[0] if binding else None
         target = f"{binding.module}.{class_name}" if binding and class_name else None
-        if resolution.status == "resolved" and target:
-            status = "resolved"
+        if resolution.status == ResolutionStatus.RESOLVED and target:
+            status = _FactStatus.RESOLVED
             targets = [target]
         elif binding is not None and target:
-            status = "partially_resolved"
+            status = _FactStatus.PARTIALLY_RESOLVED
             targets = [target]
         else:
-            status = "unresolved"
+            status = _FactStatus.UNRESOLVED
             targets = []
-        if status == "resolved":
+        if status == _FactStatus.RESOLVED:
             reason = "Analyzer resolved a local generative constructor"
-        elif status == "partially_resolved":
+        elif status == _FactStatus.PARTIALLY_RESOLVED:
             reason = "factory construction does not prove a local instance target"
         else:
             reason = resolution.reason or "constructor target is external, dynamic, or unresolved"
@@ -1102,7 +1218,7 @@ class _Collection:
             "targets": targets,
             "candidates_truncated": False,
             "reason": reason,
-        }
+        }, status
 
     def _scope(self, rel: str, module: str, site: Site) -> tuple[str, str | None]:
         name = site.scope
@@ -1154,9 +1270,9 @@ class _Collection:
         key = (binding.rel_path, binding.span.start_byte)
         return self.definition_names.get(key, f"{binding.module}.{binding.name}")
 
-    def _symbol_kind(self, qualified: str) -> str | None:
+    def _symbol_kind(self, qualified: str) -> _SymbolKind | None:
         record = self.symbol_by_name.get(qualified)
-        return record["kind"] if record is not None else None
+        return _SymbolKind(record["kind"]) if record is not None else None
 
     def _duplicates(self) -> None:
         counts: Counter[str] = Counter()
@@ -1214,7 +1330,7 @@ class _Collection:
                 record["data"]["member_inventories"] = [
                     {
                         **dict(item),
-                        "status": "partial",
+                        "status": InventoryStatus.PARTIAL,
                         "reason": "source contains unsupported or incomplete declarations",
                     }
                     for item in inventories
@@ -1324,11 +1440,22 @@ class _Collection:
         )
 
 
-def _inventory(kind: str, definition_ids: list[str]) -> RawData:
+def _selected_symbols(directive: Directive) -> set[str] | None:
+    selected: set[str] | None = None
+    for mode, values in directive.combinators:
+        names = set(values)
+        if mode == Combinator.SHOW:
+            selected = names if selected is None else selected & names
+        elif selected is not None:
+            selected -= names
+    return selected
+
+
+def _inventory(kind: InventoryMemberKind, definition_ids: list[str]) -> RawData:
     return {
-        "schema_version": "1.0.0",
+        "schema_version": InventoryVersion.V1,
         "kind": kind,
-        "status": "complete",
+        "status": InventoryStatus.COMPLETE,
         "definition_ids": definition_ids,
         "reason": None,
     }
@@ -1343,13 +1470,13 @@ def _version(raw: str) -> tuple[int, int, int]:
 def _constraint_floor(value: str) -> tuple[int, int, int] | None:
     version_pattern = r"(\d+(?:\.\d+){0,2})(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?"
     constraints = [
-        (match.group(1), _version(match.group(2)))
+        (_ConstraintOperator(match.group(1)), _version(match.group(2)))
         for match in re.finditer(rf"(\^|>=|>|<=|<|=)\s*{version_pattern}", value)
     ]
     lower: tuple[tuple[int, int, int], bool] | None = None
     upper: tuple[tuple[int, int, int], bool] | None = None
     for operator, version in constraints:
-        if operator == "^":
+        if operator == _ConstraintOperator.CARET:
             lower_candidate = (version, True)
             if version[0] > 0:
                 upper_candidate = ((version[0] + 1, 0, 0), False)
@@ -1359,12 +1486,16 @@ def _constraint_floor(value: str) -> tuple[int, int, int] | None:
                 upper_candidate = ((0, 0, version[2] + 1), False)
             lower = _tighter_lower(lower, lower_candidate)
             upper = _tighter_upper(upper, upper_candidate)
-        elif operator in {">=", ">", "="}:
-            lower = _tighter_lower(lower, (version, operator != ">"))
-            if operator == "=":
+        elif operator in {
+            _ConstraintOperator.GREATER_EQUAL,
+            _ConstraintOperator.GREATER,
+            _ConstraintOperator.EQUAL,
+        }:
+            lower = _tighter_lower(lower, (version, operator != _ConstraintOperator.GREATER))
+            if operator == _ConstraintOperator.EQUAL:
                 upper = _tighter_upper(upper, (version, True))
         else:
-            upper = _tighter_upper(upper, (version, operator == "<="))
+            upper = _tighter_upper(upper, (version, operator == _ConstraintOperator.LESS_EQUAL))
     if lower is None:
         return None
     if upper is not None and (
