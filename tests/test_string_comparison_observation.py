@@ -438,7 +438,8 @@ def test_imported_enum_value_leaf_reaches_native_scoped_policy(tmp_path, prefix,
             "membership",
         ),
         (
-            "TOKENS = (Token.IMPORT.value,)\ndef parse(value):\n    return value.startswith(TOKENS)\n",
+            "TOKENS = (Token.IMPORT.value,)\n"
+            "def parse(value):\n    return value.startswith(TOKENS)\n",
             "startswith",
         ),
         ("def parse(value):\n    tag = Token.IMPORT.value\n    return value == tag\n", "compare"),
@@ -619,6 +620,39 @@ def test_module_alias_does_not_turn_an_unproven_provider_into_an_enum(tmp_path, 
         {
             "core.py": "import sample.cli as vocabulary\n"
             "def parse(value):\n    return value == vocabulary.Token.IMPORT.value\n",
+            "cli.py": provider,
+        },
+    )
+    assert not result.diagnostics and result.observation is not None
+    assert not [
+        row
+        for row in result.observation.records("constructs")
+        if row.kind == "string_literal_compare"
+    ]
+    assert not trace_valid_violations(result.observation)
+
+
+@pytest.mark.parametrize(
+    "provider,expression",
+    [
+        (
+            'TOKEN = "import"\ndef replace():\n    global TOKEN\n    TOKEN = read()\n',
+            "words.TOKEN",
+        ),
+        (
+            'class Words:\n    IMPORT = "import"\n'
+            "def replace():\n    global Words\n    Words = read()\n",
+            "words.Words.IMPORT",
+        ),
+    ],
+)
+def test_module_import_does_not_skip_the_providers_global_rebinding(tmp_path, provider, expression):
+    result = _observe_one_rule(
+        tmp_path,
+        RULE,
+        {
+            "core.py": "import sample.cli as words\n"
+            f"def parse(value):\n    return value == {expression}\n",
             "cli.py": provider,
         },
     )
