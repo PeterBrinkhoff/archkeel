@@ -376,15 +376,15 @@ class _LiteralComparisons:
 
     def _canonical_name(self, node: ast.expr) -> str | None:
         """Follow stable written import origins, without claiming runtime member closure."""
-        name = _dotted_name(node)
-        if name is None or not self._module_name(node):
-            return None
-        head, separator, tail = name.partition(".")
+        attributes: list[str] = []
         root = node
         while isinstance(root, ast.Attribute):
+            attributes.append(root.attr)
             root = root.value
-        binding = self.scopes.lookup(root, head)
-        qualified = f"{self.module.module}.{head}"
+        if not isinstance(root, ast.Name) or not self._module_name(node):
+            return None
+        binding = self.scopes.lookup(root, root.id)
+        qualified = f"{self.module.module}.{root.id}"
         if binding.kind is BindingKind.SYMBOL:
             qualified = self.origins.get(qualified, "")
             if not qualified:
@@ -393,7 +393,8 @@ class _LiteralComparisons:
             if len(binding.targets) != 1:
                 return None
             qualified = binding.targets[0]
-        name = qualified + (separator + tail if separator else "")
+        suffix = ".".join(reversed(attributes))
+        name = qualified + ("." + suffix if attributes else "")
         # Module aliases can expose a supported re-export below the imported module.
         parts = name.split(".")
         for length in range(len(parts), 0, -1):

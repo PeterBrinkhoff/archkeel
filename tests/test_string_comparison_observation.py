@@ -3,10 +3,17 @@
 # SPDX-License-Identifier: MIT
 """Native comparison observations cover protocol literals without inferring runtime values."""
 
+import ast
+
 import pytest
 from test_analyzer import _observe_one_rule, _parsed_module
 
-from archkeel.analyzer.python.constructs import collect_constructs
+from archkeel.analyzer.python.constructs import (
+    _LiteralComparisons,
+    _literal_import_origins,
+    collect_constructs,
+)
+from archkeel.analyzer.python.imports import collect_imports, resolve_reexports
 from archkeel.ir.trace import trace_valid_violations
 
 RULE = {
@@ -702,3 +709,45 @@ def test_visible_consumer_namespace_writes_invalidate_imported_literal_proof(
         if row.kind == "string_literal_compare"
     ]
     assert not trace_valid_violations(result.observation)
+
+
+@pytest.mark.parametrize(
+    "prefix,expression",
+    [
+        ("import sample.cli as vocabulary\n", "vocabulary.Token.IMPORT.value"),
+        ("from sample.bridge import Token as Event\n", "Event.IMPORT.value"),
+    ],
+    ids=["module-suffix", "imported-symbol-suffix"],
+)
+def test_canonical_name_replaces_the_longest_origin_once(tmp_path, prefix, expression):
+    module = _parsed_module(
+        prefix + f"result = {expression}\n", "sample.core", rel_path="sample/core.py"
+    )
+    parsed = [
+        module,
+        _parsed_module(ENUM, "sample.cli", rel_path="sample/cli.py"),
+        _parsed_module(
+            'from sample.cli import Token\n__all__ = ["Token"]\n',
+            "sample.bridge",
+            rel_path="sample/bridge.py",
+        ),
+    ]
+    imports = collect_imports(parsed, {row.module for row in parsed}, {}, namespace="sample")
+    resolve_reexports(imports, {row.module: row.all_exports for row in parsed}, parsed)
+    literals = _LiteralComparisons(module)
+    literals.origins = _literal_import_origins(imports)
+    assignment = module.tree.body[-1]
+    assert isinstance(assignment, ast.Assign)
+    assert literals._canonical_name(assignment.value) == "sample.cli.Token.IMPORT.value"
+
+    # Synthetic overlap tests only this lookup contract, not native import binding evidence.
+    # The native provider/consumer tests above exercise actual resolved import routes.
+    literals.origins.update(
+        {
+            "sample.cli": "short.Route",
+            "sample.cli.Token": "short.Owner",
+            "sample.cli.Token.IMPORT": "long.Member",
+            "long.Member.value": "must.not.chase",
+        }
+    )
+    assert literals._canonical_name(assignment.value) == "long.Member.value"
