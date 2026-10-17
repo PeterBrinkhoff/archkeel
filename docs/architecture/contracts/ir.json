@@ -11082,7 +11082,7 @@
               {
                 "name": "value",
                 "kind": "positional",
-                "annotation": "object",
+                "annotation": "str",
                 "default_known": true
               }
             ],

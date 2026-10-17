@@ -2,8 +2,9 @@
 
 The existing host-record owner defines the two supported replay events in
 `HostEvent`: expectation publication and candidate submission.
-`parse_event(value: object) -> HostEvent` is the single consumed conversion port;
-`event: str` remains the legacy constructor and replay-wire field.
+`parse_event(value: str) -> HostEvent` is the single consumed conversion port;
+`event: str` remains the legacy constructor and replay-wire field. The converter's
+accepted domain is a string; its runtime check retains invalid legacy-input errors.
 
 `parse_records` converts at its existing SHA, event, timestamp validation boundary.
 `check_order` reads the port after validating each timestamp, preserving errors

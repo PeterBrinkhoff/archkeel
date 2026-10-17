@@ -48,6 +48,7 @@ def test_actual_ordering_port_returns_the_owned_nominal_event():
     assert issubclass(event, Enum)
     assert [member.value for member in event] == ["expectation_published", "candidate_submitted"]
     assert get_type_hints(host_records.parse_event)["return"] is event
+    assert get_type_hints(host_records.parse_event)["value"] is str
     legacy = HostRecord(E, "expectation_published", PUBLISHED)
     assert type(legacy.event) is str
     assert host_records.parse_event(legacy.event) is event.EXPECTATION_PUBLISHED
@@ -128,49 +129,57 @@ def test_real_gitlab_producer_reaches_the_typed_ordering_port(monkeypatch, tmp_p
 
 def test_future_github_provider_event_remains_an_open_bounded_observation(tmp_path):
     _event_type()
-    raw = [[{
-        "id": "123",
-        "type": "FutureProviderEvent",
-        "repo": {"name": "example/project"},
-        "created_at": PUBLISHED,
-        "payload": {"future": "open"},
-    }]]
+    raw = [
+        [
+            {
+                "id": "123",
+                "type": "FutureProviderEvent",
+                "repo": {"name": "example/project"},
+                "created_at": PUBLISHED,
+                "payload": {"future": "open"},
+            }
+        ]
+    ]
     assert _events(tmp_path, raw, "example/project") == 1
 
 
-def _repository(
-    tmp_path, *, old=None, new=None, probe="", guard_source="archkeel.check.ordering"
-):
+def _repository(tmp_path, *, old=None, new=None, probe="", guard_source="archkeel.check.ordering"):
     target = json.loads((ROOT / "docs/architecture/contracts/ir.json").read_text())
     target.pop("$schema", None)
-    target["components"] = [{
-        "id": "TARGET-GOVERNANCE",
-        "label": "governance",
-        "role": "component",
-        "packages": ["archkeel.ir.host_records"],
-        "responsibilities": ["Own replayable host records."],
-        "forbidden_responsibilities": [],
-        "provenance": ["docs/architecture/host-event-types.md"],
-    }, {
-        "id": "ordering",
-        "label": "ordering",
-        "role": "component",
-        "packages": ["archkeel.check.ordering"],
-        "responsibilities": ["Validate replay ordering through the host-record port."],
-        "forbidden_responsibilities": [],
-        "provenance": ["docs/architecture/host-event-types.md"],
-    }]
-    target["rules"] = [{
-        "id": GUARD,
-        "kind": "forbidden_construct",
-        "source": guard_source,
-        "constructs": ["string_literal_compare"],
-        "rationale": "The closed replay event reaches ordering through its nominal port.",
-        "decided_by": "architect",
-        "provenance": ["docs/architecture/host-event-types.md"],
-    }]
+    target["components"] = [
+        {
+            "id": "TARGET-GOVERNANCE",
+            "label": "governance",
+            "role": "component",
+            "packages": ["archkeel.ir.host_records"],
+            "responsibilities": ["Own replayable host records."],
+            "forbidden_responsibilities": [],
+            "provenance": ["docs/architecture/host-event-types.md"],
+        },
+        {
+            "id": "ordering",
+            "label": "ordering",
+            "role": "component",
+            "packages": ["archkeel.check.ordering"],
+            "responsibilities": ["Validate replay ordering through the host-record port."],
+            "forbidden_responsibilities": [],
+            "provenance": ["docs/architecture/host-event-types.md"],
+        },
+    ]
+    target["rules"] = [
+        {
+            "id": GUARD,
+            "kind": "forbidden_construct",
+            "source": guard_source,
+            "constructs": ["string_literal_compare"],
+            "rationale": "The closed replay event reaches ordering through its nominal port.",
+            "decided_by": "architect",
+            "provenance": ["docs/architecture/host-event-types.md"],
+        }
+    ]
     target["declarations"]["uml"]["entities"] = [
-        item for item in target["declarations"]["uml"]["entities"]
+        item
+        for item in target["declarations"]["uml"]["entities"]
         if item["id"].startswith("IR-HOST-")
     ]
     target["declarations"]["uml"]["relationships"] = []
@@ -210,8 +219,9 @@ def test_native_actual_host_port_meets_fixed_authored_target_and_order_guard(tmp
 def test_native_host_port_return_weakening_fails_unchanged_authored_target(tmp_path):
     _event_type()
     root, config = _repository(
-        tmp_path, old="def parse_event(value: object) -> HostEvent:",
-        new="def parse_event(value: object) -> str:",
+        tmp_path,
+        old="def parse_event(value: str) -> HostEvent:",
+        new="def parse_event(value: str) -> str:",
     )
     before = (root / "contract.json").read_bytes()
     model = _model(root, config)
@@ -226,7 +236,7 @@ def test_native_host_port_return_weakening_fails_unchanged_authored_target(tmp_p
     "probe",
     [
         'def _probe(value):\n    return value == "expectation_published"\n',
-        'def _probe(value):\n'
+        "def _probe(value):\n"
         '    return value in ("expectation_published", "candidate_submitted")\n',
     ],
 )
