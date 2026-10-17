@@ -15,7 +15,8 @@ A scoped `forbidden_construct` rule selecting `string_literal_compare` rejects:
 - a single preceding supported scalar assignment at the top level of the same function;
   parameter values, conditional writes, rebinding, closures and global/nonlocal writes
   do not establish this local evidence;
-- direct named module literal collections whose visible loads are only membership;
+- direct named module literal collections whose visible loads are only membership
+  or tuple prefix/suffix arguments;
 - scanned imported literal constants through stable canonical import origins;
 - explicit `EnumOwner.MEMBER.value` extraction when the local or scanned imported enum member has a
   written text/bytes value, exactly one directly proven stdlib `Enum` or `StrEnum`
@@ -54,6 +55,8 @@ therefore cannot certify a semantic ban on every possible raw protocol compariso
 The same strict enum-body predicate supplies local and scanned-provider value evidence.
 Symbol aliases, module aliases and proven re-export routes use existing import-origin facts;
 ambiguous/rebound/conditional imports and unscanned providers supply no literal proof.
+Provider roots reuse the existing stable direct module-binding check, including
+explicit global rebinding and visible namespace changes.
 Named collections retain their single-binding, visible-use and escape restrictions and
 accept these same supported scalar leaves, as do membership, match and prefix/suffix arguments.
 No compiler, signature, member-binding or native type-proof receipt is added.

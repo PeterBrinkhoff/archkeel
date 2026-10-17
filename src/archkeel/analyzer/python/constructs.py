@@ -15,7 +15,14 @@ from archkeel.ir.facts_codec import RawData as RecordData
 from archkeel.ir.facts_codec import RawEvidence, RawRecord, classified
 
 from .scopes import BindingKind, LexicalScopes
-from .source import ParsedModule, add_evidence, body_is_empty, decorator_names, location
+from .source import (
+    ParsedModule,
+    add_evidence,
+    body_is_empty,
+    decorator_names,
+    location,
+    stable_direct_module_bindings,
+)
 
 
 class _StringPredicate(Enum):
@@ -285,6 +292,7 @@ class _LiteralComparisons:
         self.scopes = LexicalScopes(module)
         self.module_values, self.class_values, self.enum_classes = _static_string_constants(module)
         self.origins: dict[str, str] = {}
+        stable_names = stable_direct_module_bindings(module)
         self.enum_value_classes = frozenset(
             f"{module.module}.{node.name}"
             for node in module.tree.body
@@ -294,18 +302,17 @@ class _LiteralComparisons:
             and not node.keywords
             and not node.decorator_list
             and _literal_enum_body(node)
-            and module.scope_bound_names.count(node.name) == 1
-            and node.name not in module.global_names
+            and node.name in stable_names
         )
         self.scalar_names = frozenset(
             f"{module.module}.{name}"
             for name, value in self.module_values.items()
-            if value is not None
+            if value is not None and name in stable_names
         ) | frozenset(
             f"{owner}.{name}"
             for owner, values in self.class_values.items()
             if owner not in self.enum_classes
-            and module.scope_bound_names.count(owner[len(module.module) + 1 :].split(".")[0]) == 1
+            and owner[len(module.module) + 1 :].split(".")[0] in stable_names
             for name, value in values.items()
             if value is not None
         )
