@@ -153,7 +153,12 @@
         "archkeel.ir.architecture_graph:PresenceKind",
         "archkeel.ir.architecture_graph:ResolutionKind",
         "archkeel.ir.architecture_graph:VisibilityBasis",
-        "archkeel.ir.architecture_graph:VisibilityKind"
+        "archkeel.ir.architecture_graph:VisibilityKind",
+        "archkeel.ir.diagnostics:DiagnosticKind",
+        "archkeel.ir.diagnostics:DiagnosticCode",
+        "archkeel.ir.diagnostics:Diagnostic",
+        "archkeel.ir.diagnostics:DiagnosticError",
+        "archkeel.ir.diagnostics:ReportLocation"
       ],
       "responsibilities": [
         "Own immutable source facts, protocol values, governance models and pure derivations."
@@ -802,7 +807,8 @@
         "archkeel.analyzer.dart.parse",
         "archkeel.analyzer.dart.resolve",
         "archkeel.analyzer.dart.snapshot",
-        "archkeel.analyzer.dart.collect"
+        "archkeel.analyzer.dart.collect",
+        "archkeel.ir.diagnostics"
       ],
       "rationale": "Each closed vocabulary belongs to its domain or wire boundary: shared state and source facts own domain controls; codecs own private wire tags; TypeScript parser and collector own their private controls and share the published syntax port; consumers use published nominal types. Contract versions and feature availability belong to contract_version. The Python Source binding model owns import, lexical binding and compiler-scope control types.",
       "provenance": [
@@ -1165,6 +1171,19 @@
       "rationale": "Closed Dart implementation categories use their nominal owners; parser and metadata conversion do not exempt string dispatch.",
       "provenance": [
         "docs/architecture/dart-nominal-controls.md"
+      ],
+      "decided_by": "architect"
+    },
+    {
+      "id": "DIAGNOSTIC-TYPED-CONTROL",
+      "kind": "forbidden_construct",
+      "source": "archkeel.ir.diagnostics",
+      "constructs": [
+        "string_literal_compare"
+      ],
+      "rationale": "The diagnostic owner normalizes kind and code once and uses nominal decisions; parser and protocol strings have no exception.",
+      "provenance": [
+        "docs/architecture/typed-diagnostic-owner.md"
       ],
       "decided_by": "architect"
     }

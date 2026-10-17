@@ -41,6 +41,9 @@ from archkeel.ir.decisions import (
     rule_assessments,
     violation_counts,
 )
+from archkeel.ir.diagnostics import Diagnostic as Diagnostic
+from archkeel.ir.diagnostics import DiagnosticError as DiagnosticError
+from archkeel.ir.diagnostics import ReportLocation as ReportLocation
 from archkeel.ir.facts import SourceSectionName
 from archkeel.ir.facts_validation import validate_source_bindings
 from archkeel.ir.model import (
@@ -49,16 +52,14 @@ from archkeel.ir.model import (
 from archkeel.ir.model import (
     BaselineViolationComparison,
     CallRow,
-    Diagnostic,
-    DiagnosticError,
     EvidenceClass,
     FilteredViolation,
     Observation,
     ObservationResult,
     ReportFilter,
-    ReportLocation,
     RunResult,
 )
+from archkeel.ir.model import DiagnosticKind as _DiagnosticKind
 from archkeel.ir.model import (
     RuleAssessmentStatus as _RuleAssessmentStatus,
 )
@@ -204,7 +205,9 @@ def unknown_result(command: str, subject: str, error: Exception) -> RunResult:
         diagnostic = error.diagnostic
     else:
         diagnostic = Diagnostic(
-            "timeout" if isinstance(error, subprocess.TimeoutExpired) else "parse_error",
+            _DiagnosticKind.TIMEOUT
+            if isinstance(error, subprocess.TimeoutExpired)
+            else _DiagnosticKind.PARSE_ERROR,
             subject,
             f"The {command} result cannot be established: {error}",
             "Repair the reported input or execution failure and retry.",
@@ -258,7 +261,7 @@ def _selected_calls(model: Observation, report_filter: ReportFilter) -> tuple[Ca
     if not calls_measured(model):
         raise DiagnosticError(
             Diagnostic(
-                "rule_unsupported_by_profile",
+                _DiagnosticKind.RULE_UNSUPPORTED_BY_PROFILE,
                 "--only calls",
                 f"The {model.analyzer.name} profile does not measure calls, so it has none "
                 "to list.",
@@ -308,7 +311,12 @@ def _incomplete_report_result(result: ObservationResult) -> RunResult:
         and model.runtime is not None
         and runtime_diagnostic(model.runtime) is None
         and not any(
-            item.kind in {"contract_invalid", "runtime_mismatch", "incomparable_runtime"}
+            item.kind
+            in {
+                _DiagnosticKind.CONTRACT_INVALID,
+                _DiagnosticKind.RUNTIME_MISMATCH,
+                _DiagnosticKind.INCOMPARABLE_RUNTIME,
+            }
             for item in result.diagnostics
         )
     ):
@@ -513,7 +521,12 @@ def _architecture_result(
 
 def _projection_result(result: ObservationResult) -> ObservationResult:
     if any(
-        item.kind in {"contract_invalid", "runtime_mismatch", "incomparable_runtime"}
+        item.kind
+        in {
+            _DiagnosticKind.CONTRACT_INVALID,
+            _DiagnosticKind.RUNTIME_MISMATCH,
+            _DiagnosticKind.INCOMPARABLE_RUNTIME,
+        }
         for item in result.diagnostics
     ):
         return _revoke_dependency_proofs(result)

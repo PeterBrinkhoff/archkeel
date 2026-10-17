@@ -41,6 +41,7 @@ from archkeel.ir.model import (
     RunResult,
     in_scope,
 )
+from archkeel.ir.model import DiagnosticKind as _DiagnosticKind
 from archkeel.ir.profiles import Language
 from archkeel.ir.structure import StructureMetric, scope_metrics
 
@@ -76,7 +77,7 @@ def detect_source(root: Path) -> tuple[str, str]:
         found = ", ".join(path.relative_to(root).as_posix() for path in packages) or "none"
         raise DiagnosticError(
             Diagnostic(
-                "scope_empty",
+                _DiagnosticKind.SCOPE_EMPTY,
                 str(base),
                 "Expected one top-level Python package, or one matching pyproject.toml's "
                 f"[project] name ({name or 'missing'}); found {found}.",
@@ -412,7 +413,7 @@ def run_init(
             # Detection reads Python package markers; a Dart package names its own root.
             raise DiagnosticError(
                 Diagnostic(
-                    "scope_empty",
+                    _DiagnosticKind.SCOPE_EMPTY,
                     str(root),
                     "A Dart package's source directory and name are not detected yet.",
                     "Pass --source lib and --namespace <pubspec name> to archkeel init.",
@@ -425,7 +426,7 @@ def run_init(
     if existing and not force:
         raise DiagnosticError(
             Diagnostic(
-                "existing_files",
+                _DiagnosticKind.EXISTING_FILES,
                 ", ".join(existing),
                 "Onboarding would replace files that already exist.",
                 "Rerun archkeel init with --force to replace them.",
@@ -452,7 +453,7 @@ def run_init(
         except SnapshotError as error:
             raise DiagnosticError(
                 Diagnostic(
-                    "parse_error",
+                    _DiagnosticKind.PARSE_ERROR,
                     str(root),
                     f"Initialization requires a resolvable Git HEAD: {error}",
                     "Use an existing Git repository with a resolvable HEAD; for a new repository, "
