@@ -670,9 +670,15 @@ def test_module_import_does_not_skip_the_providers_global_rebinding(tmp_path, pr
     [
         ("words.TOKEN = 123\n", "words.TOKEN"),
         ("words.Token = other\n", "words.Token.IMPORT.value"),
+        ("alias = words\nalias.TOKEN = 123\n", "words.TOKEN"),
         ("globals()['words'] = other\n", "words.Token.IMPORT.value"),
     ],
-    ids=["module-literal-write", "module-enum-write", "dynamic-alias-write"],
+    ids=[
+        "module-literal-write",
+        "module-enum-write",
+        "aliased-module-write",
+        "dynamic-alias-write",
+    ],
 )
 def test_visible_consumer_namespace_writes_invalidate_imported_literal_proof(
     tmp_path, mutation, expression
@@ -681,8 +687,11 @@ def test_visible_consumer_namespace_writes_invalidate_imported_literal_proof(
         tmp_path,
         RULE,
         {
-            "core.py": "import sample.cli as words\n" + mutation
-            + f"def parse(value):\n    return value == {expression}\n",
+            "core.py": (
+                "import sample.cli as words\n"
+                + mutation
+                + f"def parse(value):\n    return value == {expression}\n"
+            ),
             "cli.py": ENUM + 'TOKEN = "import"\n',
         },
     )
