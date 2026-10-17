@@ -231,3 +231,16 @@ def test_native_selected_core_projection_rejects_raw_control_mutations(tmp_path,
     source.write_text(source.read_text() + "\n" + probe)
     value = _model(root, config)
     assert any(GUARD in row.rule_ids for row in trace_valid_violations(value))
+
+
+@pytest.mark.parametrize("declared", ["PASS", "FAIL", "UNKNOWN"])
+def test_result_declared_rules_normalizes_legacy_values_at_its_real_ingress(declared):
+    result = model.RunResult("report", 0, declared_rules=declared)
+    assert result.declared_rules is AssessmentStatus(declared)
+    assert result_payload(result)["declared_rules"] == declared
+
+
+@pytest.mark.parametrize("invalid", ["DECLARATION", "invalid", None, 1])
+def test_result_declared_rules_rejects_values_outside_its_closed_domain(invalid):
+    with pytest.raises(ValueError):
+        model.RunResult("report", 0, declared_rules=invalid)
