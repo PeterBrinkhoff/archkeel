@@ -134,7 +134,7 @@ def apply_overlay(root: Path, files: Mapping[str, str | None]) -> None:
             target.unlink()
             continue
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(content)
+        target.write_text(content, encoding="utf-8")
 
 
 def _clean_contract(fixture: Path = FIXTURE_DIR) -> dict[str, Any]:
