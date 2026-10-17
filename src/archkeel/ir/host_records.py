@@ -24,7 +24,7 @@ class HostEvent(StrEnum):
     CANDIDATE_SUBMITTED = "candidate_submitted"
 
 
-def parse_event(value: object) -> HostEvent:
+def parse_event(value: str) -> HostEvent:
     """Convert replay events without closing raw provider event vocabularies."""
     if not isinstance(value, str):
         raise OrderingError("host record event is invalid")
