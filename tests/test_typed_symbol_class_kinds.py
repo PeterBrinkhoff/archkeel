@@ -4,7 +4,6 @@
 """Python classifier decisions share their actual source-fact vocabulary."""
 
 import ast
-import copy
 import json
 from pathlib import Path
 
@@ -98,9 +97,7 @@ def test_actual_fixpoint_produces_nominal_values_without_changing_classifier_rec
 
 def _native_target(tmp_path):
     root = Path(__file__).parents[1]
-    contract = copy.deepcopy(
-        json.loads((root / "docs/architecture/contracts/ir.json").read_text())
-    )
+    contract = json.loads((root / "docs/architecture/contracts/ir.json").read_text())
     contract.pop("$schema", None)
     contract["rules"] = []
     contract["declarations"]["modules"] = []
@@ -162,7 +159,6 @@ def test_classifier_port_weakening_fails_the_existing_authored_target(tmp_path, 
     comparison = architecture_report(_model(project, config)).comparison
     assert comparison is not None
     assert any(
-        item.status == "FAIL" and item.subject_id == subject
-        for item in comparison.assessments
+        item.status == "FAIL" and item.subject_id == subject for item in comparison.assessments
     ), comparison
     assert contract.read_bytes() == before
