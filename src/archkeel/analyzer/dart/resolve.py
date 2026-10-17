@@ -456,6 +456,8 @@ class Resolver:
                 constructor_name = site.name
         if class_name is None:
             return None
+        if prefix is None and self._has_lexical_binding(rel_path, site, class_name):
+            return None
         if site.kind == SiteKind.CALL and site.receiver is None:
             candidates = list(self._name_bindings(rel_path, module, class_name, None))
         elif prefix is not None:
@@ -1283,20 +1285,20 @@ class Resolver:
         self, rel_path: str, module: str, site: Site, receiver: str
     ) -> tuple[ResolvedBinding, ...]:
         parsed = self.syntax.get(rel_path)
-        receiver_site = (
-            next(
-                (
-                    item
-                    for item in parsed.sites
-                    if item.kind == SiteKind.CALL and item.expression == receiver
-                ),
-                None,
-            )
-            if parsed is not None
-            else None
-        )
-        if receiver_site is None:
+        if parsed is None:
             return ()
+        receiver_sites = tuple(
+            item
+            for item in parsed.sites
+            if item.kind == SiteKind.CALL
+            and item.expression == receiver
+            and item.span.start_byte == site.span.start_byte
+            and item.span.end_byte <= site.span.end_byte
+            and item.scope_span == site.scope_span
+        )
+        if len(receiver_sites) != 1:
+            return ()
+        receiver_site = receiver_sites[0]
         resolved_type = self._construction_type(rel_path, module, receiver_site)
         if resolved_type is None:
             return ()
@@ -1517,7 +1519,6 @@ class Resolver:
         if any(
             item.kind == SiteKind.BINDING
             and (item.assigned_name or item.name) == name
-            and item.span.start_byte <= site.span.start_byte
             and item.scope_span is not None
             and item.scope_span.start_byte <= site.span.start_byte <= item.scope_span.end_byte
             for item in parsed.sites
