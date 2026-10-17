@@ -34,12 +34,12 @@
 
 ## Task 2: Canonical owner and consumers
 
-**Files:** ir/architecture_projection.py; ir/report_projection.py; render/atlas.py; necessary root enum placement/public port declarations.
+**Files:** ir/architecture_projection.py; ir/report_projection.py; render/atlas.py; ir/command_view.py; necessary root enum placement/public port declarations.
 **Interfaces:** PermissionStatus(StrEnum), PermissionProjection.status: PermissionStatus, existing constructor normalization.
 **Shared interface check:** Task1's fixed PermissionStatus/PermissionProjection names are exactly Task2's owner and field; no new module or alternate name.
 
 - [ ] Replace the alias with the three-member enum and normalize the real existing DTO constructor once with canonical builtins.object.__setattr__.
-- [ ] Use the enum in four actual producer branches, four permission decisions and the single Atlas allowed decision; preserve the existing serializer.
+- [ ] Use the enum in four actual producer branches, four permission decisions, the existing command grouping decision and the single Atlas allowed decision; preserve the existing serializer.
 - [ ] Run Task1 GREEN; count source changes and native call-site/UNKNOWN deltas before freezing.
 
 ## Task 3: Permanent guards, verification and review
@@ -58,3 +58,7 @@ Base: 5fc94c10298c4bbcd98fd44f8ac72b321b03a0b4. Its inherited integration receip
 Ruling: the parent requires remote GitHub/Actions only, so isolation uses this dedicated feature branch and fresh Actions checkouts rather than local worktree/scripts. No shared Root/Main/Publisher refs are mutated. The skill's auxiliary writing-good-tests resource is unavailable; the main TDD rules remain applied. Design and inline execution were explicitly authorized before this plan.
 
 Task1 RED: run38987444254 / job117262089955 observed exactly11 assertion failures and1 passing whole-module guard control on unchanged production. Known constructors/actual producers still held plain strings, invalid values were accepted, PermissionStatus was not an enum, and the independent native comparison was genuinely FAIL (not an unrelated parse error or absent-module UNKNOWN). The fixed Target and actual original source are retained for GREEN/mutation proofs.
+
+Task2 ruling: the first GREEN attempt passed115 tests but exposed a real outer IR interface violation and two invalid new test assumptions. The canonical enum must be published at both the existing inner Governance and outer IR facade, because Atlas actually imports it. The established command wire groups target_ids, so the new assertion now reads that real facade rather than inventing target_id rows. An additional existing command_view._permission_groups decision already consumes PermissionStatus and is migrated in the same small boundary; the actual grouped value is checked nominal. No second normalization is added to this derived internal DTO, whose producer already supplies the canonical state. No global fixture/assertion is loosened.
+
+Task2 GREEN: run38987966991 / job117263742098 passed all118 focused/native/projection/Core-command tests, Ruff512 and mypy150. Every authored source mutation passed its negative obligation under unchanged intent. The outer interface violation is repaired through the actual IR PermissionStatus port; no fixture or global verdict was relaxed. Product source is frozen for subsequent required gates and independent review.
