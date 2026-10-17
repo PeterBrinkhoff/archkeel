@@ -1,1 +1,5 @@
 fixtures/L-nest-realworld/resolver-inputs/** -text
+
+# Flow provenance requires the same source bytes on every platform.
+src/archkeel/render/assets/flow.js text eol=lf
+src/archkeel/render/assets/flow.runtime.js text eol=lf
