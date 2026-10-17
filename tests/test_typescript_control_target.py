@@ -30,7 +30,9 @@ GUARDS = (
 
 def _contract():
     contract = copy.deepcopy(
-        json.loads((ROOT / "docs/architecture/contracts/typescript.json").read_text())
+        json.loads(
+            (ROOT / "docs/architecture/contracts/typescript.json").read_text(encoding="utf-8")
+        )
     )
     contract.pop("$schema", None)
     return contract
@@ -40,7 +42,7 @@ def _repository(tmp_path, *, changed=None):
     sources = {
         f"archkeel/analyzer/typescript/{name}.py": (
             ROOT / f"src/archkeel/analyzer/typescript/{name}.py"
-        ).read_text()
+        ).read_text(encoding="utf-8")
         for name in ("config", "resolve", "parse", "collect", "syntax", "source_input")
         if (ROOT / f"src/archkeel/analyzer/typescript/{name}.py").exists()
     }
@@ -55,22 +57,22 @@ def _repository(tmp_path, *, changed=None):
             "contract.json": json.dumps(_contract()),
             "docs/architecture/typescript-control-types.md": (
                 ROOT / "docs/architecture/typescript-control-types.md"
-            ).read_text(),
+            ).read_text(encoding="utf-8"),
             "docs/architecture/typescript-written-string-controls.md": (
                 ROOT / "docs/architecture/typescript-written-string-controls.md"
-            ).read_text(),
+            ).read_text(encoding="utf-8"),
             "docs/architecture/typescript-syntax-types.md": (
                 ROOT / "docs/architecture/typescript-syntax-types.md"
-            ).read_text(),
+            ).read_text(encoding="utf-8"),
             "docs/architecture/typescript-json-field-boundary.md": (
                 ROOT / "docs/architecture/typescript-json-field-boundary.md"
-            ).read_text(),
+            ).read_text(encoding="utf-8"),
             "docs/architecture/typescript-source-input.md": (
                 ROOT / "docs/architecture/typescript-source-input.md"
-            ).read_text(),
+            ).read_text(encoding="utf-8"),
             "docs/architecture/language-adapter-target.md": (
                 ROOT / "docs/architecture/language-adapter-target.md"
-            ).read_text(),
+            ).read_text(encoding="utf-8"),
         },
     )
     return root, ScanConfig(("archkeel",), "archkeel", "contract.json", "0" * 64)
@@ -136,7 +138,7 @@ def test_native_typescript_api_matches_the_independent_target(tmp_path):
     ],
 )
 def test_native_source_type_widening_fails_with_fixed_intent(tmp_path, module, old, new):
-    source = (ROOT / f"src/archkeel/analyzer/typescript/{module}.py").read_text()
+    source = (ROOT / f"src/archkeel/analyzer/typescript/{module}.py").read_text(encoding="utf-8")
     assert old in source
     root, config = _repository(
         tmp_path,
@@ -182,7 +184,7 @@ def test_native_source_type_widening_fails_with_fixed_intent(tmp_path, module, o
     ],
 )
 def test_native_parser_and_protocol_strings_fail_without_exceptions(tmp_path, module, probe):
-    source = (ROOT / f"src/archkeel/analyzer/typescript/{module}.py").read_text()
+    source = (ROOT / f"src/archkeel/analyzer/typescript/{module}.py").read_text(encoding="utf-8")
     root, config = _repository(
         tmp_path, changed={f"archkeel/analyzer/typescript/{module}.py": source + "\n" + probe}
     )
@@ -257,7 +259,7 @@ def test_native_parser_and_collector_guards_are_proven_without_exceptions(tmp_pa
     ],
 )
 def test_native_syntax_field_widening_fails_against_fixed_port_intent(tmp_path, owner, old, new):
-    source = (ROOT / "src/archkeel/analyzer/typescript/syntax.py").read_text()
+    source = (ROOT / "src/archkeel/analyzer/typescript/syntax.py").read_text(encoding="utf-8")
     prefix, body = source.split(f"class {owner}:", 1)
     assert old in body
     changed = prefix + f"class {owner}:" + body.replace(old, new, 1)
@@ -309,7 +311,9 @@ def test_native_syntax_field_widening_fails_against_fixed_port_intent(tmp_path, 
 def test_native_profile_receipt_ports_use_fixed_authored_intent(
     tmp_path, port, old, new, aspect, widened
 ):
-    declared = json.loads((ROOT / "docs/architecture/contracts/ir.json").read_text())
+    declared = json.loads(
+        (ROOT / "docs/architecture/contracts/ir.json").read_text(encoding="utf-8")
+    )
     component = next(row for row in declared["components"] if row["id"] == "TARGET-PROFILES")
     # The fragment isolates the authored port, without claiming unrelated IR contracts.
     component.pop("requires")
@@ -327,7 +331,7 @@ def test_native_profile_receipt_ports_use_fixed_authored_intent(
             "uml": {"schema_version": "1.1.0", "entities": entities, "relationships": []}
         },
     }
-    source = (ROOT / "src/archkeel/ir/profiles.py").read_text()
+    source = (ROOT / "src/archkeel/ir/profiles.py").read_text(encoding="utf-8")
     assert old in source
     if widened:
         source = source.replace(old, new, 1)
@@ -343,7 +347,7 @@ def test_native_profile_receipt_ports_use_fixed_authored_intent(
             "archkeel/ir/__init__.py": "",
             "archkeel/ir/profiles.py": source,
             "contract.json": json.dumps(contract),
-            **{path: (ROOT / path).read_text() for path in paths},
+            **{path: (ROOT / path).read_text(encoding="utf-8") for path in paths},
         },
     )
     before = (root / "contract.json").read_bytes()

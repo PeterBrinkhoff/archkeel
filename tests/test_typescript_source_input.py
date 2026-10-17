@@ -298,7 +298,7 @@ def test_actual_input_api_type_mutation_fails_fixed_native_intent(tmp_path, old,
     from archkeel.ir.report_graph import architecture_report
 
     path = "archkeel/analyzer/typescript/source_input.py"
-    source = (ROOT / "src" / path).read_text()
+    source = (ROOT / "src" / path).read_text(encoding="utf-8")
     assert old in source
     root, config = _repository(tmp_path, changed={path: source.replace(old, new, 1)})
     intent = (root / "contract.json").read_bytes()
@@ -408,7 +408,7 @@ def test_actual_snapshot_input_role_widening_fails_fixed_native_intent(tmp_path)
     from archkeel.ir.report_graph import architecture_report
 
     path = "archkeel/analyzer/typescript/config.py"
-    source = (ROOT / "src" / path).read_text()
+    source = (ROOT / "src" / path).read_text(encoding="utf-8")
     old = "inputs: dict[str, tuple[str, ResolutionRole]]"
     assert old in source
     root, config = _repository(

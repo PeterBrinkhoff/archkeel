@@ -1,4 +1,4 @@
-# ArchKeel 4.0.0 — Exact dependency rules and typed controls
+# ArchKeel 4.0.1 — Exact dependency rules and typed controls
 
 Declare narrower component APIs and check more native source evidence.
 
@@ -31,6 +31,15 @@ Declare narrower component APIs and check more native source evidence.
   runtime. Direct UML scopes use more edge spacing. Repeated-logic review
   candidates can distinguish complete, resolved call sequences; ambiguous
   evidence retains the candidate and proves no runtime equivalence.
+
+## Release verification
+
+The 4.0.0 tag did not reach PyPI: the full gate caught a Windows checkout failure
+before the collector-safety tests ran. Fetching all branch refs tried to create
+an `aux/...` path; Windows reserves the name `AUX`. Those jobs now fetch only the requested
+ref. Both Python versions, collector-safety tests and the publication gate remain
+required. Native TypeScript mutation fixtures also read and write UTF-8 explicitly
+instead of depending on the Windows locale. The public 4.0.0 tag is retained.
 
 ## Upgrade from 3.0.1
 
