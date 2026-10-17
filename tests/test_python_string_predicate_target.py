@@ -25,6 +25,16 @@ def _repository(tmp_path, changed=None):
         json.loads((ROOT / "docs/architecture/contracts/python.json").read_text())
     )
     contract.pop("$schema", None)
+    # This fixture copies only constructs.py; the complete self target retains every owner.
+    predicate_ids = {
+        "PYTHON-PREDICATE-MODULE",
+        "PYTHON-PREDICATE-KIND",
+        "PYTHON-PREDICATE-DECODE",
+        "PYTHON-PREDICATE-QUERY",
+    }
+    uml = contract["declarations"]["uml"]
+    uml["entities"] = [entity for entity in uml["entities"] if entity["id"] in predicate_ids]
+    assert {entity["id"] for entity in uml["entities"]} == predicate_ids
     source = (ROOT / SOURCE).read_text() if changed is None else changed
     root = _prepare_repo(
         tmp_path,
@@ -62,8 +72,16 @@ def test_actual_predicate_enum_and_decoder_satisfy_independent_native_target(tmp
     [
         ("class _StringPredicate(Enum):", "class _StringPredicate:"),
         ("-> _StringPredicate | None:", "-> str | None:"),
+        (
+            "def _predicate_matches(literals: _LiteralComparisons, node: ast.expr) -> bool:",
+            "def _predicate_matches(literals: str, node: ast.expr) -> bool:",
+        ),
+        (
+            "def _predicate_matches(literals: _LiteralComparisons, node: ast.expr) -> bool:",
+            "def _predicate_matches(literals: _LiteralComparisons, node: ast.expr) -> str:",
+        ),
     ],
-    ids=["enum-kind", "nominal-return"],
+    ids=["enum-kind", "nominal-return", "query-context", "query-result"],
 )
 def test_actual_decoder_type_widening_fails_fixed_native_target(tmp_path, old, new):
     source = (ROOT / SOURCE).read_text()
@@ -78,4 +96,30 @@ def test_actual_decoder_type_widening_fails_fixed_native_target(tmp_path, old, n
     )
     assert target.status == "FAIL"
     assert any(target.id in row.rule_ids for row in trace_valid_violations(model))
+    assert (root / "contract.json").read_bytes() == intent
+
+
+def test_actual_query_raw_token_is_observed_without_claiming_a_function_guard(tmp_path):
+    source = (ROOT / SOURCE).read_text()
+    signature = "def _predicate_matches(literals: _LiteralComparisons, node: ast.expr) -> bool:\n"
+    assert source.count(signature) == 1
+    changed = source.replace(
+        signature, signature + '    if node == "raw_protocol":\n        return False\n', 1
+    )
+    root, config = _repository(tmp_path, changed)
+    intent = (root / "contract.json").read_bytes()
+    model = _model(root, config)
+    records = [
+        row
+        for row in model.records("constructs")
+        if row.kind == "string_literal_compare"
+        and row.data.get("owner") == "archkeel.analyzer.python.constructs._predicate_matches"
+    ]
+    assert len(records) == 1 and records[0].data.get("form") == "compare"
+    evidence = {row.id: row for row in model.evidence}
+    [site] = [evidence[identity] for identity in records[0].evidence_ids]
+    assert (site.line, site.excerpt) == (
+        source[: source.index(signature)].count("\n") + 2,
+        '    if node == "raw_protocol":',
+    )
     assert (root / "contract.json").read_bytes() == intent
