@@ -11066,12 +11066,12 @@
           "provenance": [
             "docs/architecture/host-event-types.md"
           ],
-          "id": "IR-HOST-ordering-event",
-          "kind": "method",
-          "qualified_name": "archkeel.ir.host_records.HostRecord.ordering_event",
-          "parent_id": "IR-HOST-record",
+          "id": "IR-HOST-parse-event",
+          "kind": "function",
+          "qualified_name": "archkeel.ir.host_records.parse_event",
+          "parent_id": "IR-HOST-module",
           "responsibilities": [
-            "Validate the legacy replay event when ordering consumes its closed meaning."
+            "Convert the closed replay vocabulary once for parsing and ordering consumers."
           ],
           "visibility": {
             "kind": "public",
@@ -11080,13 +11080,33 @@
           "signature": {
             "parameters": [
               {
-                "name": "self",
+                "name": "value",
                 "kind": "positional",
+                "annotation": "object",
                 "default_known": true
               }
             ],
             "returns": "HostEvent"
           }
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/host-event-types.md"
+          ],
+          "id": "IR-HOST-record-event",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.host_records.HostRecord.event",
+          "parent_id": "IR-HOST-record",
+          "responsibilities": [
+            "Keep the legacy constructor and wire event field open until existing validation."
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "annotation": "str"
         }
       ],
       "relationships": [

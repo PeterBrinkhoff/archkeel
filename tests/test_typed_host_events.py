@@ -47,11 +47,11 @@ def test_actual_ordering_port_returns_the_owned_nominal_event():
     event = _event_type()
     assert issubclass(event, Enum)
     assert [member.value for member in event] == ["expectation_published", "candidate_submitted"]
-    assert get_type_hints(HostRecord.ordering_event)["return"] is event
+    assert get_type_hints(host_records.parse_event)["return"] is event
     legacy = HostRecord(E, "expectation_published", PUBLISHED)
     assert type(legacy.event) is str
-    assert legacy.ordering_event() is event.EXPECTATION_PUBLISHED
-    assert HostRecord(H, event.CANDIDATE_SUBMITTED, SUBMITTED).ordering_event() is (
+    assert host_records.parse_event(legacy.event) is event.EXPECTATION_PUBLISHED
+    assert host_records.parse_event(HostRecord(H, event.CANDIDATE_SUBMITTED, SUBMITTED).event) is (
         event.CANDIDATE_SUBMITTED
     )
 
@@ -59,7 +59,7 @@ def test_actual_ordering_port_returns_the_owned_nominal_event():
 def test_replay_parser_and_legacy_constructors_keep_identical_wire_and_order():
     event = _event_type()
     records = parse_records(_wire())
-    assert [item.ordering_event() for item in records] == [
+    assert [host_records.parse_event(item.event) for item in records] == [
         event.EXPECTATION_PUBLISHED,
         event.CANDIDATE_SUBMITTED,
     ]
@@ -120,8 +120,8 @@ def test_real_gitlab_producer_reaches_the_typed_ordering_port(monkeypatch, tmp_p
         candidate_sha=H,
         environ={"CI_PROJECT_ID": "7", "CI_MERGE_REQUEST_IID": "11", "CI_COMMIT_SHA": H},
     )
-    assert records[0].ordering_event() is event.EXPECTATION_PUBLISHED
-    assert records[1].ordering_event() is event.CANDIDATE_SUBMITTED
+    assert host_records.parse_event(records[0].event) is event.EXPECTATION_PUBLISHED
+    assert host_records.parse_event(records[1].event) is event.CANDIDATE_SUBMITTED
     assert json.dumps([asdict(item) for item in records]) == json.dumps(_wire())
     assert check_order(records, expectation_sha=E, candidate_sha=H) == ()
 
@@ -202,7 +202,8 @@ def test_native_actual_host_port_meets_fixed_authored_target_and_order_guard(tmp
 def test_native_host_port_return_weakening_fails_unchanged_authored_target(tmp_path):
     _event_type()
     root, config = _repository(
-        tmp_path, old="def ordering_event(self) -> HostEvent:", new="def ordering_event(self) -> str:"
+        tmp_path, old="def parse_event(value: object) -> HostEvent:",
+        new="def parse_event(value: object) -> str:",
     )
     before = (root / "contract.json").read_bytes()
     model = _model(root, config)
