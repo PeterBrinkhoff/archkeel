@@ -663,3 +663,33 @@ def test_module_import_does_not_skip_the_providers_global_rebinding(tmp_path, pr
         if row.kind == "string_literal_compare"
     ]
     assert not trace_valid_violations(result.observation)
+
+
+@pytest.mark.parametrize(
+    "mutation,expression",
+    [
+        ("words.TOKEN = 123\n", "words.TOKEN"),
+        ("words.Token = other\n", "words.Token.IMPORT.value"),
+        ("globals()['words'] = other\n", "words.Token.IMPORT.value"),
+    ],
+    ids=["module-literal-write", "module-enum-write", "dynamic-alias-write"],
+)
+def test_visible_consumer_namespace_writes_invalidate_imported_literal_proof(
+    tmp_path, mutation, expression
+):
+    result = _observe_one_rule(
+        tmp_path,
+        RULE,
+        {
+            "core.py": "import sample.cli as words\n" + mutation
+            + f"def parse(value):\n    return value == {expression}\n",
+            "cli.py": ENUM + 'TOKEN = "import"\n',
+        },
+    )
+    assert not result.diagnostics and result.observation is not None
+    assert not [
+        row
+        for row in result.observation.records("constructs")
+        if row.kind == "string_literal_compare"
+    ]
+    assert not trace_valid_violations(result.observation)
