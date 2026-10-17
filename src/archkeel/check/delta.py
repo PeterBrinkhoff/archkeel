@@ -36,6 +36,7 @@ from archkeel.ir.model import (
     identity_is_known,
     stable_id,
 )
+from archkeel.ir.model import ComparisonStatus as _ComparisonStatus
 from archkeel.ir.model import DiagnosticKind as _DiagnosticKind
 from archkeel.ir.profiles import delta_dimension_applicable, profile_for
 
@@ -524,14 +525,16 @@ def build_architecture_delta(
                 "Regression checks require the same known schema, scope, analyzer and contract"
             )
         ratchets = RatchetObservations(
-            "SUPPORTED", measure_python_ratchets(baseline), measure_python_ratchets(head)
+            _ComparisonStatus.SUPPORTED,
+            measure_python_ratchets(baseline),
+            measure_python_ratchets(head),
         )
     except RatchetError as exc:
-        ratchets = RatchetObservations("UNKNOWN", reason=str(exc))
+        ratchets = RatchetObservations(_ComparisonStatus.UNKNOWN, reason=str(exc))
     dimensions: list[DimensionDelta] = []
     changes: list[SemanticChange] = []
     unknowns: list[DeltaUnknown] = []
-    available = ratchets.status == "SUPPORTED"
+    available = ratchets.status is _ComparisonStatus.SUPPORTED
     if not available:
         unknowns.append(
             _unknown(
@@ -541,7 +544,7 @@ def build_architecture_delta(
         )
     for dimension in SUPPORTED_DIMENSIONS:
         if not delta_dimension_applicable(profile, dimension):
-            dimensions.append(DimensionDelta(dimension, "UNKNOWN", None, None))
+            dimensions.append(DimensionDelta(dimension, _ComparisonStatus.UNKNOWN, None, None))
             unknowns.append(
                 _unknown(dimension, f"{profile.analyzer} lacks complete {dimension} evidence")
             )
@@ -565,7 +568,7 @@ def build_architecture_delta(
             dimensions.append(
                 DimensionDelta(
                     dimension,
-                    "UNKNOWN",
+                    _ComparisonStatus.UNKNOWN,
                     None if before is None else len(before),
                     None if after is None else len(after),
                 )
@@ -578,7 +581,7 @@ def build_architecture_delta(
         dimensions.append(
             DimensionDelta(
                 dimension,
-                "SUPPORTED",
+                _ComparisonStatus.SUPPORTED,
                 before_count,
                 after_count,
                 tuple(item.fingerprint for item in current if item.change == "added"),
@@ -587,7 +590,9 @@ def build_architecture_delta(
                 tuple(item.fingerprint for item in current if item.change == "changed"),
             )
         )
-    unknown_dimensions = tuple(item.name for item in dimensions if item.status == "UNKNOWN")
+    unknown_dimensions = tuple(
+        item.name for item in dimensions if item.status is _ComparisonStatus.UNKNOWN
+    )
     return ArchitectureDelta(
         DeltaVersion.V2_0,
         head.analyzer,
@@ -616,14 +621,14 @@ def build_architecture_delta(
             if coverage_complete
             and available
             and all(
-                item.status == "SUPPORTED"
+                item.status is _ComparisonStatus.SUPPORTED
                 for item in dimensions
                 if delta_dimension_applicable(profile, item.name)
             )
             else Verdict.FAIL,
             baseline.coverage.status,
             head.coverage.status,
-            tuple(item.name for item in dimensions if item.status == "SUPPORTED"),
+            tuple(item.name for item in dimensions if item.status is _ComparisonStatus.SUPPORTED),
             unknown_dimensions,
         ),
         tuple(dimensions),

@@ -12,6 +12,7 @@ SUPPORTED (AD-5). The claim stays a review claim: it never becomes a verdict.
 
 from __future__ import annotations
 
+import builtins as _builtins
 from dataclasses import dataclass
 
 from .model import ComparisonStatus, Observation, Record, text_value
@@ -37,7 +38,11 @@ class SymbolReferences:
     candidates: tuple[UnreferencedSymbol, ...] = ()
 
     def __post_init__(self) -> None:
-        if self.status == "UNKNOWN" and (self.symbols or self.exempt or self.candidates):
+        if not isinstance(self.status, ComparisonStatus):
+            _builtins.object.__setattr__(self, "status", ComparisonStatus(self.status))
+        if self.status is ComparisonStatus.UNKNOWN and (
+            self.symbols or self.exempt or self.candidates
+        ):
             raise ValueError("an unsupported claim names no symbols")
 
 
@@ -73,7 +78,7 @@ def _is_exempt(symbol: Record, classes: dict[str, Record]) -> bool:
 def unreferenced_symbols(observation: Observation) -> SymbolReferences:
     """Return the symbols nothing references, or UNKNOWN when the signal is missing."""
     if observation.records("references") is None:
-        return SymbolReferences("UNKNOWN")
+        return SymbolReferences(ComparisonStatus.UNKNOWN)
     symbols = observation.records("symbols") or ()
     classes = {
         name: record
@@ -99,7 +104,7 @@ def unreferenced_symbols(observation: Observation) -> SymbolReferences:
             )
         )
     return SymbolReferences(
-        "SUPPORTED",
+        ComparisonStatus.SUPPORTED,
         symbols=len(symbols),
         exempt=exempt,
         candidates=tuple(sorted(candidates, key=lambda item: item.name)),

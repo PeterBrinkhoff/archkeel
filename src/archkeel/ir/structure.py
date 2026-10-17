@@ -15,6 +15,7 @@ source for a component's size, so the claim and the table cannot disagree.
 
 from __future__ import annotations
 
+import builtins as _builtins
 from collections import Counter
 from dataclasses import dataclass
 from typing import Literal, TypeAlias
@@ -180,7 +181,9 @@ class InsideSizes:
     candidates: tuple[OversizedInside, ...] = ()
 
     def __post_init__(self) -> None:
-        if self.status == "UNKNOWN" and (
+        if not isinstance(self.status, ComparisonStatus):
+            _builtins.object.__setattr__(self, "status", ComparisonStatus(self.status))
+        if self.status is ComparisonStatus.UNKNOWN and (
             self.components or self.component_edges or self.candidates
         ):
             raise ValueError("an unsupported claim names no component")
@@ -208,7 +211,7 @@ def oversized_insides(observation: Observation) -> InsideSizes:
     against zero component edges and call every component with one inner edge large.
     """
     if observation.records("modules") is None or observation.records("dependency_edges") is None:
-        return InsideSizes("UNKNOWN")
+        return InsideSizes(ComparisonStatus.UNKNOWN)
     components = component_owners(observation)
     edges = _component_edge_count(observation, components)
     candidates = tuple(
@@ -217,4 +220,4 @@ def oversized_insides(observation: Observation) -> InsideSizes:
         if metric.level == "component"
         and (metric.modules > len(components) or metric.inner_edges > edges)
     )
-    return InsideSizes("SUPPORTED", len(components), edges, candidates)
+    return InsideSizes(ComparisonStatus.SUPPORTED, len(components), edges, candidates)

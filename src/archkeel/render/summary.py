@@ -16,6 +16,7 @@ from archkeel.ir.model import (
 from archkeel.ir.model import (
     Command as _Command,
 )
+from archkeel.ir.model import ComparisonStatus as _ComparisonStatus
 from archkeel.ir.model import (
     DraftedComponentSize,
     RunResult,
@@ -418,7 +419,7 @@ def _check_regressions(result: RunResult) -> tuple[Comparison, ...]:
     ratchets = result.delta.ratchets if result.delta is not None else None
     if (
         ratchets is None
-        or ratchets.status != "SUPPORTED"
+        or ratchets.status is not _ComparisonStatus.SUPPORTED
         or ratchets.baseline is None
         or ratchets.head is None
     ):

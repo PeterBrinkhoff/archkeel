@@ -13,6 +13,7 @@ evidence, deciding whether it is a problem stays the architect's, never a verdic
 
 from __future__ import annotations
 
+import builtins as _builtins
 from collections import defaultdict
 from dataclasses import dataclass
 
@@ -41,7 +42,9 @@ class TypeFanin:
     candidates: tuple[TypeCrossing, ...] = ()
 
     def __post_init__(self) -> None:
-        if self.status == "UNKNOWN" and (self.positions or self.candidates):
+        if not isinstance(self.status, ComparisonStatus):
+            _builtins.object.__setattr__(self, "status", ComparisonStatus(self.status))
+        if self.status is ComparisonStatus.UNKNOWN and (self.positions or self.candidates):
             raise ValueError("an unsupported claim names no crossing")
 
 
@@ -65,7 +68,7 @@ def _annotations(data: RecordData) -> list[str]:
 def type_fanin(observation: Observation) -> TypeFanin:
     """Name the annotation strings crossing the most distinct ordered component pairs."""
     if observation.records("symbols") is None or observation.records("imports") is None:
-        return TypeFanin("UNKNOWN")
+        return TypeFanin(ComparisonStatus.UNKNOWN)
     components = component_owners(observation)
     symbols_by_qualname = {
         name: record
@@ -105,4 +108,4 @@ def type_fanin(observation: Observation) -> TypeFanin:
             key=lambda item: (-item.crossings, item.annotation),
         )
     )
-    return TypeFanin("SUPPORTED", positions=positions, candidates=candidates)
+    return TypeFanin(ComparisonStatus.SUPPORTED, positions=positions, candidates=candidates)
