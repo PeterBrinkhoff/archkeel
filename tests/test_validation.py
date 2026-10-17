@@ -73,7 +73,7 @@ def test_an_inside_may_not_grant_what_requires_never_named(tmp_path: Path) -> No
     check_path = nested_contracts["check"]
     inner = json.loads((ROOT / check_path).read_text())
     root = tmp_path / "repository"
-    shutil.copytree(ROOT / "docs/architecture", root / "docs/architecture")
+    shutil.copytree(ROOT / "docs", root / "docs")
     (root / "architecture-contract.json").write_text(json.dumps(outer))
     inside = root / check_path
 
