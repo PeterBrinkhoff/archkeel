@@ -138,7 +138,9 @@ def test_future_github_provider_event_remains_an_open_bounded_observation(tmp_pa
     assert _events(tmp_path, raw, "example/project") == 1
 
 
-def _repository(tmp_path, *, old=None, new=None, probe=""):
+def _repository(
+    tmp_path, *, old=None, new=None, probe="", guard_source="archkeel.check.ordering"
+):
     target = json.loads((ROOT / "docs/architecture/contracts/ir.json").read_text())
     target.pop("$schema", None)
     target["components"] = [{
@@ -161,7 +163,7 @@ def _repository(tmp_path, *, old=None, new=None, probe=""):
     target["rules"] = [{
         "id": GUARD,
         "kind": "forbidden_construct",
-        "source": "archkeel.check.ordering",
+        "source": guard_source,
         "constructs": ["string_literal_compare"],
         "rationale": "The closed replay event reaches ordering through its nominal port.",
         "decided_by": "architect",
@@ -226,7 +228,6 @@ def test_native_host_port_return_weakening_fails_unchanged_authored_target(tmp_p
         'def _probe(value):\n    return value == "expectation_published"\n',
         'def _probe(value):\n'
         '    return value in ("expectation_published", "candidate_submitted")\n',
-        "def _probe(value):\n    return value == HostEvent.CANDIDATE_SUBMITTED.value\n",
     ],
 )
 def test_native_order_guard_rejects_raw_event_dispatch_mutations(tmp_path, probe):
@@ -235,4 +236,26 @@ def test_native_order_guard_rejects_raw_event_dispatch_mutations(tmp_path, probe
     before = (root / "contract.json").read_bytes()
     model = _model(root, config)
     assert any(GUARD in row.rule_ids for row in trace_valid_violations(model))
+    assert (root / "contract.json").read_bytes() == before
+
+
+def test_native_local_host_event_value_mutation_has_its_own_trace(tmp_path):
+    _event_type()
+    root, config = _repository(
+        tmp_path,
+        old="return HostEvent(value)",
+        new=(
+            "return HostEvent.EXPECTATION_PUBLISHED "
+            "if value == HostEvent.EXPECTATION_PUBLISHED.value else HostEvent(value)"
+        ),
+        guard_source="archkeel.ir.host_records",
+    )
+    before = (root / "contract.json").read_bytes()
+    model = _model(root, config)
+    # The owner retains timestamp/key controls. Require this exact mutation's trace;
+    # imported Enum.value evidence is outside the collector's documented local scope.
+    assert any(
+        GUARD in row.rule_ids and "archkeel.ir.host_records.parse_event" in row.subjects
+        for row in trace_valid_violations(model)
+    )
     assert (root / "contract.json").read_bytes() == before
