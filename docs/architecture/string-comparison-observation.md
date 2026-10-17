@@ -53,10 +53,12 @@ Arbitrary data-variable membership and arbitrary
 string-to-string data comparisons are outside this syntactic construct. The rule
 therefore cannot certify a semantic ban on every possible raw protocol comparison.
 The same strict enum-body predicate supplies local and scanned-provider value evidence.
-Symbol aliases, module aliases and proven re-export routes use existing import-origin facts;
+Symbol aliases and proven re-export routes use existing canonical import-origin facts;
+module aliases use lexical import targets only after their consumer roots are stable.
 ambiguous/rebound/conditional imports and unscanned providers supply no literal proof.
-Provider roots reuse the existing stable direct module-binding check, including
-explicit global rebinding and visible namespace changes.
+Provider and consumer roots reuse the existing stable direct module-binding check,
+including explicit global rebinding, visible attribute writes, ordinary alias
+mutation propagation and visible namespace changes.
 Named collections retain their single-binding, visible-use and escape restrictions and
 accept these same supported scalar leaves, as do membership, match and prefix/suffix arguments.
 No compiler, signature, member-binding or native type-proof receipt is added.

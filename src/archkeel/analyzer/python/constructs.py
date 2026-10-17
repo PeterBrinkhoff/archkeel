@@ -293,7 +293,7 @@ class _LiteralComparisons:
         self.scopes = LexicalScopes(module)
         module_values, class_values, enum_classes = _static_string_constants(module)
         self.origins: dict[str, str] = {}
-        stable_names = stable_direct_module_bindings(module)
+        self.stable_names = stable_direct_module_bindings(module)
         enum_value_classes = frozenset(
             f"{module.module}.{node.name}"
             for node in module.tree.body
@@ -303,17 +303,17 @@ class _LiteralComparisons:
             and not node.keywords
             and not node.decorator_list
             and _literal_enum_body(node)
-            and node.name in stable_names
+            and node.name in self.stable_names
         )
         self.scalar_names = frozenset(
             f"{module.module}.{name}"
             for name, value in module_values.items()
-            if value is not None and name in stable_names
+            if value is not None and name in self.stable_names
         ) | frozenset(
             f"{owner}.{name}"
             for owner, values in class_values.items()
             if owner not in enum_classes
-            and owner[len(module.module) + 1 :].split(".")[0] in stable_names
+            and owner[len(module.module) + 1 :].split(".")[0] in self.stable_names
             for name, value in values.items()
             if value is not None
         )
@@ -332,7 +332,11 @@ class _LiteralComparisons:
         if not isinstance(root, ast.Name):
             return False
         binding = self.scopes.lookup(root, root.id)
-        return binding.owner is self.scopes.root and not binding.uncertain
+        return (
+            binding.owner is self.scopes.root
+            and not binding.uncertain
+            and root.id in self.stable_names
+        )
 
     def _enum_base(self, node: ast.expr) -> bool:
         if not self._module_name(node):
