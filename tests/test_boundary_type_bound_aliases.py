@@ -1225,3 +1225,37 @@ def test_uncertain_alias_ordinary_permission_is_independent_of_union_order(
     assert _facts(result.observation) == []
     assert len(_targets(result.observation)) == 2
     assert len(_unknowns(result.observation)) >= 3
+
+
+def test_opaque_alias_transfer_keeps_source_identity_without_an_exact_permission(tmp_path: Path):
+    _fixture(tmp_path, facade=True, selected=(0,), alias_suffix="unknown(Packet)\n")
+    runtime = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import builtins,json,sys\nseen=[]\n"
+            "def mutate(alias):\n"
+            "    seen.append(alias.__origin__.__name__)\n"
+            "    sys._getframe(1).f_globals['Packet'] = dict[str, object]\n"
+            "builtins.unknown = mutate\nbuiltins.Missing = object\n"
+            "from sample.app.impl import Session, Packet\n"
+            "print(json.dumps([seen, Packet.__origin__.__name__, "
+            "Session.prepare.__annotations__['return'].__origin__.__name__]))\n",
+        ],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert json.loads(runtime.stdout) == [["tuple"], "dict", "dict"]
+    result = _observe(tmp_path)
+    assert result.observation is not None
+    [packet] = [
+        row
+        for row in result.observation.records("symbols") or ()
+        if row.data.get("qualified_name") == "sample.app.impl.Packet"
+    ]
+    assert packet.data.get("source_binding_unique") is True
+    assert packet.data.get("source_member_binding_static") is False
+    assert _facts(result.observation) == []

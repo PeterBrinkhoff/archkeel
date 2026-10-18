@@ -1304,7 +1304,7 @@ def _type_alias_verdict(
     )
     proof = (
         _bound_alias_body(alias, resolved, contract, exports, imports, classes, type_shapes)
-        if not aliases_seen and not visited
+        if not aliases_seen and not visited and _alias_binding_static(symbol)
         else None
     )
     typed = _bound_root_mapping_union(
