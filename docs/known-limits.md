@@ -12,6 +12,14 @@ receipts keep their rows and aggregate verdict UNKNOWN. Only Python initializers
 with no AST statements may be unowned without breaking this proof; docstrings and
 imports are statements. An empty violation list is insufficient.
 
+Python `call_owner` initially supports stable plain top-level functions (including
+direct import aliases) and plain parameter annotations of scanned class methods.
+External targets, constructors, stored receiver members, inherited surfaces,
+decorated functions/methods, reexports and ambiguous/mutated bindings remain
+UNKNOWN. It proves the declared static boundary, not runtime conformance.
+This rule requires a source/contract/inventory/call-bound receipt; legacy saved
+observations cannot certify it. Other language profiles do not support it.
+
 An explicitly certified `complete_requires` scope can PASS with unrelated source
 resolution gaps. Arbitrary imports still block their own scopes and ancestors;
 signature gaps do not prove or disprove imports. Legacy or unbound gaps remain

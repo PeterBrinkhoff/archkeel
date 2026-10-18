@@ -16,6 +16,7 @@ from archkeel.ir.codec import contract_bytes, parse_contract
 
 ROOT = Path(__file__).parents[1]
 RULES = {
+    "call_owner": ("CallOwnerRule", {"source": "sample", "target": "sample.store.page"}),
     "forbidden_dependency": (
         "ForbiddenDependencyRule",
         {"source": "sample.core", "target": "json", "include_type_checking": True},
@@ -44,7 +45,7 @@ RULES = {
 
 def _raw():
     raw = json.loads((ROOT / "tests/contracts/valid/minimal.json").read_bytes())
-    raw["schema_version"] = "3.6.0"
+    raw["schema_version"] = "3.7.0"
     raw["rules"] = []
     return raw
 
@@ -251,10 +252,9 @@ def _legacy_rules():
     ]
 
 
-@pytest.mark.parametrize("index", range(14), ids=RULES)
-def test_every_legacy_positional_constructor_has_nominal_frozen_slotted_identity(index):
-    rule = _legacy_rules()[index]
-    expected = ArchitectureRuleKind(list(RULES)[index])
+@pytest.mark.parametrize("rule", _legacy_rules(), ids=lambda rule: str(rule.kind))
+def test_every_legacy_positional_constructor_has_nominal_frozen_slotted_identity(rule):
+    expected = ArchitectureRuleKind(rule.kind)
     assert rule.id == "r" and rule.rationale == "Why."
     assert rule.kind is expected
     assert rule.decided_by is DecisionMaker.ARCHITECT

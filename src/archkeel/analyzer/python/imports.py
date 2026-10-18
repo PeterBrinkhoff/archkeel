@@ -499,6 +499,10 @@ def _converge_member_escapes(
         escaped_bindings = escaped
         exposed_bindings = {name: set(values) for name, values in exposed.items()}
         transferred_bindings = {name: set(values) for name, values in transferred.items()}
+    for name, module in modules.items():
+        module.owner_exposed_bindings = frozenset(
+            exposed_bindings[name] | transferred_bindings[name]
+        )
     return escaped_bindings
 
 

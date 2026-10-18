@@ -30,6 +30,7 @@ global coverage and cycle closure stay incomplete. See
 | Reject broad containers or unpublished owned facade types | `boundary_types` |
 | Forbid selected syntactic constructs | `forbidden_construct` |
 | Declared requirements follow layer direction | `layer_order` |
+| Restrict a statically bound function/method to selected callers | `call_owner` (3.7) |
 
 Python static imports and proven literal `importlib.import_module` / `__import__`
 calls feed the same dependency rules. An unknown loader binding or target withholds
@@ -37,6 +38,15 @@ only applicable dependency receipts; known violations remain FAIL. Nonempty or
 unproved builtin `fromlist` retains the known base edge and adds uncertainty about
 children. This proves dependency intent, not runtime loading or a public value API.
 See [supported forms and limits](architecture/python-dynamic-dependencies.md).
+
+`call_owner` names `source`, a canonical `target`, and optional `allowed_sources`
+(scope prefixes) / `exact_sources` (module or function). It currently proves plain
+top-level functions and plain parameter annotations naming scanned class methods.
+An unrelated same-named method is allowed. Unproven calls withhold PASS, including
+empty candidate lists. Missing sources or target declarations remain UNKNOWN.
+Mutations, ambiguous providers and unbound saved receipts cannot certify it.
+This is a declared static boundary, not runtime type conformance. See
+[AD-241](architecture/decisions/ad-241-call-ownership-policy.md).
 
 ### Ownership and dependency decisions
 

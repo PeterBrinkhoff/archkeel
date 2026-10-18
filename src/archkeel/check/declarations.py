@@ -23,6 +23,7 @@ from archkeel.ir.model import (
     ArchitectureContract,
     ArchitectureRule,
     BoundaryTypesRule,
+    CallOwnerRule,
     CompatibilityLifetime,
     CompleteAssignmentRule,
     CompleteExternalScopeRule,
@@ -73,7 +74,20 @@ def load_contract(path: Path) -> tuple[ArchitectureContract, str]:
 def project_rule_declaration(rule: ArchitectureRule) -> RawRecord:
     subjects: list[str]
     data: RecordData
-    if isinstance(rule, ForbiddenDependencyRule):
+    if isinstance(rule, CallOwnerRule):
+        area, title, subjects = (
+            "calls",
+            f"Only declared callers invoke {rule.target}",
+            [rule.source, rule.target],
+        )
+        data = {
+            "source": rule.source,
+            "target": rule.target,
+            "allowed_sources": sorted(rule.allowed_sources),
+            "exact_sources": sorted(rule.exact_sources),
+            "rationale": rule.rationale,
+        }
+    elif isinstance(rule, ForbiddenDependencyRule):
         target = ".".join(filter(None, (rule.target, rule.target_symbol)))
         area, title, subjects = (
             "dependency_violations",
@@ -566,7 +580,7 @@ def project_declarations(
                 title=path.label,
                 subjects=list(path.steps),
                 provenance=list(path.provenance),
-                data={"steps": path.steps},
+                data={"steps": list(path.steps)},
             )
         )
     for budget in sorted(declarations.measurement_budgets, key=lambda item: item.name):

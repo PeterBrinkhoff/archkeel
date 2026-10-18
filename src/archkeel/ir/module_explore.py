@@ -458,7 +458,7 @@ def _cell_receipt_proven(
         record.kind == "rule_evaluation"
         and assessment.id in record.rule_ids
         and subjects <= set(record.subjects)
-        and _rule_receipt_complete(declaration, record)
+        and _rule_receipt_complete(model, declaration, record)
         for record in model.records("scope_observations") or ()
     )
 

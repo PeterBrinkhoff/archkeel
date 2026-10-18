@@ -313,6 +313,7 @@ class ParsedModule:
     all_literal: bool = False
     compatibility_logic_free: bool = False
     incoming_member_escapes: set[str] = field(default_factory=set)
+    owner_exposed_bindings: frozenset[str] | None = field(default=None, init=False, repr=False)
     _proven_map_union_expressions: frozenset[ast.expr] = field(
         default_factory=frozenset, init=False, repr=False
     )

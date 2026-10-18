@@ -14,6 +14,7 @@ from archkeel.analyzer.runtime import (
     python_requirement,
 )
 from archkeel.ir.facts import (
+    CALL_BINDINGS_FEATURE,
     BuiltinTarget,
     Capabilities,
     CollectionCoverage,
@@ -166,6 +167,7 @@ def collect(request: CollectionRequest) -> SourceFacts:
         ),
         Capabilities(
             _SECTION_NAMES,
+            resolution_features=(CALL_BINDINGS_FEATURE,),
             constructs=tuple(
                 ConstructCapability(kind, ConstructSupport.DECIDED)
                 for kind in ForbiddenConstructKind

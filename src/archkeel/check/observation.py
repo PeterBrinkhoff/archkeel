@@ -56,7 +56,7 @@ from .evaluation.evaluate import ScanResult, evaluate_source
 from .ports import SourceCollector
 from .runtime import has_invalid_python_requirement, runtime_diagnostic
 
-OBSERVATION_VERSION = "0.74.0"
+OBSERVATION_VERSION = "0.75.0"
 
 DEFAULT_CONTRACT = Path("docs/architecture/architecture-contract.json")
 
@@ -664,7 +664,9 @@ def _layer_order_evidence(
     scan.evidence = sorted(evidence.values(), key=lambda item: item["id"])
 
 
-def _dependency_binding_id(scan: ScanResult, declarations: list[RawRecord]) -> str:
+def _dependency_binding_id(
+    scan: ScanResult, declarations: list[RawRecord], *, include_calls: bool = False
+) -> str:
     return dependency_binding_id(
         (
             Section(name, tuple(parse_record(item) for item in records))
@@ -672,12 +674,36 @@ def _dependency_binding_id(scan: ScanResult, declarations: list[RawRecord]) -> s
                 ("modules", scan.modules),
                 ("imports", scan.imports),
                 ("symbols", scan.symbols),
+                ("calls", scan.calls),
                 ("declarations", declarations),
             )
         ),
         (parse_record(item) for item in scan.coverage["failures"]),
         (parse_evidence(item) for item in scan.evidence),
+        include_calls=include_calls,
     )
+
+
+def _certify_call_owner_scopes(
+    scan: ScanResult, facts: SourceFacts, contract_digest: str, declarations: list[RawRecord]
+) -> None:
+    rules = {r["id"] for r in declarations if r["kind"] == "call_owner"}
+    receipts = [
+        r
+        for r in scan.scope_observations
+        if r["kind"] == "rule_evaluation" and rules.intersection(r["rule_ids"])
+    ]
+    if not receipts:
+        return
+    proof = {
+        "source_digest": facts.source.source_digest,
+        "source_scope": list(facts.source.scope),
+        "contract_digest": contract_digest,
+        "binding_id": _dependency_binding_id(scan, declarations, include_calls=True),
+        "selected_files": list(facts.coverage.selected_files),
+    }
+    for receipt in receipts:
+        receipt["data"]["call_scope_proof"] = proof
 
 
 def _certify_dependency_scopes(
@@ -789,6 +815,7 @@ def assemble_observation(
         contract, scan, inside_records, contract_reference, scope, language
     )
     _certify_dependency_scopes(scan, facts, full_contract_digest, declarations)
+    _certify_call_owner_scopes(scan, facts, full_contract_digest, declarations)
     model: dict[str, object] = {
         "schema_version": SCHEMA_VERSION,
         "analyzer": {

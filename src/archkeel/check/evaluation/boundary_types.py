@@ -12,6 +12,7 @@ from dataclasses import dataclass, replace
 from enum import StrEnum
 from typing import Final, NamedTuple, TypeAlias
 
+from archkeel.ir.contract_version import ContractFeature, supports_feature
 from archkeel.ir.facts import (
     MethodKind,
     PropertyOperation,
@@ -65,9 +66,6 @@ from .rule_support import (
 )
 
 _BROAD_BOUNDARY_TYPES: Final = ("object",)
-_TYPED_MAPPING_UNION_VERSIONS: Final = frozenset(
-    {"3.1.0", "3.2.0", "3.3.0", "3.4.0", "3.5.0", "3.6.0"}
-)
 
 
 def _is_broad_boundary_type(
@@ -2336,7 +2334,9 @@ def _mapping_union_verdict(
     aliases_seen: frozenset[tuple[str, str]],
 ) -> _Position:
     arms = _mapping_union_arms(annotation, module, imports, classes, type_shapes)
-    if contract is not None and contract.schema_version in _TYPED_MAPPING_UNION_VERSIONS:
+    if contract is not None and supports_feature(
+        contract.schema_version, ContractFeature.KEY_ALIAS_BODY
+    ):
         ordinary_compatible = (
             annotation in _OPAQUE_NATIVE_REASONS
             or _native_iterable_shape(annotation, module, imports, classes, type_shapes)

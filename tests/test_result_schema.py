@@ -555,7 +555,7 @@ def test_incomplete_dart_check_preserves_profile_sections(validator, tmp_path: P
     assert result.exit_code == 2 and result.observation is not None
     payload = result_payload(_incomplete(result))
     assert not list(validator.iter_errors(payload))
-    python = validator.evolve(schema={"$ref": "urn:archkeel:architecture-ir:python-decoded:2.0.0"})
+    python = validator.evolve(schema={"$ref": "urn:archkeel:architecture-ir:python-decoded:2.1.0"})
     assert not python.is_valid(payload["observation"])
     for section in ("symbols", "references", "bindings", "imports"):
         assert isinstance(payload["observation"][section], list), section
@@ -574,7 +574,7 @@ def test_python_observation_sections_remain_required(validator, tmp_path: Path) 
     observation = observation_payload(result.observation)
     schemas = (
         validator.evolve(schema=validator.schema["properties"]["observation"]),
-        validator.evolve(schema={"$ref": "urn:archkeel:architecture-ir:python-decoded:2.0.0"}),
+        validator.evolve(schema={"$ref": "urn:archkeel:architecture-ir:python-decoded:2.1.0"}),
     )
     for schema in schemas:
         assert schema.is_valid(observation)

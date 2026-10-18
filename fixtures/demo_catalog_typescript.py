@@ -20,6 +20,8 @@ def contract() -> dict:
 
 def with_rule(kind: str, **fields: object) -> str:
     value = contract()
+    if kind == "call_owner":
+        value["schema_version"] = "3.7.0"
     value["rules"].append(
         {
             "id": "PROBE",
@@ -67,6 +69,7 @@ def example(
 
 
 UNSUPPORTED_RULES = {
+    "call_owner": {"source": "shop", "target": "shop.src.main_x2e_ts.main"},
     "forbidden_construct": {"source": "shop", "constructs": ["eval"]},
     "symbol_placement": {
         "source": "shop",

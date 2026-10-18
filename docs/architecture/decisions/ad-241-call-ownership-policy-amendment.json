@@ -1,0 +1,9 @@
+{
+  "after_baseline_digest": "5da3996664f65911eb2bc0e99b7fd45371438f0c0b977ea5a44892006736976e",
+  "after_digest": "a92ccf517284f195255f7c8eac2da1dcfedc1abb7ff777feb07a0f82de3c5696",
+  "before_baseline_digest": "b68b5e8033d4dd650e749f864e7a9e0d00bad47c8d0f26d0c38b211be1fe815f",
+  "before_digest": "5af47f9279f34fe9ad314b4e075d90f3653c8a5fae2b10f730e0bfe8172c9097",
+  "decided_by": "Codex (user-authorized native gate consolidation)",
+  "rationale": "AD-241 adds a bounded call-owner policy and exposes exactly ContractFeature, ContractVersion and supports_feature as the shared version API to Core. The self-scan adds exactly16 unresolved calls on new implementation lines:851 to867; no unchanged call loses resolution or prior unresolved site disappears. The two new closed attribute scopes CallOwnerRule and CallBinding add exactly2 UML UNKNOWN positions:58 to60, because exhaustive Python class creation/attribute writes remain unmeasured. All8 prior UML UNKNOWN positions and all other baseline fields are unchanged. Closed scopes and UNKNOWN verdicts remain strict; this does not justify retiring an EE guard.",
+  "schema_version": "2.0.0"
+}

@@ -9,7 +9,7 @@ import ast
 import builtins
 from collections.abc import Sequence
 
-from archkeel.ir.facts import EvidenceClass, SourceResolution, stable_id
+from archkeel.ir.facts import CallBindingOrigin, EvidenceClass, SourceResolution, stable_id
 from archkeel.ir.facts_codec import RawData as RecordData
 from archkeel.ir.facts_codec import RawEvidence, RawRecord, classified
 
@@ -31,6 +31,7 @@ from .source import (
     definition_id,
     lexical_binding_names,
     location,
+    member_escape_references,
     own_scope,
     stable_direct_module_bindings,
 )
@@ -164,6 +165,13 @@ class CallCollector(ast.NodeVisitor):
             for child in ast.iter_child_nodes(parent)
         }
         self.stable_bindings = stable_direct_module_bindings(module)
+        self.escaped_bindings = {
+            (binding.owner.node, reference.id)
+            for reference in member_escape_references(
+                module, module.all_nodes, member_surface=True, owner_exposure_only=True
+            )
+            if (binding := self.scopes.lookup(reference, reference.id)).owner is not None
+        }
         self.scope_bindings = {
             node: lexical_binding_names(node)
             for node in ast.walk(module.tree)
@@ -259,6 +267,79 @@ class CallCollector(ast.NodeVisitor):
             )
         return result
 
+    def _call_binding(
+        self, node: ast.Call, status: SourceResolution, targets: list[str], evidence_id: str
+    ) -> RecordData | None:
+        if (
+            isinstance(node.func, ast.Name)
+            and status is SourceResolution.RESOLVED
+            and len(targets) == 1
+            and (declaration := self.index.binding_declarations.get(targets[0])) is not None
+            and declaration["kind"] == "function"
+            and declaration["data"].get("source_binding_unique") is True
+            and declaration["data"].get("source_binding_static") is True
+            and not declaration["data"].get("decorators")
+        ):
+            binding = self.scopes.lookup(node.func, node.func.id)
+            if (
+                not binding.uncertain
+                and binding.owner is not None
+                and (
+                    binding.owner is not self.scopes.root
+                    or binding.kind is BindingKind.UNBOUND
+                    or node.func.id in self.stable_bindings
+                )
+            ):
+                return {
+                    "origin": CallBindingOrigin.DIRECT,
+                    "target": targets[0],
+                    "evidence_ids": sorted(
+                        {evidence_id, *self.symbol_evidence.get(targets[0], ())}
+                    ),
+                }
+        if not isinstance(node.func, ast.Attribute) or not isinstance(node.func.value, ast.Name):
+            return None
+        receiver = node.func.value
+        binding = self.scopes.lookup(receiver, receiver.id)
+        if (
+            binding.owner is None
+            or binding.uncertain
+            or (binding.owner.node, receiver.id) in self.escaped_bindings
+        ):
+            return None
+        sites = binding.owner.bindings.get(receiver.id, ())
+        if len(sites) != 1 or not isinstance(sites[0], ast.arg):
+            return None
+        annotation = sites[0].annotation
+        if not isinstance(annotation, ast.Name | ast.Attribute):
+            return None
+        verdict, owners, _, _ = resolve_name(annotation, index=self.index, scopes=self.scopes)
+        if verdict is not SourceResolution.RESOLVED or len(owners) != 1:
+            return None
+        target = f"{owners[0]}.{node.func.attr}"
+        owner = self.index.binding_declarations.get(owners[0])
+        member = self.index.binding_declarations.get(target)
+        if (
+            owner is None
+            or owner["kind"] != "class"
+            or owner["data"].get("source_binding_unique") is not True
+            or owner["data"].get("source_member_binding_static") is not True
+            or member is None
+            or member["kind"] != "method"
+            or member["data"].get("parent") != owners[0]
+            or member["data"].get("decorators")
+            or target not in targets
+        ):
+            return None
+        annotation_evidence = add_evidence(self.evidence, self.module, annotation)
+        return {
+            "origin": CallBindingOrigin.DECLARED_RECEIVER,
+            "target": target,
+            "evidence_ids": sorted(
+                {evidence_id, annotation_evidence, *owner["evidence_ids"], *member["evidence_ids"]}
+            ),
+        }
+
     def visit_Call(self, node: ast.Call) -> None:
         scope = self.scopes.by_node[node]
         receivers = {}
@@ -321,6 +402,7 @@ class CallCollector(ast.NodeVisitor):
                     "construction": self._construction(
                         node, expression, status, targets, candidate_count > len(targets)
                     ),
+                    "call_binding": self._call_binding(node, status, targets, evidence_id),
                 },
             )
         )

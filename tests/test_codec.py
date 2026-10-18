@@ -159,9 +159,10 @@ def test_legacy_canonical_report_roundtrips_without_requirement_state():
     assert "requirement_state" not in observation_payload(parsed)["runtime"]
 
 
-def test_requirement_state_requires_ir_2_and_survives_canonical_roundtrip():
+@pytest.mark.parametrize("version", ["2.0.0", "2.1.0"])
+def test_requirement_state_requires_ir_2_and_survives_canonical_roundtrip(version):
     raw = raw_observation()
-    raw["schema_version"] = "2.0.0"
+    raw["schema_version"] = version
     raw["runtime"] = {
         "name": "cpython",
         "version": "3.11.12",

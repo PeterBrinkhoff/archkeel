@@ -21,6 +21,7 @@ from archkeel.ir.architecture_graph import (
     TargetDefinition,
 )
 from archkeel.ir.architecture_projection import ArchitectureProjection
+from archkeel.ir.contract_version import ContractFeature, ContractVersion, supports_feature
 from archkeel.ir.facts import MemberInventory
 from archkeel.ir.model import Coverage, Diagnostic, FilteredViolation, Record
 from archkeel.ir.report_projection import ArchitectureCommandEnvelope
@@ -349,14 +350,9 @@ def member_inventory_schema() -> dict[str, object]:
 
 def _update_contract_schema(path: Path) -> None:
     schema = json.loads(path.read_bytes())
-    if schema["properties"]["schema_version"] in (
-        {"const": "3.1.0"},
-        {"const": "3.2.0"},
-        {"const": "3.3.0"},
-        {"const": "3.4.0"},
-        {"const": "3.5.0"},
-        {"const": "3.6.0"},
-    ):
+    raw_version = schema["properties"]["schema_version"].get("const")
+    version = ContractVersion(raw_version) if raw_version is not None else None
+    if version is not None and supports_feature(version, ContractFeature.KEY_ALIAS_BODY):
         selector = schema["$defs"]["boundaryTypes"]["properties"]["allowed_positions"]["items"]
         selector["properties"]["key_alias_body"] = {
             "type": "object",
@@ -371,13 +367,7 @@ def _update_contract_schema(path: Path) -> None:
             "properties": {"field_path": {"const": ""}},
             "not": {"anyOf": [{"required": ["container_depth"]}, {"required": ["mapping_depth"]}]},
         }
-    if schema["properties"]["schema_version"] in (
-        {"const": "3.2.0"},
-        {"const": "3.3.0"},
-        {"const": "3.4.0"},
-        {"const": "3.5.0"},
-        {"const": "3.6.0"},
-    ):
+    if version is not None and supports_feature(version, ContractFeature.LITERAL_MAPPING_ARM):
         selector = schema["$defs"]["boundaryTypes"]["properties"]["allowed_positions"]["items"]
         selector["properties"]["literal_mapping_arm"] = {"$ref": "#/$defs/nonEmpty"}
         selector["dependentSchemas"]["literal_mapping_arm"] = {
@@ -389,12 +379,7 @@ def _update_contract_schema(path: Path) -> None:
                 ]
             },
         }
-    if schema["properties"]["schema_version"] in (
-        {"const": "3.3.0"},
-        {"const": "3.4.0"},
-        {"const": "3.5.0"},
-        {"const": "3.6.0"},
-    ):
+    if version is not None and supports_feature(version, ContractFeature.NATIVE_MAPPING):
         selector = schema["$defs"]["boundaryTypes"]["properties"]["allowed_positions"]["items"]
         selector["properties"]["native_mapping"] = {"const": True}
         selector["properties"]["annotation"] = {"$ref": "#/$defs/nonEmpty"}
@@ -425,20 +410,16 @@ def _update_contract_schema(path: Path) -> None:
                 for name in ("mapping_depth", "alias_body", "key_alias_body", "native_mapping")
             ]
         }
-    if schema["properties"]["schema_version"] in (
-        {"const": "3.4.0"},
-        {"const": "3.5.0"},
-        {"const": "3.6.0"},
-    ):
+    if version is not None and supports_feature(version, ContractFeature.MODULE_SELECTORS):
         for name in ("source_match", "target_match"):
             schema["$defs"]["forbiddenDependency"]["properties"][name] = {
                 "enum": ["prefix", "exact"]
             }
-    if schema["properties"]["schema_version"] in ({"const": "3.5.0"}, {"const": "3.6.0"}):
+    if version is not None and supports_feature(version, ContractFeature.IMPORT_NAMESPACES):
         schema["$defs"]["forbiddenDependency"]["properties"]["target_kind"] = {
             "enum": ["module", "import_namespace"]
         }
-    if schema["properties"]["schema_version"] == {"const": "3.6.0"}:
+    if version is not None and supports_feature(version, ContractFeature.MODULE_OBJECT_GRANTS):
         schema["$defs"]["moduleObjectGrant"] = {
             "type": "object",
             "required": ["source_module", "target_module"],
@@ -498,6 +479,11 @@ def _update_contract_schema(path: Path) -> None:
 def _update_source_profile_schema(path: Path) -> None:
     schema = json.loads(path.read_bytes())
     schema.setdefault("$defs", {})["member_inventory"] = member_inventory_schema()
+    source = json.loads(path.with_name("source-facts.schema.json").read_bytes())
+    call_data = schema["properties"]["calls"]["items"]["allOf"][1]["properties"]["data"]
+    call_data["properties"]["call_binding"] = {
+        "oneOf": [{"type": "null"}, {"$ref": source["$id"] + "#/$defs/CallBinding"}]
+    }
     path.write_text(json.dumps(schema, indent=2) + "\n", encoding="utf-8")
 
 

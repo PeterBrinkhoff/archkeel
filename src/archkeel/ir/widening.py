@@ -34,6 +34,7 @@ from .model import (
     ArchitectureContract,
     ArchitectureRule,
     BoundaryTypesRule,
+    CallOwnerRule,
     CompatibilityLifetime,
     CompleteAssignmentRule,
     CompleteExternalScopeRule,
@@ -88,6 +89,7 @@ _ALWAYS_NEUTRAL: Final = frozenset({"id", "kind", "rationale", "provenance"})
 _PERMISSION_RULE_KINDS: Final = frozenset({"allowed_dependency"})
 _RESTRICTION_RULE_KINDS: Final = frozenset(
     {
+        "call_owner",
         "forbidden_dependency",
         "forbidden_construct",
         "external_dependency_scope",
@@ -330,7 +332,9 @@ def _forbidden_construct_widenings(
 
 
 def _external_dependency_scope_widenings(
-    subject: str, before: ExternalDependencyScopeRule, after: ExternalDependencyScopeRule
+    subject: str,
+    before: ExternalDependencyScopeRule | CallOwnerRule,
+    after: ExternalDependencyScopeRule | CallOwnerRule,
 ) -> list[WideningChange]:
     return [
         *_set_widenings(
@@ -464,8 +468,8 @@ def _matched_rule_widenings(
         return _generic_field_widenings(subject, before, after, handled=frozenset())
     if isinstance(before, ForbiddenConstructRule) and isinstance(after, ForbiddenConstructRule):
         return _forbidden_construct_widenings(subject, before, after)
-    if isinstance(before, ExternalDependencyScopeRule) and isinstance(
-        after, ExternalDependencyScopeRule
+    if isinstance(before, ExternalDependencyScopeRule | CallOwnerRule) and isinstance(
+        after, ExternalDependencyScopeRule | CallOwnerRule
     ):
         return _external_dependency_scope_widenings(subject, before, after)
     if isinstance(before, CompleteRequiresRule) and isinstance(after, CompleteRequiresRule):

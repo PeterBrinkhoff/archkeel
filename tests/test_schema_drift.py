@@ -333,7 +333,7 @@ def test_shared_observation_schema_preserves_each_profile_and_provenance(profile
         for schema in (_schema(path.name) for path in (ROOT / "schema").glob("*.json"))
     )
     validator = Draft202012Validator(
-        {"$ref": "urn:archkeel:architecture-ir:decoded:2.0.0"}, registry=registry
+        {"$ref": "urn:archkeel:architecture-ir:decoded:2.1.0"}, registry=registry
     )
     observation = _model(git_head="a" * 40)
     observation["analyzer"]["name"] = profile.analyzer
@@ -385,7 +385,7 @@ def test_shared_observation_schema_rejects_unknown_provenance(field, value) -> N
         for schema in (_schema(path.name) for path in (ROOT / "schema").glob("*.json"))
     )
     validator = Draft202012Validator(
-        {"$ref": "urn:archkeel:architecture-ir:decoded:2.0.0"}, registry=registry
+        {"$ref": "urn:archkeel:architecture-ir:decoded:2.1.0"}, registry=registry
     )
     observation = _model(git_head="a" * 40)
     observation[field] = {"name": "python", "version": "3.11.12"}

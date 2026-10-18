@@ -14,6 +14,7 @@ from typing import Any, TypeAlias
 
 from archkeel.ir.codec import InsideContractMount
 from archkeel.ir.facts import (
+    CALL_BINDINGS_FEATURE,
     SOURCE_RESOLUTION_GAP_KIND,
     BuiltinTarget,
     ConstructCapability,
@@ -51,6 +52,7 @@ from archkeel.ir.model import (
 from archkeel.ir.profiles import Profile, profile_for
 from archkeel.ir.type_shapes import TypeShapeIndex
 
+from .call_owners import call_owner_results
 from .imports import strip_internal_reexport_facts
 from .rule_support import dynamic_dependency_limits
 from .rules import (
@@ -935,6 +937,24 @@ def evaluate_source(
         *failures,
         *rule_failures,
     ]
+
+    for call_scope, declared in (
+        ("root", contract),
+        *((mount.parent_id, mount.contract) for mount in inside_contracts),
+    ):
+        call_violations, call_limits, call_receipts = call_owner_results(
+            declared,
+            scope=call_scope,
+            calls=calls,
+            modules=module_facts,
+            symbols=symbols,
+            complete=_source_inventory_complete(facts),
+            bindings_measured=CALL_BINDINGS_FEATURE in facts.capabilities.resolution_features,
+            blank_modules=blank_modules,
+        )
+        violations.extend(call_violations)
+        unknowns.extend(call_limits)
+        scope_observations.extend(call_receipts)
 
     dynamic_limits = [
         item

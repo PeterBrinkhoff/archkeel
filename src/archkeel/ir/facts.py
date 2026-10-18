@@ -198,6 +198,45 @@ JsonValue: TypeAlias = str | int | float | bool | None | tuple["JsonValue", ...]
 RawJson: TypeAlias = str | int | float | bool | None | list["RawJson"] | dict[str, "RawJson"]
 
 
+class CallBindingOrigin(StrEnum):
+    DIRECT = "direct"
+    DECLARED_RECEIVER = "declared_receiver"
+
+
+CALL_BINDINGS_FEATURE = "canonical_call_bindings"
+
+
+@dataclass(frozen=True, slots=True)
+class CallBinding:
+    origin: CallBindingOrigin
+    target: str
+    evidence_ids: tuple[str, ...]
+
+
+def call_binding(value: JsonValue) -> CallBinding | None:
+    if value is None:
+        return None
+    if not isinstance(value, RecordData) or {key for key, _ in value.entries} != {
+        "origin",
+        "target",
+        "evidence_ids",
+    }:
+        raise ValueError("invalid call binding fields")
+    origin, target, evidence = value.get("origin"), value.get("target"), value.get("evidence_ids")
+    if (
+        not isinstance(origin, str)
+        or not isinstance(target, str)
+        or not target
+        or not isinstance(evidence, tuple)
+        or not evidence
+        or any(not isinstance(item, str) or not item for item in evidence)
+    ):
+        raise ValueError("invalid call binding values")
+    return CallBinding(
+        CallBindingOrigin(origin), target, tuple(item for item in evidence if isinstance(item, str))
+    )
+
+
 class PropertyOperation(Enum):
     CREATE = "create"
     GETTER = "getter"
