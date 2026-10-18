@@ -12,11 +12,19 @@ from typing import TypeAlias
 from archkeel.ir.architecture_graph import AssessmentStatus as _Verdict
 from archkeel.ir.facts_codec import RawRecord, classified
 from archkeel.ir.model import (
+    ArchitectureContract,
     ArchitectureRule,
+    CompleteExternalScopeRule,
+    CompleteRequiresRule,
     ComponentOwnership,
     EvidenceClass,
+    ExternalDependencyScopeRule,
     ForbiddenDependencyRule,
+    InterfaceBoundaryRule,
+    NoComponentCyclesRule,
+    SiblingIsolationRule,
     forbidden_dependency_scopes,
+    in_scope,
     module_in_ownership,
     stable_id,
 )
@@ -173,3 +181,69 @@ def _rule_evaluation_receipt(
         evidence_ids=sorted({evidence for item in evaluated for evidence in item["evidence_ids"]}),
         data={"scope": scope, **(data or {})},
     )
+
+
+def dynamic_dependency_limits(
+    contract: ArchitectureContract, unknowns: Sequence[RawRecord]
+) -> list[RawRecord]:
+    """Withhold dependency receipts when a proven loader's target is unknown."""
+    ownership = tuple(
+        (component.label, component.packages, component.exact_modules or ())
+        for component in contract.components
+    )
+    limits: list[RawRecord] = []
+    for item in unknowns:
+        if item["kind"] != "dynamic_import_limit":
+            continue
+        source = item["data"]["source_module"]
+        for rule in contract.rules:
+            if isinstance(rule, ForbiddenDependencyRule):
+                sources, _ = forbidden_dependency_scopes(rule, ownership)
+                applies = (
+                    module_in_ownership(source, *sources) and source not in rule.allowed_sources
+                )
+                if item["data"]["under_type_checking"] and not rule.include_type_checking:
+                    applies = False
+            elif isinstance(
+                rule, CompleteRequiresRule | InterfaceBoundaryRule | NoComponentCyclesRule
+            ):
+                applies = contract.component_for(source) is not None
+            elif isinstance(rule, SiblingIsolationRule):
+                applies = any(in_scope(source, member) for member in rule.members)
+            elif isinstance(rule, CompleteExternalScopeRule):
+                applies = in_scope(source, rule.source)
+            elif isinstance(rule, ExternalDependencyScopeRule):
+                applies = not (
+                    source in rule.exact_sources
+                    or any(in_scope(source, allowed) for allowed in rule.allowed_sources)
+                )
+            else:
+                continue
+            if (
+                isinstance(
+                    rule,
+                    ForbiddenDependencyRule
+                    | CompleteRequiresRule
+                    | InterfaceBoundaryRule
+                    | SiblingIsolationRule,
+                )
+                and item["data"]["under_type_checking"]
+                and not rule.include_type_checking
+            ):
+                applies = False
+            if applies:
+                limits.append(
+                    classified(
+                        item_id=stable_id("UNKNOWN-DYNAMIC-DEPENDENCY", rule.id, item["id"]),
+                        evidence_class=EvidenceClass.UNKNOWN,
+                        area="dependencies",
+                        kind="dynamic_dependency_limit",
+                        title="An unresolved dynamic target prevents dependency proof",
+                        subjects=[source],
+                        evidence_ids=item["evidence_ids"],
+                        fact_ids=item["fact_ids"],
+                        rule_ids=[rule.id],
+                        data={"source_module": source, "reason": item["title"]},
+                    )
+                )
+    return limits

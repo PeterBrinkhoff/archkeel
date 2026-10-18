@@ -245,6 +245,15 @@ or ask the architect for an amendment. The full loop — gating, widening, picki
 backlog and landing a planned interface — is worked end to end on the shop sample in
 https://github.com/rapiddweller/archkeel/blob/main/docs/target-first.md.
 
+## Retiring local dependency gates
+
+Use native dependency policy for proven Python literal loaders as well as static
+imports. Binding mutation, unknown targets and nonempty builtin fromlists retain
+scoped UNKNOWN evidence. A dependency edge does not prove a public value API.
+Before deleting a local scanner, compare its forbidden, allowed and missing-scope
+inputs against the installed release, including aliases and dynamic forms. A source
+checkout or Draft PR is not proof that the installed release supports them.
+
 ## Daily loop
 
 Validation reports `responsibility.missing` only for components explicitly marked

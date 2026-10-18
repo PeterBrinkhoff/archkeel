@@ -54,9 +54,11 @@ standing scan disclaimers retain their separate meanings.
 
 - Calls are partly resolved. Annotated receivers do not enforce runtime types;
   candidates are not confirmed calls. Unresolved calls feed regression measures.
-- Dynamic imports add no static dependency edge. As-written construct matching
-  can miss aliases or report shadowed names. Type-checking imports still count
-  in cycle graphs.
+- Python literal loaders contribute bounded dependency evidence; unproved bindings,
+  targets and nonempty builtin fromlists withhold affected dependency receipts. See
+  [supported loader forms](architecture/python-dynamic-dependencies.md). As-written
+  construct matching can miss aliases or report shadowed names. Type-checking
+  imports still count in cycle graphs.
 - Facade name budgets need provable exports and uses. Dynamic `__all__` mutation,
   bare module imports and unenumerated stars cannot prove counts.
 - Package roll-up cycles need not be module cycles. Read their backing SCC evidence.

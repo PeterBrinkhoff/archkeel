@@ -52,6 +52,7 @@ from archkeel.ir.profiles import Profile, profile_for
 from archkeel.ir.type_shapes import TypeShapeIndex
 
 from .imports import strip_internal_reexport_facts
+from .rule_support import dynamic_dependency_limits
 from .rules import (
     boundary_type_limits,
     construct_capability_limits,
@@ -933,6 +934,20 @@ def evaluate_source(
         *inside_unknowns,
         *failures,
         *rule_failures,
+    ]
+
+    dynamic_limits = [
+        item
+        for declared in (contract, *(mount.contract for mount in inside_contracts))
+        for item in dynamic_dependency_limits(declared, source_unknowns)
+    ]
+    unknowns.extend(dynamic_limits)
+    incomplete_dependencies = {rule_id for item in dynamic_limits for rule_id in item["rule_ids"]}
+    scope_observations = [
+        item
+        for item in scope_observations
+        if item["kind"] != "rule_evaluation"
+        or not incomplete_dependencies.intersection(item["rule_ids"])
     ]
 
     coverage = coverage_payload(

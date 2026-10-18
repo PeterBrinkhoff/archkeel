@@ -1,7 +1,7 @@
 # Archkeel
 # Copyright (c) 2026 Rapiddweller Asia Co., Ltd.
 # SPDX-License-Identifier: MIT
-"""Import statement collection for the Python architecture scanner."""
+"""Observe static imports and bounded literal loader dependencies."""
 
 from __future__ import annotations
 
@@ -16,7 +16,9 @@ from archkeel.ir.facts_codec import RawData as RecordData
 from archkeel.ir.facts_codec import RawEvidence, RawRecord, classified
 from archkeel.ir.reexports import resolve_reexports as resolve_import_origins
 
-from .binding_types import AliasBinding, ImportKind
+from .binding_types import AliasBinding, BindingKind, ImportKind
+from .resolve import dotted_expression
+from .scopes import LexicalScopes
 from .source import (
     FRAMEWORK_BASES,
     NATIVE_DATACLASS_DECORATOR,
@@ -25,9 +27,11 @@ from .source import (
     add_evidence,
     class_namespace_static,
     explicit_provider_escapes,
+    exposes_dynamic_namespace,
     intrinsic_nullable_aliases,
     location,
     member_binding_closure,
+    member_escape_references,
     module_scope_bindings,
     native_owner_creation_static,
     native_typed_dict_provider_static,
@@ -942,3 +946,233 @@ def literal_all_exports(tree: ast.Module) -> set[str]:
             if isinstance(element, ast.Constant) and isinstance(element.value, str):
                 exports.add(element.value)
     return exports
+
+
+_LOADERS = frozenset({"importlib.import_module", "builtins.__import__"})
+
+
+def _argument(node: ast.Call, position: int, keyword: str) -> ast.expr | None:
+    if any(item.arg is None for item in node.keywords) or any(
+        isinstance(item, ast.Starred) for item in node.args
+    ):
+        return None
+    values = [item.value for item in node.keywords if item.arg == keyword]
+    if len(node.args) > position:
+        values.append(node.args[position])
+    return values[0] if len(values) == 1 else None
+
+
+def _literal(node: ast.expr | None) -> str | None:
+    return node.value if isinstance(node, ast.Constant) and isinstance(node.value, str) else None
+
+
+def _import_targets(scopes: LexicalScopes, node: ast.expr) -> frozenset[str]:
+    targets: set[str] = set()
+    pending: list[tuple[ast.expr, str, frozenset[tuple[ast.AST, str]]]] = [(node, "", frozenset())]
+    while pending:
+        expression, suffix, seen = pending.pop()
+        dotted = dotted_expression(expression)
+        root = expression
+        while isinstance(root, ast.Attribute):
+            root = root.value
+        if dotted is None or not isinstance(root, ast.Name):
+            continue
+        binding = scopes.lookup(root, root.id)
+        owner = binding.owner
+        if owner is None or (owner.node, root.id) in seen:
+            continue
+        tail = dotted[len(root.id) :] + suffix
+        targets.update(target + tail for target in binding.targets)
+        if binding.kind is BindingKind.UNBOUND and root.id == "__import__":
+            targets.add("builtins.__import__" + tail)
+        for site in owner.bindings.get(root.id, ()):
+            parent = scopes.parents.get(site)
+            if (
+                isinstance(site, ast.Name)
+                and isinstance(parent, ast.Assign | ast.AnnAssign)
+                and parent.value is not None
+            ):
+                pending.append((parent.value, tail, seen | {(owner.node, root.id)}))
+    return frozenset(targets)
+
+
+def _import_origins(target: str, routes: Mapping[str, frozenset[str]]) -> frozenset[str]:
+    origins: set[str] = set()
+    pending: list[tuple[str, frozenset[str]]] = [(target, frozenset())]
+    while pending:
+        current, seen = pending.pop()
+        prefix = current
+        while prefix and prefix not in routes:
+            prefix = prefix.rpartition(".")[0]
+        if not prefix:
+            origins.add(current)
+        elif prefix not in seen:
+            pending.extend(
+                (origin + current[len(prefix) :], seen | {prefix})
+                for origin in routes[prefix]
+                if origin != prefix
+            )
+    return frozenset(origins)
+
+
+def _loader_mutations(
+    parsed: Sequence[ParsedModule], routes: Mapping[str, frozenset[str]]
+) -> frozenset[str]:
+    changed: set[str] = set()
+    for module in parsed:
+        if module.module in {"importlib", "builtins"} or any(
+            exposes_dynamic_namespace(module, node, member_surface=True)
+            for node in module.all_nodes
+        ):
+            changed.update(_LOADERS)
+        scopes = LexicalScopes(module)
+        for node in member_escape_references(
+            module, module.all_nodes, member_surface=True, owner_exposure_only=True
+        ):
+            for target in _import_targets(scopes, node):
+                changed.update(_import_origins(target, routes))
+    return frozenset(
+        loader
+        for loader in _LOADERS
+        if any(loader == target or loader.startswith(target + ".") for target in changed)
+    )
+
+
+class _DynamicImports(ImportCollector):
+    def __init__(
+        self,
+        module: ParsedModule,
+        evidence: dict[str, RawEvidence],
+        namespace: str,
+        calls: dict[str, RawRecord],
+        mutations: frozenset[str],
+        routes: Mapping[str, frozenset[str]],
+    ) -> None:
+        super().__init__(module, set(), evidence, {}, namespace=namespace)
+        self.calls = calls
+        self.mutations = mutations
+        self.routes = routes
+        self.scopes = LexicalScopes(module)
+        self.stable_bindings = stable_direct_module_bindings(module)
+        self.unknowns: list[RawRecord] = []
+
+    def visit_Import(self, node: ast.Import) -> None:
+        pass
+
+    def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
+        pass
+
+    def visit_Call(self, node: ast.Call) -> None:
+        evidence_id = add_evidence(self.evidence, self.module, node)
+        call = self.calls.get(evidence_id)
+        direct = call["data"]["targets"] if call else []
+        targets = {
+            origin
+            for target in {*direct, *_import_targets(self.scopes, node.func)}
+            for origin in _import_origins(target, self.routes)
+        }
+        if _LOADERS.intersection(targets):
+            callee = dotted_expression(node.func)
+            binding = self.scopes.lookup(node.func, callee.split(".")[0]) if callee else None
+            binding_static = bool(
+                callee
+                and binding
+                and binding.owner is not None
+                and not binding.uncertain
+                and (
+                    binding.kind is BindingKind.UNBOUND
+                    or binding.owner is not self.scopes.root
+                    or callee.split(".")[0] in self.stable_bindings
+                )
+            )
+            proven = (
+                len(direct) == 1
+                and direct[0] in _LOADERS
+                and call is not None
+                and binding_static
+                and not self.mutations.intersection(targets)
+            )
+            target = _literal(_argument(node, 0, "name")) if proven else None
+            incomplete = not target
+            if "builtins.__import__" in targets:
+                fromlist = _argument(node, 3, "fromlist")
+                supplied = len(node.args) > 3 or any(k.arg == "fromlist" for k in node.keywords)
+                incomplete |= supplied and not (
+                    isinstance(fromlist, ast.Tuple | ast.List)
+                    and not fromlist.elts
+                    or isinstance(fromlist, ast.Constant)
+                    and fromlist.value is None
+                )
+                level = _argument(node, 4, "level")
+                if level is not None and not (
+                    isinstance(level, ast.Constant)
+                    and type(level.value) is int
+                    and level.value == 0
+                ):
+                    target = None
+            elif target and target.startswith("."):
+                package = _literal(_argument(node, 1, "package"))
+                try:
+                    target = importlib.util.resolve_name(target, package) if package else None
+                except (ImportError, ValueError):
+                    target = None
+            if target and all(part.isidentifier() for part in target.split(".")):
+                self._record(node, target=target, symbol=None, binding="", relative_level=0)
+                # Loading a module proves a dependency, not a statically bound public symbol.
+                self.items[-1]["data"].update(
+                    binding=None, symbols_known=False, reexport=False, reexport_candidate=False
+                )
+                self.items[-1]["fact_ids"] = [call["id"]] if call else []
+            else:
+                incomplete = True
+            if incomplete:
+                self.unknowns.append(
+                    classified(
+                        item_id=stable_id("UNKNOWN-DYNAMIC-IMPORT", evidence_id),
+                        evidence_class=EvidenceClass.UNKNOWN,
+                        area="dependencies",
+                        kind="dynamic_import_limit",
+                        title="Dynamic loading has an unproven binding, target or fromlist",
+                        subjects=[self.module.module],
+                        evidence_ids=[evidence_id],
+                        fact_ids=[call["id"]] if call else [],
+                        data={
+                            "source_module": self.module.module,
+                            "under_type_checking": self.under_type_checking,
+                        },
+                    )
+                )
+        self.generic_visit(node)
+
+
+def collect_dynamic_imports(
+    parsed: Sequence[ParsedModule],
+    calls: Sequence[RawRecord],
+    static_imports: Sequence[RawRecord],
+    evidence: dict[str, RawEvidence],
+    *,
+    namespace: str,
+) -> tuple[list[RawRecord], list[RawRecord]]:
+    by_evidence = {evidence_id: call for call in calls for evidence_id in call["evidence_ids"]}
+    routes: dict[str, set[str]] = {}
+    for item in static_imports:
+        data = item["data"]
+        if data.get("module_level_import") is not True or not data.get("binding"):
+            continue
+        alias = f"{data['source_module']}.{data['binding']}"
+        target = data["target_module"] + (f".{data['symbol']}" if data["symbol"] else "")
+        routes.setdefault(alias, set()).update(
+            {target, data.get("origin_definition") or target, *data.get("reexport_candidates", ())}
+        )
+    imported_origins = {name: frozenset(values) for name, values in routes.items()}
+    mutations = _loader_mutations(parsed, imported_origins)
+    imports: list[RawRecord] = []
+    unknowns: list[RawRecord] = []
+    for module in parsed:
+        collector = _DynamicImports(
+            module, evidence, namespace, by_evidence, mutations, imported_origins
+        )
+        collector.visit(module.tree)
+        imports.extend(collector.items)
+        unknowns.extend(collector.unknowns)
+    return imports, unknowns

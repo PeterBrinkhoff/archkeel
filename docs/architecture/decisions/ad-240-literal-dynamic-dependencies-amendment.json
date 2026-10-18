@@ -1,0 +1,9 @@
+{
+  "after_baseline_digest": "b68b5e8033d4dd650e749f864e7a9e0d00bad47c8d0f26d0c38b211be1fe815f",
+  "after_digest": "5af47f9279f34fe9ad314b4e075d90f3653c8a5fae2b10f730e0bfe8172c9097",
+  "before_baseline_digest": "2bfdc9930db2c00cefe098c1d4d8aef8d7a6916e703643ae5bf349116916bf8d",
+  "before_digest": "5f1fd86c8b171e082e7ab16dd2558839b2ee8a825c7aa19e2c000ecbe0fe7ae8",
+  "decided_by": "Codex (user-authorized native gate consolidation)",
+  "rationale": "Add bounded dynamic dependency observation in the existing import owner. The self-scan adds exactly 14 unresolved calls on new implementation lines, taking the measured ceiling from 837 to 851; existing unresolved scope and every other baseline budget remain unchanged. No new dependency permission or violation allowance. AD-240 records the scope and supported proof limits.",
+  "schema_version": "2.0.0"
+}

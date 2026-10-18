@@ -1557,6 +1557,45 @@ def _protected_member_references(
     return protected
 
 
+def member_escape_references(
+    module: ParsedModule,
+    nodes: Sequence[ast.AST],
+    *,
+    member_surface: bool,
+    owner_exposure_only: bool,
+) -> Iterator[ast.Name]:
+    """Keep source sites so callers can resolve mutation roots at their lexical owner."""
+    protected = _protected_member_references(
+        module, nodes, member_surface=member_surface, owner_exposure_only=owner_exposure_only
+    )
+    local_references = setter_local_references(module) if member_surface else frozenset()
+    for node in nodes:
+        pending: list[ast.AST]
+        if isinstance(node, ast.Attribute) and isinstance(node.ctx, ast.Store | ast.Del):
+            pending = [node.value]
+        elif member_surface and isinstance(node, ast.Call):
+            pending = [*node.args, *(keyword.value for keyword in node.keywords)]
+            if not owner_exposure_only:
+                pending.append(node.func)
+        elif (
+            member_surface
+            and isinstance(node, ast.Name)
+            and isinstance(node.ctx, ast.Load)
+            and node not in protected
+        ):
+            pending = [node]
+        else:
+            continue
+        while pending:
+            target = pending.pop()
+            if isinstance(target, ast.Name) and target not in local_references:
+                yield target
+            elif isinstance(target, ast.Attribute):
+                pending.append(target.value)
+            elif not isinstance(target, ast.Call):
+                pending.extend(ast.iter_child_nodes(target))
+
+
 def _unproven_member_roots(
     module: ParsedModule,
     nodes: Sequence[ast.AST],
@@ -1566,10 +1605,6 @@ def _unproven_member_roots(
     unsafe_providers: AbstractSet[str],
     include_creation_uncertainty: bool,
 ) -> set[str]:
-    protected = _protected_member_references(
-        module, nodes, member_surface=member_surface, owner_exposure_only=owner_exposure_only
-    )
-    local_references = setter_local_references(module) if member_surface else frozenset()
     properties = {
         method
         for owner in nodes
@@ -1602,31 +1637,12 @@ def _unproven_member_roots(
             for node in nodes
             if isinstance(node, ast.ClassDef) and _class_members_receive_owner(module, node)
         )
-    for node in nodes:
-        pending: list[ast.AST]
-        if isinstance(node, ast.Attribute) and isinstance(node.ctx, ast.Store | ast.Del):
-            pending = [node.value]
-        elif member_surface and isinstance(node, ast.Call):
-            pending = [*node.args, *(keyword.value for keyword in node.keywords)]
-            if not owner_exposure_only:
-                pending.append(node.func)
-        elif (
-            member_surface
-            and isinstance(node, ast.Name)
-            and isinstance(node.ctx, ast.Load)
-            and node not in protected
-        ):
-            pending = [node]
-        else:
-            continue
-        while pending:
-            target = pending.pop()
-            if isinstance(target, ast.Name) and target not in local_references:
-                changed.add(target.id)
-            elif isinstance(target, ast.Attribute):
-                pending.append(target.value)
-            elif not isinstance(target, ast.Call):
-                pending.extend(ast.iter_child_nodes(target))
+    changed.update(
+        node.id
+        for node in member_escape_references(
+            module, nodes, member_surface=member_surface, owner_exposure_only=owner_exposure_only
+        )
+    )
     return changed
 
 

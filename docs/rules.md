@@ -31,6 +31,13 @@ global coverage and cycle closure stay incomplete. See
 | Forbid selected syntactic constructs | `forbidden_construct` |
 | Declared requirements follow layer direction | `layer_order` |
 
+Python static imports and proven literal `importlib.import_module` / `__import__`
+calls feed the same dependency rules. An unknown loader binding or target withholds
+only applicable dependency receipts; known violations remain FAIL. Nonempty or
+unproved builtin `fromlist` retains the known base edge and adds uncertainty about
+children. This proves dependency intent, not runtime loading or a public value API.
+See [supported forms and limits](architecture/python-dynamic-dependencies.md).
+
 ### Ownership and dependency decisions
 
 `packages` owns descendants; `exact_modules` owns only named modules. Competing
