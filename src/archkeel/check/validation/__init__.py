@@ -1336,4 +1336,6 @@ def run_validate(
     ):
         changes, note = _unresolved_calls_since(root, config, analyzer, against, observation)
         result = replace(result, unresolved_call_changes=changes, unresolved_call_note=note)
-    return (result if artifact is None else replace(result, artifact=artifact)), FilesToWrite(files)
+    return (result if artifact is None else replace(result, artifact=artifact)), FilesToWrite(
+        tuple(files.items())
+    )

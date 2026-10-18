@@ -18,6 +18,38 @@ from archkeel.ir.protocol import CollectionRequest, DartSettings, SnapshotInput,
 _REPO = Path(__file__).parents[1]
 
 
+def test_metadata_keeps_function_accessor_and_method_signature_identity(tmp_path):
+    _write_package(
+        tmp_path,
+        """@deprecated
+String describe(String value) => value;
+@deprecated
+String get title => '';
+@deprecated
+set title(String value) {}
+class Port {
+  @deprecated
+  Port();
+  @deprecated
+  String run(String value) => value;
+}
+""",
+    )
+    facts = _native_facts(tmp_path)
+    symbols = [
+        record
+        for section in facts.sections
+        if section.name == "symbols"
+        for record in section.records
+    ]
+    functions = [record for record in symbols if record.kind in {"function", "method"}]
+    assert {record.data.get("name") for record in functions} == {"describe", "title", "Port", "run"}
+    assert len(functions) == 5
+    assert all(record.data.get("signature_decorators_proven") is True for record in functions)
+    owner = next(record for record in symbols if record.kind == "class")
+    assert owner.data.get("signature_decorators_proven") is None
+
+
 def test_native_process_collects_dart_declarations_and_member_coverage(tmp_path: Path) -> None:
     (tmp_path / "pubspec.yaml").write_text(
         "name: commerce\nenvironment:\n  sdk: '>=3.9.0 <4.0.0'\n", encoding="utf-8"

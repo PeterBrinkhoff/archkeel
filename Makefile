@@ -5,7 +5,7 @@ FLUTTER_EXECUTABLE ?= flutter
 
 .PHONY: against gate ci ci-check ci-core-check ci-report-check ci-pr-check ci-pr-report-check pr-test pr-report-test ci-typescript ci-artifacts-clean prune-report-artifacts mermaid check test collector-safety typescript-native typescript-compiler-check dart-test lint typecheck self-validate fixtures self-observation demo demo-github github-pr-report demo-onboarding demo-dart demo-typescript demo-snapshot-check demo-architecture demo-uml loop-figure demo-screenshots browser-install report-browser report-browser-tests report-browser-proof report-pages plugin plugin-directory build smoke release-check rule-yield architecture-graph-schema report-timing flutter-demo-check
 
-check: lint typecheck test
+check: lint typecheck browser-architecture-check test
 
 # These stages consume the previous stage's success, even with make -j.
 .NOTPARALLEL: gate release-check ci ci-check ci-core-check ci-report-check ci-pr-check ci-pr-report-check
@@ -24,7 +24,7 @@ ci-core-check: browser-install gate typescript-compiler-check browser-graph-chec
 
 ci-report-check: report-timing report-browser-proof
 
-ci-pr-check: $(if $(strip $(BASE)),against,self-validate) lint typecheck pr-test
+ci-pr-check: $(if $(strip $(BASE)),against,self-validate) lint typecheck browser-architecture-check pr-test
 
 ci-pr-report-check: browser-install browser-runtime-check browser-graph-check pr-report-test
 
@@ -32,10 +32,21 @@ pr-test:
 	$(UV) run --locked python -m pytest -n 2 --dist=loadfile --max-worker-restart=0 \
 		-q --durations=10 --junitxml=test-artifacts/pytest/pr-core.xml \
 		tests/test_ci_changes.py tests/test_make_gate.py tests/test_repository_hygiene.py \
-		tests/test_responsibility_validation.py tests/test_target_architecture.py \
+		tests/test_responsibility_validation.py tests/test_target_architecture.py tests/test_contract_maintenance.py tests/test_skill.py \
 		tests/test_contract_model.py tests/test_contract_version_types.py tests/test_dependency_selectors.py tests/test_requires_symbol_ports.py tests/test_typed_dependency_api.py tests/test_dependency_api_target.py tests/test_module_object_grants.py tests/test_dependency_typed_control.py tests/test_typed_state_protocol.py tests/test_typed_python_bindings.py tests/test_typed_python_receivers.py tests/test_typed_method_descriptors.py tests/test_typed_graph_vocabulary.py tests/test_typed_diagnostic_owner.py tests/test_state_facts.py tests/test_boundary_type_nested_mapping.py tests/test_decisions.py tests/test_typed_python_properties.py tests/test_typed_contract_rule_grammar.py tests/test_typed_contract_rule_native.py tests/test_core_command_result.py tests/test_typed_measurement_controls.py tests/test_typed_parameter_kinds.py tests/test_atlas_deviation_target.py tests/test_definition_context_types.py tests/test_permission_status_types.py tests/test_snapshot_language_types.py tests/test_source_resolution_types.py tests/test_known_delta_action_types.py tests/test_typed_symbol_class_kinds.py tests/test_source_name_visibility.py tests/test_git_blob_types.py tests/test_typed_structure_levels.py tests/test_classifier_projections.py tests/test_unresolved_call_change_types.py \
 		tests/test_target_graph.py::test_contract_corpus_preserves_version_and_uml_presence \
 		tests/test_collection_protocol.py tests/test_typed_collector_protocol.py tests/test_typed_collector_native.py tests/test_source_trust_boundary.py tests/test_shared_runtime_bootstrap.py \
+		tests/test_python_class_value_proofs.py tests/test_local_inherited_methods.py tests/test_python_provider_sources.py tests/test_python_contextmanager_signatures.py tests/test_boundary_types_contextmanager.py \
+		'tests/test_architecture_demo.py::test_variant_produces_the_catalogued_findings[class-a-inherited-generic-return]' \
+		'tests/test_architecture_demo.py::test_variant_produces_the_catalogued_findings[class-a-inherited-generic-undeclared-return]' \
+		'tests/test_architecture_demo.py::test_variant_produces_the_catalogued_findings[class-a-inherited-generic-undeclared-batch]' \
+		'tests/test_architecture_demo.py::test_variant_produces_the_catalogued_findings[class-a-boundary-types-ordinary-reexport-chain-unknown]' \
+		'tests/test_architecture_demo.py::test_variant_produces_the_catalogued_findings[public-api-alias-missing]' \
+		'tests/test_architecture_demo.py::test_variant_produces_the_catalogued_findings[public-api-alias-declared]' \
+		tests/test_architecture_demo.py::test_stable_ordinary_reexport_proves_source_violation_in_cli_json \
+		tests/test_report_159_160_e2e_oracle.py::test_unknown_position_is_associated_with_its_rule_not_every_boundary_rule \
+		tests/test_typescript_script_globals.py tests/test_typescript_standard_globals.py tests/test_typescript_umd_providers.py tests/test_browser_architecture.py tests/test_source_graph.py tests/test_binding_proof_reuse.py \
+		tests/test_boundary_types_chain_proof.py tests/test_boundary_types_reexport_proofs.py tests/test_boundary_types_facades.py tests/test_boundary_types_aliases.py tests/test_boundary_type_recursive_aliases.py \
 		tests/test_typescript_owned_types.py tests/test_typescript_syntax_types.py tests/test_typescript_syntax_compatibility.py tests/test_typescript_json_fields.py tests/test_typescript_control_target.py tests/test_typescript_source_input.py tests/test_typescript_string_constructs.py \
 		tests/test_python_source_evidence_lines.py tests/test_analyzer.py tests/test_typescript_config.py tests/test_typescript_resolve.py tests/test_type_shapes.py \
 		tests/test_typescript_array_constants.py \
@@ -43,7 +54,7 @@ pr-test:
 		tests/test_typescript_parameter_properties.py \
 		tests/test_typescript_differential.py \
 		tests/test_uml_comparison.py tests/test_saved_report.py tests/test_cli.py tests/test_cli_typed_inputs.py tests/test_cli_input_target.py \
-		tests/test_partial_member_inventory.py \
+		tests/test_member_inventory.py tests/test_partial_member_inventory.py \
 		tests/test_report_recorded_unknowns.py \
 		tests/test_report_agent_json.py \
 		tests/test_native_violation_filter.py \
@@ -81,9 +92,12 @@ pr-report-test:
 		tests/test_report_interactions.py::test_native_card_drag_reroutes_all_hits_and_keeps_architecture_unchanged \
 		tests/test_uml_rendering.py::test_standard_uml_ignores_stale_layout_and_retries_rejected_layout \
 		tests/test_atlas_report.py::test_target_content_is_independent_of_observed_evidence \
+		tests/test_atlas_report.py::test_atlas_ignores_stale_layout_and_retries_rejected_layout \
 		tests/test_atlas_report.py::test_atlas_browser_keeps_positions_and_unknown_cells_across_lenses \
 		tests/test_atlas_report.py::test_atlas_component_layout_keeps_union_geometry_and_active_edges \
 		tests/test_report_interactions.py::test_atlas_component_routes_select_leafs_and_open_inside_scopes \
+		tests/test_report_interactions.py::test_atlas_unknown_rule_links_its_analyzer_gap_while_failures_remain_visible \
+		tests/test_report_interactions.py::test_atlas_fail_with_undecided_and_mixed_evidence_keeps_all_actions \
 		tests/test_python_realworld_project_report.py::test_python_http_module_scope_preserves_nested_ownership_and_target_routes \
 		tests/test_python_realworld_project_report.py::test_python_realworld_module_overview_uses_actual_edges_and_keeps_isolated_routes \
 		tests/test_own_uml_target.py::test_own_filtered_calls_keep_clear_routes_and_readable_arrow_endpoints \
@@ -168,6 +182,7 @@ typescript-native:
 		tests/test_typescript_inner.py tests/test_typescript_uml_acceptance.py \
 		tests/test_typescript_namespace_identities.py \
 		tests/test_typescript_collect.py tests/test_typescript_owned_types.py tests/test_typescript_syntax_types.py tests/test_typescript_syntax_compatibility.py tests/test_typescript_source_input.py \
+		tests/test_typescript_script_globals.py tests/test_typescript_standard_globals.py tests/test_typescript_umd_providers.py tests/test_browser_architecture.py \
 		tests/test_typescript_json_fields.py tests/test_typescript_control_target.py tests/test_typescript_config.py tests/test_typescript_string_constructs.py \
 		tests/test_typescript_config_reference.py \
 		tests/test_typescript_resolve.py tests/test_typescript_provenance.py \
@@ -189,7 +204,7 @@ LINT_PATHS := src tests tools/terminal_svg.py tools/interface_profile.py tools/r
 	fixtures/reproduce_dart.py fixtures/reproduce_snapshot_check.py fixtures/consume_result.py fixtures/reproduce_github.py \
 	fixtures/reproduce_typescript.py fixtures/typescript_differential.py fixtures/typescript_scenarios.py fixtures/typescript_realworld.py \
 	fixtures/architecture_demo.py fixtures/demo_catalog_*.py \
-	tools/architecture_graph_schema.py tools/report_timing.py tools/report_artifact_retention.py tools/browser_runtime.py tools/browser_graph_protocol.py
+	tools/architecture_graph_schema.py tools/report_timing.py tools/report_artifact_retention.py tools/browser_runtime.py tools/browser_graph_protocol.py tools/browser_architecture.py
 
 # The same commit measured 80-96s on hosted runners; allow for runner noise.
 REPORT_MAX_SECONDS ?= 120
@@ -209,7 +224,7 @@ lint:
 	$(UV) run --locked ruff check $(LINT_PATHS)
 
 typecheck:
-	$(UV) run --locked mypy src/archkeel tools/github_pr_report.py tools/against.py tools/architecture_graph_schema.py tools/report_timing.py tools/ci_changes.py tools/report_artifact_retention.py
+	$(UV) run --locked mypy src/archkeel tools/github_pr_report.py tools/against.py tools/architecture_graph_schema.py tools/report_timing.py tools/ci_changes.py tools/report_artifact_retention.py tools/browser_architecture.py
 
 fixtures:
 	$(UV) run --locked python fixtures/reproduce_milestone1.py $(if $(OUTPUT),--output "$(OUTPUT)")
@@ -334,6 +349,10 @@ browser-runtime-check: browser-runtime-install
 	uv run --locked python -m pytest -q tests/test_flow_runtime_publication.py
 
 .PHONY: browser-graph-generate browser-graph-check
+.PHONY: browser-architecture-check
+browser-architecture-check:
+	$(UV) run --locked python -m tools.browser_architecture
+
 BROWSER_GRAPH_PROTOCOL := src/archkeel/render/assets/report-graph-vocabulary.ts src/archkeel/render/assets/report-graph-protocol.ts
 BROWSER_GRAPH_COMPILER := npx --yes --package typescript@5.9.3 tsc --strict --target ES2022 --module none --newLine lf
 

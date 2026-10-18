@@ -1,9 +1,9 @@
 {
-  "after_baseline_digest": "2bfdc9930db2c00cefe098c1d4d8aef8d7a6916e703643ae5bf349116916bf8d",
-  "after_digest": "c894eac7a52cdc15f3f0a3cb5cdec05f36f299711449d04b1edc4c410a90af30",
+  "after_baseline_digest": "591b4198f2d1229e505a3ed6609eecc3969ec3445688eea68ffe80d4396e3211",
+  "after_digest": "26236d532ab02c2e16cc4eed46560a8144f024f09ffb325ec2b1d3489e1c96bd",
   "before_baseline_digest": "2bfdc9930db2c00cefe098c1d4d8aef8d7a6916e703643ae5bf349116916bf8d",
   "before_digest": "5f1fd86c8b171e082e7ab16dd2558839b2ee8a825c7aa19e2c000ecbe0fe7ae8",
-  "decided_by": "agent",
-  "rationale": "Move shared observation and UML authentication below commands; retain the report facade. Bind narrowed provider ports, four closure rules and selected exact API/workflow/render signatures. Reuse pure renamed_contract for per-scope nested declaration governance. Correct two never-implemented module declarations to existing source/coverage owners. Preserve original rules, required entities, allowances and debt budgets.",
+  "decided_by": "Alex: explicit Mapping API replacement and PythonProviderCollector approval; agent implementation",
+  "rationale": "Preserve the 121 original rules and 921 original entity fields except the obsolete FilesToWrite constructor-map allowance and its corrected rationale. Accept the user-approved incompatible frozen output model and exactly one additional CLI-to-Analyzer port, PythonProviderCollector. Bind both required collect-to-collect_response-to-_exchange calls after moving provider capture inside the bounded child. Separate native source declaration identity from runtime uncertainty; retain the nine Python contracts and the independently verified browser target. Only proved downward debt ratchets are allowed; every other ceiling, exclusion and trust check remains.",
   "schema_version": "2.0.0"
 }

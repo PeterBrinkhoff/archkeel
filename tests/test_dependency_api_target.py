@@ -241,19 +241,46 @@ def test_native_consumer_must_use_the_declared_dependency_api(tmp_path):
     assert any("TARGET-INTERFACE_BOUNDARY" in row.rule_ids for row in trace_valid_violations(model))
 
 
-def test_native_incomplete_member_proof_stays_unknown(tmp_path):
+@pytest.mark.parametrize(
+    ("conditional", "inventory_status", "assessment_status"),
+    [(False, "complete", "FAIL"), (True, "partial", "UNKNOWN")],
+)
+def test_native_missing_member_requires_its_declaration_inventory(
+    tmp_path, conditional, inventory_status, assessment_status
+):
     root, config = _dependency_repository(tmp_path)
+    target_before = (root / "contract.json").read_bytes()
     source = root / "archkeel/ir/dependency.py"
-    source.write_text(source.read_text().replace("def select(", "def unavailable_select(", 1))
+    changed = source.read_text().replace("def select(", "def unavailable_select(", 1)
+    if conditional:
+        changed = changed.replace(
+            "class DependencySelector:\n",
+            "class DependencySelector:\n    if choose_selector:\n"
+            "        select = select_factory()\n",
+            1,
+        )
+    source.write_text(changed)
     model = _model(root, config)
+    assert (root / "contract.json").read_bytes() == target_before
+    owner = next(
+        row
+        for row in model.records("symbols")
+        if row.data.get("qualified_name") == "archkeel.ir.dependency.DependencySelector"
+    )
+    assert owner.data.get("source_binding_unique") is True
+    assert owner.data.get("source_class_header_static") is True
+    inventory = next(
+        row for row in owner.data.get("member_inventories") if row.get("kind") == "method"
+    )
+    assert inventory.get("status") == inventory_status
     entity = next(
         item
         for item in _dependency_contract()["declarations"]["uml"]["entities"]
         if item["qualified_name"] == "archkeel.ir.dependency.DependencySelector.select"
     )
-    # Calls leave this class's member inventory partial. An absent method cannot
-    # gain a closed-scope absence proof from this limited collector evidence.
     assert any(
-        row.subject_id == entity["id"] and row.aspect == "existence" and row.status == "UNKNOWN"
+        row.subject_id == entity["id"]
+        and row.aspect == "existence"
+        and row.status == assessment_status
         for row in _comparison(model).assessments
     )

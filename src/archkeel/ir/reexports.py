@@ -49,7 +49,7 @@ def resolve_reexports(
     exports_by_module: dict[str, set[str]],
     stable_bindings: dict[str, frozenset[str]] | None = None,
 ) -> dict[str, frozenset[str]]:
-    """Follow re-export chains in place so each import records its origin definition."""
+    """Follow proven source bindings without promoting imports to public exports."""
     stable_bindings = stable_bindings or {}
     alias_targets: dict[str, set[str]] = {}
     uncertain_bindings: set[str] = set()
@@ -78,7 +78,12 @@ def _collect_reexport_targets(
 ) -> None:
     for item in imports:
         data = item["data"]
-        if not data["symbol"] or not (data["reexport"] or data.get("reexport_candidate")):
+        source_import = data.get("module_level_import") is True and data[
+            "binding"
+        ] in stable_bindings.get(data["source_module"], frozenset())
+        if not data["symbol"] or not (
+            data["reexport"] or data.get("reexport_candidate") or source_import
+        ):
             continue
         binding = f"{data['source_module']}.{data['binding']}"
         target = f"{data['target_module']}.{data['symbol']}"
@@ -106,9 +111,11 @@ def _proven_reexports(
     reexports: dict[str, str] = {}
     for item in imports:
         data = item["data"]
-        if not data["reexport"] or not data["symbol"]:
-            continue
         binding = f"{data['source_module']}.{data['binding']}"
+        if not data["symbol"] or not (
+            data["reexport"] or data.get("module_level_import") is True and binding in alias_targets
+        ):
+            continue
         if not _reexport_route_is_proven(binding, alias_targets, uncertain_bindings):
             uncertain_bindings.add(binding)
             data["reexport_candidate"] = True

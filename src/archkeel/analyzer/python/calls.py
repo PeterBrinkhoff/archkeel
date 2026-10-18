@@ -20,7 +20,13 @@ from .receiver_types import (
     annotation_receiver_type,
     literal_receiver_type,
 )
-from .resolve import SymbolIndex, call_result_type, dotted_expression, resolve_name
+from .resolve import (
+    SymbolIndex,
+    call_result_type,
+    dotted_expression,
+    iterated_call_result_type,
+    resolve_name,
+)
 from .scopes import LexicalScopes
 from .source import (
     FunctionNode,
@@ -54,8 +60,8 @@ def _bind_receiver(
     if existing is None or candidate is None or existing.type_name != candidate.type_name:
         receivers[name] = None
         return
-    if existing.origin is ReceiverOrigin.LITERAL or candidate.origin is ReceiverOrigin.LITERAL:
-        receivers[name] = ReceiverType(existing.type_name, ReceiverOrigin.LITERAL)
+    if existing.origin is ReceiverOrigin.LITERAL:
+        receivers[name] = candidate
 
 
 def _void_targets(receivers: dict[str, ReceiverType | None], target: ast.expr) -> None:
@@ -259,19 +265,48 @@ class CallCollector(ast.NodeVisitor):
             )
         return result
 
+    def _receiver(self, expression: ast.expr, name: str) -> ReceiverType | None:
+        owner = self.scopes.lookup(expression, name).owner
+        if owner is None:
+            return None
+        if isinstance(owner.node, ast.FunctionDef | ast.AsyncFunctionDef):
+            return self.receivers.get(owner.node, {}).get(name)
+        if not isinstance(owner.node, ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp):
+            return None
+        if len(owner.node.generators) != 1:
+            return None
+        generator = owner.node.generators[0]
+        if (
+            generator.is_async
+            or not isinstance(generator.target, ast.Name)
+            or generator.target.id != name
+            or owner.bindings.get(name) != [generator.target]
+            or not isinstance(generator.iter, ast.Call)
+        ):
+            return None
+        receivers: dict[str, ReceiverType] = {}
+        for child in ast.walk(generator.iter.func):
+            if not isinstance(child, ast.Name):
+                continue
+            receiver = self._receiver(child, child.id)
+            if receiver is not None:
+                receivers[child.id] = receiver
+        if any(value.origin is ReceiverOrigin.ANNOTATION for value in receivers.values()) and (
+            self.scopes.lookup(generator.iter, "str").kind is not BindingKind.UNBOUND
+        ):
+            return None
+        element = iterated_call_result_type(
+            generator.iter, receiver_types=receivers, scopes=self.scopes
+        )
+        return ReceiverType(element, ReceiverOrigin.DOCUMENTED) if element is not None else None
+
     def visit_Call(self, node: ast.Call) -> None:
         scope = self.scopes.by_node[node]
-        receivers = {}
-        for name in {child.id for child in ast.walk(node.func) if isinstance(child, ast.Name)}:
-            owner = self.scopes.lookup(node.func, name).owner
-            receiver = (
-                self.receivers.get(owner.node, {}).get(name)
-                if owner is not None
-                and isinstance(owner.node, ast.FunctionDef | ast.AsyncFunctionDef)
-                else None
-            )
-            if receiver is not None:
-                receivers[name] = receiver
+        receivers = {
+            name: receiver
+            for name in {child.id for child in ast.walk(node.func) if isinstance(child, ast.Name)}
+            if (receiver := self._receiver(node.func, name)) is not None
+        }
         expression = annotation_text(node.func) or "<unparseable>"
         status, targets, reason, candidate_count = resolve_name(
             node.func,

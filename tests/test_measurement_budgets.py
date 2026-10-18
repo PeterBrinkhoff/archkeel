@@ -59,7 +59,7 @@ def test_cycle_edge_budget_passes_then_blocks_a_rise(tmp_path: Path) -> None:
 
     assert result.exit_code == 1
     assert result.failures == ("measurement budget exceeded in cycle_edges: 0->2", REFUSED)
-    assert files == {}
+    assert dict(files.entries) == {}
 
     accepted, files = run_validate(
         root,
@@ -70,7 +70,7 @@ def test_cycle_edge_budget_passes_then_blocks_a_rise(tmp_path: Path) -> None:
         accept_new=True,
     )
     assert accepted.exit_code == 0
-    written = parse_validation_baseline(decode_json(files[str(baseline)]))
+    written = parse_validation_baseline(decode_json(dict(files.entries)[str(baseline)]))
     assert written.budgets == (MeasurementBudget("cycle_edges", 2),)
 
 
@@ -92,13 +92,13 @@ def test_unknown_position_budget_blocks_a_new_undecided_promise(tmp_path: Path) 
 
     assert result.exit_code == 1
     assert result.failures == ("measurement budget exceeded in unknown_positions: 0->1", REFUSED)
-    assert files == {}
+    assert dict(files.entries) == {}
 
     accepted, files = run_validate(
         root, CONFIG, observe, baseline=baseline, write_baseline=True, accept_new=True
     )
     assert accepted.exit_code == 0
-    written = parse_validation_baseline(decode_json(files[str(baseline)]))
+    written = parse_validation_baseline(decode_json(dict(files.entries)[str(baseline)]))
     assert written.budgets == (MeasurementBudget("unknown_positions", 1),)
 
 
@@ -114,7 +114,7 @@ def test_reduced_budget_must_be_written_back(tmp_path: Path) -> None:
         "--write-baseline",
     )
     assert updated.exit_code == 0
-    written = parse_validation_baseline(decode_json(files[str(baseline)]))
+    written = parse_validation_baseline(decode_json(dict(files.entries)[str(baseline)]))
     assert written.budgets == (MeasurementBudget("cycle_edges", 0),)
 
 

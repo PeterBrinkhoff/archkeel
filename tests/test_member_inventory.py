@@ -3,17 +3,80 @@
 # SPDX-License-Identifier: MIT
 """A closed member scope needs a complete declaration inventory from its owner."""
 
+import ast
 from dataclasses import replace
 from pathlib import Path
+from shutil import copyfile
+from textwrap import indent
 
 import pytest
 from test_analyzer import _observe
 
 from archkeel.check.uml_compare import compare_graphs
+from archkeel.cli.observe import observe
 from archkeel.ir.architecture_graph import ArchitectureGraph, Entity, TargetScope
+from archkeel.ir.codec import parse_contract
 from archkeel.ir.facts import RecordData
 from archkeel.ir.model import Section
 from archkeel.ir.source_graph import observed_graph
+from archkeel.ir.target_graph import declared_graph
+
+
+def test_actual_python_dto_declarations_certify_the_eight_original_closed_scopes(tmp_path):
+    import json
+
+    repository = Path(__file__).parents[1]
+    paths = ("ir/facts.py", "ir/protocol.py", "check/ports.py")
+    for path in paths:
+        target = tmp_path / "src/archkeel" / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        copyfile(repository / "src/archkeel" / path, target)
+    (tmp_path / "pyproject.toml").write_text('[project]\nrequires-python = ">=3.11"\n')
+    (tmp_path / "contract.json").write_text('{"schema_version":"2.1.0","components":[],"rules":[]}')
+    result = observe(
+        tmp_path,
+        roots=("src",),
+        namespace="archkeel",
+        contract="contract.json",
+        git_head="a" * 40,
+        dirty=False,
+        contract_root=tmp_path,
+    )
+    assert result.observation is not None, result.diagnostics
+    assert result.coverage.status == "PASS"
+    assert result.coverage.files_parsed == len(paths)
+    graph = observed_graph(result.observation)
+    for owner, identities in (
+        ("ir", {"source-facts", "coverage", "snapshot", "scope", "request", "response", "error"}),
+        ("check", {"port"}),
+    ):
+        contract = parse_contract(
+            json.loads((repository / f"docs/architecture/contracts/{owner}.json").read_bytes())
+        )
+        comparison = compare_graphs(graph, declared_graph(contract))
+        assessed = {
+            item.subject_id: item.status
+            for item in comparison.assessments
+            if item.aspect == "completeness" and item.subject_id in identities
+        }
+        assert assessed == dict.fromkeys(identities, "PASS")
+    selected = {
+        "SourceFacts",
+        "CollectionCoverage",
+        "SnapshotInput",
+        "SourceScope",
+        "CollectionRequest",
+        "CollectionResponse",
+        "CollectionError",
+        "SourceCollector",
+    }
+    classes = [
+        item
+        for item in result.observation.records("symbols") or ()
+        if item.kind == "class" and item.data.get("name") in selected
+    ]
+    assert len(classes) == len(selected)
+    assert all(item.data.get("source_member_binding_static") is False for item in classes)
 
 
 def _observation(tmp_path: Path, source: str):
@@ -44,28 +107,34 @@ def _coverage(graph, name, kind):
             "from __future__ import annotations\nfrom dataclasses import dataclass\n"
             "@dataclass(frozen=True, slots=True)\nclass Data:\n value: str\n",
             "complete",
-            "partial",
+            "complete",
         ),
-        ("class Data:\n value = 1\n", "partial", "complete"),
-        ("class Data:\n def run(self): self.value = 1\n", "partial", "complete"),
+        ("class Data:\n value = 1\n", "complete", "complete"),
+        ("class Data:\n def run(self): self.value = 1\n", "complete", "complete"),
         ("class Data:\n if True:\n  value: str\n", "partial", "partial"),
         (
             "def decorate(cls): return cls\n@decorate\nclass Data:\n value: str\n",
-            "partial",
-            "partial",
+            "complete",
+            "complete",
         ),
-        ("class Base: pass\nclass Data(Base):\n value: str\n", "partial", "partial"),
-        ("class Data:\n def run(self): setattr(self, 'value', 1)\n", "partial", "complete"),
+        ("class Base: pass\nclass Data(Base):\n value: str\n", "complete", "complete"),
+        ("class Data:\n def run(self): setattr(self, 'value', 1)\n", "complete", "complete"),
         ("class Data:\n value: str\nData = object\n", "partial", "partial"),
-        ("def create(): return str\nclass Data:\n value: create()\n", "partial", "partial"),
+        ("def create(): return str\nclass Data:\n value: create()\n", "complete", "complete"),
         (
             "def create(): return 1\nclass Data:\n def run(self, x=create()): ...\n",
-            "partial",
-            "partial",
+            "complete",
+            "complete",
         ),
+        ("class Data:\n from opaque import value\n", "partial", "partial"),
+        ("class Data:\n value += 1\n", "partial", "partial"),
+        ("class Data:\n value = (hidden := 1)\n", "partial", "partial"),
+        ("class Data:\n global value\n value = 1\n", "partial", "partial"),
+        ("class Data:\n value: str\n value: int\n", "partial", "complete"),
+        ("class Data:\n def run(self): ...\n def run(self): ...\n", "complete", "partial"),
     ],
 )
-def test_member_inventory_cannot_promote_unsupported_declarations(
+def test_member_inventory_measures_declarations_separately_from_runtime_effects(
     tmp_path, source, attribute_status, method_status
 ):
     graph = observed_graph(_observation(tmp_path, source))
@@ -73,6 +142,77 @@ def test_member_inventory_cannot_promote_unsupported_declarations(
         attribute_status
     ]
     assert [c.status for c in _coverage(graph, "sample.model.Data", "method")] == [method_status]
+
+
+@pytest.mark.parametrize(
+    "state",
+    [
+        "present",
+        "missing",
+        "conditional",
+        "duplicate",
+        "import_before",
+        "import_after",
+        "conditional_import",
+        "global_rebind",
+        "deleted",
+        "walrus",
+        "local_shadow",
+        "member_write",
+        "star_import",
+    ],
+)
+def test_actual_source_scope_needs_one_unconditional_source_definition(tmp_path, state):
+    path = Path(__file__).parents[1] / "src/archkeel/ir/protocol.py"
+    scope = next(
+        node
+        for node in ast.parse(path.read_text()).body
+        if isinstance(node, ast.ClassDef) and node.name == "SourceScope"
+    )
+    declaration = ast.unparse(scope) + "\n"
+    source = {
+        "present": declaration,
+        "missing": "",
+        "conditional": "if enabled:\n" + indent(declaration, "    "),
+        "duplicate": declaration + declaration,
+        "import_before": "from other import SourceScope\n" + declaration,
+        "import_after": declaration + "from other import SourceScope\n",
+        "conditional_import": declaration + "if enabled:\n    from other import SourceScope\n",
+        "global_rebind": declaration
+        + "def alter():\n    global SourceScope\n    SourceScope = object\n",
+        "deleted": declaration + "del SourceScope\n",
+        "walrus": declaration + "items = [(SourceScope := object) for item in [1]]\n",
+        "local_shadow": declaration + "def read():\n    SourceScope = 1\n    return SourceScope\n",
+        "member_write": declaration + "SourceScope.extra = 1\n",
+        "star_import": declaration + "from missing import *\n",
+    }[state]
+    observation = _observation(tmp_path, "from dataclasses import dataclass\n" + source)
+    graph = observed_graph(observation)
+    target = _target("roots", "namespace")
+    target = replace(
+        target,
+        entities=tuple(
+            replace(entity, qualified_name=entity.qualified_name.replace(".Data", ".SourceScope"))
+            for entity in target.entities
+        ),
+    )
+    [assessment] = [
+        item
+        for item in compare_graphs(graph, target).assessments
+        if item.subject_id == "target-data" and item.aspect == "completeness"
+    ]
+    assert assessment.status == (
+        "PASS" if state in {"present", "local_shadow", "member_write"} else "UNKNOWN"
+    )
+    if state == "present":
+        [owner] = [
+            item
+            for item in observation.records("symbols") or ()
+            if item.data.get("name") == "SourceScope"
+        ]
+        assert owner.data.get("source_binding_unique") is True
+        assert owner.data.get("source_member_binding_static") is False
+        assert owner.evidence_ids
 
 
 def _target(*names):
@@ -295,6 +435,51 @@ def test_source_process_preserves_and_validates_inventory(tmp_path, alter):
     else:
         with pytest.raises(ProtocolError, match="inventory|static modifier"):
             decode_response(encoded)
+
+
+@pytest.mark.parametrize(
+    "parent", ["owner", "other", "", None, False, 1, (), ("owner",), RecordData(), [], {}]
+)
+@pytest.mark.parametrize("claimed", [False, True])
+def test_method_inventory_needs_the_exact_string_parent(parent, claimed):
+    from test_source_evaluation import _facts
+
+    from archkeel.ir.facts_validation import _member_inventory_bindings
+
+    seed = _facts().sections[0].records[0]
+    inventory = RecordData(
+        (
+            ("schema_version", "1.0.0"),
+            ("kind", "method"),
+            ("status", "complete"),
+            ("definition_ids", ("method",) if claimed else ()),
+        )
+    )
+    attributes = RecordData(
+        (
+            ("schema_version", "1.0.0"),
+            ("kind", "attribute"),
+            ("status", "complete"),
+            ("definition_ids", ()),
+        )
+    )
+    owner = replace(
+        seed,
+        id="owner",
+        kind="class",
+        data=RecordData(
+            (("member_inventories", (attributes, inventory)), ("attribute_declarations", ()))
+        ),
+    )
+    method = replace(
+        seed, id="method", kind="method", data=RecordData((("lexical_parent_id", parent),))
+    )
+    for records in ([owner, method], [method, owner]):
+        if claimed is (parent == "owner"):
+            _member_inventory_bindings(records)
+        else:
+            with pytest.raises(ValueError, match="inventory identities"):
+                _member_inventory_bindings(records)
 
 
 def test_member_inventory_schema_is_generated_from_the_source_dataclass():

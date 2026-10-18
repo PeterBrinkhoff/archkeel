@@ -7,6 +7,7 @@ import ast
 import copy
 import inspect
 import json
+import sys
 from dataclasses import FrozenInstanceError
 from enum import Enum
 from pathlib import Path
@@ -128,17 +129,17 @@ def test_legacy_origin_keeps_real_resolver_verdict_and_wire_values(raw, expected
     "first,second,expected",
     [
         ("literal", "literal", "literal"),
-        ("literal", "annotation", "literal"),
-        ("literal", "documented", "literal"),
-        ("annotation", "literal", "literal"),
+        ("literal", "annotation", "annotation"),
+        ("literal", "documented", "documented"),
+        ("annotation", "literal", "annotation"),
         ("annotation", "annotation", "annotation"),
         ("annotation", "documented", "annotation"),
-        ("documented", "literal", "literal"),
+        ("documented", "literal", "documented"),
         ("documented", "annotation", "documented"),
         ("documented", "documented", "documented"),
     ],
 )
-def test_legacy_origin_merge_keeps_existing_evidence_preference(first, second, expected):
+def test_receiver_merge_never_upgrades_an_unproven_binding(first, second, expected):
     values = {"items": ReceiverType("list", first)}
     _bind_receiver(values, "items", ReceiverType("list", second))
     result = values["items"]
@@ -178,6 +179,353 @@ def test_ambiguous_and_shadowed_receivers_stay_unresolved(source):
     rows = collect_calls([_parsed_module(source)], build_symbol_index([]), {})
     call = next(row["data"] for row in rows if row["data"]["expression"] == "items.append")
     assert call["status"] == "unresolved" and call["targets"] == []
+
+
+@pytest.mark.parametrize(
+    "source,expression,target",
+    [
+        (
+            "def use(): return ''.join(['x']).encode()\n",
+            "''.join(['x']).encode",
+            "builtins.str.encode",
+        ),
+        (
+            "def use(value: str): return value.strip().casefold()\n",
+            "value.strip().casefold",
+            "builtins.str.casefold",
+        ),
+        (
+            "def use():\n value = ''.join(['x'])\n value.encode()\n",
+            "value.encode",
+            "builtins.str.encode",
+        ),
+    ],
+)
+def test_string_return_methods_reuse_documented_receiver_evidence(source, expression, target):
+    rows = collect_calls([_parsed_module(source)], build_symbol_index([]), {})
+    call = next(row["data"] for row in rows if row["data"]["expression"] == expression)
+    assert call["status"] == "partially_resolved" and call["targets"] == [target]
+
+
+@pytest.mark.parametrize(
+    "source,expression",
+    [
+        ("def use(value): return value.strip().casefold()\n", "value.strip().casefold"),
+        ("def use(value: dict): return value.strip().casefold()\n", "value.strip().casefold"),
+        ("def use(value: str): return value.opaque().casefold()\n", "value.opaque().casefold"),
+        (
+            "def use():\n value = ''.join(['x'])\n value = other\n value.encode()\n",
+            "value.encode",
+        ),
+        (
+            "def use(value: str):\n return (lambda value: value.strip().casefold())([])\n",
+            "value.strip().casefold",
+        ),
+    ],
+)
+def test_unproven_string_method_results_keep_unknown_receiver(source, expression):
+    rows = collect_calls([_parsed_module(source)], build_symbol_index([]), {})
+    call = next(row["data"] for row in rows if row["data"]["expression"] == expression)
+    assert call["status"] == "unresolved" and call["targets"] == []
+
+
+def test_documented_string_result_needs_its_compiler_owner_for_named_receiver():
+    module = _parsed_module("def use():\n value = ''.join(['x'])\n value.encode()\n")
+    module.source = "def incomplete("
+    rows = collect_calls([module], build_symbol_index([]), {})
+    call = next(row["data"] for row in rows if row["data"]["expression"] == "value.encode")
+    assert call["status"] == "unresolved" and call["targets"] == []
+
+
+def test_string_method_return_does_not_claim_subclass_runtime_behavior():
+    source = (
+        "class Special(str):\n def strip(self): return 42\n"
+        "def use(value: str): return value.strip().casefold()\n"
+    )
+    rows = collect_calls([_parsed_module(source)], build_symbol_index([]), {})
+    call = next(
+        row["data"] for row in rows if row["data"]["expression"] == "value.strip().casefold"
+    )
+    assert call["status"] == "partially_resolved"
+    namespace = {}
+    exec(source, namespace)
+    with pytest.raises(AttributeError):
+        namespace["use"](namespace["Special"]("value"))
+
+
+@pytest.mark.parametrize(
+    "source, expression, target",
+    [
+        (
+            "def make() -> list[str]: return []\n"
+            "def use():\n values = make()\n values.append('x')\n",
+            "values.append",
+            "builtins.list.append",
+        ),
+        (
+            "def make() -> str:\n opaque()\n return 'x'\ndef use(): return make().strip()\n",
+            "make().strip",
+            "builtins.str.strip",
+        ),
+        (
+            "def use():\n def make() -> dict[str, str]: return {}\n"
+            " values = make()\n values.keys()\n",
+            "values.keys",
+            "builtins.dict.keys",
+        ),
+    ],
+)
+def test_unique_local_helper_return_keeps_documented_receiver_origin(source, expression, target):
+    rows = collect_calls([_parsed_module(source)], build_symbol_index([]), {})
+    call = next(row["data"] for row in rows if row["data"]["expression"] == expression)
+    assert call["status"] == "partially_resolved" and call["targets"] == [target]
+
+
+@pytest.mark.parametrize(
+    "definition",
+    [
+        "async def make() -> list[str]: return []\n",
+        "def make() -> list[str]: yield 'x'\n",
+        "@opaque\ndef make() -> list[str]: return []\n",
+        "def make() -> list[str]: return []\nmake = other\n",
+        "if flag:\n def make() -> list[str]: return []\n",
+        "def make() -> list[str]: return []\ndef make() -> list[str]: return []\n",
+        "list = Other\ndef make() -> list[str]: return []\n",
+        "def make() -> 'list[str]': return []\n",
+        "Alias = list[str]\ndef make() -> Alias: return []\n",
+        "class Payload: pass\ndef make() -> Payload: return Payload()\n",
+        "def make(): return []\n",
+        "def make() -> list[str]: return []\ndel make\n",
+        "from builtins import list\ndef make() -> list[str]: return []\n",
+        "def make() -> list[str]: return []\ndef replace():\n global make\n make = other\n",
+        "from opaque import make\n",
+        "from opaque import *\ndef make() -> list[str]: return []\n",
+        "",
+    ],
+)
+def test_uncertain_helper_declarations_do_not_prove_returned_receiver(definition):
+    module = _parsed_module(definition + "def use():\n values = make()\n values.append('x')\n")
+    collect_imports([module], {module.module}, {}, namespace="sample")
+    rows = collect_calls([module], build_symbol_index([]), {})
+    call = next(row["data"] for row in rows if row["data"]["expression"] == "values.append")
+    assert call["status"] == "unresolved" and call["targets"] == []
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        " values = []\n values = make()\n values.append('x')\n",
+        " values = make()\n values = []\n values.append('x')\n",
+        " values = other = make()\n values.append('x')\n",
+        " if flag:\n  values = make()\n values.append('x')\n",
+    ],
+)
+def test_helper_result_does_not_inherit_another_assignment_literal_origin(body):
+    source = "def make() -> list[str]: return []\ndef use():\n" + body
+    rows = collect_calls([_parsed_module(source)], build_symbol_index([]), {})
+    call = next(row["data"] for row in rows if row["data"]["expression"] == "values.append")
+    assert call["status"] == "unresolved" and call["targets"] == []
+
+
+def test_local_helper_return_needs_a_matching_compiler_scope():
+    module = _parsed_module(
+        "def make() -> list[str]: return []\ndef use():\n values = make()\n values.append('x')\n"
+    )
+    module.source = "def incomplete("
+    rows = collect_calls([module], build_symbol_index([]), {})
+    call = next(row["data"] for row in rows if row["data"]["expression"] == "values.append")
+    assert call["status"] == "unresolved" and call["targets"] == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "def use():\n values = {1, 2}\n values.copy()\n",
+        "def use(items):\n values = {item for item in items}\n values.copy()\n",
+        "def use(set):\n values = {1}\n values.copy()\n",
+        "set = other\ndef use(items):\n values = {item for item in items}\n values.copy()\n",
+    ],
+)
+def test_set_syntax_proves_the_builtin_receiver_even_when_set_name_is_shadowed(source):
+    rows = collect_calls([_parsed_module(source)], build_symbol_index([]), {})
+    call = next(row["data"] for row in rows if row["data"]["expression"] == "values.copy")
+    assert call["status"] == "resolved"
+    assert call["targets"] == ["builtins.set.copy"]
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "def use(set):\n values = set()\n values.copy()\n",
+        "def use():\n values = {1}\n values = []\n values.copy()\n",
+        "def use(items):\n values = {item for item in items}\n values = other\n values.copy()\n",
+    ],
+)
+def test_set_receiver_does_not_absolve_shadowed_constructors_or_conflicting_bindings(source):
+    rows = collect_calls([_parsed_module(source)], build_symbol_index([]), {})
+    call = next(row["data"] for row in rows if row["data"]["expression"] == "values.copy")
+    assert call["status"] == "unresolved" and call["targets"] == []
+
+
+@pytest.mark.parametrize("literal", ["{2}", "{item for item in [2]}", "set()"])
+def test_later_set_literal_does_not_prove_an_earlier_annotated_receiver(literal):
+    source = (
+        "class Special(set):\n def add(self, value): return 'custom'\n"
+        "def use(values: set):\n result = values.add(1)\n"
+        f" values = {literal}\n return result\n"
+    )
+    rows = collect_calls([_parsed_module(source)], build_symbol_index([]), {})
+    call = next(row["data"] for row in rows if row["data"]["expression"] == "values.add")
+    assert call["status"] == "partially_resolved"
+    assert call["targets"] == ["builtins.set.add"]
+    namespace = {}
+    exec(source, namespace)
+    assert namespace["use"](namespace["Special"]()) == "custom"
+
+
+@pytest.mark.parametrize("method", ["split", "rsplit", "splitlines"])
+@pytest.mark.parametrize(
+    "expression",
+    [
+        "(part.isidentifier() for part in module.METHOD())",
+        "[part.isidentifier() for part in module.METHOD()]",
+        "{part.isidentifier() for part in module.METHOD()}",
+        "{part: part.isidentifier() for part in module.METHOD()}",
+    ],
+)
+def test_string_method_elements_keep_documented_receiver_proof(method, expression):
+    module = _parsed_module(
+        "def use(module: str):\n    return " + expression.replace("METHOD", method) + "\n"
+    )
+    rows = collect_calls([module], build_symbol_index([]), {})
+    call = next(row["data"] for row in rows if row["data"]["expression"] == "part.isidentifier")
+    # PEP 709 removes these compiler scopes; their element binding stays unproven.
+    status = (
+        "unresolved"
+        if sys.version_info >= (3, 12) and not expression.startswith("(")
+        else "partially_resolved"
+    )
+    assert call["status"] == status
+    assert call["targets"] == ([] if status == "unresolved" else ["builtins.str.isidentifier"])
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "def use(module):\n return [part.isidentifier() for part in module.split()]\n",
+        "def use(module: str):\n module = other()\n"
+        " return [part.isidentifier() for part in module.split()]\n",
+        "class str: pass\ndef use(module: str):\n"
+        " return [part.isidentifier() for part in module.split()]\n",
+        "def use(module: str):\n return [part.isidentifier() for part, other in module.split()]\n",
+        "def use(module: str):\n"
+        " return [part.isidentifier() for part in module.split() for part in unknown()]\n",
+        "def use(module: str):\n"
+        " return [(lambda part: part.isidentifier())(1) for part in module.split()]\n",
+        "def use(module: str):\n return [part.isidentifier() for part in module.custom()]\n",
+        "async def use(module: str):\n"
+        " return [part.isidentifier() async for part in module.split()]\n",
+    ],
+)
+def test_unproven_or_shadowed_comprehension_elements_stay_unresolved(source):
+    module = _parsed_module(source)
+    rows = collect_calls([module], build_symbol_index([]), {})
+    call = next(row["data"] for row in rows if row["data"]["expression"] == "part.isidentifier")
+    assert call["status"] == "unresolved" and call["targets"] == []
+
+
+def test_comprehension_receiver_proof_does_not_escape_its_owner():
+    module = _parsed_module(
+        "def use(module: str):\n"
+        " part = []\n"
+        " result = [part.isidentifier() for part in module.split()]\n"
+        " part.append(result)\n"
+        " part.isidentifier()\n"
+    )
+    rows = collect_calls([module], build_symbol_index([]), {})
+    calls = [row["data"] for row in rows if row["data"]["expression"] == "part.isidentifier"]
+    inner_status = "unresolved" if sys.version_info >= (3, 12) else "partially_resolved"
+    assert sorted(call["status"] for call in calls) == [inner_status, "unresolved"]
+    assert all(call["targets"] == [] for call in calls if call["status"] == "unresolved")
+    append = next(row["data"] for row in rows if row["data"]["expression"] == "part.append")
+    assert append["status"] == "resolved" and append["targets"] == ["builtins.list.append"]
+
+
+@pytest.mark.parametrize("annotation,status", [(": str", "partially_resolved"), ("", "unresolved")])
+def test_nested_comprehensions_reuse_only_their_own_proven_elements(annotation, status):
+    module = _parsed_module(
+        f"def use(module{annotation}):\n"
+        " return [[part.isidentifier() for part in line.split()]\n"
+        "         for line in module.splitlines()]\n"
+    )
+    rows = collect_calls([module], build_symbol_index([]), {})
+    call = next(row["data"] for row in rows if row["data"]["expression"] == "part.isidentifier")
+    if sys.version_info >= (3, 12):
+        status = "unresolved"
+    assert call["status"] == status
+    assert call["targets"] == ([] if status == "unresolved" else ["builtins.str.isidentifier"])
+
+
+@pytest.mark.parametrize(
+    "source, status",
+    [
+        ("def use(path: Path):\n    path.is_relative_to('root')\n", "partially_resolved"),
+        (
+            "def use():\n    path = Path('child')\n    path.is_relative_to('root')\n",
+            "partially_resolved",
+        ),
+        (
+            "def use(Path):\n    path = Path('child')\n    path.is_relative_to('root')\n",
+            "unresolved",
+        ),
+    ],
+)
+def test_path_containment_retains_partial_evidence_and_shadowing(source, status):
+    module = _parsed_module("from pathlib import Path\n" + source)
+    collect_imports([module], set(), {}, namespace="sample")
+    rows = collect_calls([module], build_symbol_index([]), {})
+    call = next(row["data"] for row in rows if row["data"]["expression"] == "path.is_relative_to")
+    assert call["status"] == status
+    assert call["targets"] == ([] if status == "unresolved" else ["pathlib.Path.is_relative_to"])
+
+
+@pytest.mark.parametrize(
+    "source", ["dict.fromkeys(('x',))", "def use(): return dict.fromkeys(('x',))"]
+)
+def test_unshadowed_builtin_dict_classmethod_keeps_partial_evidence(source):
+    rows = collect_calls([_parsed_module(source)], build_symbol_index([]), {})
+    call = next(row["data"] for row in rows if row["data"]["expression"] == "dict.fromkeys")
+    assert call["status"] == "partially_resolved"
+    assert call["targets"] == ["builtins.dict.fromkeys"]
+
+
+@pytest.mark.parametrize(
+    "source,expression",
+    [
+        ("def use(dict): return dict.fromkeys(('x',))", "dict.fromkeys"),
+        ("def use():\n dict = other\n return dict.fromkeys(('x',))", "dict.fromkeys"),
+        ("def use():\n dict.fromkeys(('x',))\n dict = other", "dict.fromkeys"),
+        ("if enabled: dict = other\ndict.fromkeys(('x',))", "dict.fromkeys"),
+        ("dict = other\ndef use():\n global dict\n return dict.fromkeys(('x',))", "dict.fromkeys"),
+        (
+            "def overwrite():\n global dict\n dict = other\n"
+            "def use(): return dict.fromkeys(('x',))",
+            "dict.fromkeys",
+        ),
+        ("D = dict\nD.fromkeys(('x',))", "D.fromkeys"),
+        ("class D(dict): pass\nD.fromkeys(('x',))", "D.fromkeys"),
+        ("from custom import dict\ndict.fromkeys(('x',))", "dict.fromkeys"),
+        ("dict.madeup(('x',))", "dict.madeup"),
+    ],
+)
+def test_builtin_dict_classmethod_does_not_escape_its_exact_binding(source, expression):
+    module = _parsed_module(source)
+    collect_imports([module], set(), {}, namespace="sample")
+    rows = collect_calls([module], build_symbol_index([]), {})
+    call = next(row["data"] for row in rows if row["data"]["expression"] == expression)
+    assert "builtins.dict.fromkeys" not in call["targets"]
+    if "from custom" not in source:
+        assert call["status"] == "unresolved" and call["targets"] == []
 
 
 def _receiver_repository(tmp_path):

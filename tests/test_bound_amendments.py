@@ -97,7 +97,7 @@ def test_baseline_amendment_exact_replay_and_stale_without_widening(tmp_path: Pa
         rationale="why",
     )
     assert result.exit_code == 0
-    amendment.write_bytes(files[str(amendment)])
+    amendment.write_bytes(dict(files.entries)[str(amendment)])
     assert (
         run_validate(
             root, SHOP_CONFIG, observe, against=base, baseline=baseline, amendment=amendment
@@ -178,10 +178,10 @@ def test_joint_write_replays_and_refused_rewrite_emits_no_approval(tmp_path: Pat
     assert refused.widenings
     assert refused.amendment_status is None
     assert refused.artifact is None
-    assert not files
+    assert not files.entries
     accepted, files = run_validate(root, SHOP_CONFIG, observe, accept_new=True, **arguments)
     assert accepted.exit_code == 0
-    for path, data in files.items():
+    for path, data in files.entries:
         Path(path).write_bytes(data)
     assert (
         run_validate(
@@ -240,7 +240,7 @@ def test_present_empty_and_absent_before_policies_cannot_share_approval(tmp_path
         decided_by="who",
         rationale="why",
     )
-    amendment.write_bytes(files[str(amendment)])
+    amendment.write_bytes(dict(files.entries)[str(amendment)])
     assert (
         run_validate(
             root, SHOP_CONFIG, observe, against=absent, baseline=baseline, amendment=amendment

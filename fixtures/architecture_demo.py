@@ -109,7 +109,7 @@ REPORT_CASES = {
     "wide": ("class-a-recursive-wide-package", 0),
     "deep": ("class-a-recursive-inside-violation", 2),
     "mixed": ("class-a-boundary-types-mixed-evidence", 2),
-    "unknown": ("class-a-boundary-types-ordinary-reexport-chain-unknown", 0),
+    "unknown": ("class-a-boundary-types-opaque-map-values-unknown", 0),
     "known": ("validation-baseline-subject-order", 0),
     "target-present": ("target-module-present", 0),
     "target-absent": ("target-module-absent", 0),

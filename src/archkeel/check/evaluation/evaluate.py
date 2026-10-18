@@ -20,6 +20,7 @@ from archkeel.ir.facts import (
     ConstructSupport,
     ExternalPackageTarget,
     ForbiddenConstructKind,
+    ProviderBinding,
     SourceFacts,
     SourceProfile,
     SourceResolution,
@@ -318,6 +319,7 @@ def _inside_rule_results(
     cycle_scan_roots: tuple[str, ...] = (),
     cycle_namespace: str = "",
     receipt_scan_roots: tuple[str, ...] = (),
+    provider_bindings: tuple[ProviderBinding, ...] = (),
 ) -> InsideRuleResults:
     """Evaluate nested rules with the root scan's facts, limited to each parent's modules."""
     violations: list[RawRecord] = []
@@ -364,6 +366,7 @@ def _inside_rule_results(
             receipt_scan_roots=receipt_scan_roots,
             type_shapes=type_shapes,
             construct_capabilities=construct_capabilities,
+            provider_bindings=provider_bindings,
         )
         if symbols_measured and profile.complete_api_crossings:
             symbols = _mount_facade_signature_types(
@@ -523,6 +526,7 @@ def _evaluate_inside_contract(
     cycle_scan_roots: tuple[str, ...],
     cycle_namespace: str,
     receipt_scan_roots: tuple[str, ...],
+    provider_bindings: tuple[ProviderBinding, ...],
 ) -> tuple[list[RawRecord], list[RawRecord], list[RawRecord], list[RawRecord]]:
     """Run shared evaluators for one clipped contract over one already-collected scan."""
     failures = rule_subject_failures(
@@ -577,6 +581,7 @@ def _evaluate_inside_contract(
             source_modules,
             ancestor_contracts,
             type_shapes=type_shapes,
+            provider_bindings=provider_bindings,
         )
         if symbols_measured and profile.complete_api_crossings
         else []
@@ -672,7 +677,8 @@ def evaluate_source(
             and features in legacy_features
             and not facts.capabilities.constructs
         )
-        inner_uml = features == inner_uml_features and (
+        script_globals = inner_uml_features | {"script-globals-v1"}
+        inner_uml = features in (inner_uml_features, script_globals) and (
             (declared_sections == inner_uml_sections and not facts.capabilities.constructs)
             or (
                 declared_sections == inner_uml_sections | {SourceSectionName.CONSTRUCTS}
@@ -688,6 +694,8 @@ def evaluate_source(
             raise ProtocolError("duplicate resolution feature")
         if not (legacy or inner_uml):
             raise ProtocolError("source sections or resolution features are not registered")
+        if features == script_globals:
+            profile = replace(profile, dependency_symbols=True)
     elif declared_sections != required:
         raise ProtocolError("source sections do not match the registered profile")
     sections = {
@@ -869,6 +877,7 @@ def evaluate_source(
         symbols,
     ) = _inside_rule_results(
         inside_contracts,
+        provider_bindings=facts.provider_bindings,
         construct_capabilities=facts.capabilities.constructs,
         symbols_measured=symbols_measured,
         root_contract=contract,
@@ -893,8 +902,34 @@ def evaluate_source(
     )
     violations = sorted([*violations, *inside_violations], key=lambda item: item["id"])
     rule_failures = sorted([*rule_failures, *inside_failures], key=lambda item: item["id"])
+    resolution_inputs = {item.path: item.digest for item in facts.inputs}
     scope_observations = sorted(
-        [*scope_observations, *inside_assessments], key=lambda item: item["id"]
+        [
+            *scope_observations,
+            *inside_assessments,
+            *(
+                classified(
+                    item_id=stable_id(
+                        "PROVIDER-BINDING", binding.qualified_name, binding.evidence_id
+                    ),
+                    evidence_class=EvidenceClass.FACT,
+                    area="source_resolution",
+                    kind="source_provider_binding",
+                    title=f"Source-defined provider binding {binding.qualified_name}",
+                    subjects=[binding.qualified_name],
+                    evidence_ids=[binding.evidence_id, *binding.supporting_evidence_ids],
+                    data={
+                        "qualified_name": binding.qualified_name,
+                        "kind": binding.kind.value,
+                        "source": evidence[binding.evidence_id]["file"],
+                        "digest": resolution_inputs[evidence[binding.evidence_id]["file"]],
+                        **({"target": binding.target} if binding.target is not None else {}),
+                    },
+                )
+                for binding in facts.provider_bindings
+            ),
+        ],
+        key=lambda item: item["id"],
     )
     typing_signals = sorted(
         [*typing_signals, *boundary_allowances, *inside_allowances], key=lambda item: item["id"]
@@ -919,6 +954,7 @@ def evaluate_source(
                 module_names,
                 stable_bindings_by_module,
                 type_shapes=type_shapes,
+                provider_bindings=facts.provider_bindings,
             )
             if symbols_measured and profile.complete_api_crossings
             else []

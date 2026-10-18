@@ -13,16 +13,22 @@ from enum import StrEnum
 from typing import Final, NamedTuple, TypeAlias
 
 from archkeel.ir.facts import (
+    ContextManagerSignature,
+    InventoryStatus,
+    MemberKind,
     MethodKind,
     PropertyOperation,
     PropertyOrigin,
+    ProviderBinding,
+    ProviderBindingKind,
     SymbolClassKind,
+    contextmanager_signature,
     parse_method_kind,
     parse_symbol_class_kind,
     property_binding,
 )
 from archkeel.ir.facts_codec import RawData as RecordData
-from archkeel.ir.facts_codec import RawEvidence, RawRecord, classified
+from archkeel.ir.facts_codec import RawEvidence, RawRecord, classified, freeze_data
 from archkeel.ir.model import (
     ArchitectureContract,
     BoundaryAliasBody,
@@ -840,6 +846,7 @@ def _boundary_type_verdict(
     _aliases_seen: frozenset[tuple[str, str]] = frozenset(),
     _require_static_constant: bool = False,
     uncertain_bindings: Sequence[str] = (),
+    contextmanager: ContextManagerSignature | None = None,
 ) -> _Position:
     """Read one annotation for boundary_types and facade_types (AD-58, AD-69).
     Broad or undeclared types violate; builtins, enums and declared types pass. Other shapes
@@ -855,6 +862,17 @@ def _boundary_type_verdict(
         if classes_by_location.module_bindings is not None:
             scoped_classes.module_bindings = classes_by_location.module_bindings
         classes_by_location = scoped_classes
+    if contextmanager is not None:
+        return _contextmanager_verdict(
+            contextmanager,
+            annotation,
+            module,
+            contract,
+            exports_by_module,
+            imports_by_binding,
+            classes_by_location,
+            type_shapes,
+        )
     if not annotation:
         return _Position(undecidable=_Cause.MISSING_ANNOTATION)
     if annotation.startswith(("'", '"')):
@@ -1237,9 +1255,9 @@ def _type_alias_verdict(
     annotation: str,
     module: str,
     contract: ArchitectureContract,
-    exports_by_module: dict[str, frozenset[str]],
-    imports_by_binding: BindingIndex,
-    classes_by_location: BindingIndex,
+    exports: dict[str, frozenset[str]],
+    imports: BindingIndex,
+    classes: BindingIndex,
     *,
     type_shapes: TypeShapeIndex,
     enter_collections: bool,
@@ -1251,19 +1269,33 @@ def _type_alias_verdict(
         return None
     reached: tuple[tuple[str, str], ...] = (resolved,)
     alias = symbol.get("alias")
-    if not _alias_binding_static(symbol):
+    if (
+        symbol.get("source_binding_unique") is not True
+        or not isinstance(alias, str)
+        or alias == annotation
+    ):
         return _Position(undecidable=_Cause.OTHER, resolved=reached, named_origins=reached)
-    if resolved in aliases_seen or not isinstance(alias, str) or alias == annotation:
-        return _Position(undecidable=_Cause.OTHER, resolved=reached, named_origins=reached)
-    if classes_by_location.module_bindings is not None:
-        classes_by_location = classes_by_location.module_bindings
+    if classes.module_bindings is not None:
+        classes = classes.module_bindings
+    if resolved in aliases_seen:
+        return _recursive_dto_alias_verdict(
+            alias,
+            resolved,
+            contract,
+            exports,
+            imports,
+            classes,
+            visited,
+            aliases_seen,
+            type_shapes,
+        )
     expanded = _boundary_type_verdict(
         alias,
         module,
         contract,
-        exports_by_module,
-        imports_by_binding,
-        classes_by_location,
+        exports,
+        imports,
+        classes,
         enter_collections=enter_collections,
         enter_fields=enter_fields,
         visited=visited,
@@ -1271,20 +1303,13 @@ def _type_alias_verdict(
         type_shapes=type_shapes,
     )
     proof = (
-        _bound_alias_body(
-            alias,
-            resolved,
-            contract,
-            exports_by_module,
-            imports_by_binding,
-            classes_by_location,
-            type_shapes,
-        )
+        _bound_alias_body(alias, resolved, contract, exports, imports, classes, type_shapes)
         if not aliases_seen and not visited
         else None
     )
-    typed = expanded.typed_mapping_union
-    typed = _bound_root_mapping_union(typed, resolved, symbol, aliases_seen, visited)
+    typed = _bound_root_mapping_union(
+        expanded.typed_mapping_union, resolved, symbol, aliases_seen, visited
+    )
     return _Position(
         bound_alias=proof,
         typed_mapping_union=typed,
@@ -1340,7 +1365,9 @@ def _imported_alias_verdict(
     alias: _Position, module: str, annotation: str, imports_by_binding: BindingIndex
 ) -> _Position:
     imported = imports_by_binding.get((module, annotation))
-    if imported is not None and not _alias_binding_static(imported):
+    if imported is not None and (
+        not isinstance(imported, dict) or imported.get("source_binding_unique") is not True
+    ):
         return _Position(
             undecidable=_Cause.OTHER,
             resolved=alias.named_origins,
@@ -1405,6 +1432,9 @@ def _named_type_verdict(
             if _is_static_literal_constant(origin_symbol)
             else _Position(undecidable=_Cause.OTHER)
         )
+    if not enter_fields and not enter_collections:
+        # Identity readers must not expand an alias or enter its recursive model fields.
+        return _Position(resolved=reached, named_origins=reached)
     alias = _type_alias_verdict(
         origin_symbol,
         resolved,
@@ -1426,8 +1456,7 @@ def _named_type_verdict(
     if isinstance(origin_symbol, dict):
         if origin_symbol.get("record_kind") in {"static_constant", "dynamic_binding"}:
             return _Position(undecidable=_Cause.OTHER, resolved=reached, named_origins=reached)
-        # `resolve_named_type` ruled out an ambiguous location; the surviving class record carries
-        # `class_kind` (AD-30).
+        # The unique origin declaration carries its native class kind (AD-30).
         class_kind = parse_symbol_class_kind(origin_symbol["class_kind"])
     if class_kind is SymbolClassKind.ENUM:
         return _Position(resolved=reached, named_origins=reached)
@@ -2619,8 +2648,27 @@ def _declared_field_verdict(
     _aliases_seen: frozenset[tuple[str, str]],
 ) -> _Position:
     """Inspect all owned declared model fields, stopping recursive graphs by origin."""
-    if not isinstance(origin_symbol, dict) or not origin_symbol.get("fields"):
+    if not isinstance(origin_symbol, dict):
         return _Position()
+    fields = origin_symbol.get("fields")
+    if not isinstance(fields, list) or any(
+        not isinstance(field, dict)
+        or not isinstance(field.get("name"), str)
+        or field.get("annotation") is not None
+        and not isinstance(field["annotation"], str)
+        for field in fields
+    ):
+        return _Position(undecidable=_Cause.OTHER)
+    attributes = origin_symbol.get("attribute_declarations")
+    if isinstance(attributes, list):
+        declared = sorted(
+            (item["name"], item["annotation"])
+            for item in attributes
+            if item.get("annotation") is not None and not item["name"].startswith("_")
+        )
+        observed = sorted((item["name"], item.get("annotation") or "") for item in fields)
+        if declared != observed:
+            return _Position(undecidable=_Cause.OTHER)
     if classes_by_location.module_bindings is not None:
         classes_by_location = classes_by_location.module_bindings
     binding_uncertainties: dict[str, list[str]] = (
@@ -2629,9 +2677,7 @@ def _declared_field_verdict(
         else {}
     )
     field_verdicts: list[tuple[str, _Position]] = []
-    for field in origin_symbol["fields"]:
-        if not isinstance(field, dict) or not isinstance(field.get("name"), str):
-            continue
+    for field in fields:
         annotation = field.get("annotation") or ""
         verdict = _boundary_type_verdict(
             annotation,
@@ -2743,6 +2789,272 @@ def _field_position_verdict(
     )
 
 
+def _recursive_tuple_arguments(
+    shape: TypeShape, module: str, imports: BindingIndex, classes: BindingIndex
+) -> tuple[TypeShape, ...] | None:
+    if not isinstance(shape, TypeApplication) or not shape.arguments:
+        return None
+    arguments = _bound_alias_application(
+        shape, "tuple", len(shape.arguments), module, imports, classes
+    )
+    head = shape.head
+    name = (
+        head.name
+        if isinstance(head, TypeName)
+        else head.owner.name
+        if isinstance(head, TypeMember) and isinstance(head.owner, TypeName)
+        else None
+    )
+    imported = imports.get((module, name)) if name is not None else None
+    if imported is not None and (
+        not isinstance(imported, dict) or imported.get("source_binding_unique") is not True
+    ):
+        return None
+    return arguments
+
+
+def _recursive_dto_fields(symbol: RecordData | _AmbiguousBinding | None) -> list[RecordData] | None:
+    """A recursive guard needs every field bound to a complete native declaration inventory."""
+    if (
+        not isinstance(symbol, dict)
+        or symbol.get("symbol_category") != "class"
+        or parse_symbol_class_kind(symbol.get("class_kind")) is not SymbolClassKind.DATACLASS
+        or symbol.get("source_binding_unique") is not True
+        or symbol.get("namespace_bound") is not True
+        or symbol.get("frozen_object") is not True
+        or symbol.get("class_body_control_flow") is not False
+        or symbol.get("definition_contexts") != []
+        or symbol.get("base_roots") != []
+        or symbol.get("bases") != []
+        or "parent" not in symbol
+        or symbol["parent"] is not None
+        or "lexical_parent_id" not in symbol
+        or symbol["lexical_parent_id"] is not None
+    ):
+        return None
+    fields: list[RecordData] = symbol.get("fields", [])
+    attributes = symbol.get("attribute_declarations", [])
+    inventories = [
+        item
+        for item in symbol.get("member_inventories", ()) or ()
+        if item["kind"] == MemberKind.ATTRIBUTE and item["status"] == InventoryStatus.COMPLETE
+    ]
+    if (
+        not fields
+        or len(inventories) != 1
+        or set(inventories[0]["definition_ids"]) != {item["definition_id"] for item in attributes}
+        or sorted((item["name"], item.get("annotation")) for item in fields)
+        != sorted((item["name"], item.get("annotation")) for item in attributes)
+    ):
+        return None
+    return fields
+
+
+def _recursive_dto_alias_verdict(
+    alias: str,
+    resolved: tuple[str, str],
+    contract: ArchitectureContract,
+    exports: dict[str, frozenset[str]],
+    imports: BindingIndex,
+    classes: BindingIndex,
+    visited: frozenset[tuple[str, str]],
+    aliases_seen: frozenset[tuple[str, str]],
+    type_shapes: TypeShapeIndex,
+) -> _Position:
+    """Close one self leaf only for a complete DTO sum with an independent scalar ground."""
+    unknown = _Position(undecidable=_Cause.OTHER, resolved=(resolved,), named_origins=(resolved,))
+    if len(aliases_seen) != 1 or not isinstance(shape := type_shapes.get(alias), TypeUnion):
+        return unknown
+    module = resolved[0]
+    guarded = grounded = False
+    pending = [shape.left, shape.right]
+    for arm in pending:
+        if isinstance(arm, TypeUnion):
+            pending.extend((arm.left, arm.right))
+            continue
+        if not isinstance(arm, TypeName):
+            return unknown
+        identity = _named_type_verdict(
+            arm.name,
+            module,
+            contract,
+            exports,
+            imports,
+            classes,
+            type_shapes=type_shapes,
+            enter_collections=False,
+            enter_fields=False,
+            visited=visited,
+            aliases_seen=aliases_seen,
+            require_static_constant=False,
+        )
+        if len(identity.named_origins) != 1 or identity.named_origins[0][0] != module:
+            return unknown
+        origin = identity.named_origins[0]
+        fields = _recursive_dto_fields(classes.get(origin))
+        if fields is None:
+            return unknown
+        guarded = guarded or origin in visited
+        scalar_fields = [type_shapes.get(field.get("annotation", "")) for field in fields]
+        if not all(
+            isinstance(field, TypeName)
+            and not _named_type_verdict(
+                field.name,
+                module,
+                contract,
+                exports,
+                imports,
+                classes,
+                type_shapes=type_shapes,
+                enter_collections=False,
+                enter_fields=False,
+                visited=visited,
+                aliases_seen=aliases_seen,
+                require_static_constant=False,
+            ).named_origins
+            or isinstance(field, TypeLiteral)
+            and field.kind is LiteralKind.NONE
+            for field in scalar_fields
+        ):
+            continue
+        base = _declared_field_verdict(
+            classes.get(origin),
+            module,
+            contract,
+            exports,
+            imports,
+            classes,
+            type_shapes=type_shapes,
+            visited=frozenset({origin}),
+            _aliases_seen=aliases_seen,
+        )
+        grounded = grounded or base.violation is None and base.undecidable is None
+    return replace(unknown, undecidable=None) if guarded and grounded else unknown
+
+
+def _guarded_tuple_alias(
+    annotation: str | None,
+    module: str,
+    contract: ArchitectureContract,
+    exports: dict[str, frozenset[str]],
+    imports: BindingIndex,
+    classes: BindingIndex,
+    aliases_seen: frozenset[tuple[str, str]],
+    type_shapes: TypeShapeIndex,
+) -> tuple[str, str] | None:
+    if annotation is None or len(aliases_seen) != 1:
+        return None
+    shape = type_shapes.get(annotation)
+    if shape is None:
+        return None
+    arguments = _recursive_tuple_arguments(shape, module, imports, classes)
+    if (
+        arguments is None
+        or len(arguments) != 2
+        or not isinstance(arguments[1], TypeLiteral)
+        or arguments[1].kind is not LiteralKind.ELLIPSIS
+    ):
+        return None
+    origin = next(iter(aliases_seen))
+    symbol = classes.get(origin)
+    if (
+        not isinstance(symbol, dict)
+        or symbol.get("record_kind") != "type_alias"
+        or symbol.get("source_binding_unique") is not True
+        or not isinstance(alias := symbol.get("alias"), str)
+        or not isinstance(body := type_shapes.get(alias), TypeUnion)
+    ):
+        return None
+    pending = [body.left, body.right]
+    for arm in pending:
+        if isinstance(arm, TypeUnion):
+            pending.extend((arm.left, arm.right))
+        elif (
+            isinstance(arm, TypeName)
+            and not _named_type_verdict(
+                arm.name,
+                origin[0],
+                contract,
+                exports,
+                imports,
+                classes,
+                type_shapes=type_shapes,
+                enter_collections=False,
+                enter_fields=False,
+                visited=frozenset(),
+                aliases_seen=aliases_seen,
+                require_static_constant=False,
+            ).named_origins
+            or isinstance(arm, TypeLiteral)
+            and arm.kind is LiteralKind.NONE
+        ):
+            base = _boundary_type_verdict(
+                arm.text, origin[0], contract, exports, imports, classes, type_shapes=type_shapes
+            )
+            if base.violation is None and base.undecidable is None:
+                return origin
+    return None
+
+
+def _recursive_tuple_parameter(
+    annotation: str,
+    origin: tuple[str, str],
+    module: str,
+    contract: ArchitectureContract,
+    exports: dict[str, frozenset[str]],
+    imports: BindingIndex,
+    classes: BindingIndex,
+    *,
+    type_shapes: TypeShapeIndex,
+    visited: frozenset[tuple[str, str]],
+    enter_fields: bool,
+    aliases_seen: frozenset[tuple[str, str]],
+) -> _Position | None:
+    shape = type_shapes.get(annotation)
+    if isinstance(shape, TypeName):
+        identity = _named_type_verdict(
+            shape.name,
+            module,
+            contract,
+            exports,
+            imports,
+            classes,
+            type_shapes=type_shapes,
+            enter_collections=False,
+            enter_fields=False,
+            visited=visited,
+            aliases_seen=aliases_seen,
+            require_static_constant=False,
+        )
+        if identity.named_origins == (origin,):
+            return _imported_alias_verdict(identity, module, shape.name, imports)
+    if not isinstance(shape, TypeApplication):
+        return None
+    arguments = _recursive_tuple_arguments(shape, module, imports, classes)
+    if arguments is None or any(isinstance(argument, TypeUnpack) for argument in arguments):
+        return None
+    ellipses = [
+        index
+        for index, argument in enumerate(arguments)
+        if isinstance(argument, TypeLiteral) and argument.kind is LiteralKind.ELLIPSIS
+    ]
+    if ellipses and (len(arguments) != 2 or ellipses != [1]):
+        return None
+    return _collection_verdict(
+        annotation,
+        module,
+        contract,
+        exports,
+        imports,
+        classes,
+        type_shapes=type_shapes,
+        visited=visited,
+        enter_fields=enter_fields,
+        _aliases_seen=aliases_seen,
+        _recursive_alias=origin,
+    )
+
+
 def _collection_verdict(
     annotation: str,
     module: str,
@@ -2755,6 +3067,7 @@ def _collection_verdict(
     visited: frozenset[tuple[str, str]] = frozenset(),
     enter_fields: bool = True,
     _aliases_seen: frozenset[tuple[str, str]] = frozenset(),
+    _recursive_alias: tuple[str, str] | None = None,
 ) -> _Position | None:
     """Decide a measured collection's parameter types (AD-67).
 
@@ -2776,6 +3089,8 @@ def _collection_verdict(
         visited=visited,
         enter_fields=enter_fields,
         _aliases_seen=_aliases_seen,
+        _recursive_alias=_recursive_alias,
+        _tuple_annotation=annotation,
         type_shapes=type_shapes,
     )
     return _Position(
@@ -2831,13 +3146,42 @@ def _combined_annotation_verdict(
     visited: frozenset[tuple[str, str]],
     enter_fields: bool,
     _aliases_seen: frozenset[tuple[str, str]] = frozenset(),
+    _recursive_alias: tuple[str, str] | None = None,
+    _tuple_annotation: str | None = None,
 ) -> _Position:
+    recursive = _recursive_alias or _guarded_tuple_alias(
+        _tuple_annotation,
+        module,
+        contract,
+        exports_by_module,
+        imports_by_binding,
+        classes_by_location,
+        _aliases_seen,
+        type_shapes,
+    )
     decided = [
         (
             parameter,
             _Position()
             if parameter == "None"
-            else _boundary_type_verdict(
+            else (
+                _recursive_tuple_parameter(
+                    parameter,
+                    recursive,
+                    module,
+                    contract,
+                    exports_by_module,
+                    imports_by_binding,
+                    classes_by_location,
+                    type_shapes=type_shapes,
+                    visited=visited,
+                    enter_fields=enter_fields,
+                    aliases_seen=_aliases_seen,
+                )
+                if recursive is not None
+                else None
+            )
+            or _boundary_type_verdict(
                 parameter,
                 module,
                 contract,
@@ -2960,6 +3304,87 @@ def _property_chains(symbols: Sequence[RawRecord]) -> frozenset[str]:
     )
 
 
+def _contextmanager_return(data: RecordData, position: str) -> ContextManagerSignature | None:
+    if (
+        position != "return"
+        or data.get("symbol_category") != "function"
+        or data.get("source_binding_unique") is not True
+        or data.get("namespace_bound") is not True
+        or "contextmanager_signature" not in data
+    ):
+        return None
+    try:
+        return contextmanager_signature(freeze_data(data["contextmanager_signature"]))
+    except ValueError:
+        return None
+
+
+def _function_return(data: RecordData) -> str:
+    proof = _contextmanager_return(data, "return")
+    if proof is None:
+        return data["returns"] or ""
+    result = proof.effective_return
+    return f"{result.wrapper}[{result.payload}]"
+
+
+def _contextmanager_verdict(
+    proof: ContextManagerSignature,
+    annotation: str,
+    module: str,
+    contract: ArchitectureContract,
+    exports: dict[str, frozenset[str]],
+    imports: BindingIndex,
+    classes: BindingIndex,
+    shapes: TypeShapeIndex,
+) -> _Position:
+    result = proof.effective_return
+    shape = shapes.get(annotation)
+    if (
+        annotation != f"{result.wrapper}[{result.payload}]"
+        or not isinstance(shape, TypeApplication)
+        or shape.tuple_arguments
+        or not isinstance(shape.head, TypeMember)
+        or shape.head.text != result.wrapper
+        or len(shape.arguments) != 1
+        or shape.arguments[0].text != result.payload
+    ):
+        return _Position(undecidable=_Cause.OTHER)
+    payload = _boundary_type_verdict(
+        result.payload, module, contract, exports, imports, classes, type_shapes=shapes
+    )
+    origin_module, _, origin_name = result.wrapper.rpartition(".")
+    return replace(
+        payload,
+        resolved=tuple(sorted({*payload.resolved, (origin_module, origin_name)})),
+        named_origins=tuple(sorted({*payload.named_origins, (origin_module, origin_name)})),
+    )
+
+
+def _declared_function_signature(data: RecordData) -> bool:
+    """A source signature does not assert future runtime member stability."""
+    return (
+        data.get("source_binding_unique") is True
+        and data.get("namespace_bound") is True
+        and (
+            data.get("signature_decorators_proven") is True
+            or _contextmanager_return(data, "return") is not None
+        )
+    )
+
+
+def _source_local_function(data: RecordData) -> bool:
+    parent = data.get("parent")
+    return (
+        data.get("namespace_bound") is False
+        and data.get("source_binding_unique") is True
+        and data.get("declared_in_all") is False
+        and data.get("definition_contexts") == []
+        and isinstance(parent, str)
+        and isinstance(data.get("lexical_parent_id"), str)
+        and data.get("qualified_name") == f"{parent}.{data['name']}"
+    )
+
+
 def _declared_facade_positions(
     item: RawRecord,
     contract: ArchitectureContract,
@@ -2971,12 +3396,7 @@ def _declared_facade_positions(
     *,
     include_fields: bool = False,
 ) -> DeclaredFacade | None:
-    """The (module, qualified name, annotated positions) for one declared facade callable.
-
-    Methods count only when their declaring class is proven exported. A class's inherited
-    surface starts as a placeholder; the shared local-chain proof may discharge it.
-    No rule is consulted: facade membership is a fact about the contract and scan.
-    """
+    """Retain all positions of a declared facade, including uncertain and inherited ones."""
     data = item["data"]
     if item["kind"] == "class" and data.get("symbol_category") == "class":
         return _declared_facade_inherited_positions(
@@ -3005,9 +3425,14 @@ def _declared_facade_positions(
         return None
     module, name = data["module"], data["name"]
     facade_entries: list[tuple[str, str, str, bool]] = []
+    signature_uncertain = not _declared_function_signature(data)
     component = contract.component_for(module)
-    if component is not None and facade_covers(module, name, component, exports_by_module):
-        facade_entries.append((module, name, module, False))
+    if (
+        component is not None
+        and facade_covers(module, name, component, exports_by_module)
+        and (not _source_local_function(data) or f"{module}:{name}" in (component.public or ()))
+    ):
+        facade_entries.append((module, name, module, signature_uncertain))
 
     origin = data["qualified_name"]
     reexport_entries = _reexport_facade_entries(
@@ -3018,18 +3443,19 @@ def _declared_facade_positions(
         uncertain_reexport_origins or {},
         reexports,
     )
-    facade_entries.extend(reexport_entries)
+    facade_entries.extend(
+        (module, name, resolution, uncertain or signature_uncertain)
+        for module, name, resolution, uncertain in reexport_entries
+    )
     if not facade_entries:
         return None
     facade_entries = sorted(set(facade_entries))
     facade_module, facade_name, resolution_module, _ = facade_entries[0]
-    # An unannotated position carries an empty annotation rather than being dropped: it is a
-    # position of the facade the rule cannot decide, and dropping it hid it from the rule's own
-    # denominator (AD-67).
+    # Missing annotations remain in the rule's denominator (AD-67).
     positions = [
         (parameter["name"], parameter["annotation"] or "") for parameter in data["parameters"]
     ]
-    positions.append(("return", data["returns"] or ""))
+    positions.append(("return", _function_return(data)))
     return (
         facade_module,
         f"{facade_module}.{facade_name}",
@@ -3069,7 +3495,6 @@ def _declared_facade_inherited_positions(
             imports,
             uncertain_reexport_origins or {},
             reexports,
-            member_surface=True,
         )
     )
     if not entries:
@@ -3152,6 +3577,35 @@ def _method_signature_positions(data: RecordData) -> list[tuple[str, str]]:
     return positions
 
 
+def _reexport_declaration_proven(
+    data: RecordData, by_alias: dict[str, tuple[RawRecord, ...]]
+) -> bool:
+    chain = data.get("reexport_chain", ())
+    if not chain or data.get("origin_definition") != chain[-1]:
+        return False
+    route = (f"{data['source_module']}.{data['binding']}", *chain)
+    if len(set(route)) != len(route):
+        return False
+    for index, alias in enumerate(route[:-1]):
+        hops = {
+            item["id"]: item["data"]
+            for item in by_alias.get(alias, ())
+            if f"{item['data']['source_module']}.{item['data']['binding']}" == alias
+            and item["data"].get("module_level_import") is True
+        }
+        if len(hops) != 1:
+            return False
+        [hop] = hops.values()
+        if (
+            hop.get("source_binding_unique") is not True
+            or hop.get("origin_binding_unique") is not True
+            or hop.get("origin_definition") != route[-1]
+            or tuple(hop.get("reexport_chain", ())) != route[index + 1 :]
+        ):
+            return False
+    return True
+
+
 def _reexport_facade_entries(
     origin: str,
     contract: ArchitectureContract,
@@ -3159,8 +3613,6 @@ def _reexport_facade_entries(
     imports: Sequence[RawRecord],
     uncertain_reexport_origins: UncertainReexportOrigins,
     reexports: ReexportIndex | None = None,
-    *,
-    member_surface: bool = False,
 ) -> list[FacadeEntry]:
     """Match re-export facts while keeping uncertain bindings scoped to one entry."""
     indexed = reexports or _reexport_index(imports)
@@ -3190,20 +3642,11 @@ def _reexport_facade_entries(
         facade_module = imported_data["source_module"]
         binding = imported_data["binding"]
         resolution_module, _, _ = origin.rpartition(".")
-        member_uncertainty = member_surface and (
-            imported_data.get("source_member_binding_static") is False
-            or imported_data.get("origin_member_binding_static") is False
-            or any(
-                item["data"].get("source_member_binding_static") is False
-                for alias in chain
-                for item in by_alias.get(alias, ())
-            )
-        )
         entry_uncertain = (
             own_uncertainty
             or binding_key in ambiguous_bindings
             or inherited_uncertainty
-            or member_uncertainty
+            or not _reexport_declaration_proven(imported_data, by_alias)
         )
         owner = contract.component_for(facade_module)
         if (
@@ -3337,6 +3780,7 @@ def facade_signature_types(
             methods_by_parent,
             type_shapes=type_shapes,
         )
+    resolved_types_by_annotation: dict[tuple[str, str], tuple[str, ...]] = {}
     recorded: list[RawRecord] = []
     for item in symbols:
         found = _declared_facade_positions(
@@ -3350,8 +3794,9 @@ def facade_signature_types(
             include_fields=True,
         )
         has_proven_facade = found is not None and any(not entry[3] for entry in found[4])
-        names = (
+        position_types = (
             _resolved_position_types(
+                item,
                 found[3],
                 found[2],
                 contract,
@@ -3359,10 +3804,13 @@ def facade_signature_types(
                 imports_by_binding,
                 classes_by_location,
                 type_shapes=type_shapes,
+                resolved_types_by_annotation=resolved_types_by_annotation,
             )
-            if has_proven_facade and found is not None
+            if found is not None
             else []
         )
+        names = position_types if has_proven_facade else []
+        candidates: list[str] = []
         if found is not None and item["kind"] == "class":
             field_types, field_candidates = _declared_field_reach(
                 item,
@@ -3399,18 +3847,21 @@ def facade_signature_types(
                 type_shapes=type_shapes,
             )
             candidates = sorted(set(candidates) | set(field_candidates))
-            if candidates:
-                raw_candidates = (
-                    item["data"]["facade_type_candidates_by_publisher"]
-                    if "facade_type_candidates_by_publisher" in item["data"]
-                    else {}
-                )
-                by_publisher = dict(raw_candidates)
-                for publisher in found[4]:
+        if found is not None:
+            raw_candidates = (
+                item["data"]["facade_type_candidates_by_publisher"]
+                if "facade_type_candidates_by_publisher" in item["data"]
+                else {}
+            )
+            by_publisher = dict(raw_candidates)
+            for publisher in found[4]:
+                possible = set(candidates) | (set(position_types) if publisher[3] else set())
+                if possible:
                     by_publisher[publisher[0]] = sorted(
                         set(by_publisher[publisher[0]] if publisher[0] in by_publisher else ())
-                        | set(candidates)
+                        | possible
                     )
+            if by_publisher:
                 item = {
                     **item,
                     "data": {**item["data"], "facade_type_candidates_by_publisher": by_publisher},
@@ -3441,6 +3892,7 @@ def _scoped_facade_signature_types(
     """Attach nested facade type evidence to its mount and physical publisher module."""
     property_chains = _property_chains(symbols)
     owners = (contract, *ancestor_contracts)
+    resolved_types_by_annotation: dict[tuple[str, str], tuple[str, ...]] = {}
     recorded: list[RawRecord] = []
     for item in symbols:
         by_mount: dict[str, dict[str, list[str]]] = {}
@@ -3476,19 +3928,19 @@ def _scoped_facade_signature_types(
             if not publishers:
                 continue
             has_proven_facade = any(not entry[3] for entry in publishers)
-            names = (
-                _resolved_position_types(
-                    found[3],
-                    found[2],
-                    contract,
-                    exports_by_module,
-                    imports_by_binding,
-                    classes_by_location,
-                    type_shapes=type_shapes,
-                )
-                if has_proven_facade
-                else []
+            position_types = _resolved_position_types(
+                item,
+                found[3],
+                found[2],
+                contract,
+                exports_by_module,
+                imports_by_binding,
+                classes_by_location,
+                type_shapes=type_shapes,
+                resolved_types_by_annotation=resolved_types_by_annotation,
             )
+            names = position_types if has_proven_facade else []
+            candidates: list[str] = []
             if item["kind"] == "class":
                 field_types, field_candidates = _declared_field_reach(
                     item,
@@ -3525,29 +3977,31 @@ def _scoped_facade_signature_types(
                     type_shapes=type_shapes,
                 )
                 candidates = sorted(set(candidates) | set(field_candidates))
-                if candidates:
-                    raw_candidates = (
-                        item["data"]["facade_type_candidates_by_mount"]
-                        if "facade_type_candidates_by_mount" in item["data"]
-                        else {}
-                    )
-                    all_candidates = dict(raw_candidates)
-                    raw_scoped = all_candidates[scope_id] if scope_id in all_candidates else {}
-                    scoped_candidates = dict(raw_scoped)
-                    for publisher in publishers:
-                        scoped_candidates[publisher[0]] = sorted(
-                            set(
-                                scoped_candidates[publisher[0]]
-                                if publisher[0] in scoped_candidates
-                                else ()
-                            )
-                            | set(candidates)
+            raw_candidates = (
+                item["data"]["facade_type_candidates_by_mount"]
+                if "facade_type_candidates_by_mount" in item["data"]
+                else {}
+            )
+            all_candidates = dict(raw_candidates)
+            raw_scoped = all_candidates[scope_id] if scope_id in all_candidates else {}
+            scoped_candidates = dict(raw_scoped)
+            for publisher in publishers:
+                possible = set(candidates) | (set(position_types) if publisher[3] else set())
+                if possible:
+                    scoped_candidates[publisher[0]] = sorted(
+                        set(
+                            scoped_candidates[publisher[0]]
+                            if publisher[0] in scoped_candidates
+                            else ()
                         )
-                    all_candidates[scope_id] = scoped_candidates
-                    item = {
-                        **item,
-                        "data": {**item["data"], "facade_type_candidates_by_mount": all_candidates},
-                    }
+                        | possible
+                    )
+            if scoped_candidates:
+                all_candidates[scope_id] = scoped_candidates
+                item = {
+                    **item,
+                    "data": {**item["data"], "facade_type_candidates_by_mount": all_candidates},
+                }
             if not names:
                 continue
             for entry in publishers:
@@ -3656,6 +4110,7 @@ def _declared_field_reach(
 
 
 def _resolved_position_types(
+    item: RawRecord,
     module: str,
     positions: Sequence[tuple[str, str]],
     contract: ArchitectureContract,
@@ -3664,6 +4119,7 @@ def _resolved_position_types(
     classes_by_location: BindingIndex,
     *,
     type_shapes: TypeShapeIndex,
+    resolved_types_by_annotation: dict[tuple[str, str], tuple[str, ...]],
 ) -> list[str]:
     """The distinct types one function's annotated positions resolve to, dotted and sorted.
 
@@ -3675,19 +4131,39 @@ def _resolved_position_types(
     drift AD-65 exists to remove, reappearing wherever a future annotation shape is taught to
     only one of the two.
     """
-    names = {
-        f"{origin_module}.{origin_name}"
-        for _, annotation in positions
-        for origin_module, origin_name in _boundary_type_verdict(
-            annotation,
-            module,
-            contract,
-            exports_by_module,
-            imports_by_binding,
-            classes_by_location,
-            type_shapes=type_shapes,
-        ).resolved
-    }
+    names: set[str] = set()
+    for position, annotation in positions:
+        proof = _contextmanager_return(item["data"], position)
+        if proof is not None:
+            verdict = _boundary_type_verdict(
+                annotation,
+                module,
+                contract,
+                exports_by_module,
+                imports_by_binding,
+                classes_by_location,
+                type_shapes=type_shapes,
+                contextmanager=proof,
+            )
+            names.update(f"{origin}.{name}" for origin, name in verdict.resolved)
+            continue
+        key = (module, annotation)
+        reached = resolved_types_by_annotation.get(key)
+        if reached is None:
+            reached = tuple(
+                f"{origin_module}.{origin_name}"
+                for origin_module, origin_name in _boundary_type_verdict(
+                    annotation,
+                    module,
+                    contract,
+                    exports_by_module,
+                    imports_by_binding,
+                    classes_by_location,
+                    type_shapes=type_shapes,
+                ).resolved
+            )
+            resolved_types_by_annotation[key] = reached
+        names.update(reached)
     return sorted(names)
 
 
@@ -5063,6 +5539,7 @@ def _boundary_types_violations(
                         imports_by_binding,
                         classes_by_location,
                         uncertain_bindings=binding_uncertainties.get(position, ()),
+                        contextmanager=_contextmanager_return(data, position),
                         type_shapes=type_shapes,
                     )
                 )
@@ -5353,6 +5830,23 @@ def _uncertain_facade_position_records(
     return records
 
 
+def _proven_provider_bindings(bindings: Sequence[ProviderBinding]) -> frozenset[str]:
+    proven = {
+        binding.qualified_name
+        for binding in bindings
+        if binding.kind is not ProviderBindingKind.ALIAS
+    }
+    while True:
+        extended = proven | {
+            binding.qualified_name
+            for binding in bindings
+            if binding.kind is ProviderBindingKind.ALIAS and binding.target in proven
+        }
+        if extended == proven:
+            return frozenset(proven)
+        proven = extended
+
+
 def _unresolved_public_alias_routes(
     rule: BoundaryTypesRule,
     symbols: Sequence[RawRecord],
@@ -5365,6 +5859,7 @@ def _unresolved_public_alias_routes(
     source_modules: frozenset[str] | None = None,
     *,
     type_shapes: TypeShapeIndex,
+    provider_bindings: Sequence[ProviderBinding] = (),
 ) -> list[RawRecord]:
     records: dict[str, RawRecord] = {}
     symbols_by_binding: dict[tuple[str, str], list[RawRecord]] = defaultdict(list)
@@ -5408,6 +5903,7 @@ def _unresolved_public_alias_routes(
             scanned_modules,
             stable_bindings_by_module,
             type_shapes=type_shapes,
+            external_bindings=_proven_provider_bindings(provider_bindings),
         ):
             continue
         qualified_name = f"{module}.{binding}"
@@ -5440,9 +5936,10 @@ def _public_alias_route_has_unproven_hop(
     stable_bindings_by_module: dict[str, frozenset[str]],
     *,
     type_shapes: TypeShapeIndex,
+    external_bindings: frozenset[str] = frozenset(),
 ) -> bool:
     """A public alias is known only while each traversed binding has one proven definition."""
-    if not route:
+    if not route or len(set(route)) != len(route):
         return True
     module, separator, binding = route[0].rpartition(".")
     if (
@@ -5452,16 +5949,31 @@ def _public_alias_route_has_unproven_hop(
     ):
         return True
     publisher = imports_by_binding.get((module, binding), [])
-    for alias in route[1:]:
+    if len(publisher) != 1:
+        return True
+    publisher_data: RecordData = publisher[0]["data"]
+    if (
+        publisher_data.get("source_binding_unique") is not True
+        or publisher_data.get("reexport_candidate") is True
+        or publisher_data.get("reexport_candidates")
+        or publisher_data.get("origin_binding_unique") is not True
+        or publisher_data.get("module_level_import") is not True
+        or publisher_data.get("origin_definition") != route[-1]
+        or tuple(publisher_data.get("reexport_chain", ())) != route[1:]
+    ):
+        return True
+    for index, alias in enumerate(route[1:], start=1):
         alias_name: str = alias
         module, separator, name = alias_name.rpartition(".")
         if not separator:
             return True
         if module not in scanned_modules:
-            return True
+            return alias != route[-1] or alias not in external_bindings
         definitions = symbols_by_binding.get((module, name), [])
         bindings = imports_by_binding.get((module, name), [])
         if definitions:
+            if alias != route[-1]:
+                return True
             if (
                 alias == route[-1]
                 and not bindings
@@ -5474,23 +5986,48 @@ def _public_alias_route_has_unproven_hop(
                 or name not in stable_bindings_by_module.get(module, frozenset())
             ):
                 return True
-            category = definitions[0]["kind"]
-            if category == "type_alias":
-                definition_data = definitions[0]["data"]
-                if "alias" not in definition_data:
-                    return True
-                alias_expression_text: str = definition_data["alias"]
-                expression = type_shapes.get(alias_expression_text)
-                return not (
-                    (isinstance(expression, TypeUnion)) or isinstance(expression, TypeApplication)
-                )
-            return category not in {"function", "class", "static_constant"}
+            return not _public_alias_definition_proven(definitions[0], type_shapes)
         if len(bindings) != 1:
             return True
         binding_data = bindings[0]["data"]
-        if not binding_data["reexport"]:
+        if (
+            binding_data.get("source_binding_unique") is not True
+            or binding_data.get("reexport_candidate") is True
+            or binding_data.get("reexport_candidates")
+            or binding_data.get("origin_binding_unique") is not True
+            or binding_data.get("module_level_import") is not True
+            or binding_data.get("origin_definition") != route[-1]
+            or tuple(binding_data.get("reexport_chain", ())) != route[index + 1 :]
+        ):
             return True
     return False
+
+
+def _public_alias_definition_proven(item: RawRecord, type_shapes: TypeShapeIndex) -> bool:
+    category = item["kind"]
+    data = item["data"]
+    if category == "function":
+        return _declared_function_signature(data)
+    if category == "type_alias":
+        if "alias" not in data:
+            return False
+        expression = type_shapes.get(data["alias"])
+        return isinstance(expression, TypeUnion | TypeApplication)
+    if category == "dynamic_binding":
+        annotation = data.get("annotation")
+        return (
+            data.get("source_binding_unique") is True
+            and isinstance(annotation, str)
+            and annotation in type_shapes
+            and not isinstance(type_shapes[annotation], UnresolvedType)
+        )
+    if category == "class":
+        return data.get("source_binding_unique") is True and (
+            data.get("class_header_static") is True
+            or data.get("typed_dict_header_static") is True
+            or data.get("source_class_header_static") is True
+        )
+    return category == "static_constant"
 
 
 def _public_overload_origin_proven(
@@ -5521,6 +6058,7 @@ def _public_overload_origin_proven(
         data = item["data"]
         if not (
             item["kind"] == "function"
+            and _declared_function_signature(data)
             and data.get("overloaded") is True
             and (data.get("overload_signature") is True or data.get("overload_signature") is False)
             and "parent" in data
@@ -5547,6 +6085,7 @@ def boundary_type_limits(
     ancestor_contracts: Sequence[ArchitectureContract] = (),
     *,
     type_shapes: TypeShapeIndex,
+    provider_bindings: Sequence[ProviderBinding] = (),
 ) -> list[RawRecord]:
     """Record undecidable facade positions as a non-gating UNKNOWN, preserving AD-67."""
     rules = [rule for rule in contract.rules if isinstance(rule, BoundaryTypesRule)]
@@ -5595,6 +6134,7 @@ def boundary_type_limits(
                 stable_bindings_by_module or {},
                 source_modules,
                 type_shapes=type_shapes,
+                provider_bindings=provider_bindings,
             )
         )
     return sorted([*positions_out, *limits], key=lambda item: item["id"])
@@ -5679,6 +6219,7 @@ def _boundary_rule_positions(
             if "annotation_binding_uncertainties" in data
             else {},
             data["annotation_scope"] if "annotation_scope" in data else None,
+            source_data=data,
             type_shapes=type_shapes,
         )
         seen += len(positions)
@@ -5765,6 +6306,7 @@ def _undecidable_declared_positions(
     binding_uncertainties: dict[str, list[str]] | None = None,
     annotation_scope: str | None = None,
     *,
+    source_data: RecordData | None = None,
     type_shapes: TypeShapeIndex,
 ) -> list[tuple[dict[str, object], str | None]]:
     if binding_uncertainties is None:
@@ -5784,6 +6326,11 @@ def _undecidable_declared_positions(
                 imports_by_binding,
                 classes_by_location,
                 uncertain_bindings=binding_uncertainties.get(position, ()),
+                contextmanager=(
+                    _contextmanager_return(source_data, position)
+                    if source_data is not None
+                    else None
+                ),
                 type_shapes=type_shapes,
             )
         )
@@ -5876,15 +6423,24 @@ def _public_api_positions(
     if symbol["kind"] != "function":
         return [], []
     annotations = [
-        parameter["annotation"] for parameter in data["parameters"] if parameter["annotation"]
+        (parameter["name"], parameter["annotation"])
+        for parameter in data["parameters"]
+        if parameter["annotation"]
     ]
     if data["returns"]:
-        annotations.append(data["returns"])
+        annotations.append(("return", _function_return(data)))
     return [
         _boundary_type_verdict(
-            annotation, data["module"], contract, exports, imports, classes, type_shapes=type_shapes
+            annotation,
+            data["module"],
+            contract,
+            exports,
+            imports,
+            classes,
+            type_shapes=type_shapes,
+            contextmanager=_contextmanager_return(data, position),
         )
-        for annotation in annotations
+        for position, annotation in annotations
     ], []
 
 

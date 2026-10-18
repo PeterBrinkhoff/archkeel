@@ -4,6 +4,7 @@
 import ast
 import json
 import sys
+from collections import Counter
 from hashlib import sha256
 from pathlib import Path
 from unittest.mock import patch
@@ -1355,9 +1356,9 @@ def test_collect_typing_signals_scopes_a_nested_function_to_its_enclosing_functi
             "def make() -> list[str]:\n    return []\n\n\n"
             'def f() -> None:\n    make().append("x")\n',
             "make().append",
-            "unresolved",
-            [],
-            "expression is dynamic",
+            "partially_resolved",
+            ["builtins.list.append"],
+            "call result of documented type, unproven at runtime",
         ),
         (
             "def f() -> None:\n    items = []\n    items.frobnicate()\n",
@@ -1391,7 +1392,7 @@ def test_receiver_typed_calls_resolve_or_name_why_not(
 
     Covers each resolution source in turn — a literal written at the call site, a local
     bound to a literal, an annotated parameter, an annotated local — plus a call-result
-    receiver, which AD-37 leaves out of scope, a method the frozen table does not name, and
+    receiver with a unique source return annotation, a method the frozen table does not name, and
     a name rebound to something else (a plain reassignment, then a `for` target): every
     binding of a name must agree, so either rebinding voids it rather than keeping the first
     or the last answer.
@@ -2458,19 +2459,28 @@ def test_boundary_type_position_ids_survive_line_shifts_and_duplicate_definition
         for item in before.observation.records("unknowns") or ()
         if item.kind == "boundary_type_position"
     ]
-    assert len(records) == 2
-    assert len({item.id for item in records}) == 2
-    ids_by_annotation = {item.data.get("annotation"): item.id for item in records}
+    # Competing definitions leave both argument and return signatures unproven.
+    assert len(records) == 4
+    assert len({item.id for item in records}) == 4
+    assert Counter(
+        (item.data.get("position"), item.data.get("annotation")) for item in records
+    ) == {
+        ("stamp", "datetime.timedelta"): 1,
+        ("stamp", "'Later'"): 1,
+        ("return", "str"): 2,
+    }
+    assert {item.data.get("reason") for item in records} == {"ambiguous_facade"}
+    ids_by_coordinate = {tuple(item.data.entries): item.id for item in records}
     before_bytes = canonical_report_bytes(before.observation)
 
     facade.write_text("\n\nimport datetime\n\n" + first + "\n" + second)
     after = _observe(tmp_path)
     assert after.observation is not None
     assert {
-        item.data.get("annotation"): item.id
+        tuple(item.data.entries): item.id
         for item in after.observation.records("unknowns") or ()
         if item.kind == "boundary_type_position"
-    } == ids_by_annotation
+    } == ids_by_coordinate
     after_bytes = canonical_report_bytes(after.observation)
     delta = delta_payload(
         build_architecture_delta(

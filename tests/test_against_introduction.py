@@ -128,7 +128,7 @@ def test_an_introduced_contract_passes_only_with_its_own_amendment(tmp_path: Pat
         rationale="The mobile app gets its own contract.",
     )
     assert (written.exit_code, written.failures) == (0, ())
-    amendment.write_bytes(files[str(amendment)])
+    amendment.write_bytes(dict(files.entries)[str(amendment)])
     # The before side is no contract at this path: a NUL begins no canonical contract.
     record = parse_amendment(decode_json(amendment.read_bytes()))
     absent = b"\0no contract at mobile/architecture-contract.json"
@@ -165,7 +165,7 @@ def test_an_introduction_record_does_not_verify_the_contract_moved_elsewhere(
         decided_by="Jordan (architect)",
         rationale="The mobile app gets its own contract.",
     )
-    record.write_bytes(files[str(record)])
+    record.write_bytes(dict(files.entries)[str(record)])
     decided = (mobile / "architecture-contract.json").read_text()
     narrowing = {
         "id": "DEP-PRESENTATION-NO-DART-IO",
@@ -226,7 +226,7 @@ def test_a_moved_contract_still_compares_the_baseline_the_revision_holds(tmp_pat
     _, files = run_validate(
         root, config, observe, baseline=baseline, write_baseline=True, accept_new=True
     )
-    baseline.write_bytes(files[str(baseline)])
+    baseline.write_bytes(dict(files.entries)[str(baseline)])
 
     result, _ = run_validate(root, config, observe, against=base, baseline=baseline)
 
@@ -269,7 +269,7 @@ def test_a_baseline_introduced_with_its_contract_adds_no_widening(tmp_path: Path
     )
     baseline = root / "known-violations.json"
     _, files = run_validate(root, SHOP_CONFIG, observe, baseline=baseline, write_baseline=True)
-    baseline.write_bytes(files[str(baseline)])
+    baseline.write_bytes(dict(files.entries)[str(baseline)])
 
     result, _ = run_validate(root, SHOP_CONFIG, observe, against=base, baseline=baseline)
 
@@ -304,7 +304,7 @@ def test_a_baseline_the_revision_holds_as_a_tree_stays_against_invalid(tmp_path:
     shutil.rmtree(root / "known-violations.json")
     baseline = root / "known-violations.json"
     _, files = run_validate(root, SHOP_CONFIG, observe, baseline=baseline, write_baseline=True)
-    baseline.write_bytes(files[str(baseline)])
+    baseline.write_bytes(dict(files.entries)[str(baseline)])
 
     result, _ = run_validate(root, SHOP_CONFIG, observe, against=base, baseline=baseline)
 
@@ -324,7 +324,7 @@ def test_a_baseline_the_revision_lacks_is_still_no_prior_debt(tmp_path: Path) ->
     base = _base(root)
     baseline = root / "known-violations.json"
     _, files = run_validate(root, SHOP_CONFIG, observe, baseline=baseline, write_baseline=True)
-    baseline.write_bytes(files[str(baseline)])
+    baseline.write_bytes(dict(files.entries)[str(baseline)])
 
     result, _ = run_validate(root, SHOP_CONFIG, observe, against=base, baseline=baseline)
 

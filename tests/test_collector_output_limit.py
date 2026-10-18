@@ -12,6 +12,7 @@ from jsonschema import Draft202012Validator
 from test_onboarding import _repository
 
 from archkeel.analyzer.process import ProcessCollector
+from archkeel.analyzer.python.collect import PythonProviderCollector
 from archkeel.cli import main
 from archkeel.cli.config import ConfigError, parse_config
 from archkeel.cli.observe import observer_for
@@ -27,9 +28,11 @@ def test_configured_output_limit_keeps_a_finite_default(language: str, limit: in
     if limit is not None:
         payload += f"collector_output_limit_bytes = {limit}\n"
     config = parse_config(payload.encode())
-    collector = observer_for(
+    selected = observer_for(
         config.language, output_limit_bytes=config.collector_output_limit_bytes
     ).collector
+    assert isinstance(selected, PythonProviderCollector) is (language == "python")
+    collector = selected.collector if isinstance(selected, PythonProviderCollector) else selected
 
     assert isinstance(collector, ProcessCollector)
     assert collector.output_limit_bytes == (64 * 1024 * 1024 if limit is None else limit)

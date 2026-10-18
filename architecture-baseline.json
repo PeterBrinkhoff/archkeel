@@ -11,7 +11,8 @@
         "archkeel.ir.codec:parse_observation"
       ],
       "cli -> analyzer": [
-        "archkeel.analyzer.process:ProcessCollector"
+        "archkeel.analyzer.process:ProcessCollector",
+        "archkeel.analyzer.python.collect:PythonProviderCollector"
       ],
       "cli -> check": [
         "archkeel.check.git:read_blob",
@@ -53,7 +54,7 @@
     "cycle_edges": 0,
     "private_crossings": 0,
     "typing_positions": 52,
-    "unknown_positions": 58,
+    "unknown_positions": 0,
     "untyped_private_accesses": 0
   },
   "schema_version": "1.3.0",

@@ -598,6 +598,42 @@ def test_alias_body_requires_positive_binding_evidence(flag: str, value: bool | 
         aliases,
         type_shapes=_shape_facts("Alias", aliases),
     )
-    assert verdict.undecidable == "other"
-    assert verdict.violation is None
+    if flag == "source_binding_unique":
+        assert verdict.undecidable == "other"
+        assert verdict.violation is None
+    else:
+        assert verdict.undecidable is None
+        assert verdict.violation == "instead of a typed model"
     assert verdict.named_origins == (("sample", "Alias"),)
+
+
+@pytest.mark.parametrize(
+    ("annotation", "violation", "unknown"),
+    [
+        ("str | int", None, None),
+        ("str | object", "holding object instead of a typed model", None),
+        ("str | Missing", None, "unresolved_name"),
+    ],
+)
+def test_declared_alias_body_is_separate_from_runtime_member_exposure(
+    annotation: str, violation: str | None, unknown: str | None
+) -> None:
+    module = _module(
+        f"from typing import TypeAlias\nValue: TypeAlias = {annotation}\nmutate(Value)\n"
+    )
+    symbols, _, _ = collect_symbols([module], {})
+    imports, aliases = boundary_type_indexes(symbols, [])
+    value = aliases[("sample", "Value")]
+    assert value["source_binding_unique"] is True
+    assert value["source_member_binding_static"] is False
+    verdict = _boundary_type_verdict(
+        "Value",
+        "sample",
+        None,
+        {},
+        imports,
+        aliases,
+        type_shapes=_shape_facts("Value", aliases),
+    )
+    assert verdict.violation == violation
+    assert verdict.undecidable == unknown

@@ -103,6 +103,39 @@ def test_parse_observation_is_immutable_and_nested_data_is_tuple():
     assert observation_payload(value)["modules"][0]["data"]["nested"] == {"value": 1}
 
 
+def test_canonical_observation_preserves_nonempty_failure_records():
+    raw = raw_observation()
+    raw["coverage"]["failures"] = [raw["modules"][0]]
+    model = parse_observation(raw)
+    payload = observation_payload(model)
+    assert payload["coverage"]["failures"] == raw["coverage"]["failures"]
+    assert payload["modules"] == raw["modules"]
+    assert parse_observation(decode_canonical_model(encode_canonical_model(payload))) == model
+
+
+def test_canonical_observation_preserves_literal_string_sentinels():
+    raw = raw_observation()
+    raw["modules"][0]["data"]["literal_values"] = [
+        "$m",
+        "$$m",
+        "$$$m",
+        "$0",
+        "$$0",
+        "$$$0",
+        "other",
+    ]
+    encoded = encode_canonical_model(raw)
+    assert decode_canonical_model(encoded) == raw
+
+
+def test_historical_escaped_missing_literal_keeps_its_meaning():
+    encoded = encode_canonical_model(raw_observation())
+    fields = encoded["encoding"]["section_data_fields"]["modules"]
+    encoded["modules"][0][-1][fields.index("items")] = ["$$$m"]
+    decoded = decode_canonical_model(encoded)
+    assert decoded["modules"][0]["data"]["items"] == ["$$$m"]
+
+
 def test_parse_rejects_unknown_top_level_field():
     raw = raw_observation()
     raw["extra"] = True

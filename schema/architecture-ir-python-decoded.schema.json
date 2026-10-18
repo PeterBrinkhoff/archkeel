@@ -353,6 +353,12 @@
                     "items": {
                       "$ref": "#/$defs/member_inventory"
                     }
+                  },
+                  "source_class_header_static": {
+                    "type": "boolean"
+                  },
+                  "contextmanager_signature": {
+                    "$ref": "#/$defs/ContextManagerSignature"
                   }
                 }
               }
@@ -1224,6 +1230,128 @@
           "additionalProperties": false
         }
       }
+    },
+    "CPythonPartialIntrinsic": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "cpython-partial-v1"
+        },
+        "implementation": {
+          "const": "cpython"
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^3\\.(11|12)\\.[0-9]+$"
+        },
+        "cache_tag": {
+          "enum": [
+            "cpython-311",
+            "cpython-312"
+          ]
+        },
+        "origin": {
+          "const": "built-in"
+        }
+      },
+      "required": [
+        "kind",
+        "implementation",
+        "version",
+        "cache_tag",
+        "origin"
+      ],
+      "additionalProperties": false
+    },
+    "CPythonABCBranch": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "cpython-abc-import-v1"
+        },
+        "module": {
+          "const": "_abc"
+        },
+        "origin": {
+          "const": "built-in"
+        },
+        "members": {
+          "const": [
+            "get_cache_token",
+            "_abc_init",
+            "_abc_register",
+            "_abc_instancecheck",
+            "_abc_subclasscheck",
+            "_get_dump",
+            "_reset_registry",
+            "_reset_caches"
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "module",
+        "origin",
+        "members"
+      ],
+      "additionalProperties": false
+    },
+    "ContextManagerReturn": {
+      "type": "object",
+      "properties": {
+        "wrapper": {
+          "type": "string",
+          "minLength": 1
+        },
+        "payload": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "wrapper",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    "ContextManagerSignature": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "sync-generator-contextmanager-v1"
+        },
+        "factory": {
+          "type": "string",
+          "minLength": 1
+        },
+        "effective_return": {
+          "$ref": "#/$defs/ContextManagerReturn"
+        },
+        "support_evidence_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "partial": {
+          "$ref": "#/$defs/CPythonPartialIntrinsic"
+        },
+        "abc": {
+          "$ref": "#/$defs/CPythonABCBranch"
+        }
+      },
+      "required": [
+        "kind",
+        "factory",
+        "effective_return",
+        "support_evidence_ids",
+        "partial",
+        "abc"
+      ],
+      "additionalProperties": false
     }
   }
 }

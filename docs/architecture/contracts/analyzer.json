@@ -55,15 +55,18 @@
       "decided_by": "agent",
       "inside": "docs/architecture/contracts/python.json",
       "planned": [],
-      "public": [],
+      "public": [
+        "archkeel.analyzer.python.collect:PythonProviderCollector"
+      ],
       "requires": [
         {
           "component": "process",
-          "rationale": "Use the shared runtime-provenance reader without importing the sibling language adapter.",
+          "rationale": "Reuse runtime provenance and bounded process transport for source-bound provider collection without importing sibling adapters.",
           "through": [
             "archkeel.analyzer.bootstrap:is_direct_entrypoint",
             "archkeel.analyzer.runtime:collector_provenance",
-            "archkeel.analyzer.runtime:python_requirement"
+            "archkeel.analyzer.runtime:python_requirement",
+            "archkeel.analyzer.process:ProcessCollector"
           ]
         }
       ]
@@ -539,6 +542,43 @@
             ],
             "returns": "_ProcessPlatform | None"
           }
+        },
+        {
+          "id": "process.collect_response",
+          "kind": "method",
+          "qualified_name": "archkeel.analyzer.process.ProcessCollector.collect_response",
+          "language": "python",
+          "parent_id": "process",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "signature": {
+            "parameters": [
+              {
+                "name": "self",
+                "annotation": null,
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "request",
+                "annotation": "CollectionRequest",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              }
+            ],
+            "returns": "CollectionResponse | CollectionError"
+          },
+          "presence": "planned",
+          "responsibilities": [
+            "Return a bounded authenticated response, including captured provider bytes for the native survey."
+          ],
+          "provenance": [
+            "docs/architecture/language-adapter-target.md"
+          ]
         }
       ],
       "relationships": [
@@ -584,6 +624,25 @@
           "id": "PORT-REL-9",
           "kind": "calls",
           "source_id": "process.collect",
+          "target_id": "process.collect_response",
+          "resolution": "not_applicable",
+          "candidate_ids": [],
+          "expression": null,
+          "evidence_ids": [],
+          "provenance": [
+            "docs/architecture/language-adapter-target.md"
+          ],
+          "record_ids": [],
+          "candidate_count": null,
+          "candidates_truncated": false,
+          "reason": "The facts-only API uses the same bounded response runner as provider capture.",
+          "through": [],
+          "decided_by": null
+        },
+        {
+          "id": "PORT-REL-PROVIDER-EXCHANGE",
+          "kind": "calls",
+          "source_id": "process.collect_response",
           "target_id": "process._exchange",
           "resolution": "not_applicable",
           "candidate_ids": [],
@@ -595,7 +654,7 @@
           "record_ids": [],
           "candidate_count": null,
           "candidates_truncated": false,
-          "reason": "Process collection delegates bounded pipe exchange to its private method.",
+          "reason": "The shared response runner owns bounded pipe exchange and cleanup.",
           "through": [],
           "decided_by": null
         }

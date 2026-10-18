@@ -132,7 +132,7 @@ def test_a_baseline_holds_a_known_gap_below_the_target(tmp_path: Path) -> None:
     baseline = root / "architecture-baseline.json"
 
     written, files = run_validate(root, CONFIG, observe, baseline=baseline, write_baseline=True)
-    baseline.write_bytes(files[str(baseline)])
+    baseline.write_bytes(dict(files.entries)[str(baseline)])
     held = run_validate(root, CONFIG, observe, baseline=baseline)[0]
 
     assert (written.exit_code, written.diagnostics) == (0, ())
@@ -185,9 +185,9 @@ def test_a_new_name_is_a_rise_that_names_it(tmp_path: Path) -> None:
     )
     assert risen.interface_budgets is not None
     assert risen.interface_budgets[0].new_names == ("shop.model.entities:Discount",)
-    assert refused == {}
+    assert dict(refused.entries) == {}
     assert accepted.exit_code == 0
-    assert parse_validation_baseline(decode_json(files[str(baseline)])).budgets == (
+    assert parse_validation_baseline(decode_json(dict(files.entries)[str(baseline)])).budgets == (
         _model_accepted(*_MODEL, "shop.model.entities:Discount"),
     )
 
@@ -208,7 +208,7 @@ def test_a_removed_name_fails_until_the_baseline_records_it(tmp_path: Path) -> N
         "rewrite the baseline with --write-baseline",
     )
     assert updated.exit_code == 0
-    assert parse_validation_baseline(decode_json(files[str(baseline)])).budgets == (
+    assert parse_validation_baseline(decode_json(dict(files.entries)[str(baseline)])).budgets == (
         _model_accepted(*_MODEL),
     )
 
@@ -244,7 +244,7 @@ def test_a_facade_without_literal_all_is_unknown_with_or_without_a_baseline(
 
     assert run_validate(root, CONFIG, observe)[0].diagnostics == (unknown,)
     held, files = run_validate(root, CONFIG, observe, baseline=baseline, write_baseline=True)
-    assert (held.exit_code, held.diagnostics, files) == (2, (unknown,), {})
+    assert (held.exit_code, held.diagnostics, dict(files.entries)) == (2, (unknown,), {})
 
 
 _STARRED_ALL = (
@@ -464,7 +464,7 @@ def test_moving_a_budget_into_the_baseline_cannot_accept_names_past_its_target(
     (root / "shop/model/entities.py").write_text(entities_with("Discount"))
     baseline = root / "architecture-baseline.json"
     _, files = run_validate(root, CONFIG, observe, baseline=baseline, write_baseline=True)
-    baseline.write_bytes(files[str(baseline)])
+    baseline.write_bytes(dict(files.entries)[str(baseline)])
 
     result = run_validate(root, CONFIG, observe, baseline=baseline, against=base)[0]
 

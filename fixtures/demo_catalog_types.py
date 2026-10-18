@@ -689,7 +689,7 @@ _BOUNDARY_TYPES_ORDINARY_REEXPORT = Variant(
     item="boundary_types:ordinary_reexport",
     summary="An ordinary shop.render.facade module explicitly exports its imported entry in one "
     "literal __all__. boundary_types follows that declared facade to the implementation "
-    "signature; imports without that proof remain UNKNOWN (AD-109).",
+    "signature; unproven bindings remain UNKNOWN (AD-109).",
     files={
         "shop/render/facade.py": HEADER
         + (
@@ -729,9 +729,9 @@ _BOUNDARY_TYPES_ORDINARY_REEXPORT_CHAIN_UNKNOWN = Variant(
     id="class-a-boundary-types-ordinary-reexport-chain-unknown",
     section="class_a",
     item="boundary_types:ordinary_reexport_chain",
-    summary="The public ordinary facade exports render_order through an intermediate ordinary "
-    "module with no literal __all__. That hop cannot prove the broad implementation signature, "
-    "so the route stays UNKNOWN; the facade's local typed safe() remains decidable (AD-109).",
+    summary="Stable source bindings follow render_order through an ordinary intermediate without "
+    "__all__ to its forbidden dict parameter. This proves the boundary violation, not runtime "
+    "binding stability; the historical variant ID is retained (AD-109).",
     files={
         "shop/render/facade.py": HEADER
         + (
@@ -758,13 +758,9 @@ _BOUNDARY_TYPES_ORDINARY_REEXPORT_CHAIN_UNKNOWN = Variant(
         .replace("print(render_order(order))", "print(safe(render_order(order)))"),
         "architecture-contract.json": _render_ordinary_chain_contract(),
     },
-    expected_violations=(),
-    expected_codes=(),
-    expected_unknowns=(
-        ("boundary_type_route", "shop.render.facade.render_order"),
-        ("boundary_type_route", "shop.render.facade"),
-    ),
-    expected_declared_rules="UNKNOWN",
+    expected_violations=("RENDER-TYPES-NOT-DICT",),
+    expected_codes=("rule.violated",),
+    expected_declared_rules="FAIL",
 )
 
 
@@ -1208,12 +1204,12 @@ _PUBLIC_API_ALIAS_MISSING = Variant(
     id="public-api-alias-missing",
     section="validation",
     item="public_api:class_alias_missing",
-    summary="Alias = Child has uncertain member binding; its own and inherited Payload "
-    "exposure remains UNKNOWN (AD-131).",
+    summary="The unique source alias Alias = Child exposes its declared own: Payload field. "
+    "Omitting Payload from public_api is api_surface.missing; this is no runtime member "
+    "stability proof (AD-131).",
     files=_public_api_inherited_fields(declared=False, aliased=True),
     expected_violations=(),
-    expected_codes=(),
-    expected_unknowns=(("api_surface_limit", "shop.model.public_api:Alias"),),
+    expected_codes=("api_surface.missing",),
     expected_declared_rules="UNKNOWN",
 )
 
@@ -1221,12 +1217,11 @@ _PUBLIC_API_ALIAS_DECLARED = Variant(
     id="public-api-alias-declared",
     section="validation",
     item="public_api:class_alias_declared",
-    summary="Declaring Alias and Payload cannot discharge an uncertain alias body; "
-    "its field exposure remains UNKNOWN (AD-131).",
+    summary="Naming the source alias Alias and its declared field type Payload closes that API "
+    "exposure. Independent store ownership still leaves aggregate UNKNOWN (AD-131).",
     files=_public_api_inherited_fields(declared=True, aliased=True),
     expected_violations=(),
     expected_codes=(),
-    expected_unknowns=(("api_surface_limit", "shop.model.public_api:Alias"),),
     expected_declared_rules="UNKNOWN",
 )
 

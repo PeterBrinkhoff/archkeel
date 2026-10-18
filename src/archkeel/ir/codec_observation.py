@@ -8,7 +8,7 @@ from __future__ import annotations
 import re
 from collections import Counter
 from collections.abc import Mapping
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from enum import StrEnum
 from math import isfinite
 from typing import Any, TypeGuard
@@ -19,7 +19,6 @@ from archkeel.ir.codec_wire import (
     _nonempty,
     _object,
     _raw_object,
-    _record_payload,
     _string,
     _strings,
     canonical_json_bytes,
@@ -44,6 +43,7 @@ from archkeel.ir.profiles import ObservedSection, Profile, UnmeasurableScalar, p
 
 from .facts_codec import parse_evidence as parse_evidence
 from .facts_codec import parse_record as parse_record
+from .facts_codec import record_payload as _record_payload
 
 
 class _ObservationVersion(StrEnum):
@@ -62,10 +62,11 @@ class _StringSentinel(StrEnum):
 
 
 def _string_sentinel(value: str) -> _StringSentinel | None:
-    try:
-        return _StringSentinel(value)
-    except ValueError:
-        return None
+    if value == _StringSentinel.MISSING:
+        return _StringSentinel.MISSING
+    if value == _StringSentinel.ESCAPED_MISSING:
+        return _StringSentinel.ESCAPED_MISSING
+    return None
 
 
 def _observation_version(value: RawJson) -> _ObservationVersion:
@@ -359,7 +360,11 @@ def observation_payload(observation: Observation) -> dict[str, RawJson]:
         and observation.runtime.requirement_state != RuntimeRequirementState.DECLARED
     ):
         raise ValueError("runtime.requirement_state requires observation schema 2.0.0")
-    result = _raw_object(asdict(observation))
+    result = _raw_object(
+        asdict(
+            replace(observation, sections=(), coverage=replace(observation.coverage, failures=()))
+        )
+    )
     if observation.python_version is None:
         del result["python_version"]
     if observation.runtime is None:
@@ -445,7 +450,9 @@ def encode_canonical_model(model: dict[str, RawJson]) -> dict[str, RawJson]:
     string_table = sorted(
         value
         for value, count in counts.items()
-        if count >= 2 and len(value) >= 8 and (count - 1) * len(value) - count * 8 > 100
+        # Literal $$m would otherwise collide with historical $$$m escaping.
+        if value == _StringSentinel.ESCAPED_MISSING
+        or (count >= 2 and len(value) >= 8 and (count - 1) * len(value) - count * 8 > 100)
     )
     string_indexes = {value: index for index, value in enumerate(string_table)}
 
@@ -557,7 +564,7 @@ def canonical_report_bytes(model: Observation | dict[str, RawJson]) -> bytes:
 
 
 def _coverage_payload(value: Coverage) -> dict[str, RawJson]:
-    result = _raw_object(asdict(value))
+    result = _raw_object(asdict(replace(value, failures=())))
     result["failures"] = [_record_payload(record) for record in value.failures]
     if value.rules is None:
         del result["rules"]

@@ -490,7 +490,7 @@ def test_nested_declaration_amendment_binds_both_scopes_and_rejects_stale_intent
     )
     assert written.exit_code == 0
     assert written.widenings == ()
-    amendment.write_bytes(files[str(amendment)])
+    amendment.write_bytes(dict(files.entries)[str(amendment)])
     accepted, _ = run_validate(tmp_path, config, observe, against=before, amendment=amendment)
     assert accepted.exit_code == 0
     assert accepted.widenings == ()
@@ -617,7 +617,7 @@ def test_against_rejects_a_rename_that_collides_in_historical_nested_uml(
         rationale="Accept the explicit transition between distinct planned module targets.",
     )
     assert written.exit_code == 0
-    amendment.write_bytes(files[str(amendment)])
+    amendment.write_bytes(dict(files.entries)[str(amendment)])
     accepted, _ = run_validate(
         tmp_path,
         config,

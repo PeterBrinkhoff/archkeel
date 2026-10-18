@@ -474,7 +474,7 @@ def test_adding_value_permission_against_git_requires_amendment(
         rationale="Accept this exact opaque map value before model validation.",
     )
     assert written.exit_code == 0, written.diagnostics
-    amendment.write_bytes(files[str(amendment)])
+    amendment.write_bytes(dict(files.entries)[str(amendment)])
     accepted, _ = run_validate(
         tmp_path,
         ScanConfig((".",), "sample", "contract.json", "0" * 64),

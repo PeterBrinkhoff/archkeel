@@ -41,7 +41,7 @@ def test_shared_run_generates_once_and_reuses_complete_output(tmp_path, monkeypa
         result = {
             "diagnostics": [],
             "observation_complete": "PASS",
-            "declared_rules": "UNKNOWN",
+            "declared_rules": "PASS",
             "expectation_fulfilled": "n/a",
         }
         return subprocess.CompletedProcess(args, 0, json.dumps(result), "")
@@ -98,7 +98,7 @@ def _report(args, **kwargs):
     output.with_name("architecture.report.html").write_text("report")
     return real_subprocess.CompletedProcess(args, 0, json.dumps({
         "diagnostics": [], "observation_complete": "PASS",
-        "declared_rules": "UNKNOWN", "expectation_fulfilled": "n/a",
+        "declared_rules": "PASS", "expectation_fulfilled": "n/a",
     }), "")
 
 subprocess = SimpleNamespace(run=_report)

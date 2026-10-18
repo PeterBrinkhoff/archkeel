@@ -51,7 +51,7 @@ _TOUR_RECEIPT_ORACLE = {
     "DEP-APP-ALLOWS-MODEL": ("DECLARATION", 0, 0, _PROVENANCE),
 }
 _MIXED_TYPES_ORACLE = ("APP-TYPES-NOT-DICT", "FAIL", 1, 1, _PROVENANCE)
-_UNKNOWN_ROUTE_ORACLE = ("RENDER-TYPES-NOT-DICT", "UNKNOWN", 1, 0, _PROVENANCE)
+_UNKNOWN_POSITION_ORACLE = ("APP-TYPES-NOT-DICT", "UNKNOWN", 1, 0, _PROVENANCE)
 _TYPE_CHECKING_ORACLE = ("DEP-APP-NO-STORE-SQLITE", "FAIL", 0, 1, _PROVENANCE)
 
 
@@ -255,23 +255,33 @@ def test_partial_evidence_blocks_resolved_baseline_count_for_same_failed_rule(
     assert not resolved_claims, f"partial evidence lost: {resolved_claims}"
 
 
-def test_unknown_route_is_associated_with_its_rule_not_every_boundary_rule(
+def test_unknown_position_is_associated_with_its_rule_not_every_boundary_rule(
     tmp_path: Path, capsys
 ) -> None:
-    variant = _variant("class-a-boundary-types-ordinary-reexport-chain-unknown")
+    variant = _variant("class-a-boundary-types-opaque-map-values-unknown")
     root = _prepare_repo(tmp_path, dict(variant.files), variant.fixture)
     result, observation = _cli_report(root, tmp_path, capsys)
 
-    rule_id, expected_status, unknowns, violations, provenance = _UNKNOWN_ROUTE_ORACLE
-    assert _fixture_facts(observation, rule_id) == (unknowns, violations, provenance)
+    rule_id, expected_status, unknowns, violations, provenance = _UNKNOWN_POSITION_ORACLE
+    assert _declared(observation, rule_id).provenance == provenance
+    assert not any(rule_id in item.rule_ids for item in observation.records("violations") or ())
     assert result["declared_rules"] == "UNKNOWN"
     _assert_assessment(result, rule_id, expected_status, unknowns, violations, provenance)
-    route = next(
+    position = next(
         record
         for record in observation.records("unknowns") or ()
-        if record.kind == "boundary_type_route" and rule_id in record.rule_ids
+        if record.kind == "boundary_type_position"
+        and rule_id in record.rule_ids
+        and record.data.get("qualified_name") == "shop.app.reports.snapshot"
+        and record.data.get("position") == "pending"
     )
-    assert route.subjects == ("shop.render.facade", "shop.render.facade.render_order")
+    assert position.subjects == ("shop.app", "shop.app.reports", "shop.app.reports.snapshot")
+    assert position.data.get("annotation") == "Missing"
+    assert position.data.get("reason") == "unresolved_name"
+    assert len(position.evidence_ids) == 1
+    location = next(item for item in observation.evidence if item.id == position.evidence_ids[0])
+    assert location.file == "shop/app/reports.py"
+    assert "pending: Missing" in location.excerpt
     assert expected_status == "UNKNOWN"
 
 

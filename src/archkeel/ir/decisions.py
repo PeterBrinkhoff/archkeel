@@ -23,6 +23,7 @@ from .bindings import unread_bindings
 from .codec_contract import parse_dependency_selector
 from .duplication import repeated_logic
 from .facts import RuntimeRequirementState as _RuntimeRequirementState
+from .facts import SourceProfile as _SourceProfile
 from .facts_validation import validate_source_bindings
 from .interfaces import component_owners, owner_of
 from .measurements import RatchetError
@@ -823,6 +824,8 @@ def dependency_binding_id(
         for section in sections
         for record in section.records
         if section.name in {"modules", "imports", "symbols"}
+        or section.name == "references"
+        and record.kind == "script_namespace_effect"
         or section.name == "declarations"
         and record.kind
         in {
@@ -877,6 +880,7 @@ def _dependency_gaps_complete(
             import_ids=(),
             selected_inputs=tuple(str(path) for path in selected),
             source_records=records,
+            allow_script_effects=observation.analyzer.name == _SourceProfile.TYPESCRIPT,
         )
     except ValueError:
         return False

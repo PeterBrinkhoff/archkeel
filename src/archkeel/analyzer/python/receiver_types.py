@@ -70,9 +70,9 @@ _METHOD_TABLES: dict[str, tuple[str, frozenset[str]]] = {
         frozenset(
             (
                 "absolute as_posix as_uri chmod exists expanduser glob is_absolute is_dir is_file "
-                "is_symlink iterdir joinpath lstat mkdir read_bytes read_text relative_to rename "
-                "replace resolve rglob rmdir samefile stat touch unlink with_name with_stem "
-                "with_suffix write_bytes write_text"
+                "is_relative_to is_symlink iterdir joinpath lstat mkdir read_bytes read_text "
+                "relative_to rename replace resolve rglob rmdir samefile stat touch unlink "
+                "with_name with_stem with_suffix write_bytes write_text"
             ).split()
         ),
     ),
@@ -143,6 +143,8 @@ _CONSTRUCTORS: dict[str, str] = {
 # A method on a table type whose documented return is itself a table type, so a chain such
 # as `parser.add_subparsers(...).add_parser(...)` stays typed one step at a time (AD-40).
 _METHOD_RETURNS: dict[tuple[str, str], str] = {
+    ("str", "join"): "str",
+    ("str", "strip"): "str",
     ("argparse.ArgumentParser", "add_subparsers"): "argparse._SubParsersAction",
     ("argparse.ArgumentParser", "add_argument_group"): "argparse._ArgumentGroup",
     ("argparse.ArgumentParser", "add_mutually_exclusive_group"): "argparse._ArgumentGroup",
@@ -165,6 +167,10 @@ _METHOD_RETURNS: dict[tuple[str, str], str] = {
             "replace",
         )
     },
+}
+
+_METHOD_ELEMENTS: dict[tuple[str, str], str] = {
+    ("str", method): "str" for method in ("split", "rsplit", "splitlines")
 }
 
 # An annotation may spell the same type two ways (`Path` imported by name, or `pathlib.Path`
@@ -221,12 +227,19 @@ def method_return_type(type_name: str, method: str) -> str | None:
     return _METHOD_RETURNS.get((type_name, method))
 
 
+def method_element_type(type_name: str, method: str) -> str | None:
+    """Name a documented method result's iterable element type."""
+    return _METHOD_ELEMENTS.get((type_name, method))
+
+
 def literal_receiver_type(node: ast.expr) -> str | None:
     """Read the type a literal expression or a builtin constructor call carries."""
     if isinstance(node, ast.List | ast.ListComp):
         return "list"
     if isinstance(node, ast.Dict | ast.DictComp):
         return "dict"
+    if isinstance(node, ast.Set | ast.SetComp):
+        return "set"
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
         return "str"
     if isinstance(node, ast.JoinedStr):

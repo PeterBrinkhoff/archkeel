@@ -660,9 +660,15 @@ def _report_finding(value: RawJson) -> ReportFinding:
 
 def report_bytes(report: ArchitectureReport) -> bytes:
     report.validate()
-    payload = asdict(report)
-    for field, graph in (("observed", report.observed), ("target", report.target)):
-        if graph is not None:
-            payload[field] = _graph_payload(graph)
+    payload = {
+        "observed": None if report.observed is None else _graph_payload(report.observed),
+        "target": None if report.target is None else _graph_payload(report.target),
+        "comparison": None if report.comparison is None else asdict(report.comparison),
+        "unavailable": report.unavailable,
+        "schema_version": report.schema_version,
+        "findings": [asdict(item) for item in report.findings],
+        "memberships": [asdict(item) for item in report.memberships],
+        "decision_gaps": [asdict(item) for item in report.decision_gaps],
+    }
     encoded: str = json.dumps(payload, sort_keys=True, ensure_ascii=False) + "\n"
     return encoded.encode("utf-8")

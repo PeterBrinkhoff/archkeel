@@ -627,8 +627,8 @@ def test_amendment_is_bound_to_the_exact_recursive_contract_tree(tmp_path: Path)
         rationale="Approve this exact leaf-only widening.",
     )
     assert written.exit_code == 0, written.diagnostics
-    assert str(amendment) in artifacts
-    amendment.write_bytes(artifacts[str(amendment)])
+    assert str(amendment) in dict(artifacts.entries)
+    amendment.write_bytes(dict(artifacts.entries)[str(amendment)])
     accepted, _ = run_validate(tmp_path, config, observe, against=base, amendment=amendment)
     assert accepted.exit_code == 0, accepted.diagnostics
 

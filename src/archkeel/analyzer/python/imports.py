@@ -10,6 +10,7 @@ import importlib.util
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from collections.abc import Set as AbstractSet
+from typing import TypeAlias
 
 from archkeel.ir.facts import EvidenceClass, in_scope, stable_id
 from archkeel.ir.facts_codec import RawData as RecordData
@@ -23,6 +24,7 @@ from .source import (
     NATIVE_TYPED_DICT_BASE,
     ParsedModule,
     add_evidence,
+    class_creation_static,
     class_namespace_static,
     explicit_provider_escapes,
     intrinsic_nullable_aliases,
@@ -34,6 +36,8 @@ from .source import (
     package_for,
     proven_annotation_carrier_candidates,
     proven_callable_candidates,
+    proven_class_value_candidates,
+    proven_constructor_return_candidates,
     proven_map_union_candidates,
     resolve_static_name,
     setter_local_references,
@@ -42,6 +46,10 @@ from .source import (
     unique_direct_module_bindings,
     unproven_member_bindings,
 )
+
+_MemberProofKey: TypeAlias = tuple[
+    str, bool, bool, frozenset[str] | None, frozenset[str], frozenset[str]
+]
 
 
 def _is_type_checking_test(node: ast.AST) -> bool:
@@ -335,7 +343,7 @@ def resolve_reexports(
     imports: Sequence[RawRecord],
     exports_by_module: dict[str, set[str]],
     parsed: Sequence[ParsedModule] = (),
-) -> dict[str, frozenset[str]]:
+) -> tuple[dict[str, frozenset[str]], frozenset[str]]:
     """Follow re-export chains in place so each import records its origin definition."""
     stable_bindings: dict[str, frozenset[str]] = {
         module.module: stable_direct_module_bindings(module) for module in parsed
@@ -386,7 +394,7 @@ def resolve_reexports(
             aliases[consumer.module][binding] = (provider, symbol)
     candidates = _type_reference_candidates(imports, modules, aliases)
     escaped_bindings = {module.module: unproven_member_bindings(module) for module in parsed}
-    escaped_bindings = _converge_member_escapes(
+    escaped_bindings, unsafe_providers = _converge_member_escapes(
         imports, modules, stable_bindings, escaped_bindings, candidates
     )
     for item in imports:
@@ -401,7 +409,7 @@ def resolve_reexports(
                 data["origin_member_binding_static"] = (
                     origin_name not in escaped_bindings[origin_module]
                 )
-    return uncertain_origins
+    return uncertain_origins, unsafe_providers
 
 
 def _initial_member_exposures(
@@ -425,22 +433,58 @@ def _initial_member_exposures(
     return exposed_bindings, transferred_bindings
 
 
+def _member_escape_pass(
+    modules: Mapping[str, ParsedModule],
+    exposed_bindings: Mapping[str, AbstractSet[str]],
+    transferred_bindings: Mapping[str, AbstractSet[str]],
+    unsafe_providers: AbstractSet[str],
+    proofs: dict[_MemberProofKey, frozenset[str]],
+) -> tuple[dict[str, frozenset[str]], dict[str, frozenset[str]], dict[str, frozenset[str]]]:
+    escaped: dict[str, frozenset[str]] = {}
+    exposed: dict[str, frozenset[str]] = {}
+    transferred: dict[str, frozenset[str]] = {}
+    unsafe = frozenset(unsafe_providers)
+    for result, owner_exposure, creation, bindings, providers in (
+        (escaped, False, True, None, unsafe),
+        (exposed, True, True, exposed_bindings, unsafe),
+        (transferred, True, False, transferred_bindings, unsafe),
+    ):
+        for name, module in modules.items():
+            incoming = None if bindings is None else frozenset(bindings[name])
+            key = (
+                name,
+                owner_exposure,
+                creation,
+                incoming,
+                frozenset(module.incoming_member_escapes),
+                providers,
+            )
+            if key not in proofs:
+                proofs[key] = unproven_member_bindings(
+                    module,
+                    owner_exposure_only=owner_exposure,
+                    incoming=incoming,
+                    unsafe_providers=providers,
+                    include_creation_uncertainty=creation,
+                )
+            result[name] = proofs[key]
+    return escaped, exposed, transferred
+
+
 def _converge_member_escapes(
     imports: Sequence[RawRecord],
     modules: dict[str, ParsedModule],
     stable_bindings: dict[str, frozenset[str]],
     escaped_bindings: dict[str, frozenset[str]],
     candidates: dict[str, dict[ast.expr, frozenset[tuple[str, str]]]],
-) -> dict[str, frozenset[str]]:
+) -> tuple[dict[str, frozenset[str]], frozenset[str]]:
     exposed_bindings, transferred_bindings = _initial_member_exposures(modules)
+    proofs: dict[_MemberProofKey, frozenset[str]] = {}
     namespace_bindings = {
         name: set(stable_bindings[name]) | {binding for _, binding in module_scope_bindings(module)}
         for name, module in modules.items()
     }
     while True:
-        _saturate_unknown_owner_namespaces(
-            modules, namespace_bindings, exposed_bindings, transferred_bindings
-        )
         exposed_before = {name: frozenset(values) for name, values in exposed_bindings.items()}
         transferred_before = {
             name: frozenset(values) for name, values in transferred_bindings.items()
@@ -452,6 +496,9 @@ def _converge_member_escapes(
             imports, modules, exposed_bindings, stable_bindings, exposed_bindings
         )
         unsafe_providers = _unsafe_native_creation_providers(exposed_origins, modules)
+        _saturate_unknown_owner_namespaces(
+            modules, namespace_bindings, exposed_bindings, transferred_bindings, unsafe_providers
+        )
         _propagate_member_escapes(
             imports, modules, namespace_bindings, escaped_origins, escaped_bindings
         )
@@ -468,22 +515,11 @@ def _converge_member_escapes(
         protection_changed = _retain_type_reference_protection(
             modules, candidates, escaped_bindings, exposed_bindings, transferred_bindings
         )
-        escaped = {module.module: unproven_member_bindings(module) for module in modules.values()}
-        exposed, transferred = (
-            {
-                module.module: unproven_member_bindings(
-                    module,
-                    owner_exposure_only=True,
-                    incoming=bindings[module.module],
-                    unsafe_providers=unsafe_providers,
-                    include_creation_uncertainty=include_creation,
-                )
-                for module in modules.values()
-            }
-            for include_creation, bindings in (
-                (True, exposed_bindings),
-                (False, transferred_bindings),
-            )
+        if protection_changed:
+            # Revoked type-expression proofs are not captured by the escape-input key.
+            proofs.clear()
+        escaped, exposed, transferred = _member_escape_pass(
+            modules, exposed_bindings, transferred_bindings, unsafe_providers, proofs
         )
         if (
             not protection_changed
@@ -495,7 +531,7 @@ def _converge_member_escapes(
         escaped_bindings = escaped
         exposed_bindings = {name: set(values) for name, values in exposed.items()}
         transferred_bindings = {name: set(values) for name, values in transferred.items()}
-    return escaped_bindings
+    return escaped_bindings, frozenset(unsafe_providers)
 
 
 def _type_reference_candidates(
@@ -504,17 +540,40 @@ def _type_reference_candidates(
     aliases: Mapping[str, dict[str, tuple[str, str]]],
 ) -> dict[str, dict[ast.expr, frozenset[tuple[str, str]]]]:
     callable_providers = _callable_providers(imports, modules)
+    class_value_bindings: dict[tuple[str, str], tuple[str, str]] = {}
+    for item in imports:
+        data = item["data"]
+        origin_value = data["origin_definition"]
+        if not isinstance(origin_value, str):
+            continue
+        origin: str = origin_value
+        provider, _, symbol = origin.rpartition(".")
+        if (
+            provider in modules
+            and data.get("source_binding_unique") is True
+            and data.get("origin_binding_unique") is True
+            and data.get("module_level_import") is True
+            and data["under_type_checking"] is False
+            and data["reexport_chain"] == [origin]
+            and not data.get("reexport_candidate")
+            and not data.get("reexport_candidates")
+        ):
+            class_value_bindings[(data["source_module"], data["binding"])] = (provider, symbol)
+    map_candidates = {
+        name: proven_map_union_candidates(module, aliases[name]) for name, module in modules.items()
+    }
+    class_values = proven_class_value_candidates(modules, class_value_bindings)
     candidates = {
         name: {
-            **proven_map_union_candidates(module, aliases[name]),
+            **map_candidates[name],
             **proven_callable_candidates(module, callable_providers[name]),
+            **class_values[name],
+            **proven_constructor_return_candidates(module),
         }
         for name, module in modules.items()
     }
     for name, module in modules.items():
-        module._proven_map_union_expressions = frozenset(
-            expression for expression in candidates[name] if isinstance(expression, ast.BinOp)
-        )
+        module._proven_map_union_expressions = frozenset(map_candidates[name])
         carriers = proven_annotation_carrier_candidates(module, frozenset(modules))
         module._proven_annotation_carriers = frozenset(carriers)
         candidates[name] |= carriers
@@ -627,6 +686,8 @@ def _retain_type_reference_protection(
         module._proven_map_union_expressions &= protection
         module._proven_annotation_carriers &= protection
         module._proven_callable_expressions &= protection
+        module._proven_class_values &= protection
+        module._proven_constructor_returns &= protection
     return protection_changed
 
 
@@ -635,7 +696,24 @@ def _saturate_unknown_owner_namespaces(
     namespace_bindings: Mapping[str, AbstractSet[str]],
     exposed_bindings: dict[str, set[str]],
     transferred_bindings: dict[str, set[str]],
+    unsafe_providers: AbstractSet[str],
 ) -> None:
+    for name, module in modules.items():
+        if any(
+            isinstance(owner, ast.ClassDef)
+            and (
+                owner.name in transferred_bindings[name]
+                or owner.name in exposed_bindings[name]
+                and not class_creation_static(
+                    module, owner, owner_exposure_only=True, unsafe_providers=unsafe_providers
+                )
+            )
+            for owner in module.tree.body
+        ):
+            # A transferred class or opaque creation hook exposes its own module namespace.
+            module.incoming_member_escapes |= namespace_bindings[name]
+            exposed_bindings[name] |= namespace_bindings[name]
+            transferred_bindings[name] |= namespace_bindings[name]
     if any(
         isinstance(owner, ast.ClassDef)
         and owner.name in transferred_bindings[name]
@@ -650,20 +728,24 @@ def _saturate_unknown_owner_namespaces(
             transferred_bindings[name] |= bindings
 
 
-def typed_dict_unsafe_providers(
+def explicit_factory_unsafe_providers(
     imports: Sequence[RawRecord], parsed: Sequence[ParsedModule]
 ) -> frozenset[str]:
     modules = {module.module: module for module in parsed}
     explicit_escapes = {name: explicit_provider_escapes(module) for name, module in modules.items()}
-    # Other typing objects do not prove a mutation of the named header factory.
+    factories = {NATIVE_DATACLASS_DECORATOR, NATIVE_TYPED_DICT_BASE, "typing_extensions.TypedDict"}
+    providers: set[str] = set()
+    for factory in factories:
+        origin: str = factory
+        providers.add(origin.rpartition(".")[0])
+    # Other provider objects do not prove a mutation of a named header factory.
     provider_imports = [
         item
         for item in imports
-        if item["data"]["target_module"] in {"typing", "typing_extensions"}
+        if item["data"]["target_module"] in providers
         and item["data"]["symbol"] in {None, "*"}
         or any(
-            origin
-            in {"typing", "typing_extensions", "typing.TypedDict", "typing_extensions.TypedDict"}
+            origin in factories | providers
             for origin in (
                 item["data"]["origin_definition"],
                 *(
@@ -683,7 +765,7 @@ def typed_dict_unsafe_providers(
     )
     return frozenset(
         provider
-        for provider in ("typing", "typing_extensions")
+        for provider in providers
         if provider in modules
         or any(in_scope(origin, provider) for origin in origins)
         or any(

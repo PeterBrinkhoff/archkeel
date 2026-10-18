@@ -87,7 +87,7 @@ def build_and_run_against(
         decided_by="Demo architect",
         rationale="Recorded for the AD-11 demo catalog (#11).",
     )
-    amendment.write_bytes(write_files[str(amendment)])
+    amendment.write_bytes(dict(write_files.entries)[str(amendment)])
     return run_validate(
         run_root,
         config,

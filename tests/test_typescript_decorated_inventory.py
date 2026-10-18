@@ -87,6 +87,9 @@ def test_decorated_members_keep_source_metadata_ownership_and_complete_inventory
     assert symbols["Endpoint"].data.get("decorators") == ("@Controller('api')",)
     assert symbols["run"].data.get("decorators") == ("@First", "@Get('route')")
     assert symbols["plain"].data.get("decorators") == ()
+    assert symbols["Endpoint"].data.get("signature_decorators_proven") is None
+    assert symbols["run"].data.get("signature_decorators_proven") is False
+    assert symbols["plain"].data.get("signature_decorators_proven") is True
     assert symbols["run"].data.get("lexical_parent_id") == symbols["Endpoint"].id
     assert symbols["run"].data.get("qualified_name") == f"{QUALIFIED}.run"
     refs = symbols["run"].data.get("decorator_evidence_ids")
@@ -104,6 +107,23 @@ def test_decorated_members_keep_source_metadata_ownership_and_complete_inventory
     assert [(evidence[identity].line, evidence[identity].excerpt) for identity in field_refs] == [
         (3, "@Field()"),
     ]
+
+
+def test_plain_top_level_and_nested_functions_publish_signature_identity(tmp_path):
+    facts = _collected(
+        tmp_path,
+        "export function build(value: string): string { "
+        "function nested(text: string): string { return text; } return nested(value); }",
+    )
+    functions = [
+        record
+        for section in facts.sections
+        if section.name == "symbols"
+        for record in section.records
+        if record.kind == "function"
+    ]
+    assert {record.data.get("name") for record in functions} == {"build", "nested"}
+    assert all(record.data.get("signature_decorators_proven") is True for record in functions)
 
 
 @pytest.mark.parametrize(

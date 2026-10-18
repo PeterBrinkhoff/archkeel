@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import builtins as _builtins
+import hashlib
 import json
 import re
 from enum import StrEnum
@@ -21,6 +22,7 @@ from .facts import (
     CollectionCoverage,
     ConstructCapability,
     ConstructSupport,
+    ContextManagerSignature,
     Evidence,
     EvidenceClass,
     ExternalPackageTarget,
@@ -33,6 +35,8 @@ from .facts import (
     LocalTarget,
     MethodDescriptor,
     PropertyBinding,
+    ProviderBinding,
+    ProviderBindingKind,
     Record,
     RecordData,
     ResolutionInput,
@@ -52,10 +56,13 @@ from .facts import (
 )
 from .facts_validation import validate_source_facts
 from .protocol import (
+    PYTHON_IMPORT_SURVEY_SECTIONS,
     CollectionRequest,
     CollectionResponse,
     DartSettings,
     ProtocolVersion,
+    PythonCollectionPhase,
+    PythonProviderSource,
     PythonSettings,
     SnapshotInput,
     SourceScope,
@@ -95,6 +102,32 @@ from .type_shapes import (
     TypeUnpack,
     UnresolvedType,
 )
+
+
+def contextmanager_signature_data(signature: ContextManagerSignature) -> RawData:
+    """Retain both source evidence and the distinct effective return on the wire."""
+    return {
+        "kind": signature.kind,
+        "factory": signature.factory,
+        "effective_return": {
+            "wrapper": signature.effective_return.wrapper,
+            "payload": signature.effective_return.payload,
+        },
+        "support_evidence_ids": list(signature.support_evidence_ids),
+        "abc": {
+            "kind": signature.abc.kind,
+            "module": signature.abc.module,
+            "origin": signature.abc.origin,
+            "members": list(signature.abc.members),
+        },
+        "partial": {
+            "kind": signature.partial.kind,
+            "implementation": signature.partial.implementation,
+            "version": signature.partial.version,
+            "cache_tag": signature.partial.cache_tag,
+            "origin": signature.partial.origin,
+        },
+    }
 
 
 def property_binding_data(binding: PropertyBinding) -> RawData:
@@ -274,8 +307,9 @@ def decode_request(payload: bytes) -> CollectionRequest:
     except ValueError as error:
         raise ProtocolError("unsupported collection language") from error
     if language is Language.PYTHON:
-        _object(resolver_raw, {"language"}, "resolver")
-        resolver: PythonSettings | DartSettings | TypeScriptSettings = PythonSettings()
+        resolver: PythonSettings | DartSettings | TypeScriptSettings = _python_settings(
+            resolver_raw, version
+        )
     elif language is Language.DART:
         _object(resolver_raw, {"language"}, "resolver")
         resolver = DartSettings()
@@ -292,11 +326,38 @@ def decode_request(payload: bytes) -> CollectionRequest:
     )
 
 
+def _python_settings(raw: dict[str, RawJson], version: ProtocolVersion) -> PythonSettings:
+    fields = (
+        {"language", "provider_sources", "phase"} if version is ProtocolVersion.V4 else {"language"}
+    )
+    _object(raw, fields, "resolver")
+    try:
+        phase = PythonCollectionPhase(
+            _string(raw.get("phase", PythonCollectionPhase.COLLECT), "resolver.phase")
+        )
+    except ValueError as error:
+        raise ProtocolError("unsupported Python collection phase") from error
+    providers = _python_providers(raw.get("provider_sources", []))
+    if phase is not PythonCollectionPhase.COLLECT and providers:
+        raise ProtocolError("Python import survey cannot include provider sources")
+    return PythonSettings(provider_sources=providers, phase=phase)
+
+
 def encode_request(request: CollectionRequest) -> bytes:
+    version = _version(request.protocol_version)
     resolver: dict[str, RawJson] = {"language": request.resolver.language}
+    if isinstance(request.resolver, PythonSettings):
+        if version is ProtocolVersion.V4:
+            resolver["phase"] = request.resolver.phase
+            resolver["provider_sources"] = [
+                _python_provider_payload(entry) for entry in request.resolver.provider_sources
+            ]
+        elif request.resolver.provider_sources:
+            raise ProtocolError("Python provider sources require collection protocol 4.0.0")
+        elif request.resolver.phase is not PythonCollectionPhase.COLLECT:
+            raise ProtocolError("Python collection phase requires collection protocol 4.0.0")
     if isinstance(request.resolver, TypeScriptSettings):
         resolver["tsconfig"] = request.resolver.tsconfig
-    _version(request.protocol_version)
     raw = {
         "protocol_version": request.protocol_version,
         "snapshot": {
@@ -310,6 +371,40 @@ def encode_request(request: CollectionRequest) -> bytes:
     payload = json.dumps(raw, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
     decode_request(payload)
     return payload
+
+
+def _python_providers(value: RawJson) -> tuple[PythonProviderSource, ...]:
+    providers = tuple(_python_provider(entry) for entry in _array(value, "provider sources"))
+    if len({item.module for item in providers}) != len(providers) or len(
+        {item.path for item in providers}
+    ) != len(providers):
+        raise ProtocolError("duplicate Python provider source")
+    return providers
+
+
+def _python_provider_payload(entry: PythonProviderSource) -> dict[str, RawJson]:
+    return {
+        "module": entry.module,
+        "path": entry.path,
+        "source": entry.source,
+        "digest": entry.digest,
+    }
+
+
+def _python_provider(value: RawJson) -> PythonProviderSource:
+    item = _object(value, {"module", "path", "source", "digest"}, "Python provider source")
+    module: str = _string(item["module"], "Python provider module")
+    if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*", module) is None:
+        raise ProtocolError("Python provider module must be a dotted namespace")
+    path = _relative(item["path"], "Python provider path")
+    stem = ".archkeel-providers/" + module.replace(".", "/")
+    if path not in {stem + ".py", stem + "/__init__.py"}:
+        raise ProtocolError("Python provider path disagrees with module identity")
+    source: str = _record_string(item["source"], "Python provider source")
+    digest = _digest(item["digest"], "Python provider digest")
+    if hashlib.sha256(source.encode("utf-8")).hexdigest() != digest:
+        raise ProtocolError("Python provider source digest disagrees")
+    return PythonProviderSource(module, path, source, digest)
 
 
 def _record_object(raw: object, label: str) -> dict[str, RawJson]:
@@ -637,7 +732,7 @@ def _shape(value: RawJson, protocol_version: ProtocolVersion) -> TypeShape:
         return TypeUnion(
             text, _shape(value["left"], protocol_version), _shape(value["right"], protocol_version)
         )
-    if kind is _ShapeKind.LIST and protocol_version is ProtocolVersion.V3:
+    if kind is _ShapeKind.LIST and protocol_version in {ProtocolVersion.V3, ProtocolVersion.V4}:
         _object(value, {"kind", "text", "elements"}, "type list")
         return TypeList(
             text,
@@ -782,7 +877,7 @@ def _file_payload(entry: FileFact) -> dict[str, RawJson]:
 def _runtime_info(value: RawJson, protocol_version: ProtocolVersion) -> RuntimeInfo:
     expected = (
         {"name", "version", "required", "requirement_state"}
-        if protocol_version in {ProtocolVersion.V2, ProtocolVersion.V3}
+        if protocol_version in {ProtocolVersion.V2, ProtocolVersion.V3, ProtocolVersion.V4}
         else {"name", "version", "required"}
     )
     if not isinstance(value, dict) or set(value) != expected:
@@ -797,8 +892,16 @@ def _runtime_info(value: RawJson, protocol_version: ProtocolVersion) -> RuntimeI
 
 def decode_response(payload: bytes) -> CollectionResponse:
     try:
-        raw = _object(_decode(payload), {"protocol_version", "facts"}, "response")
-        version = _version(raw["protocol_version"])
+        decoded = _decode(payload)
+        if not isinstance(decoded, dict):
+            raise ProtocolError("response must be an object")
+        version = _version(decoded.get("protocol_version"))
+        raw = _object(
+            decoded,
+            {"protocol_version", "facts"}
+            | ({"provider_sources"} if version is ProtocolVersion.V4 else set()),
+            "response",
+        )
         item = _object(
             raw["facts"],
             {
@@ -817,7 +920,8 @@ def decode_response(payload: bytes) -> CollectionResponse:
                 "type_shapes",
                 "state",
                 "candidate_evidence",
-            },
+            }
+            | ({"provider_bindings"} if version is ProtocolVersion.V4 else set()),
             "facts",
         )
         adapter = _object(item["adapter"], {"name", "version", "code_digest"}, "adapter")
@@ -859,24 +963,123 @@ def decode_response(payload: bytes) -> CollectionResponse:
                 parse_evidence(entry)
                 for entry in _array(item["candidate_evidence"], "candidate evidence")
             ),
+            tuple(
+                _provider_binding(entry)
+                for entry in _array(item.get("provider_bindings", []), "provider bindings")
+            ),
         )
+        _contextmanager_protocol(facts, version)
         validate_source_facts(facts)
-        return CollectionResponse(facts, version)
+        providers = _python_providers(raw.get("provider_sources", []))
+        if providers and (
+            facts.profile is not SourceProfile.PYTHON
+            or frozenset(facts.capabilities.sections) != frozenset(PYTHON_IMPORT_SURVEY_SECTIONS)
+        ):
+            raise ProtocolError("captured provider sources require a Python import survey")
+        return CollectionResponse(facts, version, providers)
     except (ValueError, TypeError, KeyError, RecursionError) as error:
         raise ProtocolError(str(error)) from error
+
+
+def _provider_binding(value: RawJson) -> ProviderBinding:
+    if not isinstance(value, dict):
+        raise ProtocolError("provider binding must be an object")
+    kind = ProviderBindingKind(_string(value.get("kind"), "provider binding.kind"))
+    alias = kind is ProviderBindingKind.ALIAS
+    item = _object(
+        value,
+        {"qualified_name", "kind", "evidence_id"}
+        | ({"target", "supporting_evidence_ids"} if alias else set()),
+        "provider binding",
+    )
+    return ProviderBinding(
+        _string(item["qualified_name"], "provider binding.qualified_name"),
+        kind,
+        _string(item["evidence_id"], "provider binding.evidence_id"),
+        _string(item["target"], "provider binding.target") if alias else None,
+        _record_strings(item["supporting_evidence_ids"], "provider binding support")
+        if alias
+        else (),
+    )
+
+
+def _provider_binding_payload(binding: ProviderBinding) -> dict[str, RawJson]:
+    if binding.kind is not ProviderBindingKind.ALIAS and (
+        binding.target is not None or binding.supporting_evidence_ids
+    ):
+        raise ProtocolError("direct provider binding cannot carry alias proof fields")
+    return {
+        "qualified_name": binding.qualified_name,
+        "kind": binding.kind.value,
+        "evidence_id": binding.evidence_id,
+        **(
+            {
+                "target": binding.target,
+                "supporting_evidence_ids": list(binding.supporting_evidence_ids),
+            }
+            if binding.kind is ProviderBindingKind.ALIAS
+            else {}
+        ),
+    }
+
+
+def _runtime_payload(runtime: RuntimeInfo, version: ProtocolVersion) -> dict[str, RawJson]:
+    if (
+        version is ProtocolVersion.V1
+        and runtime.requirement_state != RuntimeRequirementState.DECLARED
+    ):
+        raise ProtocolError("protocol 1.0.0 cannot carry runtime.requirement_state")
+    return {
+        "name": runtime.name,
+        "version": runtime.version,
+        "required": runtime.required,
+        **(
+            {"requirement_state": runtime.requirement_state}
+            if version in {ProtocolVersion.V2, ProtocolVersion.V3, ProtocolVersion.V4}
+            else {}
+        ),
+    }
+
+
+def _contextmanager_protocol(facts: SourceFacts, version: ProtocolVersion) -> None:
+    if version is not ProtocolVersion.V4 and any(
+        record.data.get("contextmanager_signature") is not None
+        for section in facts.sections
+        for record in section.records
+    ):
+        raise ProtocolError("contextmanager signatures require collection protocol 4.0.0")
 
 
 def encode_response(response: CollectionResponse) -> bytes:
     facts = response.facts
     version = _version(response.protocol_version)
-    if (
-        version is ProtocolVersion.V1
-        and facts.runtime.requirement_state != RuntimeRequirementState.DECLARED
-    ):
-        raise ProtocolError("protocol 1.0.0 cannot carry runtime.requirement_state")
+    _contextmanager_protocol(facts, version)
+    if facts.provider_bindings and version is not ProtocolVersion.V4:
+        raise ProtocolError("provider bindings require collection protocol 4.0.0")
+    if response.provider_sources and version is not ProtocolVersion.V4:
+        raise ProtocolError("captured provider sources require collection protocol 4.0.0")
+    runtime = _runtime_payload(facts.runtime, version)
     raw: dict[str, RawJson] = {
         "protocol_version": response.protocol_version,
+        **(
+            {
+                "provider_sources": [
+                    _python_provider_payload(entry) for entry in response.provider_sources
+                ]
+            }
+            if version is ProtocolVersion.V4
+            else {}
+        ),
         "facts": {
+            **(
+                {
+                    "provider_bindings": [
+                        _provider_binding_payload(entry) for entry in facts.provider_bindings
+                    ]
+                }
+                if version is ProtocolVersion.V4
+                else {}
+            ),
             "state": thaw_data(state_data(facts.state)),
             "candidate_evidence": [evidence_payload(entry) for entry in facts.candidate_evidence],
             "profile": facts.profile,
@@ -885,16 +1088,7 @@ def encode_response(response: CollectionResponse) -> bytes:
                 "version": facts.adapter.version,
                 "code_digest": facts.adapter.code_digest,
             },
-            "runtime": {
-                "name": facts.runtime.name,
-                "version": facts.runtime.version,
-                "required": facts.runtime.required,
-                **(
-                    {"requirement_state": facts.runtime.requirement_state}
-                    if version in {ProtocolVersion.V2, ProtocolVersion.V3}
-                    else {}
-                ),
-            },
+            "runtime": runtime,
             "source": {
                 "git_head": facts.source.git_head,
                 "dirty": facts.source.dirty,

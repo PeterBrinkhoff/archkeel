@@ -464,7 +464,7 @@ def _baselined_cycle(
         root, SHOP_CONFIG, observe, baseline=baseline, write_baseline=True
     )
     assert result.exit_code == 0, (result.diagnostics, result.failures)
-    baseline.write_bytes(written[str(baseline)])
+    baseline.write_bytes(dict(written.entries)[str(baseline)])
     _git(root, "add", "-A")
     _git(root, "commit", "-q", "-m", "baseline the known cycle")
     return root, baseline, _git(root, "rev-parse", "HEAD")
@@ -494,13 +494,13 @@ def test_against_lets_the_cycle_count_fall_but_not_rise(tmp_path: Path) -> None:
     _, accepted = run_validate(
         root, SHOP_CONFIG, observe, baseline=baseline, write_baseline=True, accept_new=True
     )
-    baseline.write_bytes(accepted[str(baseline)])
+    baseline.write_bytes(dict(accepted.entries)[str(baseline)])
     risen, _ = run_validate(root, SHOP_CONFIG, observe, baseline=baseline, against=base)
 
     apply_overlay(root, {"shop/model/gamma.py": None, "shop/model/delta.py": None})
     apply_overlay(root, {"shop/model/beta.py": "VALUE = 1\n"})
     _, resolved = run_validate(root, SHOP_CONFIG, observe, baseline=baseline, write_baseline=True)
-    baseline.write_bytes(resolved[str(baseline)])
+    baseline.write_bytes(dict(resolved.entries)[str(baseline)])
     fallen, _ = run_validate(root, SHOP_CONFIG, observe, baseline=baseline, against=base)
 
     assert risen.exit_code == 1
@@ -575,7 +575,7 @@ def test_breaking_part_of_a_baselined_cycle_is_written_without_accepting_new_deb
     written, files = run_validate(
         root, SHOP_CONFIG, observe, baseline=baseline, write_baseline=True
     )
-    baseline.write_bytes(files[str(baseline)])
+    baseline.write_bytes(dict(files.entries)[str(baseline)])
     against, _ = run_validate(root, SHOP_CONFIG, observe, baseline=baseline, against=base)
 
     # The file still states the old cycle, so it must be rewritten, but nothing in it is new.

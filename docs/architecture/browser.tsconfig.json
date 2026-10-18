@@ -1,0 +1,31 @@
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "target": "es2022",
+    "module": "none",
+    "lib": [
+      "es2022",
+      "dom"
+    ]
+  },
+  "files": [
+    "../../src/archkeel/render/assets/flow.js",
+    "../../src/archkeel/render/assets/report-canvas.js",
+    "../../src/archkeel/render/assets/report-filters.js",
+    "../../src/archkeel/render/assets/violations.js",
+    "../../src/archkeel/render/assets/report-scene.js",
+    "../../src/archkeel/render/assets/report-graph-scene.js",
+    "../../src/archkeel/render/assets/report-graph-protocol.js",
+    "../../src/archkeel/render/assets/report-atlas-deviations.js",
+    "../../src/archkeel/render/assets/report-layout.js"
+  ],
+  "archkeel": {
+    "scriptHost": "classic-browser",
+    "scriptProviders": [
+      {
+        "source": "src/archkeel/render/assets/elkjs-0.12.0.bundled.js",
+        "provenance": "src/archkeel/render/assets/ELKJS-LICENSE.md"
+      }
+    ]
+  }
+}

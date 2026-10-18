@@ -643,6 +643,9 @@ def test_atlas_browser_keeps_positions_and_unknown_cells_across_lenses(tmp_path,
     errors = []
     playwright, browser, page = _browser_page(api, page_html, width=width, errors=errors)
     try:
+        assert page.evaluate(
+            "[typeof window.module, typeof window.exports, typeof window.define, typeof window.ELK]"
+        ) == ["undefined", "undefined", "undefined", "function"]
         _open_health_check(page)
         card = page.locator('.flow-nodes [data-label="core"]')
         assert card.count() == 1
@@ -690,6 +693,84 @@ def test_atlas_browser_keeps_positions_and_unknown_cells_across_lenses(tmp_path,
             "rgb(0, 0, 0)" if dark else "rgb(255, 255, 255)"
         )
         assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+        assert not errors
+    finally:
+        browser.close()
+        playwright.stop()
+
+
+def test_atlas_ignores_stale_layout_and_retries_rejected_layout(tmp_path):
+    api = pytest.importorskip("playwright.sync_api")
+    html = _page(_sample(tmp_path, uml=True))
+    atlas = _atlas(html)
+    declared_ids = sorted(module["id"] for module in atlas["declared_modules"])
+    level = next(level for level in atlas["levels"] if level["parent_id"] is None)
+    observed_ids = sorted(module["id"] for module in level["modules"])
+    marker = '<script>"use strict";'
+    assert marker in html
+    hook = """window.__originalAtlasLayout = ELK.prototype.layout;
+window.__atlasLayoutCalls = 0;
+ELK.prototype.layout = function(graph) {
+  const call = ++window.__atlasLayoutCalls;
+  if (call === 2) return new Promise(resolve => {
+    window.__oldAtlasSettled = false;
+    window.__resolveOldAtlasLayout = async () => {
+      resolve(await window.__originalAtlasLayout.call(this, graph));
+      window.__oldAtlasSettled = true;
+    };
+  });
+  if (call === 4) return new Promise((resolve, reject) => {
+    window.__rejectAtlasLayout = () => reject(new Error("deliberate Atlas layout failure"));
+  });
+  return window.__originalAtlasLayout.call(this, graph);
+};"""
+    flow_index = html.rindex(marker)
+    html = html[:flow_index] + f"<script>{hook}</script>\n" + html[flow_index:]
+    errors = []
+    playwright, browser, page = _browser_page(api, html, errors=errors)
+    try:
+        _wait_for_layout(page)
+        page.locator('.atlas-content-choice [data-content="modules"]').click()
+        page.wait_for_function("() => typeof window.__resolveOldAtlasLayout === 'function'")
+        page.get_by_role("button", name="Target", exact=True).click()
+        _wait_for_layout(page)
+        assert (
+            page.locator('.flow-nodes [data-uml-kind="module"]').evaluate_all(
+                "nodes => nodes.map(node => node.dataset.umlId).sort()"
+            )
+            == declared_ids
+        )
+
+        def scene():
+            return page.evaluate("""() => ({
+              nodes: [...document.querySelectorAll('.flow-nodes [data-uml-id]')]
+                .map(node => [node.dataset.umlId, node.getAttribute('transform')]),
+              edges: [...document.querySelectorAll('.flow-edges > g[data-uml-source]')]
+                .map(edge => [edge.dataset.umlId, edge.querySelector('.line').getAttribute('d')])
+            })""")
+
+        target = scene()
+        page.evaluate("window.__resolveOldAtlasLayout()")
+        page.wait_for_function("() => window.__oldAtlasSettled === true")
+        assert page.locator('[data-flow-view="target"]').get_attribute("aria-pressed") == "true"
+        assert page.locator("#flow").get_attribute("data-content") == "modules"
+        assert scene() == target
+
+        page.get_by_role("button", name="Diff", exact=True).click()
+        page.wait_for_function("() => typeof window.__rejectAtlasLayout === 'function'")
+        page.evaluate("window.__rejectAtlasLayout()")
+        page.get_by_text("Architecture layout unavailable", exact=True).wait_for()
+        assert page.locator("#flow").get_attribute("data-layout-state") == "error"
+        assert not page.locator(".flow-canvas").is_visible()
+        page.get_by_role("button", name="Diff", exact=True).click()
+        _wait_for_layout(page)
+        assert page.locator('[data-flow-view="diff"]').get_attribute("aria-pressed") == "true"
+        assert page.locator(".flow-canvas").is_visible()
+        assert sorted(identity for identity, _ in scene()["nodes"]) == observed_ids
+        assert sorted(identity for identity, _ in scene()["edges"]) == [
+            f"module-cell:{index}" for index in sorted(level["cells"])
+        ]
+        assert page.evaluate("window.__atlasLayoutCalls") == 5
         assert not errors
     finally:
         browser.close()

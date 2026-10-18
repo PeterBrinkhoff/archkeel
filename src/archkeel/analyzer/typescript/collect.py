@@ -8,12 +8,15 @@ from __future__ import annotations
 import hashlib
 import json
 import posixpath
+from collections.abc import Sequence
+from dataclasses import replace
 from enum import Enum
 from typing import Final
 
 from archkeel.analyzer.runtime import collector_provenance
 from archkeel.ir.facts import (
     SOURCE_RESOLUTION_GAP_KIND,
+    SOURCE_SCRIPT_GLOBAL_KIND,
     BuiltinTarget,
     Capabilities,
     CollectionCoverage,
@@ -49,8 +52,8 @@ from archkeel.ir.facts_codec import (
 from archkeel.ir.identity import module_identity
 from archkeel.ir.protocol import CollectionRequest, TypeScriptSettings
 
-from .config import ModuleKind, Snapshot, join, load_config, within
-from .parse import parse
+from .config import ModuleKind, Snapshot, join, load_config, standard_globals, within
+from .parse import parse, umd_publication
 from .resolve import Found, Resolver, Unknown
 from .source_input import (
     ModuleFormat,
@@ -68,6 +71,9 @@ from .syntax import (
     ReceiverKind,
     Reference,
     ReferenceForm,
+    ScriptAlias,
+    ScriptGlobal,
+    ScriptRoot,
     Site,
     SiteKind,
     SiteUse,
@@ -85,6 +91,20 @@ class _InventoryStatus(Enum):
 class _GapKind(Enum):
     COLLECTION = "collection_gap"
     RESOLUTION = SOURCE_RESOLUTION_GAP_KIND
+
+
+class _GapDimension(Enum):
+    IMPORTS = "imports"
+    RUNTIME_EFFECTS = "runtime_effects"
+
+
+class _ScriptHostName(Enum):
+    EXPORTS = "exports"
+    MODULE = "module"
+    DEFINE = "define"
+    WINDOW = "window"
+    GLOBAL = "global"
+    SELF = "self"
 
 
 _SECTIONS: tuple[SourceSectionName, ...] = (
@@ -105,10 +125,71 @@ _FEATURES: Final = (
     "local-runtime-closure",
     "inner-uml-v1",
 )
+_SCRIPT_ROOTS: Final = frozenset(item.value for item in ScriptRoot)
+_SCRIPT_HOST_NAMES: Final = frozenset(item.value for item in _ScriptHostName)
+_SCRIPT_LOADER_NAMES: Final = frozenset(
+    item.value for item in (_ScriptHostName.EXPORTS, _ScriptHostName.MODULE, _ScriptHostName.DEFINE)
+)
 
 
 def _package_of(module: str) -> str:
     return module.rpartition(".")[0]
+
+
+def _script_stable_publication(
+    name: str,
+    publishers: list[tuple[str, ScriptGlobal]],
+    writes: Sequence[tuple[str, str | None, Span]],
+) -> bool:
+    return (
+        len(publishers) == 1
+        and publishers[0][1].stable
+        and [
+            (writer_rel, span)
+            for writer_rel, written, span in writes
+            if written is None or written == name
+        ]
+        == [(publishers[0][0], publishers[0][1].span)]
+    )
+
+
+def _script_source_origin(
+    name: str,
+    publishers: list[tuple[str, ScriptGlobal]],
+    writes: Sequence[tuple[str, str | None, Span]],
+) -> bool:
+    return (
+        len(publishers) == 1
+        and (publishers[0][1].stable or publishers[0][1].source_origin)
+        and [(rel, span) for rel, written, span in writes if written is None or written == name]
+        == [(publishers[0][0], publishers[0][1].span)]
+    )
+
+
+def _script_site_aliases(
+    syntax: Syntax, site: Site
+) -> tuple[ScriptAlias | None, ScriptAlias | None]:
+    call = next(
+        (
+            alias
+            for alias in syntax.script_aliases
+            if (site.kind is SiteKind.CALL or alias.factory)
+            and len(site.path) == 2
+            and site.path[0] == alias.name
+            and site.span in (*alias.calls, *alias.reads)
+        ),
+        None,
+    )
+    initializer = next(
+        (
+            alias
+            for alias in syntax.script_aliases
+            if alias.reference_span == site.span
+            and (site.kind is SiteKind.REFERENCE or alias.factory)
+        ),
+        None,
+    )
+    return call, initializer
 
 
 def collect(request: CollectionRequest) -> SourceFacts:
@@ -137,13 +218,26 @@ class _Collection:
         self.import_targets: dict[str, ImportTarget] = {}
         self.import_sites: dict[str, tuple[str, int, int]] = {}
         self.read = 0
+        self.script_resolution: dict[tuple[str, Site], tuple[str, ...]] = {}
+        self.script_evidence: dict[tuple[str, Site], tuple[str, ...]] = {}
+        self.script_fact_ids: dict[tuple[str, Site], tuple[str, ...]] = {}
+        self.script_publications: dict[str, RawRecord] = {}
+        self.script_effects: list[RawRecord] = []
+        self.script_pending_effects: list[tuple[str, Span]] = []
+        self.script_source_writes: tuple[tuple[str, str | None, Span], ...] = ()
+        self.script_vendors: dict[str, list[str]] = {}
+        self.script_vendors_complete = False
 
     def facts(self) -> SourceFacts:
         index = 0
         while index < len(self.queue):
             self._file(self.queue[index])
             index += 1
+        self._script_dependencies()
         symbols, calls, references, bindings = self._inner_facts()
+        for rel, span in dict.fromkeys(self.script_pending_effects):
+            self._script_runtime_effect(rel, span)
+        references += self.script_effects
         for problem in sorted(self.snapshot.problems):
             self._gap(problem)
         inputs = tuple(
@@ -181,7 +275,12 @@ class _Collection:
             ),
             Capabilities(
                 _SECTIONS,
-                _FEATURES,
+                _FEATURES
+                + (
+                    ("script-globals-v1",)
+                    if any(syntax.script_mode for syntax in self.syntax.values())
+                    else ()
+                ),
                 (
                     ConstructCapability(
                         ForbiddenConstructKind.STRING_LITERAL_COMPARE, ConstructSupport.PARTIAL
@@ -201,6 +300,596 @@ class _Collection:
             ),
             tuple(parse_evidence(item) for _, item in sorted(self.evidence.items())),
         )
+
+    def _script_dependencies(self) -> None:
+        """Reuse the dependency fact port without disguising global reads as ES imports."""
+        self._script_vendor_publications()
+        publications = {
+            name: [
+                (rel, item)
+                for rel, syntax in self.syntax.items()
+                for item in syntax.script_globals
+                if item.name == name
+            ]
+            for name in {
+                item.name for syntax in self.syntax.values() for item in syntax.script_globals
+            }
+        }
+        writes = self._script_global_writes(publications)
+        source_writes = {
+            (rel, name, span)
+            for rel, syntax in self.syntax.items()
+            for name, span in syntax.script_source_writes
+        }
+        self.script_source_writes = tuple(source_writes)
+        self._script_unbounded_effects(publications, writes)
+        for rel, syntax in self.syntax.items():
+            for site in syntax.sites:
+                destructures = [
+                    item for item in syntax.script_destructures if item.span == site.span
+                ]
+                if destructures:
+                    for item in destructures:
+                        for published, _, span in item.members:
+                            path = (*item.path[1:], published)
+                            self._script_dependency(
+                                rel,
+                                replace(site, span=span, path=path),
+                                path,
+                                None,
+                                None,
+                                publications.get(path[0], []),
+                                writes,
+                            )
+                    continue
+                alias_call, alias_initializer = _script_site_aliases(syntax, site)
+                alias = alias_call or alias_initializer
+                path = (
+                    (*alias_call.path, *(() if alias_call.factory else site.path[1:]))
+                    if alias_call is not None
+                    else site.path
+                )
+                if path and path[0] in _SCRIPT_ROOTS:
+                    path = path[1:]
+                if (
+                    alias_initializer is not None
+                    and not alias_initializer.factory
+                    and self._script_alias_decomposition(
+                        rel,
+                        site,
+                        alias_initializer,
+                        path,
+                        publications.get(path[0], []),
+                        source_writes,
+                    )
+                ):
+                    continue
+                if (
+                    not syntax.script_mode
+                    or not path
+                    or not (site.script_free or alias_call is not None)
+                    or alias_call is None
+                    and site.path[0] in site.shadowed_names
+                ):
+                    continue
+                self._script_dependency(
+                    rel, site, path, alias_call, alias, publications.get(path[0], []), writes
+                )
+
+    def _script_unbounded_effects(
+        self,
+        publications: dict[str, list[tuple[str, ScriptGlobal]]],
+        writes: Sequence[tuple[str, str | None, Span]],
+    ) -> None:
+        self.script_pending_effects.extend(
+            (rel, span)
+            for rel, syntax in self.syntax.items()
+            for publication in syntax.script_globals
+            for span in publication.availability
+        )
+        self.script_pending_effects.extend(
+            (rel, span)
+            for rel, name, span in writes
+            if self.syntax[rel].script_mode
+            and (name is None or name in publications)
+            and (rel, name, span) not in self.script_source_writes
+        )
+
+    def _script_alias_decomposition(
+        self,
+        rel: str,
+        site: Site,
+        alias: ScriptAlias,
+        path: tuple[str, ...],
+        publications: list[tuple[str, ScriptGlobal]],
+        writes: set[tuple[str, str | None, Span]],
+    ) -> bool:
+        if not alias.calls or not _script_stable_publication(path[0], publications, list(writes)):
+            return False
+        target_rel, publication = publications[0]
+        self._script_alias_evidence(rel, site, alias, target_rel, publication, True)
+        return True
+
+    def _script_global_writes(
+        self, publications: dict[str, list[tuple[str, ScriptGlobal]]]
+    ) -> list[tuple[str, str | None, Span]]:
+        writes = [
+            (rel, name, span)
+            for rel, syntax in self.syntax.items()
+            for name, span in syntax.script_writes
+        ]
+        # An escaped object can be mutated through aliases the collector cannot track.
+        for rel, syntax in self.syntax.items():
+            for site in syntax.sites:
+                path = site.path[1:] if site.path and site.path[0] in _SCRIPT_ROOTS else site.path
+                if (
+                    site.kind is SiteKind.REFERENCE
+                    and site.script_escape
+                    and len(path) == 1
+                    and path[0] in publications
+                    and not any(
+                        alias.reference_span == site.span for alias in syntax.script_aliases
+                    )
+                ):
+                    writes.append((rel, path[0], site.span))
+        return writes
+
+    def _script_dependency(
+        self,
+        rel: str,
+        site: Site,
+        path: tuple[str, ...],
+        alias_call: ScriptAlias | None,
+        alias: ScriptAlias | None,
+        publishers: list[tuple[str, ScriptGlobal]],
+        writes: list[tuple[str, str | None, Span]],
+    ) -> None:
+        module = self.modules[rel]
+        evidence = self._cite(rel, site.span)
+        stable = _script_stable_publication(path[0], publishers, writes)
+        if self._script_external_dependency(rel, site, path, alias_call, publishers):
+            return
+        if self._script_namespace_dependency(rel, site, path, alias_call, publishers):
+            return
+        declared = _script_stable_publication(path[0], publishers, self.script_source_writes)
+        if alias is not None and alias.factory and not alias.complete:
+            self._gap(
+                "Factory result uses are not statically bounded",
+                (evidence,),
+                module,
+                kind=_GapKind.RESOLUTION,
+            )
+        target_rel = publishers[0][0] if publishers else ""
+        publication = publishers[0][1] if publishers else None
+        target_module = self.modules[target_rel] if target_rel else path[0]
+        member = path[1] if len(path) == 2 else None
+        members = (
+            [
+                (local, span)
+                for published, local, span in publication.source_members
+                if published == member and local not in self.syntax[target_rel].rebound_names
+            ]
+            if declared and publication is not None
+            else []
+        )
+        known = len(members) == 1 and len(path) == 2
+        factory = alias_call is not None and alias_call.factory
+        proof = None
+        if factory:
+            proof = (
+                self._script_factory_proof(alias_call, target_rel, members[0][0], site)
+                if known
+                else None
+            )
+            known = proof is not None
+        evidence_ids = (
+            list(self._script_alias_evidence(rel, site, alias, target_rel, publication, declared))
+            if alias is not None
+            else [evidence]
+        )
+        if proof is not None:
+            proof_ids = tuple(
+                self._script_factory_source(source_rel, span) for source_rel, span in proof[0]
+            )
+            self.script_fact_ids[(module, site)] = tuple(
+                dict.fromkeys((*self.script_fact_ids.get((module, site), ()), *proof_ids))
+            )
+        if (
+            known
+            and stable
+            and not factory
+            and not site.scope_ambiguous
+            and publication is not None
+            and any(local == members[0][0] for _, local, _ in publication.members)
+        ):
+            self.script_resolution[(module, site)] = (f"{target_module}.{members[0][0]}",)
+        target_module = self._script_source_target(rel, site, path, publishers, known)
+        self._script_import_record(
+            rel,
+            site,
+            path,
+            target_module,
+            members[0][0] if known else member,
+            known,
+            evidence_ids,
+            alias_call,
+        )
+
+    def _script_source_target(
+        self,
+        rel: str,
+        site: Site,
+        path: tuple[str, ...],
+        publishers: list[tuple[str, ScriptGlobal]],
+        known: bool,
+    ) -> str:
+        module = self.modules[rel]
+        identity = stable_id("TSGLOBAL", module, site.span.line, site.span.column, site.kind.value)
+        evidence = self._cite(rel, site.span)
+        target_rel = (
+            publishers[0][0]
+            if _script_source_origin(path[0], publishers, self.script_source_writes)
+            else ""
+        )
+        if target_rel:
+            target = self.modules[target_rel]
+            proof = self._script_publication_evidence(target_rel, publishers[0][1])
+            self.script_fact_ids[(module, site)] = tuple(
+                dict.fromkeys((*self.script_fact_ids.get((module, site), ()), proof))
+            )
+            self.targets.append(LocalTarget(identity, target, target_rel, None, None))
+            if len(path) > 1 and not known:
+                self._gap(
+                    f"Script global member {path[0]}.{path[1]} is not statically published",
+                    (evidence,),
+                    module,
+                    kind=_GapKind.RESOLUTION,
+                )
+            return target
+        reason = f"Script global {path[0]} has no unique unconditional publication"
+        self.targets.append(UnresolvedTarget(identity, path[0], reason))
+        self._gap(reason, (evidence,), module, kind=_GapKind.RESOLUTION)
+        return path[0]
+
+    def _script_factory_source(self, rel: str, span: Span) -> str:
+        module = self.modules[rel]
+        identity = stable_id("SCRIPT_FACTORY_SOURCE", module, span.line, span.column)
+        self.script_publications[identity] = classified(
+            item_id=identity,
+            evidence_class=EvidenceClass.FACT,
+            area="source",
+            kind="bindings",
+            title="Factory source declaration",
+            subjects=[module],
+            evidence_ids=[self._cite(rel, span)],
+            data={"module": module, "source_module": module, "source_scope": module},
+        )
+        return identity
+
+    def _script_standard_global(
+        self, name: str, publishers: list[tuple[str, ScriptGlobal]]
+    ) -> bool:
+        return (
+            not publishers
+            and self.script_vendors_complete
+            and name not in self.script_vendors
+            and name in standard_globals(self.config.options)
+            and not self.config.partial
+            and all(syntax.first_error is None for syntax in self.syntax.values())
+            and not any(name in syntax.script_bindings for syntax in self.syntax.values())
+            and not any(
+                not path or path == (name,)
+                for syntax in self.syntax.values()
+                for path in syntax.script_write_paths
+            )
+        )
+
+    def _script_external_dependency(
+        self,
+        rel: str,
+        site: Site,
+        path: tuple[str, ...],
+        alias: ScriptAlias | None,
+        publishers: list[tuple[str, ScriptGlobal]],
+    ) -> bool:
+        module = self.modules[rel]
+        identity = stable_id("TSGLOBAL", module, site.span.line, site.span.column, site.kind.value)
+        vendor = self._script_vendor_package(path[0], publishers)
+        if self._script_standard_global(path[0], publishers):
+            target: ImportTarget = BuiltinTarget(identity, path[0])
+            package = path[0]
+        elif vendor is not None:
+            target = ExternalPackageTarget(identity, vendor)
+            package = vendor
+        else:
+            return False
+        self.targets.append(target)
+        self._script_import_record(
+            rel,
+            site,
+            path,
+            package,
+            None,
+            False,
+            [self._cite(rel, site.span)],
+            alias,
+            target_package=package,
+        )
+        return True
+
+    def _script_vendor_publications(self) -> None:
+        publications: dict[str, list[str]] = {}
+        for provider in self.config.script_providers:
+            resolved = self.resolver.script_provider(provider)
+            if resolved is None:
+                return
+            package, content = resolved
+            publication = umd_publication(provider.source, content)
+            if publication is None or publication[0] in _SCRIPT_LOADER_NAMES:
+                return
+            publications.setdefault(publication[0], []).append(package)
+        self.script_vendors = publications
+        self.script_vendors_complete = True
+
+    def _script_vendor_package(
+        self, name: str, publishers: list[tuple[str, ScriptGlobal]]
+    ) -> str | None:
+        packages = self.script_vendors.get(name, ())
+        collisions = {name, *_SCRIPT_HOST_NAMES}
+        if (
+            publishers
+            or len(packages) != 1
+            or any(syntax.first_error is not None for syntax in self.syntax.values())
+            or any(
+                collisions.intersection(syntax.script_bindings) for syntax in self.syntax.values()
+            )
+            or any(
+                not path
+                or len(path) == 1
+                and path[0] in collisions
+                or path[0] in _SCRIPT_LOADER_NAMES
+                for syntax in self.syntax.values()
+                for path in syntax.script_write_paths
+            )
+        ):
+            return None
+        return packages[0]
+
+    def _script_namespace_dependency(
+        self,
+        rel: str,
+        site: Site,
+        path: tuple[str, ...],
+        alias: ScriptAlias | None,
+        publishers: list[tuple[str, ScriptGlobal]],
+    ) -> bool:
+        namespaces = [
+            (source_rel, item)
+            for source_rel, syntax in self.syntax.items()
+            for item in syntax.script_namespaces
+            if item.name == path[0]
+        ]
+        if publishers or len(namespaces) != 1:
+            return False
+        source_rel, namespace = namespaces[0]
+        if any(
+            syntax.first_error is not None
+            or () in syntax.script_write_paths
+            or source_rel != candidate
+            and (path[0] in syntax.script_bindings or (path[0],) in syntax.script_write_paths)
+            for candidate, syntax in self.syntax.items()
+        ):
+            return False
+        module = self.modules[rel]
+        target = self.modules[source_rel]
+        identity = stable_id("TSGLOBAL", module, site.span.line, site.span.column, site.kind.value)
+        proof = stable_id("SCRIPT_NAMESPACE_SOURCE", target, namespace.name, namespace.span.line)
+        self.script_publications[proof] = classified(
+            item_id=proof,
+            evidence_class=EvidenceClass.FACT,
+            area="source",
+            kind="bindings",
+            title="Script namespace source binding",
+            subjects=[target],
+            evidence_ids=[
+                self._cite(source_rel, namespace.span),
+                self._cite(source_rel, namespace.initialization),
+            ],
+            data={
+                "module": target,
+                "source_module": target,
+                "source_scope": target,
+                "binding": namespace.name,
+                "script_namespace": namespace.name,
+            },
+        )
+        self.script_fact_ids[(module, site)] = (proof,)
+        self.targets.append(LocalTarget(identity, target, source_rel, None, None))
+        if len(path) > 1:
+            self._gap(
+                f"Script namespace member {path[0]}.{path[1]} is not statically published",
+                (self._cite(rel, site.span),),
+                module,
+                kind=_GapKind.RESOLUTION,
+            )
+        self._script_import_record(
+            rel,
+            site,
+            path,
+            target,
+            path[0] if len(path) == 1 else path[1],
+            len(path) == 1,
+            [self._cite(rel, site.span)],
+            alias,
+        )
+        return True
+
+    def _script_factory_proof(
+        self,
+        alias: ScriptAlias | None,
+        rel: str,
+        entry: str,
+        site: Site,
+    ) -> tuple[tuple[tuple[str, Span], ...], bool] | None:
+        if alias is None or any(
+            path[: len(prefix)] == prefix
+            for prefix in alias.escapes
+            for syntax in self.syntax.values()
+            for path in syntax.script_write_paths
+        ):
+            return None
+        proof = self._script_factory_member(rel, entry, site.path[-1], ())
+        return proof if proof is not None and (site.kind is not SiteKind.CALL or proof[1]) else None
+
+    def _script_import_record(
+        self,
+        rel: str,
+        site: Site,
+        path: tuple[str, ...],
+        target_module: str,
+        symbol: str | None,
+        known: bool,
+        evidence_ids: list[str],
+        alias: ScriptAlias | None,
+        *,
+        target_package: str | None = None,
+    ) -> None:
+        module = self.modules[rel]
+        identity = stable_id("TSGLOBAL", module, site.span.line, site.span.column, site.kind.value)
+        self.imports.append(
+            classified(
+                item_id=identity,
+                evidence_class=EvidenceClass.FACT,
+                area="source",
+                kind=SOURCE_SCRIPT_GLOBAL_KIND,
+                title=f"{module} uses script global {path[0]}",
+                subjects=[module, target_module],
+                evidence_ids=evidence_ids,
+                fact_ids=list(self.script_fact_ids.get((module, site), ())),
+                data={
+                    "source_module": module,
+                    "source_package": _package_of(module),
+                    "target_module": target_module,
+                    "target_package": (
+                        target_package if target_package is not None else _package_of(target_module)
+                    ),
+                    "symbol": symbol,
+                    "binding": alias.name if alias is not None else path[0],
+                    "symbols_known": known,
+                    "specifier": path[0],
+                    "type_only": False,
+                    "relative_level": 0,
+                    "under_type_checking": False,
+                    "reexport": False,
+                    "module_level_import": False,
+                    "script_global": path[0],
+                    "script_member": path[1] if len(path) == 2 else None,
+                },
+            )
+        )
+
+    def _script_factory_member(
+        self, rel: str, name: str, member: str, seen: tuple[tuple[str, str, str], ...]
+    ) -> tuple[tuple[tuple[str, Span], ...], bool] | None:
+        identity = (rel, name, member)
+        if identity in seen:
+            return None
+        factories = [
+            factory for factory in self.syntax[rel].script_factories if factory.name == name
+        ]
+        if len(factories) != 1:
+            return None
+        factory = factories[0]
+        members = [item for item in factory.members if item.name == member]
+        if len(members) != 1:
+            return None
+        item = members[0]
+        evidence = ((rel, factory.span), (rel, item.span))
+        if item.target is not None and item.target_span is not None:
+            return (*evidence, (rel, item.target_span)), item.callable
+        for alias in self.syntax[rel].script_aliases:
+            if not alias.factory or item.forwarded_span not in alias.reads:
+                continue
+            path = alias.path[1:] if alias.path[0] in _SCRIPT_ROOTS else alias.path
+            publications = [
+                (source_rel, publication)
+                for source_rel, syntax in self.syntax.items()
+                for publication in syntax.script_globals
+                if publication.name == path[0]
+            ]
+            writes = self.script_source_writes
+            if len(path) != 2 or not _script_stable_publication(path[0], publications, writes):
+                return None
+            source_rel, publication = publications[0]
+            entries = [
+                local for published, local, _ in publication.source_members if published == path[1]
+            ]
+            sites = [site for site in self.syntax[rel].sites if site.span == item.forwarded_span]
+            if len(entries) != 1 or len(sites) != 1:
+                return None
+            result = self._script_factory_member(
+                source_rel, entries[0], sites[0].path[-1], (*seen, identity)
+            )
+            if result is not None:
+                return (
+                    *evidence,
+                    (rel, alias.span),
+                    (source_rel, publication.span),
+                    *result[0],
+                ), result[1]
+        return None
+
+    def _script_alias_evidence(
+        self,
+        rel: str,
+        site: Site,
+        alias: ScriptAlias,
+        target_rel: str,
+        publication: ScriptGlobal | None,
+        stable: bool,
+    ) -> tuple[str, ...]:
+        module = self.modules[rel]
+        evidence_ids = [self._cite(rel, site.span), self._cite(rel, alias.span)]
+        proof_ids = [
+            stable_id("SCRIPTALIAS", module, alias.span.line, alias.span.column, alias.name)
+        ]
+        if stable and publication is not None:
+            proof_ids.append(self._script_publication_evidence(target_rel, publication))
+        self.script_evidence[(module, site)] = tuple(evidence_ids)
+        self.script_fact_ids[(module, site)] = tuple(proof_ids)
+        return tuple(evidence_ids)
+
+    def _script_publication_evidence(self, rel: str, publication: ScriptGlobal) -> str:
+        module = self.modules[rel]
+        identity = stable_id(
+            "SCRIPTPUBLICATION",
+            module,
+            publication.span.line,
+            publication.span.column,
+            publication.name,
+        )
+        evidence = [self._cite(rel, publication.span)]
+        for _, _, span in publication.source_members:
+            member = self._cite(rel, span)
+            if member not in evidence:
+                evidence.append(member)
+        self.script_publications[identity] = classified(
+            item_id=identity,
+            evidence_class=EvidenceClass.FACT,
+            area="source",
+            kind="bindings",
+            title=f"{module} publishes script global {publication.name}",
+            subjects=[module],
+            evidence_ids=evidence,
+            data={
+                "source_module": module,
+                "source_scope": module,
+                "module": module,
+                "binding": publication.name,
+                "script_global": publication.name,
+            },
+        )
+        return identity
 
     def _constructs(self) -> tuple[Record, ...]:
         """Publish witnessed syntax; a partial construct inventory cannot prove absence."""
@@ -305,6 +994,8 @@ class _Collection:
                 definition,
                 len(by_qualified[qualified]) == 1,
             )
+            if definition.kind in {DefinitionKind.FUNCTION, DefinitionKind.METHOD}:
+                data["signature_decorators_proven"] = not definition.decorator_sources
             if definition.kind in {
                 DefinitionKind.CLASS,
                 DefinitionKind.INTERFACE,
@@ -468,7 +1159,7 @@ class _Collection:
     ) -> tuple[list[RawRecord], list[RawRecord], list[RawRecord]]:
         calls: list[RawRecord] = []
         references: list[RawRecord] = []
-        bindings: list[RawRecord] = []
+        bindings: list[RawRecord] = list(self.script_publications.values())
         top_by_module: dict[str, list[tuple[str, Definition]]] = {}
         definitions_by_module: dict[str, list[Definition]] = {}
         for rel, module, definition in definitions:
@@ -499,9 +1190,17 @@ class _Collection:
                     by_qualified,
                 )
                 if site.kind is SiteKind.REFERENCE:
-                    references.append(
-                        self._reference_record(
-                            module, scope, source_id, site, candidates, status, reason, evidence
+                    reference = self._reference_record(
+                        module, scope, source_id, site, candidates, status, reason, evidence
+                    )
+                    reference["evidence_ids"] = list(
+                        self.script_evidence.get((module, site), (evidence,))
+                    )
+                    reference["fact_ids"] = list(self.script_fact_ids.get((module, site), ()))
+                    references.append(reference)
+                    bindings.extend(
+                        self._script_alias_bindings(
+                            module, scope, site, reference["evidence_ids"], syntax
                         )
                     )
                 else:
@@ -517,9 +1216,40 @@ class _Collection:
                         evidence,
                         by_qualified,
                     )
+                    call["evidence_ids"] = list(
+                        self.script_evidence.get((module, site), (evidence,))
+                    )
+                    call["fact_ids"] = list(self.script_fact_ids.get((module, site), ()))
                     calls.append(call)
                     bindings.extend(result_bindings)
+                    bindings.extend(
+                        self._script_alias_bindings(
+                            module, scope, site, call["evidence_ids"], syntax
+                        )
+                    )
         return calls, references, bindings
+
+    def _script_alias_bindings(
+        self, module: str, scope: str, site: Site, evidence_ids: list[str], syntax: Syntax
+    ) -> list[RawRecord]:
+        bindings: list[RawRecord] = []
+        for alias in syntax.script_aliases:
+            if alias.reference_span == site.span and (module, site) in self.script_fact_ids:
+                alias_bindings = self._binding_records(
+                    module,
+                    scope,
+                    [
+                        {
+                            "id": self.script_fact_ids[(module, site)][0],
+                            "name": alias.name,
+                            "evidence_ids": evidence_ids,
+                        }
+                    ],
+                )
+                for alias_binding in alias_bindings:
+                    alias_binding["fact_ids"] = list(self.script_fact_ids[(module, site)][1:])
+                bindings.extend(alias_bindings)
+        return bindings
 
     def _local_import_bindings(self) -> dict[str, dict[str, list[tuple[str, str, bool, bool]]]]:
         result: dict[str, dict[str, list[tuple[str, str, bool, bool]]]] = {}
@@ -556,7 +1286,10 @@ class _Collection:
         candidates: list[str] = []
         reason: str | None = None
         unique_this_member = False
-        if (
+        script_targets = self.script_resolution.get((module, site))
+        if script_targets is not None:
+            candidates.extend(script_targets)
+        elif (
             name
             and not site.computed
             and not site.scope_ambiguous
@@ -883,8 +1616,14 @@ class _Collection:
         module: str = "",
         *,
         kind: _GapKind = _GapKind.COLLECTION,
+        dimension: _GapDimension = _GapDimension.IMPORTS,
+        fact_ids: tuple[str, ...] = (),
     ) -> None:
-        identity = stable_id("UNKNOWN", reason, *evidence, module)
+        identity = (
+            stable_id("UNKNOWN_RUNTIME_EFFECT", fact_ids[0])
+            if dimension is _GapDimension.RUNTIME_EFFECTS and len(fact_ids) == 1
+            else stable_id("UNKNOWN", reason, *evidence, module)
+        )
         self.gaps.setdefault(
             identity,
             classified(
@@ -895,10 +1634,15 @@ class _Collection:
                 title=reason,
                 subjects=[module],
                 evidence_ids=list(evidence),
+                fact_ids=list(fact_ids),
                 data={
                     "reason": reason,
                     "module": module,
-                    **({"resolution_dimension": "imports"} if kind is _GapKind.RESOLUTION else {}),
+                    **(
+                        {"resolution_dimension": dimension.value}
+                        if kind is _GapKind.RESOLUTION
+                        else {}
+                    ),
                 },
             ),
         )
@@ -961,6 +1705,14 @@ class _Collection:
             )
         )
         syntax = parse(rel, text.encode("utf-8"))
+        if syntax.script_mode and (
+            self.resolver.format_of(rel) is not None
+            or any(
+                reference.form in {ReferenceForm.REQUIRE, ReferenceForm.IMPORT_EQUALS}
+                for reference in syntax.references
+            )
+        ):
+            syntax = replace(syntax, script_mode=False, script_globals=(), script_aliases=())
         self.syntax[rel] = syntax
         self.modules[rel] = module
         if syntax.first_error is not None:
@@ -970,7 +1722,51 @@ class _Collection:
             )
         for concern in syntax.concerns:
             self._gap(concern.reason, (self._cite(rel, concern.span),), module)
+        if syntax.script_mode:
+            for name, span in syntax.script_writes:
+                if name is None:
+                    if (name, span) in syntax.script_source_writes:
+                        self._gap(
+                            "Script namespace effects are not statically bounded",
+                            (self._cite(rel, span),),
+                            module,
+                            kind=_GapKind.RESOLUTION,
+                        )
+                    else:
+                        self.script_pending_effects.append((rel, span))
         self._references(rel, module, syntax)
+
+    def _script_runtime_effect(self, rel: str, span: Span) -> None:
+        module = self.modules[rel]
+        evidence = self._cite(rel, span)
+        identity = stable_id("TS_RUNTIME_EFFECT", module, span.line, span.column)
+        self.script_effects.append(
+            classified(
+                item_id=identity,
+                evidence_class=EvidenceClass.FACT,
+                area="source",
+                kind="script_namespace_effect",
+                title="Opaque script runtime effect",
+                subjects=[module],
+                evidence_ids=[evidence],
+                data={
+                    "source_module": module,
+                    "source_scope": module,
+                    "expression": self.evidence[evidence]["excerpt"],
+                    "status": SourceResolution.UNRESOLVED.value,
+                    "targets": [],
+                    "use": SiteUse.VALUE.value,
+                },
+            )
+        )
+        self._gap(
+            "Script namespace effects are not statically bounded",
+            (evidence,),
+            module,
+            kind=_GapKind.RESOLUTION,
+            dimension=_GapDimension.RUNTIME_EFFECTS,
+            fact_ids=(identity,),
+        )
 
     def _references(self, rel: str, module: str, syntax: Syntax) -> None:
         options = self.config.options

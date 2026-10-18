@@ -37,7 +37,9 @@
           "decided_by": "agent"
         }
       ],
-      "public": []
+      "public": [
+        "archkeel.analyzer.python.collect:PythonProviderCollector"
+      ]
     },
     {
       "id": "TARGET-SOURCE",
@@ -48,7 +50,8 @@
         "archkeel.analyzer.python.resolve",
         "archkeel.analyzer.python.receiver_types",
         "archkeel.analyzer.python.scopes",
-        "archkeel.analyzer.python.binding_types"
+        "archkeel.analyzer.python.binding_types",
+        "archkeel.analyzer.python.callable_signatures"
       ],
       "responsibilities": [
         "Own AST ingress, lexical identity and binding/member proof foundations."
@@ -71,7 +74,10 @@
         "archkeel.analyzer.python.scopes",
         "archkeel.analyzer.python.binding_types:AliasBinding",
         "archkeel.analyzer.python.binding_types:ImportKind",
-        "archkeel.analyzer.python.binding_types:BindingKind"
+        "archkeel.analyzer.python.binding_types:BindingKind",
+        "archkeel.analyzer.python.callable_signatures:contextmanager_signatures",
+        "archkeel.analyzer.python.callable_signatures:contextmanager_dependency_bindings",
+        "archkeel.analyzer.python.source:provider_source_eligible"
       ]
     },
     {
@@ -249,6 +255,10 @@
       {
         "path": "src/archkeel/analyzer/python/binding_types.py",
         "responsibility": "Own nominal import and lexical binding kinds and classify external compiler scope types."
+      },
+      {
+        "path": "src/archkeel/analyzer/python/callable_signatures.py",
+        "responsibility": "Prove effective callable signatures from captured source and closed native witnesses."
       }
     ],
     "uml": {
@@ -925,6 +935,105 @@
             ],
             "returns": "list[RawRecord]"
           }
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "id": "PYTHON-PROVIDERS-MODULE",
+          "kind": "module",
+          "qualified_name": "archkeel.analyzer.python.collect",
+          "parent_id": "TARGET-ENTRY",
+          "responsibilities": [
+            "Assemble Python facts and bind external resolution source snapshots."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "id": "PYTHON-PROVIDERS-COLLECTOR",
+          "kind": "class",
+          "qualified_name": "archkeel.analyzer.python.collect.PythonProviderCollector",
+          "parent_id": "PYTHON-PROVIDERS-MODULE",
+          "responsibilities": [
+            "Acquire provider bytes from validated import facts; keep project parsing in bounded processes under one shared deadline. Preserve governed scope; export identity does not prove member behavior."
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          }
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "id": "PYTHON-PROVIDERS-PROCESS",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.python.collect.PythonProviderCollector.collector",
+          "parent_id": "PYTHON-PROVIDERS-COLLECTOR",
+          "annotation": "ProcessCollector",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "responsibilities": [
+            "Delegate transport, response authentication and process cleanup to the existing process collector."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "id": "PYTHON-PROVIDERS-COLLECT",
+          "kind": "method",
+          "qualified_name": "archkeel.analyzer.python.collect.PythonProviderCollector.collect",
+          "parent_id": "PYTHON-PROVIDERS-COLLECTOR",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "responsibilities": [
+            "Use a bounded import survey to bind provider bytes to final collection under one deadline. Return complete facts or a typed error; reject changed inputs or producer identities and preserve custom collector wiring."
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "self",
+                "kind": "positional",
+                "default_known": true
+              },
+              {
+                "name": "request",
+                "annotation": "CollectionRequest",
+                "kind": "positional",
+                "default_known": true
+              }
+            ],
+            "returns": "SourceFacts | CollectionError"
+          }
+        },
+        {
+          "id": "PYTHON-CALLABLE-SIGNATURES",
+          "kind": "module",
+          "qualified_name": "archkeel.analyzer.python.callable_signatures",
+          "language": "python",
+          "parent_id": "TARGET-SOURCE",
+          "presence": "planned",
+          "responsibilities": [
+            "Prove supported source-bound signature transformations."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ]
         }
       ],
       "relationships": [],

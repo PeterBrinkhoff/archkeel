@@ -1,6 +1,6 @@
 # Compact Target definition scope
 
-Status: contracts, two code boundaries and bounded reliability fixes implemented;
+Status: contracts, owner corrections and native evidence foundations implemented;
 full architecture acceptance remains open.
 Baseline: `006bc089852a80bd60f8723e2c4b4f9bfb6d1210`.
 The earlier experiment at `2378c9006390f40d63f2948a0eff4ed0e3f895b4` is retained
@@ -15,9 +15,20 @@ and validation in the same PR are the end goal. The two implemented boundary
 refactorings are a milestone, not evidence of complete architecture conformance.
 Do not merge automatically.
 
-Keep the baseline's root and eight nested contracts. Refine existing owners and
-actual crossing ports; do not add a parallel source inventory or prescribe a
-package migration. Preserve required entities, allowances and acceptance budgets.
+The user selected source-declaration semantics: compare direct declarations and
+traceable source bindings, without claiming stability against later runtime effects.
+Runtime behavior is tested separately. Missing source, ambiguous bindings and
+unsupported declaration transformations remain UNKNOWN. Checker input authentication,
+bounded execution and cleanup remain required operational guarantees.
+
+Keep the baseline's root and eight nested Python contracts. Add one canonical
+[browser contract](browser-contract.json) for the previously textual browser owners
+and ports. The current evaluator accepts one language profile per observation;
+one separate contract avoids copying Python policy or introducing profile projections.
+Acceptance requires both native results. Refine existing owners and actual crossing
+ports; do not add a parallel inventory or prescribe a package migration. Preserve
+required entities and all allowances except the explicitly accepted Mapping change;
+ratchet budgets downward only after their reductions are proved.
 The original 59 positions are reconciled below; required proof gaps remain open.
 
 Basis: [AD-17](../decisions/ad-17-archkeels-own-target-names-its-quality-goals-and-ir-holds.md),
@@ -79,7 +90,7 @@ Compatibility bridges constrain migration, not the permanent responsibility mode
 
 ## Reviewed physical scope
 
-The recursive structure review inventories all 144 maintained Python modules,
+The recursive structure review inventories all 145 maintained Python modules,
 including initializers, plus authored browser assets. It checks module responsibilities,
 imports, declared owners and direct I/O sites; it does not prove every function body
 correct. Counts below exclude initializers. A large count triggers review, not a split.
@@ -89,7 +100,7 @@ Empty experiment directories are not source packages.
 | --- | --- | --- |
 | `api.py` | 1 / 0 | Read the complete reader path through file read, strict decoding and violation projection. Keep this stable I/O edge; exact import ports and signature are native intent. |
 | `analyzer` | 4 / 3 | Traced collector setup, request/response binding, bounded pipe exchange, deadline and POSIX process-group cleanup; Windows helper internals remain structurally reviewed. Keep runtime/bootstrap above isolated language adapters. |
-| `analyzer/python` | 17 / 0 | Traced collector assembly and source-owned definition contexts into symbol/call evidence; other specialist bodies structurally reviewed. Keep source/binding/member foundations below isolated collectors. No contexts module is needed. |
+| `analyzer/python` | 18 / 0 | Traced collector assembly, definition contexts and the closed callable-signature proof into symbol/call evidence; other specialist bodies structurally reviewed. Keep source/binding/member foundations below isolated collectors. |
 | `analyzer/dart` | 6 / 0 | Structural review plus snapshot/syntax/resolution/collection declarations and ports; no new complete parser/resolver semantic review. Keep the five existing owners; file length alone does not justify a split. |
 | `analyzer/typescript` | 7 / 0 | Structural review plus input/configuration/syntax/resolution port declarations; no new complete parser/resolver semantic review. Keep these independently changing owners. |
 | `check` | 18 / 2 | Traced shared repository observation, UML authentication, report/saved-report boundaries and Check input ordering; remaining workflow helpers structurally reviewed. Keep shared observation below command consumers. |
@@ -99,7 +110,7 @@ Empty experiment directories are not source packages.
 | `host` | 1 / 0 | Read the complete environment/identity/subprocess/decode/record path. Keep forge acquisition outside Check; fail bounded requests through typed ordering errors. |
 | `ir` | 52 / 0 | Structural/import/I/O review of every module; read non-use candidate derivation and codec/projection ownership decisions. Keep focused flat formats, values and pure derivations (AD-238/239); no speculative package migration. The digest reader is the documented I/O exception. |
 | `render` | 6 / 0 | Read exact public ports and existing payload/summary direction constraints; HTML composition bodies structurally reviewed. Keep payload/summary below HTML and terminal. |
-| `render/assets` | 11 authored / 0 | Read projection/layout ports, layout validation, Explorer async generation handling and their existing browser controls. Other UI paths structurally reviewed; Python rules do not scan these assets. |
+| `render/assets` | 9 authored JS/TS; 2 CSS | Read projection/layout ports, layout validation, Explorer async generation handling and their existing browser controls. Other UI paths structurally reviewed; Python rules do not scan these assets. |
 
 The three generated outputs are `flow.runtime.js`, `report-graph-protocol.js` and
 `report-graph-vocabulary.ts`; their authored sources are Flow, the TypeScript scene
@@ -113,14 +124,21 @@ Existing browser evidence is explicit: `test_report_renderer_units.py` covers pu
 projection, input preservation and rejection of incomplete/duplicate/nonfinite layout
 output; `test_uml_rendering.py::test_standard_uml_ignores_stale_layout_and_retries_rejected_layout`
 covers async generation ownership and retries. Interactions and offline CSP have
-separate suites. Native ArchKeel enforcement of these JavaScript boundaries remains
-a capability gap; a Python PASS does not close it. An isolated TypeScript collector
+separate suites. Complete native enforcement of these JavaScript boundaries remains
+open; a Python PASS does not close it. Before the native extension, an isolated TypeScript collector
 probe read and parsed both unchanged `report-layout.js` and `report-scene.js` with
 `allowJs`: two selected files, 35 symbols and zero imports. Their global IIFE ports
 are not import edges; receiver dispatch remains unproven. One scan currently has one
 language/namespace, so replacing the Python scan with this probe would lose its scope.
-Failure/lifecycle meanings in port responsibilities likewise need behavior tests,
-beyond matching signatures.
+The native extension adds witnessed script-global dependencies. Its browser gate selects
+eight authored JavaScript files and the generated graph protocol; Flow runtime derivation,
+the authored TypeScript protocol and generated vocabulary retain their separate existing
+publication/compiler checks. The existing Python scan retains every maintained module.
+Standard globals require closed language/library provenance; DOM is never inferred from
+an arbitrary free name. Source declarations and runtime effects remain separate claims.
+Required namespace, factory-return and vendor-publication proofs must pass the actual
+consumer and missing/rebinding controls before this milestone is accepted.
+Failure/lifecycle meanings in port responsibilities likewise need behavior tests beyond signatures.
 
 The Host acquisition contract bounds the `glab` request to 30 seconds, decodes UTF-8
 explicitly and exposes timeout, decoding and execution failures as `OrderingError`.
@@ -145,8 +163,8 @@ left the compact scope; the retained report facade adds one `JsonValue` return
 position. None is an evidence improvement. The 30 type positions are 29 alias
 positions and one inherited `Mapping` surface; the other groups are 20 facade
 routes and eight incomplete member inventories. Binding/source identity is not
-static namespace proof. External declarations and browser script-global binding
-remain native capability gaps, not reasons to whitelist dependencies.
+static namespace proof. At that revision, external declarations and browser script-global
+binding were native capability gaps. The extensions below address them without whitelists.
 
 No deletion follows from the unreferenced-symbol projection. It excludes known dynamic
 interfaces and declared exports but cannot prove external or runtime non-use. The
@@ -166,6 +184,11 @@ compatibility in their authoritative native entries. These are the required seam
 | Check observation → injected collector | Check-owned `Observer` calls `SourceCollector.collect(CollectionRequest) -> SourceFacts | CollectionError`. CLI injects the collector implementation; retain timeout/output bounds, response validation and child cleanup. |
 | CLI → Render | HTML consumes `RunResult` and optional `Observation`, returning bytes. Terminal consumes the existing typed result/summary. Neither changes verdicts. |
 | Browser Explorer → projection/layout | Reuse typed scene/layout ports. Specify shared state and cancellation ownership; no new route codec or state model without a demonstrated need. |
+
+`FilesToWrite` deliberately replaces its Python `Mapping` API with a frozen value:
+`entries: tuple[tuple[str, bytes], ...]`. Producers retain insertion order and exact
+bytes. Consumers iterate `.entries` or use `dict(files.entries)` for lookup;
+indexing, mapping methods and mapping equality are no longer supported.
 
 Use exact `public` and dependency `through` entries for governed crossings.
 Keep field/signature details in one authoritative entry, not a parallel ledger.
@@ -195,10 +218,75 @@ Dead-code candidates need caller, test, export, entry-point, dynamic-use and
 compatibility evidence. No reference found is UNKNOWN, not deletion authority.
 Misplacement findings name the current owner, target owner and offending crossing.
 
+## Native evidence extension
+
+`PythonProviderCollector` obtains a bounded V4 import survey through `ProcessCollector`,
+captures provider bytes inside that bounded child, then requests full collection
+(V4 with providers, V3 without). The parent authenticates the complete captured inventory
+without provider-file I/O. Both passes share one deadline and the existing output bounds.
+Non-provider inputs and producer identities must match; records from different passes are never merged.
+The survey retains all selected files, digests and parse gaps. Core rejects its partial
+sections as a complete Python observation; the wrapper always returns the final collection.
+V4 binds provider bytes and hashes in the request; V1–V3 wire formats and custom collector
+wiring retain their existing behavior. Separate resolution inputs never become governed
+Files, symbols or coverage. Exact source-binding receipts live with observation proofs,
+not typing debt. They prove a direct export identity, not member shape or effects.
+Default Python composition uses this adapter; explicit collector commands and other
+languages keep their existing process adapter. A receipt identifies one unique direct
+source declaration. It does not require proving unrelated bodies or import side effects.
+Missing or ambiguous provider/package paths, competing bindings and unsupported
+declaration transformations remain UNKNOWN. An unrelated ineligible provider cannot
+erase another provider's source witness. Captured bytes retain their provenance.
+
+Direct and reexported callable signatures require native source-binding and decorator
+proofs. Every reexport hop needs its own concrete declaration; runtime member-stability
+flags do not replace or invalidate that source identity. Missing declarations,
+competing bindings and unproven decorators retain the affected positions as UNKNOWN.
+A provider receipt cannot bypass these checks.
+Symbol collection reuses immutable module proofs only within one invocation; a later
+collection must observe changed bindings. No persistent proof cache is introduced.
+
+Synchronous `contextmanager` declarations have a separate native signature proof.
+It binds the factory, wrapper, metadata updater and complete supported base-class
+surfaces to captured source. Closed CPython 3.11/3.12 witnesses cover native
+`partial` and the successful `_abc` import branch; unsupported variants stay UNKNOWN.
+The proof references its own function evidence and separate provider support.
+Original parameters, returns and decorator flags remain unchanged. Only the exact
+proven return receives the effective wrapper/payload interpretation; its payload
+uses the existing type interpreter. UML signatures continue to show source declarations.
+The roughly 1,000-line recognizer is a new native capability with permanent profile
+maintenance cost. It does not prove arbitrary decorators or runtime cleanup.
+Progress lifecycle behavior has separate execution tests.
+
+Existing member/effect facts remain conservative compatibility data. They cannot
+substitute for source-declaration proof or turn it into a runtime guarantee. Recursive
+aliases and inherited external interfaces still need their own bounded source evidence.
+
+The TypeScript adapter records JavaScript script-global source dependencies separately
+from lexical imports and runtime effects. Existing native rules evaluate those crossings.
+Unique direct declarations, factory return members and namespace bindings need their
+actual source witnesses; they do not prove runtime availability or call targets.
+Missing/competing sources, explicit alternative bindings and unsupported transformations
+retain UNKNOWN. All selected writers participate, including writes through direct aliases.
+Read-only aliases use precise member dependencies only when their static uses are
+exhaustive; unsupported uses retain the broad dependency and uncertainty.
+Standard globals require a closed language/library environment. Vendor publications
+require a complete authenticated provider inventory, an explicit classic-browser host,
+the actual UMD envelope and existing package/hash provenance. Host contradictions veto
+that proof. Real opaque effects remain bound runtime-effect gaps; Core authenticates
+their own source facts, evidence, profile and replay digest. Runtime calls stay conservative.
+
+The user approved exactly one additional CLI-to-Analyzer coupling name:
+`archkeel.analyzer.python.collect:PythonProviderCollector`. It keeps Python-specific
+acquisition in its adapter and composition in CLI. Existing budget ceilings never increase;
+proved reductions use the ordinary downward ratchet.
+
 ## Code alignment and acceptance
 
 - Observation derives exposed public types once through the existing evaluator;
   declaration projection consumes the mapping without importing evaluation.
+  Uncertain signatures retain publisher/mount-specific possible uses; missing
+  callable proof cannot justify declaring their named types unused.
 - UML authentication belongs to observation. Shared repository observation lives
   there, below onboarding/report/validation. The existing report callable keeps its
   signature and delegates there; an import alias silently dropped its five governed
@@ -206,7 +294,9 @@ Misplacement findings name the current owner, target owner and offending crossin
 - CLI ownership, dependencies and component cycles are closed by native rules.
   The onboarding-to-report prohibition selects exact modules (contract 3.4),
   rather than accidentally prohibiting every import within their shared owner.
-- Keep all 121 baseline rule payloads, required entities and allowance values.
+- Keep baseline rules and required entities. The accepted `FilesToWrite` API
+  replacement removes its obsolete constructor-map allowance; retain every other
+  original allowance and executable rule field.
   Bind ownership/port migration through native widening review; do not hide new
   findings in the debt baseline or increase its budgets.
 - Run `make target-contract-check`, relevant behavior/negative controls, native
@@ -249,56 +339,46 @@ pairs (median 0.504 s before / 0.502 s after, no diagnostics or widenings). Both
 measurements have overlapping spread and make no speed claim.
 
 #601 remains partial: conservative declaration diagnostics are not a complete
-semantic diff, owner migration is untested, and the bounded shipped skill example
-is missing. [#600](https://github.com/rapiddweller/archkeel/issues/600) uses this
-self-review as evidence; its reusable workflow and delivery controls remain open.
+semantic diff. The eight-source nested Dart fixture now exercises an actual owner
+move: three logical edit files, unchanged root publication, native Target PASS,
+unamended widening rejection and preserved forbidden-import rejection. Its focused
+and whole saved review inputs measure 11,180 and 18,907 bytes respectively; these
+are maintenance measurements, not runtime speed claims. A bounded maintenance
+example ships in the canonical skill, CLI asset and generated plugin with byte-parity
+controls. [#600](https://github.com/rapiddweller/archkeel/issues/600) uses this
+self-review and reusable review method as evidence; its full semantic scenarios
+and delivered-report navigation controls remain open.
 [#602](https://github.com/rapiddweller/archkeel/issues/602) owns the broader native
 capability and checker-retirement work. No P0 is closed by this PR's partial evidence.
 
 ## Validation
 
-At `437e9022`, 913 selected tests passed locally, but CI Core failed five tests
-omitted from that selection; report/browser and Mermaid CI passed. Schema-version,
-render-port fixture and exact ownership expectations were corrected without
-weakening their checks. The three files then passed all 106 tests locally.
+Accept only a frozen candidate with complete scope, zero required UNKNOWNs,
+no diagnostics or violations, and passing relevant Core/report/browser,
+packaging and final-head CI checks. Earlier receipts do not validate later code.
+The 120-second report ceiling, 837 unresolved-call ceiling and 52 typing-position
+ceiling remain unchanged; proved reductions use the ordinary downward ratchet.
+Microbenchmarks do not establish whole-report acceptance.
 
-The first full local Core run passed 4,728 tests and exposed five different CRLF
-fixture failures: inherited Git normalization changed bytes before observation.
-The temporary repository now owns that setting; all 73 byte/snapshot tests pass
-with exact assertions and host configuration preserved. At `173f5482`, LOCAL VERIFIED: the complete
-`make ci-pr-check BASE=origin/main` passed with 4,733 tests and one existing Chromium
-skip (local Playwright unavailable). Lint, type checking and installed wheel/sdist
-smoke checks passed. Independent review checked both corrections.
+Preserve every original field of 921 UML entities, exclusions and 121 original
+rules. The accepted Mapping replacement removes only its obsolete constructor-map
+allowance and corrects the rationale. Nine Python contracts add four constraints
+and 136 entities; one separate browser contract adds five owners and one rule.
+The original 59-to-58 scope reconciliation is not an evidence gain.
 
-At `173f5482`, native validation against the baseline: 144/144 files; no diagnostics or known
-violations; 58 UNKNOWNs, 837 unresolved calls and all debt budgets unchanged.
-All 121 original rule payloads, required UML entity fields and responsibility exclusions
-remain; four rules were added. The Realworld fixture's 72-file observation and
-result match before/after except for the expected tool-code digest. No performance
-improvement is claimed.
+The target requires both `collect → collect_response → _exchange` edges. Native
+positive and missing-edge controls prove the migration. Its bound amendment also
+names the accepted Mapping API replacement and exactly approved provider port.
+The baseline ratchet reduces required UNKNOWNs from 58 to zero without
+`--accept-new`; every other ceiling remains in force.
 
-The attempted alias reduced the type-rule denominator from 122 to 117 and gated
-UNKNOWNs from 58 to 57. That lost scope was rejected; the signature-preserving
-report facade restores it without changing the evaluator or baseline.
+Exercise actual-source positive, forbidden-edge, missing-publication and
+missing/unowned-file controls. Preserve stale/replayed evidence rejection and
+real namespace/factory/hook mutation counterexamples. Source identity, native
+creation, member stability and runtime effects require distinct proofs.
+Independent Astra review covers maintainability, extensibility, performance and
+reliability; resolve material findings before acceptance.
 
-At `af3f36ee`, LOCAL VERIFIED: 22 selected native signatures;
-`make target-contract-check` (27 passed); `make pr-test` (4,765 passed, one existing
-Chromium skip); 231 overlapping Inside/Widening/Rename/Codec controls; lint and
-Mypy (150 files). Native validation against Main accepts the bound amendment:
-144/144 files, no diagnostics/failures/known violations, 58 UNKNOWNs, 837 unresolved
-calls and 52 typing positions. Original rules, entity fields and baseline remain
-unchanged. Report generation takes 67.03 s under the unchanged 120 s ceiling;
-49,110,806 output bytes remain under three times canonical bytes. No speed gain
-is claimed. The earlier 81-test browser/report run remains applicable to unchanged
-renderer/browser code; it predates the nested validation fix. Astra's four-perspective
-review found and closed the rename collision; no package findings remain.
-
-The subsequent collector guard rejects NaN, infinity and timeouts beyond the
-platform's `threading.TIMEOUT_MAX` before execution. Defaults and valid limits
-stay unchanged. Its 160 process/protocol controls, lint/Mypy, native validation
-with unchanged budgets and four-perspective Astra review pass. This does not
-close any required UNKNOWN; broader evidence remains revision-specific.
-
-CI-ONLY VERIFICATION: suites on the final committed head and the wider platform/version matrix.
-Existing UNKNOWN debt remains explicit; this does not close the old
-proof gaps or prove complete target conformance.
+Record revision-bound LOCAL VERIFIED and CI-ONLY VERIFICATION evidence in the PR.
+Retained runtime gaps and unresolved calls are not a runtime guarantee. Required
+UNKNOWNs, missing scope or failed budgets prevent complete target acceptance.

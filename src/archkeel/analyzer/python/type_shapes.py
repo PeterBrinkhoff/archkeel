@@ -9,7 +9,8 @@ import ast
 from collections.abc import Iterable, Iterator
 from types import MappingProxyType
 
-from archkeel.ir.facts_codec import RawRecord
+from archkeel.ir.facts import contextmanager_signature
+from archkeel.ir.facts_codec import RawRecord, freeze_data
 from archkeel.ir.type_shapes import (
     LiteralKind,
     TypeApplication,
@@ -122,10 +123,16 @@ def symbol_type_expressions(symbols: Iterable[RawRecord]) -> Iterator[str]:
     """Enumerate the source text positions emitted by Python symbol collection."""
     for symbol in symbols:
         data = symbol["data"]
-        for key in ("name", "alias", "returns"):
+        for key in ("name", "alias", "returns", "annotation"):
             value = data.get(key)
             if isinstance(value, str):
                 yield value
+        if "contextmanager_signature" in data:
+            effective = contextmanager_signature(
+                freeze_data(data["contextmanager_signature"])
+            ).effective_return
+            yield effective.payload
+            yield f"{effective.wrapper}[{effective.payload}]"
         yield from data.get("bases", ())
         for position in (*data.get("parameters", ()), *data.get("fields", ())):
             annotation = position.get("annotation")

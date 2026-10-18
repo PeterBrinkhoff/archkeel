@@ -9,7 +9,7 @@ import json
 import os
 import re
 import sys
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from dataclasses import replace
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
@@ -448,7 +448,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     subject = "command-line arguments"
     interactive = sys.stdout.isatty()
     artifacts: list[Path] = []
-    files: Mapping[str, bytes] = {}
+    files: tuple[tuple[str, bytes], ...] = ()
     try:
         args = parser.parse_cli_args(argv)
         if args.command is None:
@@ -478,7 +478,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         with progress(f"archkeel {command}: {activity}"):
             if command is Command.INIT:
                 subject = str(root)
-                result, files = run_init(
+                result, requested_files = run_init(
                     root,
                     source=tuple(args.source) if args.source is not None else None,
                     namespace=args.namespace,
@@ -495,6 +495,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     collector_argv=tuple(args.collector_argv) if args.collector_argv else None,
                     collector_output_limit_bytes=args.collector_output_limit_bytes,
                 )
+                files = requested_files.entries
             elif command is Command.REPORT and args.input is not None:
                 if args.full and args.only is not ReportMode.ARCHITECTURE:
                     parser.error("--full requires --only architecture")
@@ -633,7 +634,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                         except ValueError:
                             # Missing or invalid historical config cannot authorize a rename.
                             against_config = None
-                result, files = run_validate(
+                result, requested_files = run_validate(
                     root,
                     config,
                     observer_for(
@@ -655,6 +656,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     decided_by=args.decided_by,
                     rationale=args.rationale,
                 )
+                files = requested_files.entries
                 result = replace(result, scan_roots=config.roots)
             else:
                 config = load_check_config(root, args.baseline, args.head)
@@ -692,7 +694,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                         )
                     )
                     artifacts.extend((args.output, check_html))
-            for relative, payload in files.items():
+            for relative, payload in files:
                 target = root / relative
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(payload)

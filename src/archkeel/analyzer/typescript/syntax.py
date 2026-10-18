@@ -58,6 +58,11 @@ class ReceiverKind(Enum):
     OTHER = "other"
 
 
+class ScriptRoot(Enum):
+    WINDOW = "window"
+    GLOBAL_THIS = "globalThis"
+
+
 @dataclass(frozen=True, slots=True)
 class Span:
     """A 1-based line and UTF-16 column, as the TypeScript compiler reports them."""
@@ -176,6 +181,9 @@ class Site:
     scope_ambiguous: bool = False
     scope_column: int | None = None
     receiver_kind: ReceiverKind = ReceiverKind.NONE
+    path: tuple[str, ...] = ()
+    script_free: bool = False
+    script_escape: bool = False
 
     def __post_init__(self) -> None:
         if not isinstance(self.kind, SiteKind):
@@ -208,6 +216,65 @@ class StringComparison:
 
 
 @dataclass(frozen=True, slots=True)
+class ScriptGlobal:
+    """A written browser-global object publication, with its lexical member bindings."""
+
+    name: str
+    span: Span
+    members: tuple[tuple[str, str, Span], ...]
+    stable: bool
+    source_members: tuple[tuple[str, str, Span], ...] = ()
+    source_origin: bool = False
+    availability: tuple[Span, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class ScriptNamespace:
+    name: str
+    span: Span
+    initialization: Span
+
+
+@dataclass(frozen=True, slots=True)
+class ScriptFactoryMember:
+    name: str
+    span: Span
+    target: str | None = None
+    target_span: Span | None = None
+    forwarded_span: Span | None = None
+    callable: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class ScriptFactory:
+    name: str
+    span: Span
+    members: tuple[ScriptFactoryMember, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ScriptDestructure:
+    span: Span
+    path: tuple[str, ...]
+    members: tuple[tuple[str, str, Span], ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ScriptAlias:
+    """One lexical const binding whose object is used only for static member calls."""
+
+    name: str
+    span: Span
+    reference_span: Span
+    path: tuple[str, ...]
+    calls: tuple[Span, ...]
+    factory: bool = False
+    reads: tuple[Span, ...] = ()
+    escapes: tuple[tuple[str, ...], ...] = ()
+    complete: bool = True
+
+
+@dataclass(frozen=True, slots=True)
 class Syntax:
     references: tuple[Reference, ...]
     concerns: tuple[Concern, ...]
@@ -219,3 +286,13 @@ class Syntax:
     import_bindings: tuple[ImportBinding, ...] = ()
     rebound_names: tuple[str, ...] = ()
     string_comparisons: tuple[StringComparison, ...] = ()
+    script_globals: tuple[ScriptGlobal, ...] = ()
+    script_writes: tuple[tuple[str | None, Span], ...] = ()
+    script_mode: bool = False
+    script_aliases: tuple[ScriptAlias, ...] = ()
+    script_factories: tuple[ScriptFactory, ...] = ()
+    script_source_writes: tuple[tuple[str | None, Span], ...] = ()
+    script_write_paths: tuple[tuple[str, ...], ...] = ()
+    script_destructures: tuple[ScriptDestructure, ...] = ()
+    script_bindings: tuple[str, ...] = ()
+    script_namespaces: tuple[ScriptNamespace, ...] = ()

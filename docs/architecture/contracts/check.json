@@ -2130,6 +2130,46 @@
             ],
             "returns": "ObservationResult"
           }
+        },
+        {
+          "id": "COMPACT-FILES-TO-WRITE",
+          "kind": "class",
+          "qualified_name": "archkeel.check.ports.FilesToWrite",
+          "language": "python",
+          "parent_id": "archkeel.check.ports",
+          "presence": "planned",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "modifiers": [
+            "frozen"
+          ],
+          "responsibilities": [
+            "Carry ordered output paths and bytes without owning file I/O."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ]
+        },
+        {
+          "id": "COMPACT-FILES-TO-WRITE-ENTRIES",
+          "kind": "attribute",
+          "qualified_name": "archkeel.check.ports.FilesToWrite.entries",
+          "language": "python",
+          "parent_id": "COMPACT-FILES-TO-WRITE",
+          "presence": "planned",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "annotation": "tuple[tuple[str, bytes], ...]",
+          "responsibilities": [
+            "Retain output order and exact bytes in an immutable sequence."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ]
         }
       ],
       "relationships": [

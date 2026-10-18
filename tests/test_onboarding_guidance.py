@@ -130,7 +130,10 @@ def test_successful_init_is_neutral_and_names_observed_cycles(tmp_path: Path, cy
     assert count is not None and (count > 0) == cyclic
     assert ("no_component_cycles" in summary.sentence) == cyclic
     assert (f"{count} cycle edge" in summary.sentence) == cyclic
-    kinds = {item["kind"] for item in json.loads(files["architecture-contract.json"])["rules"]}
+    kinds = {
+        item["kind"]
+        for item in json.loads(dict(files.entries)["architecture-contract.json"])["rules"]
+    }
     assert ("no_component_cycles" in kinds) != cyclic
 
 

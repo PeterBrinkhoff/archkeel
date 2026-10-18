@@ -7,13 +7,141 @@ import json
 from pathlib import Path
 
 import pytest
-from test_analyzer import _component
+from test_analyzer import _component, _parsed_module
 from test_boundary_types_non_init_facades import _write_app
 
 from archkeel.cli.observe import observe
 
+
+@pytest.mark.parametrize(
+    "declaration,proven",
+    [
+        ("Table: Final[dict[str, Choice]] = {'a': Choice()}\n", True),
+        ("Table = {'a': Choice()}\n", False),
+        ("Table: Final[dict[str, Choice]] = {}\nTable = {}\n", False),
+        ("if enabled:\n    Table: Final[dict[str, Choice]] = {}\n", False),
+        ("Table: Final[dict[str, Choice]] = {}\nfrom missing import *\n", False),
+    ],
+    ids=["annotated", "unannotated", "rebound", "conditional", "star"],
+)
+def test_annotated_value_route_proves_declaration_without_runtime_shape(
+    tmp_path, declaration, proven
+):
+    _write_app(
+        tmp_path,
+        public=["sample.app.api"],
+        init="",
+        api="from .impl import Table\n__all__ = ['Table']\n" + SAFE,
+        implementation="from typing import Final\nclass Choice: pass\n" + declaration,
+    )
+    result = observe(
+        tmp_path,
+        roots=("sample",),
+        namespace="sample",
+        contract="contract.json",
+        git_head="a" * 40,
+        dirty=False,
+        contract_root=tmp_path,
+    )
+    assert result.observation is not None, result.diagnostics
+    unknowns = [
+        row
+        for row in result.observation.records("unknowns") or ()
+        if row.kind == "boundary_type_route"
+    ]
+    assert bool(unknowns) is not proven
+    if proven:
+        [symbol] = [
+            row
+            for row in result.observation.records("symbols") or ()
+            if row.data.get("qualified_name") == "sample.app.impl.Table"
+        ]
+        assert symbol.kind == "dynamic_binding"
+        assert symbol.data.get("source_binding_unique") is True
+        assert symbol.data.get("annotation") == "Final[dict[str, Choice]]"
+        assert symbol.data.get("constant") is None
+        assert symbol.data.get("symbol_category") is None
+
+
+@pytest.mark.parametrize(
+    "bridge,proven",
+    [
+        ("from .impl import run\n", True),
+        ("from .impl import run as run\n", True),
+        ("from .impl import run\nrun = object\n", False),
+        ("if enabled:\n    from .impl import run\n", False),
+        ("from .impl import run\nfrom missing import *\n", False),
+        ("from .api import run\n", False),
+        ("def configure():\n    from .impl import run\n", False),
+        ("from .missing import run\n", False),
+    ],
+    ids=["plain", "same-name", "rebound", "conditional", "star", "cycle", "local", "missing"],
+)
+def test_source_import_hops_do_not_require_export_promotion(bridge, proven):
+    from archkeel.analyzer.python.imports import collect_imports, resolve_reexports
+    from archkeel.analyzer.python.source import stable_direct_module_bindings
+    from archkeel.analyzer.python.symbols import collect_symbols
+    from archkeel.check.evaluation.boundary_types import _public_alias_route_has_unproven_hop
+
+    modules = [
+        _parsed_module(
+            "def run(value: str) -> str: return value\n", "sample.impl", rel_path="sample/impl.py"
+        ),
+        _parsed_module(bridge, "sample.bridge", rel_path="sample/bridge.py"),
+        _parsed_module(
+            "from .bridge import run\n__all__ = ['run']\n", "sample.api", rel_path="sample/api.py"
+        ),
+    ]
+    imports = collect_imports(modules, {m.module for m in modules}, {}, namespace="sample")
+    resolve_reexports(imports, {m.module: m.all_exports for m in modules}, modules)
+    symbols, _, _ = collect_symbols(modules, {})
+    publisher = next(item for item in imports if item["data"]["source_module"] == "sample.api")
+    route = ("sample.api.run", *publisher["data"]["reexport_chain"])
+    stable = {m.module: stable_direct_module_bindings(m) for m in modules}
+    definitions = {("sample.impl", "run"): symbols}
+    bindings = {}
+    for item in imports:
+        data = item["data"]
+        bindings.setdefault((data["source_module"], data["binding"]), []).append(item)
+    assert all(
+        not item["data"]["reexport"]
+        for item in imports
+        if item["data"]["source_module"] == "sample.bridge"
+    )
+    if proven:
+        assert route == ("sample.api.run", "sample.bridge.run", "sample.impl.run")
+    assert (
+        _public_alias_route_has_unproven_hop(
+            route, definitions, bindings, set(stable), stable, type_shapes={}
+        )
+        is not proven
+    )
+
+
 SAFE = "\ndef safe(value: str) -> str:\n    return value\n"
 EXPORT = '__all__ = ["constraints", "safe"]\n'
+
+
+@pytest.mark.parametrize("condition", ["TYPE_CHECKING", "enabled"])
+def test_unproven_ordinary_import_is_not_promoted_to_reexport_candidate(condition):
+    from archkeel.analyzer.python.imports import collect_imports, resolve_reexports
+
+    modules = [
+        _parsed_module("class Projection: pass\n", "sample.projection"),
+        _parsed_module(
+            f"from typing import TYPE_CHECKING\nif {condition}:\n"
+            "    from .projection import Projection\n",
+            "sample.model",
+        ),
+    ]
+    imports = collect_imports(modules, {m.module for m in modules}, {}, namespace="sample")
+    uncertain, _ = resolve_reexports(imports, {m.module: m.all_exports for m in modules}, modules)
+    [binding] = [item["data"] for item in imports if item["data"]["binding"] == "Projection"]
+    assert binding["module_level_import"] is True
+    assert binding["source_binding_unique"] is False
+    assert binding["reexport"] is False
+    assert binding["reexport_candidate"] is False
+    assert "sample.model.Projection" not in uncertain
 
 
 @pytest.mark.parametrize(
@@ -318,26 +446,29 @@ def test_public_alias_cycle_is_unknown_beside_a_typed_function(tmp_path: Path) -
 
 
 @pytest.mark.parametrize(
-    ("middle", "unknown"),
+    ("middle", "unknown", "violations"),
     [
-        ("from .impl import element_constraints as constraints\n", True),
+        ("from .impl import element_constraints as constraints\n", False, 3),
         (
             "from .impl import element_constraints as constraints\n"
             'if enabled:\n    __all__ = ["constraints"]\n',
-            True,
+            False,
+            3,
         ),
-        ('__all__ = ["constraints"]\n', True),
-        ('constraints = 42\n__all__ = ["constraints"]\n', False),
-        ('class constraints:\n    pass\n__all__ = ["constraints"]\n', False),
+        ('__all__ = ["constraints"]\n', True, 0),
+        ('constraints = 42\n__all__ = ["constraints"]\n', False, 0),
+        ('class constraints:\n    pass\n__all__ = ["constraints"]\n', False, 0),
         (
             'constraints = 42\n__all__ = ["constraints"]\n'
             "def other():\n    from .impl import element_constraints as constraints\n",
             False,
+            0,
         ),
         (
             'class constraints:\n    pass\n__all__ = ["constraints"]\n'
             "def other():\n    from .impl import element_constraints as constraints\n",
             False,
+            0,
         ),
     ],
     ids=(
@@ -351,7 +482,7 @@ def test_public_alias_cycle_is_unknown_beside_a_typed_function(tmp_path: Path) -
     ),
 )
 def test_public_route_endpoint_must_be_known_beside_a_typed_function(
-    tmp_path: Path, middle: str, unknown: bool
+    tmp_path: Path, middle: str, unknown: bool, violations: int
 ) -> None:
     _write_app(
         tmp_path,
@@ -371,7 +502,11 @@ def test_public_route_endpoint_must_be_known_beside_a_typed_function(
     )
     assert result.observation is not None, result.diagnostics
     observation = result.observation
-    assert not observation.records("violations")
+    actual = observation.records("violations") or ()
+    assert len(actual) == violations
+    if violations:
+        assert {row.data.get("position") for row in actual} == {"first", "second", "return"}
+        assert {row.data.get("qualified_name") for row in actual} == {"sample.app.api.constraints"}
     unresolved = [
         record
         for record in observation.records("unknowns") or ()
@@ -408,16 +543,16 @@ def test_unscanned_public_alias_is_unknown_beside_a_typed_function(tmp_path: Pat
 
 
 @pytest.mark.parametrize(
-    ("target", "unknown"),
+    ("target", "unknown", "violations"),
     [
-        ("from sample.app.impl import element_constraints as constraints\n", True),
-        ('__all__ = ["constraints"]\n', True),
-        ("constraints = 42\n", False),
+        ("from sample.app.impl import element_constraints as constraints\n", False, 3),
+        ('__all__ = ["constraints"]\n', True, 0),
+        ("constraints = 42\n", False, 0),
     ],
     ids=("unowned-unproved-hop", "unowned-missing-symbol", "unowned-known-constant"),
 )
-def test_public_route_does_not_infer_proof_from_missing_target_ownership(
-    tmp_path: Path, target: str, unknown: bool
+def test_public_route_uses_source_identity_independently_of_target_ownership(
+    tmp_path: Path, target: str, unknown: bool, violations: int
 ) -> None:
     _write_app(
         tmp_path,
@@ -436,7 +571,11 @@ def test_public_route_does_not_infer_proof_from_missing_target_ownership(
         contract_root=tmp_path,
     )
     assert result.observation is not None, result.diagnostics
-    assert not result.observation.records("violations")
+    actual = result.observation.records("violations") or ()
+    assert len(actual) == violations
+    if violations:
+        assert {row.data.get("position") for row in actual} == {"first", "second", "return"}
+        assert {row.data.get("qualified_name") for row in actual} == {"sample.app.api.constraints"}
     unresolved = [
         record
         for record in result.observation.records("unknowns") or ()

@@ -14,7 +14,7 @@ from textwrap import dedent
 import pytest
 
 ROOT = Path(__file__).parents[1]
-GATE_STEPS = ["self-validate", "check", "build", "smoke"]
+GATE_STEPS = ["self-validate", "browser-architecture-check", "check", "build", "smoke"]
 CI_CHECK_STEPS = [
     "ci-artifacts-clean",
     "browser-install",
@@ -91,7 +91,7 @@ def test_gate_uses_pinned_base_instead_of_duplicate_self_validation(
     tmp_path: Path, jobs: int, failed: str | None
 ) -> None:
     result, steps = _run_gate(tmp_path, "gate", failed, jobs, True, base="a" * 40)
-    expected = ["against", "check", "build", "smoke"]
+    expected = ["against", "browser-architecture-check", "check", "build", "smoke"]
     if failed is not None:
         expected = expected[: expected.index(failed) + 1]
     assert steps == expected, result.stderr
@@ -178,10 +178,13 @@ def test_against_receives_the_exact_ci_base_and_stops_before_tests(tmp_path: Pat
     ]
 
 
-@pytest.mark.parametrize("failed", [None, "against", "pr-test"])
+@pytest.mark.parametrize("failed", [None, "against", "browser-architecture-check", "pr-test"])
 def test_pr_gate_keeps_policy_and_stops_before_later_checks(tmp_path, failed):
     result, steps = _run_gate(tmp_path, "ci-pr-check", failed, 2, False, base="a" * 40)
-    assert steps == (["against"] if failed == "against" else ["against", "pr-test"])
+    expected = ["against", "browser-architecture-check", "pr-test"]
+    if failed is not None:
+        expected = expected[: expected.index(failed) + 1]
+    assert steps == expected
     assert result.returncode == (0 if failed is None else 2)
 
 

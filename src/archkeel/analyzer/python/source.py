@@ -9,12 +9,15 @@ import ast
 import hashlib
 import re
 import sys
+import sysconfig
 from collections import Counter
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field
 from enum import StrEnum
+from importlib.machinery import BuiltinImporter, FrozenImporter
 from pathlib import Path
+from types import CodeType
 from typing import Final, Literal, NamedTuple, Protocol, TypedDict
 
 from archkeel.ir.facts import (
@@ -325,6 +328,12 @@ class ParsedModule:
     _proven_callable_providers: frozenset[str] = field(
         default_factory=frozenset, init=False, repr=False
     )
+    _proven_class_values: frozenset[ast.expr] = field(
+        default_factory=frozenset, init=False, repr=False
+    )
+    _proven_constructor_returns: frozenset[ast.expr] = field(
+        default_factory=frozenset, init=False, repr=False
+    )
     all_nodes: tuple[ast.AST, ...] = field(init=False, repr=False)
     scope_nodes: tuple[ast.AST, ...] = field(init=False, repr=False)
     bound_names: tuple[str, ...] = field(init=False, repr=False)
@@ -332,6 +341,8 @@ class ParsedModule:
     global_names: frozenset[str] = field(init=False, repr=False)
     scope_bound_names: tuple[str, ...] = field(init=False, repr=False)
     unique_bindings: frozenset[str] = field(init=False, repr=False)
+    _contained_owners: tuple[tuple[str, ast.AST], ...] = field(init=False, repr=False)
+    _static_containment: frozenset[tuple[str, str]] = field(init=False, repr=False)
     stable_binding_cache: tuple[dict[str, AliasBinding], frozenset[str]] | None = field(
         default=None, init=False, repr=False
     )
@@ -353,6 +364,10 @@ class ParsedModule:
         )
         self.scope_bound_names = tuple(_bound_names(self.scope_nodes))
         self.unique_bindings = _unique_direct_module_bindings(self)
+        self._contained_owners = tuple(_contained_member_owners(self, self.all_nodes))
+        self._static_containment = _static_member_containment(
+            self._contained_owners, self.all_nodes
+        )
 
 
 def unique_direct_module_bindings(module: ParsedModule) -> frozenset[str]:
@@ -403,6 +418,13 @@ def stable_direct_module_bindings(module: ParsedModule) -> frozenset[str]:
 
 def static_overload_bindings(module: ParsedModule) -> frozenset[str]:
     """Complete native overload groups eligible for import-origin proof."""
+    groups: dict[str, list[tuple[int, FunctionNode]]] = {}
+    for index, statement in enumerate(module.tree.body):
+        if isinstance(statement, ast.FunctionDef | ast.AsyncFunctionDef):
+            group_sites: list[tuple[int, FunctionNode]] = groups.setdefault(statement.name, [])
+            group_sites.append((index, statement))
+    if not any(len(sites) >= 3 for sites in groups.values()):
+        return frozenset()
     if (
         module.binding_names is None
         or any(
@@ -418,11 +440,6 @@ def static_overload_bindings(module: ParsedModule) -> frozenset[str]:
         )
     ):
         return frozenset()
-    groups: dict[str, list[tuple[int, FunctionNode]]] = {}
-    for index, statement in enumerate(module.tree.body):
-        if isinstance(statement, ast.FunctionDef | ast.AsyncFunctionDef):
-            group_sites: list[tuple[int, FunctionNode]] = groups.setdefault(statement.name, [])
-            group_sites.append((index, statement))
     counts = Counter(module.scope_bound_names)
     escaped = module.global_names | explicit_provider_escapes(module)
     generic_names = {
@@ -691,12 +708,14 @@ def _class_statement_bindings(
     *,
     inert_values: bool = False,
     member_surface: bool = True,
+    proven_values: AbstractSet[ast.expr] = frozenset(),
 ) -> tuple[list[str], bool, bool] | None:
     if (
         isinstance(child, ast.Assign | ast.AnnAssign | ast.NamedExpr)
         and child.value is not None
         and not isinstance(child.value, ast.Constant | ast.List | ast.Tuple | ast.Set | ast.Dict)
         and not (inert_values and _inert_creation_operand(child.value))
+        and child.value not in proven_values
         and (
             not isinstance(child.value, ast.Lambda)
             or member_surface
@@ -746,6 +765,7 @@ def unproven_class_body(
     """Keep member binding and class-creation transformations conservative."""
     if any(
         isinstance(item, ast.NamedExpr)
+        and not (inert_values and _inert_creation_operand(item))
         or exposes_dynamic_namespace(module, item, local_namespace=True)
         for expr in class_definition_expressions(node)
         for item in ast.walk(expr)
@@ -781,10 +801,16 @@ def unproven_class_body(
         if (
             isinstance(child, ast.Assign | ast.AnnAssign)
             and child.value is not None
-            and any(isinstance(item, ast.NamedExpr) for item in ast.walk(child.value))
+            and any(
+                isinstance(item, ast.NamedExpr)
+                and not (inert_values and _inert_creation_operand(item))
+                for item in ast.walk(child.value)
+            )
         ):
             return True
-        statement_bindings = _class_statement_bindings(child, inert_values=inert_values)
+        statement_bindings = _class_statement_bindings(
+            child, inert_values=inert_values, proven_values=module._proven_class_values
+        )
         if statement_bindings is None:
             return True
         names, is_function, overloaded = statement_bindings
@@ -1057,7 +1083,15 @@ def _class_members_receive_owner(module: ParsedModule, owner: ast.ClassDef) -> b
             if not all(isinstance(target, ast.Name) for target in targets):
                 if not _inert_creation_operand(node.value):
                     return True
-            elif _class_statement_bindings(node, inert_values=True, member_surface=False) is None:
+            elif (
+                _class_statement_bindings(
+                    node,
+                    inert_values=True,
+                    member_surface=False,
+                    proven_values=module._proven_class_values,
+                )
+                is None
+            ):
                 return True
         elif isinstance(node, ast.stmt) and _class_statement_bindings(node) is None:
             return True
@@ -1098,7 +1132,7 @@ def _class_base_operands_static(module: ParsedModule, node: ast.ClassDef) -> boo
     return custom <= 1
 
 
-def _class_creation_static(
+def class_creation_static(
     module: ParsedModule,
     node: ast.ClassDef,
     *,
@@ -1118,6 +1152,14 @@ def _class_creation_static(
 
 
 def _inert_creation_operand(node: ast.expr) -> bool:
+    if isinstance(node, ast.Lambda):
+        return all(
+            _inert_creation_operand(value)
+            for value in (*node.args.defaults, *node.args.kw_defaults)
+            if value is not None
+        )
+    if isinstance(node, ast.NamedExpr) and isinstance(node.target, ast.Name):
+        node = node.value
     if any(isinstance(item, ast.Call) for item in ast.walk(node)):
         return False
     try:
@@ -1178,7 +1220,7 @@ def _native_class_body_static(module: ParsedModule, node: ast.ClassDef) -> bool:
                 return False
         elif isinstance(child, ast.Assign):
             if not all(isinstance(target, ast.Name) for target in child.targets) or not (
-                _inert_creation_operand(child.value)
+                _inert_creation_operand(child.value) or child.value in module._proven_class_values
             ):
                 return False
         elif isinstance(child, ast.AnnAssign):
@@ -1188,7 +1230,11 @@ def _native_class_body_static(module: ParsedModule, node: ast.ClassDef) -> bool:
                     _deferred_creation_annotation(module, child.annotation)
                     or _inert_creation_operand(child.annotation)
                 )
-                or (child.value is not None and not _inert_creation_operand(child.value))
+                or (
+                    child.value is not None
+                    and not _inert_creation_operand(child.value)
+                    and child.value not in module._proven_class_values
+                )
             ):
                 return False
         else:
@@ -1196,19 +1242,20 @@ def _native_class_body_static(module: ParsedModule, node: ast.ClassDef) -> bool:
     return True
 
 
-def native_owner_creation_static(
+def native_dataclass_header_static(
     module: ParsedModule, node: ast.ClassDef, unsafe_providers: AbstractSet[str]
 ) -> bool:
-    if node not in module.tree.body:
+    if node not in module.tree.body or node.bases or node.keywords or len(node.decorator_list) != 1:
         return False
-    if not node.bases and not node.keywords and len(node.decorator_list) == 1:
-        decorator = node.decorator_list[0]
-        target = decorator.func if isinstance(decorator, ast.Call) else decorator
-        if "dataclasses" in unsafe_providers or not _native_factory_binding_static(
-            module, node, decorator, target, NATIVE_DATACLASS_DECORATOR
-        ):
-            return False
-        if isinstance(decorator, ast.Call) and (
+    decorator = node.decorator_list[0]
+    target = decorator.func if isinstance(decorator, ast.Call) else decorator
+    if "dataclasses" in unsafe_providers or not _native_factory_binding_static(
+        module, node, decorator, target, NATIVE_DATACLASS_DECORATOR
+    ):
+        return False
+    return not (
+        isinstance(decorator, ast.Call)
+        and (
             decorator.args
             or any(
                 keyword.arg not in DATACLASS_OPTIONS
@@ -1216,8 +1263,16 @@ def native_owner_creation_static(
                 or not isinstance(keyword.value.value, bool)
                 for keyword in decorator.keywords
             )
-        ):
-            return False
+        )
+    )
+
+
+def native_owner_creation_static(
+    module: ParsedModule, node: ast.ClassDef, unsafe_providers: AbstractSet[str]
+) -> bool:
+    if node not in module.tree.body:
+        return False
+    if native_dataclass_header_static(module, node, unsafe_providers):
         return _native_class_body_static(module, node)
     if (
         len(node.bases) == 1
@@ -1315,14 +1370,10 @@ def _contained_member_owners(
     return owners
 
 
-def _contained_member_roots(
-    module: ParsedModule,
+def _static_member_containment(
+    owners: Sequence[tuple[str, ast.AST]],
     nodes: Sequence[ast.AST],
-    *,
-    owner_exposure_only: bool = False,
-    unsafe_providers: AbstractSet[str] = frozenset(),
-) -> set[tuple[str, str]]:
-    owners = _contained_member_owners(module, nodes)
+) -> frozenset[tuple[str, str]]:
     contained = {
         (name, target.id)
         for name, owner in owners
@@ -1334,19 +1385,35 @@ def _contained_member_roots(
         if isinstance(target, ast.Name) and isinstance(target.ctx, ast.Load)
     }
     contained |= {
-        (name, target.id)
-        for node, name in module_scope_bindings(module)
-        if (value := admitted_type_alias_value(module, node)) is not None
-        and value in module._proven_map_union_expressions | module._proven_callable_expressions
-        for target in ast.walk(value)
-        if isinstance(target, ast.Name) and isinstance(target.ctx, ast.Load)
-    }
-    contained |= {
         (target.id, owner.name)
         for owner in nodes
         if isinstance(owner, ast.ClassDef)
         for base in owner.bases
         for target in ast.walk(base.value if isinstance(base, ast.Subscript) else base)
+        if isinstance(target, ast.Name) and isinstance(target.ctx, ast.Load)
+    }
+    return frozenset(contained)
+
+
+def _contained_member_roots(
+    module: ParsedModule,
+    nodes: Sequence[ast.AST],
+    *,
+    owner_exposure_only: bool = False,
+    unsafe_providers: AbstractSet[str] = frozenset(),
+) -> set[tuple[str, str]]:
+    if nodes is module.all_nodes:
+        owners = module._contained_owners
+        contained = set(module._static_containment)
+    else:
+        owners = tuple(_contained_member_owners(module, nodes))
+        contained = set(_static_member_containment(owners, nodes))
+    contained |= {
+        (name, target.id)
+        for node, name in module_scope_bindings(module)
+        if (value := admitted_type_alias_value(module, node)) is not None
+        and value in module._proven_map_union_expressions | module._proven_callable_expressions
+        for target in ast.walk(value)
         if isinstance(target, ast.Name) and isinstance(target.ctx, ast.Load)
     }
     # Native functions expose their defining namespace, including through a class's methods.
@@ -1364,7 +1431,7 @@ def _contained_member_roots(
             owner_exposure_only
             and isinstance(owner, ast.ClassDef)
             and (
-                not _class_creation_static(
+                not class_creation_static(
                     module, owner, owner_exposure_only=False, unsafe_providers=unsafe_providers
                 )
                 or any(
@@ -1502,16 +1569,168 @@ def member_binding_closure(
     return changed_members
 
 
+def bound_once_before(statements: Sequence[ast.stmt], stop: ast.AST, name: str) -> bool:
+    """Prove one direct module binding exists before a class definition."""
+    count = 0
+    for statement in statements:
+        if statement is stop:
+            return count == 1
+        if isinstance(statement, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+            bindings = [statement.name]
+        elif isinstance(statement, ast.Import | ast.ImportFrom):
+            if isinstance(statement, ast.ImportFrom) and any(
+                alias.name == "*" for alias in statement.names
+            ):
+                return False
+            bindings = [
+                alias.asname
+                or (alias.name.split(".")[0] if isinstance(statement, ast.Import) else alias.name)
+                for alias in statement.names
+            ]
+        elif isinstance(statement, ast.Assign | ast.AnnAssign):
+            targets = statement.targets if isinstance(statement, ast.Assign) else [statement.target]
+            bindings = [
+                child.id
+                for target in targets
+                for child in ast.walk(target)
+                if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Store)
+            ]
+        else:
+            if any(
+                isinstance(child, ast.Name)
+                and child.id == name
+                and isinstance(child.ctx, ast.Store | ast.Del)
+                for child in ast.walk(statement)
+            ):
+                return False
+            continue
+        count += bindings.count(name)
+        if count > 1:
+            return False
+    return False
+
+
+def generic_parameters(module: ParsedModule, node: ast.ClassDef) -> list[str]:
+    """Return verified TypeVars from one explicit ``Generic[...]`` base."""
+    typevars: set[str] = set()
+    for statement in module.tree.body:
+        if not isinstance(statement, ast.Assign | ast.AnnAssign):
+            continue
+        targets = statement.targets if isinstance(statement, ast.Assign) else [statement.target]
+        if len(targets) != 1 or not isinstance(targets[0], ast.Name):
+            continue
+        name = targets[0].id
+        value = statement.value
+        if not isinstance(value, ast.Call):
+            continue
+        typevar_root = (
+            value.func.id
+            if isinstance(value.func, ast.Name)
+            else value.func.value.id
+            if isinstance(value.func, ast.Attribute) and isinstance(value.func.value, ast.Name)
+            else None
+        )
+        if (
+            not isinstance(typevar_root, str)
+            or not bound_once_before(module.tree.body, statement, typevar_root)
+            or resolve_static_name(module, value.func)
+            not in {"typing.TypeVar", "typing_extensions.TypeVar"}
+            or not value.args
+            or not isinstance(value.args[0], ast.Constant)
+            or value.args[0].value != name
+            or not bound_once_before(module.tree.body, node, name)
+        ):
+            continue
+        typevars.add(name)
+
+    generic_bases = [
+        base
+        for base in node.bases
+        if isinstance(base, ast.Subscript)
+        and resolve_static_name(module, base.value)
+        in {"typing.Generic", "typing_extensions.Generic"}
+    ]
+    if len(generic_bases) != 1:
+        return []
+    root = generic_bases[0].value
+    root_name = (
+        root.id
+        if isinstance(root, ast.Name)
+        else root.value.id
+        if isinstance(root, ast.Attribute) and isinstance(root.value, ast.Name)
+        else None
+    )
+    if not isinstance(root_name, str) or not bound_once_before(module.tree.body, node, root_name):
+        return []
+    arguments = generic_bases[0].slice
+    values = list(arguments.elts) if isinstance(arguments, ast.Tuple) else [arguments]
+    names = [value.id for value in values if isinstance(value, ast.Name)]
+    if len(names) != len(values) or len(set(names)) != len(names) or not set(names) <= typevars:
+        return []
+    return names
+
+
+def _native_generic_base_static(
+    module: ParsedModule,
+    expression: ast.expr,
+    owner: ast.ClassDef,
+    unsafe_providers: AbstractSet[str],
+    visited: frozenset[str] = frozenset(),
+) -> bool:
+    if "typing" in unsafe_providers:
+        return False
+    head = expression.value if isinstance(expression, ast.Subscript) else expression
+    if is_proven_decorator(module, head, owner, None, frozenset({"typing.Generic"})):
+        return True
+    if not isinstance(head, ast.Name) or head.id in visited:
+        return False
+    definitions = [
+        node for node in module.tree.body if isinstance(node, ast.ClassDef) and node.name == head.id
+    ]
+    if len(definitions) != 1 or not bound_once_before(module.tree.body, owner, head.id):
+        return False
+    [definition] = definitions
+    if (
+        not generic_parameters(module, definition)
+        or not class_creation_static(
+            module, definition, owner_exposure_only=True, unsafe_providers=unsafe_providers
+        )
+        or any(
+            name[:2] == "__"
+            for child in definition.body
+            if (bindings := _class_statement_bindings(child)) is not None
+            for name in bindings[0]
+        )
+    ):
+        return False
+    return all(
+        _native_generic_base_static(module, base, definition, unsafe_providers, visited | {head.id})
+        for base in definition.bases
+    )
+
+
 def _protected_member_references(
     module: ParsedModule,
     nodes: Sequence[ast.AST],
     *,
     member_surface: bool,
     owner_exposure_only: bool,
+    unsafe_providers: AbstractSet[str] = frozenset(),
 ) -> set[ast.AST]:
     type_expressions = _protected_type_expressions(nodes)
     protected = _type_reference_nodes(module, type_expressions) if member_surface else set()
     if member_surface:
+        protected |= {
+            expression.func
+            for expression in module._proven_constructor_returns
+            if isinstance(expression, ast.Call)
+        }
+        protected |= {
+            item
+            for expression in module._proven_class_values
+            for item in ast.walk(expression)
+            if isinstance(item, ast.Name) and isinstance(item.ctx, ast.Load)
+        }
         protected |= _type_reference_nodes(module, list(module._proven_callable_expressions))
         protected |= {
             item
@@ -1543,9 +1762,73 @@ def _protected_member_references(
         )
     }
     if owner_exposure_only:
+        plain_classes = {
+            owner.name
+            for owner in module.tree.body
+            if isinstance(owner, ast.ClassDef)
+            and not owner.bases
+            and class_header_static(owner)
+            and owner.name in unique_direct_module_bindings(module)
+            and class_creation_static(
+                module, owner, owner_exposure_only=True, unsafe_providers=frozenset()
+            )
+        }
+        for owner in module.tree.body:
+            if not isinstance(owner, ast.ClassDef):
+                continue
+            parameters = generic_parameters(module, owner)
+            for base in owner.bases:
+                if not isinstance(base, ast.Subscript):
+                    continue
+                values = base.slice.elts if isinstance(base.slice, ast.Tuple) else (base.slice,)
+                if all(
+                    isinstance(value, ast.Name)
+                    and (value.id in plain_classes or value.id in parameters)
+                    for value in values
+                ) and _native_generic_base_static(module, base, owner, unsafe_providers):
+                    protected |= set(values)
+        for node in module.scope_nodes:
+            if (
+                isinstance(node, ast.Attribute)
+                and isinstance(node.ctx, ast.Store | ast.Del)
+                and node.attr[:2] != "__"
+                and isinstance(node.value, ast.Name)
+                and node.value.id in plain_classes
+            ):
+                protected |= {node.value}
+            elif isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+                protected |= {
+                    value
+                    for value in (*node.args.defaults, *node.args.kw_defaults)
+                    if isinstance(value, ast.Name) and value.id in plain_classes
+                }
+            elif (
+                isinstance(node, ast.Call)
+                and _bare_builtin(module, node.func, {"setattr"})
+                and len(node.args) == 3
+                and not node.keywords
+                and isinstance(node.args[0], ast.Name)
+                and node.args[0].id in plain_classes
+                and isinstance(node.args[1], ast.Constant)
+                and isinstance(node.args[1].value, str)
+                and node.args[1].value[:2] != "__"
+                and (isinstance(node.args[2], ast.Name) or _inert_creation_operand(node.args[2]))
+            ):
+                protected |= {node.args[0]}
+    if owner_exposure_only:
         protected |= _type_reference_nodes(
             module,
-            [node.func for node in nodes if isinstance(node, ast.Call)]
+            [
+                node.func
+                for node in nodes
+                if isinstance(node, ast.Call)
+                and (
+                    isinstance(node.func, ast.Name)
+                    or isinstance(node.func, ast.Attribute)
+                    and (path := attribute_path(node.func)) is not None
+                    and all(part[:2] != "__" for part in path[1])
+                )
+            ]
             + [
                 decorator
                 for node in nodes
@@ -1567,7 +1850,11 @@ def _unproven_member_roots(
     include_creation_uncertainty: bool,
 ) -> set[str]:
     protected = _protected_member_references(
-        module, nodes, member_surface=member_surface, owner_exposure_only=owner_exposure_only
+        module,
+        nodes,
+        member_surface=member_surface,
+        owner_exposure_only=owner_exposure_only,
+        unsafe_providers=unsafe_providers,
     )
     local_references = setter_local_references(module) if member_surface else frozenset()
     properties = {
@@ -1582,7 +1869,7 @@ def _unproven_member_roots(
             for node in nodes
             if (
                 isinstance(node, ast.ClassDef)
-                and not _class_creation_static(
+                and not class_creation_static(
                     module,
                     node,
                     owner_exposure_only=owner_exposure_only,
@@ -1608,7 +1895,7 @@ def _unproven_member_roots(
             pending = [node.value]
         elif member_surface and isinstance(node, ast.Call):
             pending = [*node.args, *(keyword.value for keyword in node.keywords)]
-            if not owner_exposure_only:
+            if not owner_exposure_only and node not in module._proven_constructor_returns:
                 pending.append(node.func)
         elif (
             member_surface
@@ -1622,6 +1909,8 @@ def _unproven_member_roots(
         while pending:
             target = pending.pop()
             if isinstance(target, ast.Name) and target not in local_references:
+                if owner_exposure_only and target in protected:
+                    continue
                 changed.add(target.id)
             elif isinstance(target, ast.Attribute):
                 pending.append(target.value)
@@ -1764,6 +2053,194 @@ def intrinsic_nullable_aliases(module: ParsedModule) -> frozenset[str]:
         and (value := admitted_type_alias_value(module, node)) is not None
         and _nullable_builtin_key(module, value)
     )
+
+
+def _class_value_expressions(module: ParsedModule) -> Iterator[ast.expr]:
+    for owner in module.tree.body:
+        if not isinstance(owner, ast.ClassDef):
+            continue
+        for statement in owner.body:
+            if not isinstance(statement, ast.Assign | ast.AnnAssign) or statement.value is None:
+                continue
+            expression = statement.value
+            if _inert_creation_operand(expression) or any(
+                binding_may_exist_before(module, owner.body, statement, node.id)
+                for node in ast.walk(expression)
+                if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load)
+            ):
+                continue
+            yield expression
+
+
+def proven_class_value_candidates(
+    modules: Mapping[str, ParsedModule],
+    imported_bindings: Mapping[tuple[str, str], tuple[str, str]],
+) -> dict[str, dict[ast.expr, frozenset[tuple[str, str]]]]:
+    """Prove closed literal values, including numeric operators and stable source constants."""
+    definitions = {
+        (name, target.id): statement.value
+        for name, provider in modules.items()
+        for statement in provider.tree.body
+        if isinstance(statement, ast.Assign | ast.AnnAssign) and statement.value is not None
+        for target in (
+            statement.targets if isinstance(statement, ast.Assign) else (statement.target,)
+        )
+        if isinstance(target, ast.Name) and target.id in stable_direct_module_bindings(provider)
+    }
+
+    def prove(
+        provider: ParsedModule, expression: ast.expr, pending: frozenset[tuple[str, str]]
+    ) -> tuple[bool, frozenset[tuple[str, str]]] | None:
+        if any(isinstance(node, ast.Call) for node in ast.walk(expression)):
+            return None
+        try:
+            value = ast.literal_eval(expression)
+        except (ValueError, TypeError, SyntaxError, RecursionError):
+            pass
+        else:
+            return isinstance(value, int | float | complex), frozenset()
+        if isinstance(expression, ast.Name):
+            binding = (provider.module, expression.id)
+            if binding in pending or expression.id not in stable_direct_module_bindings(provider):
+                return None
+            origin = imported_bindings.get(binding, binding)
+            declaration = definitions.get(origin)
+            if declaration is None or (
+                origin == binding and declaration.lineno >= expression.lineno
+            ):
+                return None
+            result = prove(modules[origin[0]], declaration, pending | {binding, origin})
+            if result is not None:
+                numeric, dependencies = result
+                return numeric, dependencies | {binding, origin}
+        elif isinstance(expression, ast.BinOp) and isinstance(
+            expression.op,
+            ast.Add
+            | ast.Sub
+            | ast.Mult
+            | ast.Div
+            | ast.FloorDiv
+            | ast.Mod
+            | ast.Pow
+            | ast.LShift
+            | ast.RShift
+            | ast.BitOr
+            | ast.BitAnd
+            | ast.BitXor,
+        ):
+            left = prove(provider, expression.left, pending)
+            right = prove(provider, expression.right, pending)
+            if left is not None and right is not None and left[0] and right[0]:
+                return True, left[1] | right[1]
+        elif isinstance(expression, ast.UnaryOp) and isinstance(
+            expression.op, ast.UAdd | ast.USub | ast.Invert
+        ):
+            operand = prove(provider, expression.operand, pending)
+            if operand is not None and operand[0]:
+                return operand
+        return None
+
+    candidates: dict[str, dict[ast.expr, frozenset[tuple[str, str]]]] = {}
+    for name, module in modules.items():
+        values: dict[ast.expr, frozenset[tuple[str, str]]] = {}
+        for expression in _class_value_expressions(module):
+            proof = prove(module, expression, frozenset())
+            if proof is not None:
+                values[expression] = proof[1]
+        module._proven_class_values = frozenset(values)
+        candidates[name] = values
+    return candidates
+
+
+def _inert_constructor_classes(
+    module: ParsedModule, stable: frozenset[str], builtin_annotations: frozenset[str]
+) -> dict[str, ast.ClassDef]:
+    return {
+        node.name: node
+        for node in module.tree.body
+        if isinstance(node, ast.ClassDef)
+        and node.name in stable
+        and not node.bases
+        and not node.keywords
+        and not node.decorator_list
+        and all(
+            isinstance(child, ast.Pass)
+            or isinstance(child, ast.Expr)
+            and isinstance(child.value, ast.Constant)
+            and isinstance(child.value.value, str)
+            or isinstance(child, ast.AnnAssign)
+            and isinstance(child.target, ast.Name)
+            and child.value is None
+            and (
+                _inert_creation_operand(child.annotation)
+                or _bare_builtin(module, child.annotation, builtin_annotations)
+            )
+            for child in node.body
+        )
+    }
+
+
+def proven_constructor_return_candidates(
+    module: ParsedModule,
+) -> dict[ast.expr, frozenset[tuple[str, str]]]:
+    stable = stable_direct_module_bindings(module) & unique_direct_module_bindings(module)
+    builtin_annotations = frozenset({"str", "int", "float", "bool", "bytes", "object"})
+    classes = _inert_constructor_classes(module, stable, builtin_annotations)
+    candidates: dict[ast.expr, frozenset[tuple[str, str]]] = {}
+    for function in module.tree.body:
+        if (
+            not isinstance(function, ast.FunctionDef | ast.AsyncFunctionDef)
+            or function.name not in stable
+            or function.decorator_list
+        ):
+            continue
+        arguments = [
+            *function.args.posonlyargs,
+            *function.args.args,
+            *function.args.kwonlyargs,
+            *(item for item in (function.args.vararg, function.args.kwarg) if item is not None),
+        ]
+        if not all(
+            _inert_creation_operand(value)
+            for value in [
+                *function.args.defaults,
+                *(item for item in function.args.kw_defaults if item is not None),
+            ]
+        ):
+            continue
+        annotations = _protected_type_expressions([function, *arguments])
+        header_names = {
+            value.id
+            for value in annotations
+            if isinstance(value, ast.Name)
+            and value.id in classes
+            and classes[value.id].lineno < function.lineno
+        }
+        if not all(
+            _deferred_creation_annotation(module, value)
+            or _inert_creation_operand(value)
+            or _bare_builtin(module, value, builtin_annotations)
+            or isinstance(value, ast.Name)
+            and value.id in header_names
+            for value in annotations
+        ):
+            continue
+        shadowed = lexical_binding_names(function)
+        for statement in function.body:
+            if not isinstance(statement, ast.Return) or not isinstance(statement.value, ast.Call):
+                continue
+            call = statement.value
+            if not isinstance(call.func, ast.Name) or call.args or call.keywords:
+                continue
+            owner = classes.get(call.func.id)
+            if owner is not None and owner.lineno < function.lineno and owner.name not in shadowed:
+                # Exposing this native function exposes its class through __globals__.
+                candidates[call] = frozenset(
+                    {(module.module, owner.name), (module.module, function.name)}
+                    | {(module.module, name) for name in header_names}
+                )
+    module._proven_constructor_returns = frozenset(candidates)
+    return candidates
 
 
 def proven_map_union_candidates(
@@ -1917,7 +2394,12 @@ def proven_callable_candidates(
 
 
 def resolve_static_name(module: ParsedModule, node: ast.AST) -> str:
-    text = annotation_text(node) or ""
+    if isinstance(node, ast.Name):
+        text = node.id
+    elif isinstance(node, ast.Attribute) and (path := attribute_path(node)) is not None:
+        text = ".".join((path[0], *path[1]))
+    else:
+        text = annotation_text(node) or ""
     parts = text.split(".")
     binding = module.aliases.get(parts[0]) if parts else None
     if binding is None:
@@ -1934,9 +2416,14 @@ def exposes_dynamic_namespace(
 ) -> bool:
     if (
         member_surface
-        and isinstance(node, ast.Name)
+        and isinstance(node, ast.Name | ast.Attribute)
         and isinstance(node.ctx, ast.Load)
-        and node.id == "__annotations__"
+        and (
+            isinstance(node, ast.Name)
+            and node.id == "__annotations__"
+            or isinstance(node, ast.Attribute)
+            and node.attr in {"f_globals", "f_locals", "f_builtins"}
+        )
     ):
         return True
     if isinstance(node, ast.Call):
@@ -1959,7 +2446,17 @@ def exposes_dynamic_namespace(
         "inspect.get_annotations",
     }:
         return True
-    if name in {"globals", "builtins.globals", "exec", "builtins.exec", "eval", "builtins.eval"}:
+    if name in {
+        "globals",
+        "builtins.globals",
+        "exec",
+        "builtins.exec",
+        "eval",
+        "builtins.eval",
+        "__import__",
+        "builtins.__import__",
+        "__builtins__",
+    }:
         return True
     return (
         local_namespace
@@ -2229,4 +2726,48 @@ def parse_sources(paths: Sequence[Path], *, root: Path, namespace: str) -> Parse
         failures=failures,
         files_read=read_count,
         source_digest=digest.hexdigest(),
+    )
+
+
+def provider_source_eligible(module: ParsedModule) -> bool:
+    if BuiltinImporter.find_spec(module.module) is not None:
+        return False
+    if FrozenImporter.find_spec(module.module) is None:
+        return True
+    stdlib = Path(sysconfig.get_path("stdlib")).resolve()
+    source = stdlib.joinpath(*module.module.split("."))
+    source = (
+        source / "__init__.py" if module.path.name == "__init__.py" else source.with_suffix(".py")
+    )
+    try:
+        code = FrozenImporter.get_code(module.module)
+        if (
+            source.resolve().is_relative_to(stdlib)
+            and source.read_bytes() == module.source_bytes
+            and isinstance(code, CodeType)
+        ):
+            compiled = compile(
+                module.source,
+                code.co_filename,
+                "exec",
+                dont_inherit=True,
+                optimize=sys.flags.optimize,
+            )
+            return _same_provider_code(compiled, code)
+    except (OSError, ImportError, SyntaxError, ValueError, TypeError):
+        pass
+    return False
+
+
+def _same_provider_code(left: CodeType, right: CodeType) -> bool:
+    return (
+        left == right
+        and left.co_filename == right.co_filename
+        and left.co_stacksize == right.co_stacksize
+        and left.co_linetable == right.co_linetable
+        and left.co_exceptiontable == right.co_exceptiontable
+        and all(
+            not isinstance(a, CodeType) or isinstance(b, CodeType) and _same_provider_code(a, b)
+            for a, b in zip(left.co_consts, right.co_consts, strict=True)
+        )
     )

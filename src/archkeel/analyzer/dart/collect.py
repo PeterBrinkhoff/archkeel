@@ -439,6 +439,7 @@ class _Collection:
                 parameters=parameters,
                 method_kind="static",
                 signature_complete=all(p["default_known"] for p in parameters),
+                signature_decorators_proven=True,
             )
         elif kind == DefinitionKind.TYPEDEF:
             data.update(symbol_category="type_alias", annotation=definition.alias, constant=None)
@@ -637,6 +638,7 @@ class _Collection:
                 else "instance"
             ),
             signature_complete=signature_complete,
+            signature_decorators_proven=True,
         )
         if member.kind in {MemberKind.GETTER, MemberKind.SETTER}:
             data["accessor_kind"] = member.kind

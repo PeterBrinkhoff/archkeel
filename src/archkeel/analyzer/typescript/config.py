@@ -16,7 +16,7 @@ import posixpath
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
-from enum import Enum
+from enum import Enum, StrEnum
 from typing import Final
 
 from archkeel.ir.facts import ResolutionRole
@@ -81,6 +81,24 @@ class ScriptTarget(Enum):
     ESNEXT = "esnext"
 
 
+class StandardLibrary(StrEnum):
+    ES5 = "es5"
+    ES2022 = "es2022"
+    DOM = "dom"
+
+
+class ScriptHost(StrEnum):
+    """An explicit classic browser has neither CommonJS nor AMD loader globals."""
+
+    CLASSIC_BROWSER = "classic-browser"
+
+
+@dataclass(frozen=True, slots=True)
+class ScriptProvider:
+    source: str
+    provenance: str
+
+
 class _WildcardUsage(Enum):
     FILES = "files"
     DIRECTORIES = "directories"
@@ -92,7 +110,7 @@ Json = dict[str, object]
 
 OUTSIDE: Final = "Resolver input outside snapshot"
 SYMLINK: Final = "Resolver symlink outside snapshot"
-# Settings that change which file a specifier names and that no resolver here applies.
+# Settings that affect module resolution without a native interpretation.
 _UNMODELED: Final = (
     "rootDirs",
     "moduleSuffixes",
@@ -114,9 +132,13 @@ _ENUMS: Final[dict[str, dict[str, Enum]]] = {
     "moduleResolution": dict(_RESOLUTION_VALUES),
     "target": dict(_TARGET_VALUES),
 }
-_BOOLEAN_OPTIONS: Final = frozenset("allowJs checkJs resolveJsonModule".split())
+_BOOLEAN_OPTIONS: Final = frozenset(
+    "allowJs checkJs resolveJsonModule noLib libReplacement".split()
+)
 _STRING_OPTIONS: Final = frozenset("baseUrl declarationDir outDir".split())
-_STRING_LIST_OPTIONS: Final = frozenset("customConditions moduleSuffixes rootDirs".split())
+_STRING_LIST_OPTIONS: Final = frozenset(
+    "customConditions moduleSuffixes rootDirs lib types typeRoots".split()
+)
 # The compiler's option names (TypeScript 5.9.3); an unknown one is a configuration error.
 _KNOWN_OPTIONS: Final = frozenset(
     "all allowArbitraryExtensions allowImportingTsExtensions allowJs allowSyntheticDefaultImports "
@@ -178,6 +200,9 @@ class Options:
     paths_base: str = "."
     unmodeled: tuple[str, ...] = ()
     json_modules: bool | None = None
+    libs: tuple[StandardLibrary, ...] | None = None
+    no_lib: bool = False
+    ambient_custom: bool = False
 
     def __post_init__(self) -> None:
         for name, value, kind in (
@@ -187,6 +212,15 @@ class Options:
         ):
             if value is not None and not isinstance(value, kind):
                 raise TypeError(f"{name} must be {kind.__name__} or None")
+        if self.libs is not None and (
+            not isinstance(self.libs, tuple)
+            or any(not isinstance(item, StandardLibrary) for item in self.libs)
+        ):
+            raise TypeError("libs must be a tuple of StandardLibrary or None")
+        if not isinstance(self.no_lib, bool):
+            raise TypeError("no_lib must be boolean")
+        if not isinstance(self.ambient_custom, bool):
+            raise TypeError("ambient_custom must be boolean")
 
     @property
     def resolve_json(self) -> bool:
@@ -225,6 +259,48 @@ class Options:
         )
 
 
+_ES5_GLOBALS: Final = frozenset(
+    "Infinity NaN undefined eval isFinite isNaN parseFloat parseInt decodeURI decodeURIComponent "
+    "encodeURI encodeURIComponent Object Function Boolean Error EvalError RangeError "
+    "ReferenceError SyntaxError TypeError URIError Number Math Date String RegExp "
+    "Array JSON".split()
+)
+_ES2022_GLOBALS: Final = _ES5_GLOBALS | frozenset(
+    "AggregateError ArrayBuffer BigInt BigInt64Array BigUint64Array DataView FinalizationRegistry "
+    "Float32Array Float64Array Int8Array Int16Array Int32Array Map Promise Proxy Reflect Set "
+    "SharedArrayBuffer Symbol Uint8Array Uint8ClampedArray Uint16Array Uint32Array WeakMap "
+    "WeakRef WeakSet Atomics".split()
+)
+_DOM_GLOBALS: Final = frozenset(
+    "document location URLSearchParams addEventListener getComputedStyle CSS navigator Event "
+    "CustomEvent "
+    "URL history requestAnimationFrame matchMedia setTimeout queueMicrotask Blob structuredClone "
+    "HTMLDetailsElement innerHeight scrollX clearTimeout scrollTo XMLSerializer scrollY".split()
+)
+_STANDARD_GLOBALS: Final = {
+    StandardLibrary.ES5: _ES5_GLOBALS,
+    StandardLibrary.ES2022: _ES2022_GLOBALS,
+    StandardLibrary.DOM: _DOM_GLOBALS,
+}
+_ES2022_TARGETS: Final = frozenset(
+    {ScriptTarget.ES2022, ScriptTarget.ES2023, ScriptTarget.ES2024, ScriptTarget.ESNEXT}
+)
+
+
+def standard_globals(options: Options) -> frozenset[str]:
+    """Recognize platform declarations; unlisted globals and runtime mutations stay unproved."""
+    if options.no_lib or options.unmodeled or options.ambient_custom:
+        return frozenset()
+    libraries = options.libs
+    if libraries is None:
+        libraries = (
+            (StandardLibrary.ES2022,)
+            if options.target in _ES2022_TARGETS
+            else (StandardLibrary.ES5,)
+        )
+    return frozenset(name for library in libraries for name in _STANDARD_GLOBALS[library])
+
+
 @dataclass(frozen=True, slots=True)
 class Config:
     options: Options
@@ -232,6 +308,8 @@ class Config:
     files: tuple[str, ...]
     # True when a setting that changes resolution could not be read, so no result is trusted.
     partial: bool
+    script_host: ScriptHost | None = None
+    script_providers: tuple[ScriptProvider, ...] = ()
 
 
 def join(base: str, path: str) -> str:
@@ -529,11 +607,28 @@ def _paths(raw: dict[str, object], problems: list[str]) -> tuple[tuple[str, tupl
     return tuple(patterns)
 
 
+def _libraries(raw: Json) -> tuple[tuple[StandardLibrary, ...] | None, bool]:
+    value = raw.get("lib")
+    if value is None:
+        return None, False
+    if not isinstance(value, list) or not all(isinstance(name, str) for name in value):
+        return (), True
+    libraries: list[StandardLibrary] = []
+    unsupported = False
+    for name in value:
+        try:
+            libraries.append(StandardLibrary(name.lower()))
+        except ValueError:
+            unsupported = True
+    return tuple(dict.fromkeys(libraries)), unsupported
+
+
 def _options(layer: _Layer, problems: list[str]) -> Options:
     raw = layer.compiler
     resolution = _RESOLUTION_VALUES.get(_normalized(raw, "moduleResolution"))
     paths = _paths(raw, problems)
     unmodeled = [name for name in _UNMODELED if raw.get(name) not in (None, False, [])]
+    libraries, unsupported_library = _libraries(raw)
     if any(
         re.search(re.escape(_CONFIG_DIRECTORY), target)
         for _, targets in paths
@@ -551,7 +646,16 @@ def _options(layer: _Layer, problems: list[str]) -> Options:
         layer.base_url if layer.base_url is not None else layer.paths_directory,
         tuple(unmodeled),
         json_flag if isinstance(json_flag, bool) else None,
+        libraries,
+        raw.get("noLib") is True,
+        unsupported_library
+        or any(
+            raw.get(name) not in (None, False, [])
+            for name in ("types", "typeRoots", "libReplacement")
+        ),
     )
+    if options.no_lib and libraries is not None:
+        problems.append("Compiler option 5053: 'lib' cannot be specified with 'noLib'.")
     emit, kind = options.emit_module, options.resolution
     # TS5110 and TS5095: the compiler refuses these pairs, so it observes no resolution.
     if kind is ModuleResolution.NODE16 and emit not in _NODE16_MODULES:
@@ -706,6 +810,50 @@ def _is_excluded(patterns: list[str], path: str) -> bool:
     return any(re.match(f"(?:{pattern})(?:/|\\Z)", path) for pattern in patterns)
 
 
+def _script_environment(
+    raw: Json | None, problems: list[str]
+) -> tuple[ScriptHost | None, tuple[ScriptProvider, ...]]:
+    environment = raw.get("archkeel") if raw is not None else None
+    if environment is None:
+        return None, ()
+    if not isinstance(environment, dict) or set(environment) - {"scriptHost", "scriptProviders"}:
+        problems.append("Archkeel script environment is not a closed object")
+        return None, ()
+    host = None
+    if environment.get("scriptHost") is not None:
+        try:
+            host = ScriptHost(environment["scriptHost"])
+        except ValueError:
+            problems.append("Archkeel script host is not supported")
+    entries = environment.get("scriptProviders", [])
+    if not isinstance(entries, list):
+        problems.append("Archkeel script providers must be a list")
+        return host, ()
+    providers: list[ScriptProvider] = []
+    for entry in entries:
+        if (
+            not isinstance(entry, dict)
+            or set(entry) != {"source", "provenance"}
+            or not all(
+                isinstance(path, str)
+                and bool(path)
+                and PathToken.parse(path) is not PathToken.CURRENT
+                and not posixpath.isabs(path)
+                and _slashes(path) == path
+                and join(".", path) == path
+                and not is_outside(path)
+                for path in entry.values()
+            )
+        ):
+            problems.append("Archkeel script provider needs two snapshot-relative paths")
+            continue
+        provider = ScriptProvider(entry["source"], entry["provenance"])
+        if provider in providers:
+            problems.append("Archkeel script provider is declared more than once")
+        providers.append(provider)
+    return host, tuple(providers)
+
+
 def _shadowed(rel: str, known: set[str]) -> bool:
     """A file loses to a sibling with the same stem and a higher-priority extension."""
     parts = split_file(rel)
@@ -734,6 +882,7 @@ def load_config(snapshot: Snapshot, tsconfig: str, roots: tuple[str, ...]) -> Co
         problems.append("Project references require separately observed projects")
     options_before = len(problems)
     options = _options(layer, problems)
+    script_host, script_providers = _script_environment(raw, problems)
     options_partial = len(problems) > options_before
     listed = _discover(snapshot, layer, own, options, problems)
     if not listed and not references:
@@ -756,4 +905,10 @@ def load_config(snapshot: Snapshot, tsconfig: str, roots: tuple[str, ...]) -> Co
     if not chosen:
         problems.append("No selected source files")
     snapshot.problems.update(problems)
-    return Config(options, tuple(sorted(chosen)), layer.partial or options_partial)
+    return Config(
+        options,
+        tuple(sorted(chosen)),
+        layer.partial or options_partial,
+        script_host,
+        script_providers,
+    )

@@ -10,6 +10,7 @@ permissive than the compiler would turn an unresolvable import into a proven dep
 
 from __future__ import annotations
 
+import hashlib
 import json
 import posixpath
 import re
@@ -22,6 +23,8 @@ from .config import (
     Json,
     ModuleResolution,
     Options,
+    ScriptHost,
+    ScriptProvider,
     Snapshot,
     decode,
     has_field,
@@ -144,10 +147,47 @@ class Resolver:
         self.snapshot = snapshot
         self.options = options
         self.partial = config.partial
+        self._script_host = config.script_host
+        self._script_providers = config.script_providers
         # A reason nothing can be resolved, when the settings in force are not all understood.
         self.blocked = self._blocked()
         self._json = options.resolve_json
         self._reads: set[str] = set()
+
+    def script_provider(self, provider: ScriptProvider) -> tuple[str, bytes] | None:
+        """Bind a declared vendor's package identity to its exact source bytes."""
+        if (
+            self._script_host is not ScriptHost.CLASSIC_BROWSER
+            or provider not in self._script_providers
+            or self.partial
+            or self.options.unmodeled
+            or self.options.ambient_custom
+        ):
+            return None
+        content = self.snapshot.read(provider.source)
+        provenance = self.snapshot.read(provider.provenance)
+        if content is None or provenance is None:
+            return None
+        text = decode(provenance)
+        lines = text.splitlines()
+        if len(lines) < 5 or len(re.findall(r"(?m)^Bundle SHA-256:", text)) != 1:
+            return None
+        package = re.fullmatch(
+            r"Vendored from `((?:@[a-z0-9][a-z0-9._-]*/)?[a-z0-9][a-z0-9._-]*)@"
+            r"(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)` "
+            r"\(`[^`\s]+`\), https://[^\s]+\.",
+            lines[2],
+        )
+        digest = re.fullmatch(r"Bundle SHA-256: `([0-9a-f]{64})`\.", lines[3])
+        if (
+            package is None
+            or digest is None
+            or re.fullmatch(rf"# .+ {re.escape(package[2])} browser bundle", lines[0]) is None
+            or re.fullmatch(r"SPDX license: `[A-Za-z0-9.+() -]+`\.", lines[4]) is None
+            or hashlib.sha256(content).hexdigest() != digest[1]
+        ):
+            return None
+        return package[1], content
 
     @property
     def _exports_aware(self) -> bool:

@@ -628,7 +628,7 @@ def test_validate_without_against_is_unchanged(tmp_path: Path) -> None:
     with_default, files_with_default = run_validate(root, SHOP_CONFIG, observe)
     explicit_none, files_explicit_none = run_validate(root, SHOP_CONFIG, observe, against=None)
     assert with_default == explicit_none
-    assert files_with_default == files_explicit_none == {}
+    assert dict(files_with_default.entries) == dict(files_explicit_none.entries) == {}
 
 
 def test_a_widening_fails_and_names_the_field(tmp_path: Path) -> None:
@@ -691,8 +691,8 @@ def test_a_widening_with_a_valid_amendment_passes(tmp_path: Path) -> None:
         decided_by="Jordan (architect)",
         rationale="Orders needs the sqlite exemption during the migration.",
     )
-    assert write_result.exit_code == 0
-    amendment_path.write_bytes(write_files[str(amendment_path)])
+    assert write_result.exit_code == 0, write_result.diagnostics
+    amendment_path.write_bytes(dict(write_files.entries)[str(amendment_path)])
 
     result, _ = run_validate(root, SHOP_CONFIG, observe, against=base, amendment=amendment_path)
     assert (result.exit_code, result.failures) == (0, ())
@@ -719,7 +719,7 @@ def test_amendment_write_without_a_path_preserves_widenings(tmp_path: Path) -> N
     assert result.widenings
     assert result.amendment_status is None
     assert result.artifact is None
-    assert not files
+    assert not files.entries
 
 
 def test_the_same_amendment_against_a_different_change_fails(tmp_path: Path) -> None:
@@ -736,7 +736,7 @@ def test_the_same_amendment_against_a_different_change_fails(tmp_path: Path) -> 
         decided_by="Jordan (architect)",
         rationale="Orders needs the sqlite exemption during the migration.",
     )
-    amendment_path.write_bytes(write_files[str(amendment_path)])
+    amendment_path.write_bytes(dict(write_files.entries)[str(amendment_path)])
 
     # A second, larger widening: the amendment was written for the smaller change above.
     apply_overlay(

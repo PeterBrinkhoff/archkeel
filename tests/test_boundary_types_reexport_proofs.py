@@ -12,11 +12,21 @@ from pathlib import Path
 import pytest
 from test_analyzer import _component
 
+from archkeel.analyzer.python.collect import collect
 from archkeel.analyzer.python.imports import collect_imports
 from archkeel.analyzer.python.source import parse_sources, stable_direct_module_bindings
+from archkeel.check.evaluation.evaluate import evaluate_source
 from archkeel.cli.observe import observe
-from archkeel.ir.facts_codec import RawRecord
+from archkeel.ir.codec import parse_contract
+from archkeel.ir.facts_codec import RawRecord, decode_response, encode_response
 from archkeel.ir.model import Observation
+from archkeel.ir.protocol import (
+    CollectionRequest,
+    CollectionResponse,
+    PythonSettings,
+    SnapshotInput,
+    SourceScope,
+)
 from archkeel.ir.reexports import resolve_reexports
 from archkeel.ir.trace import trace_valid_violations
 
@@ -142,7 +152,7 @@ def test_init_facade_does_not_make_an_unproven_module_export_decidable(tmp_path:
     )
 
 
-def test_unproven_intermediate_reexport_hop_keeps_facade_unknown(tmp_path: Path) -> None:
+def test_source_import_hop_without_all_checks_the_original_signature(tmp_path: Path) -> None:
     observation = _observe_facade(
         tmp_path,
         public="sample.app.api:constraints",
@@ -150,11 +160,202 @@ def test_unproven_intermediate_reexport_hop_keeps_facade_unknown(tmp_path: Path)
         intermediate="from .impl import element_constraints as constraints\n",
     )
 
-    assert not observation.records("violations")
-    assert any(
-        item.kind == "boundary_type_route" and "sample.app.api.constraints" in item.subjects
+    violations = observation.records("violations") or ()
+    assert len(violations) == 3
+    assert {item.data.get("position") for item in violations} == {"first", "second", "return"}
+    assert {item.data.get("qualified_name") for item in violations} == {
+        "sample.app.api.constraints"
+    }
+    assert not [
+        item
         for item in observation.records("unknowns") or ()
+        if "APP-TYPES-NOT-DICT" in item.rule_ids
+    ]
+
+
+@pytest.mark.parametrize("route", ["direct-function", "reexport", "intermediate"])
+@pytest.mark.parametrize("descriptor", [False, True], ids=["function-globals", "set-name"])
+@pytest.mark.parametrize("annotation", ["str", "dict"], ids=["typed-source", "broad-source"])
+def test_declared_function_signature_is_separate_from_runtime_namespace_mutation(
+    tmp_path: Path, route: str, descriptor: bool, annotation: str
+) -> None:
+    mutation = (
+        "class Descriptor:\n"
+        "    def __set_name__(self, owner, name):\n"
+        "        owner.helper.__globals__['element_constraints'] = lambda first, second: {}\n"
+        "class Holder:\n"
+        "    helper = element_constraints\n"
+        "    value = Descriptor()\n"
+        if descriptor
+        else "def mutate(fn):\n"
+        "    fn.__globals__['element_constraints'] = lambda first, second: {}\n"
+        "mutate(element_constraints)\n"
     )
+    observation = _observe_facade(
+        tmp_path,
+        api=(
+            f"from .{'intermediate' if route == 'intermediate' else 'impl'} import "
+            "element_constraints as constraints\n__all__ = ['constraints']\n"
+        ),
+        intermediate=(
+            "from .impl import element_constraints\n__all__ = ['element_constraints']\n"
+            if route == "intermediate"
+            else None
+        ),
+        implementation=(
+            f"def element_constraints(first: {annotation}, second: {annotation}) -> {annotation}:\n"
+            "    return first\n" + mutation
+        ),
+        public="sample.app.impl:element_constraints"
+        if route == "direct-function"
+        else "sample.app.api:constraints",
+    )
+
+    violations = trace_valid_violations(observation)
+    assert len(violations) == (3 if annotation == "dict" else 0)
+    unknowns = [
+        item
+        for item in observation.records("unknowns") or ()
+        if "APP-TYPES-NOT-DICT" in item.rule_ids
+    ]
+    assert not unknowns
+    [function] = [
+        item
+        for item in observation.records("symbols") or ()
+        if item.data.get("qualified_name") == "sample.app.impl.element_constraints"
+    ]
+    assert function.data.get("source_member_binding_static") is False
+
+
+@pytest.mark.parametrize(
+    ("module", "missing"),
+    [
+        ("api", "source_member_binding_static"),
+        ("api", "origin_member_binding_static"),
+        ("api", "source_binding_unique"),
+        ("api", "origin_binding_unique"),
+        ("api", "module_level_import"),
+        ("intermediate", "source_member_binding_static"),
+        ("intermediate", "origin_member_binding_static"),
+        ("intermediate", "source_binding_unique"),
+        ("intermediate", "origin_binding_unique"),
+        ("intermediate", "module_level_import"),
+        ("impl", "source_binding_unique"),
+        ("impl", "source_member_binding_static"),
+        ("impl", "signature_decorators_proven"),
+    ],
+)
+def test_reexported_function_requires_declaration_evidence_not_runtime_effect_proof(
+    tmp_path: Path, module: str, missing: str
+) -> None:
+    observation = _observe_facade(
+        tmp_path,
+        api=(
+            "from .intermediate import element_constraints as constraints\n"
+            "__all__ = ['constraints']\n"
+        ),
+        intermediate="from .impl import element_constraints\n__all__ = ['element_constraints']\n",
+        implementation="def element_constraints(value: str) -> str: return value\n",
+    )
+    assert not trace_valid_violations(observation)
+    assert not [
+        item
+        for item in observation.records("unknowns") or ()
+        if "APP-TYPES-NOT-DICT" in item.rule_ids
+    ]
+    request = CollectionRequest(
+        SnapshotInput(str(tmp_path), "a" * 40, False),
+        SourceScope(("sample",), "sample"),
+        PythonSettings(),
+    )
+    payload = json.loads(encode_response(CollectionResponse(collect(request))))
+    section = next(
+        section
+        for section in payload["facts"]["sections"]
+        if section["name"] == ("symbols" if module == "impl" else "imports")
+    )
+    imported = next(
+        item
+        for item in section["records"]
+        if (item["data"].get("module", item["data"].get("source_module")) == f"sample.app.{module}")
+    )
+    assert imported["data"].pop(missing) is True
+    facts = decode_response(json.dumps(payload).encode()).facts
+    scan = evaluate_source(
+        facts,
+        parse_contract(json.loads((tmp_path / "contract.json").read_text())),
+        roots=("sample",),
+        namespace="sample",
+    )
+
+    assert not scan.violations
+    unknowns = [item for item in scan.unknowns if "APP-TYPES-NOT-DICT" in item["rule_ids"]]
+    required = missing not in {"source_member_binding_static", "origin_member_binding_static"}
+    assert bool(unknowns) is required
+    if required:
+        assert any(item["kind"] == "boundary_type_route" for item in unknowns)
+        assert any(item["kind"] == "boundary_type_position" for item in unknowns)
+
+
+@pytest.mark.parametrize(
+    ("implementation", "proven"),
+    [
+        ("def element_constraints(value: str) -> str: return value\n", True),
+        (_OVERLOAD_GROUP.replace("resolve_source_entity", "element_constraints"), True),
+        (
+            "def element_constraints(value: str) -> str: return value\n"
+            "element_constraints = lambda value: {}\n",
+            False,
+        ),
+        (
+            "def wrap(fn): return lambda value: {}\n"
+            "@wrap\ndef element_constraints(value: str) -> str: return value\n",
+            False,
+        ),
+        (
+            "from typing import overload\n"
+            "@overload\ndef element_constraints(value: str) -> str: ...\n",
+            False,
+        ),
+        (
+            "from typing import overload\n"
+            "@overload\ndef element_constraints(value: str) -> str: ...\n"
+            "@overload\ndef element_constraints(value: int) -> int: ...\n",
+            False,
+        ),
+        ("if enabled:\n    def element_constraints(value: str) -> str: return value\n", False),
+        (
+            "def outer():\n    def element_constraints(value: str) -> str: return value\n",
+            False,
+        ),
+    ],
+    ids=[
+        "stable",
+        "overloads",
+        "rebound",
+        "decorated",
+        "one-stub",
+        "no-implementation",
+        "conditional",
+        "nested",
+    ],
+)
+def test_direct_function_signature_requires_its_native_binding_proof(
+    tmp_path: Path, implementation: str, proven: bool
+) -> None:
+    observation = _observe_facade(
+        tmp_path,
+        api="",
+        implementation=implementation,
+        public="sample.app.impl:element_constraints",
+    )
+    assert not trace_valid_violations(observation)
+    unknowns = [
+        item
+        for item in observation.records("unknowns") or ()
+        if "APP-TYPES-NOT-DICT" in item.rule_ids
+    ]
+    assert bool(unknowns) is not proven
 
 
 @pytest.mark.parametrize(

@@ -274,7 +274,12 @@ def test_atlas_structure_measurements_keep_unavailable_edges_and_route_state(tmp
 def test_atlas_unknown_rule_links_its_analyzer_gap_while_failures_remain_visible(tmp_path):
     api = pytest.importorskip("playwright.sync_api")
     variant = _variant("class-a-boundary-types-ordinary-reexport-chain-unknown")
-    root = _prepare_repo(tmp_path, dict(variant.files), variant.fixture)
+    files = dict(variant.files)
+    files["shop/render/intermediate.py"] = files["shop/render/intermediate.py"].replace(
+        "from shop.render.text import render_order",
+        "if enabled:\n    from shop.render.text import render_order",
+    )
+    root = _prepare_repo(tmp_path, files, variant.fixture)
     config = load_config(root, variant.config)
     result, architecture = run_report(root, config=config, analyzer=observe)
     assert architecture is not None and result.declared_rules == "UNKNOWN"
@@ -282,7 +287,11 @@ def test_atlas_unknown_rule_links_its_analyzer_gap_while_failures_remain_visible
         result, architecture, repository="shop", architecture_href="architecture.json"
     ).decode()
     atlas = _atlas(html)
-    unknown = next(item for item in atlas["rule_assessments"] if item["status"] == "UNKNOWN")
+    unknown = next(
+        item
+        for item in atlas["rule_assessments"]
+        if item["id"] == "RENDER-TYPES-NOT-DICT" and item["status"] == "UNKNOWN"
+    )
     assert any(entry["evidence_class"] == "UNKNOWN" for entry in unknown["evidence"])
     component = next(item for item in atlas["components"] if item["label"] in unknown["components"])
     report = tmp_path / "atlas-unknown.report.html"
@@ -525,12 +534,21 @@ def test_scope_selection_and_geometry_survive_view_switch_and_resize(tmp_path, v
 def test_atlas_fail_with_undecided_and_mixed_evidence_keeps_all_actions(tmp_path):
     api = pytest.importorskip("playwright.sync_api")
     variant = _variant("class-a-boundary-types-ordinary-reexport-chain-unknown")
-    root = _prepare_repo(tmp_path, dict(variant.files), variant.fixture)
+    files = dict(variant.files)
+    files["shop/render/intermediate.py"] = files["shop/render/intermediate.py"].replace(
+        "from shop.render.text import render_order",
+        "if enabled:\n    from shop.render.text import render_order",
+    )
+    root = _prepare_repo(tmp_path, files, variant.fixture)
     config = load_config(root, variant.config)
     result, encoded = run_report(root, config=config, analyzer=observe)
     assert encoded is not None
     model = parse_observation(decode_canonical_model(json.loads(encoded)))
-    assessment = next(item for item in result.rule_assessments if item.status == "UNKNOWN")
+    assessment = next(
+        item
+        for item in result.rule_assessments
+        if item.id == "RENDER-TYPES-NOT-DICT" and item.status == "UNKNOWN"
+    )
     ownership_model = _sample(tmp_path / "ownership")
     blocker = next(
         item

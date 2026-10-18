@@ -678,6 +678,7 @@ def _dependency_binding_id(scan: ScanResult, declarations: list[RawRecord]) -> s
                 ("modules", scan.modules),
                 ("imports", scan.imports),
                 ("symbols", scan.symbols),
+                ("references", scan.references),
                 ("declarations", declarations),
             )
         ),
@@ -714,7 +715,7 @@ def _certify_dependency_scopes(
         return
     records = {
         record["id"]: parse_record(record)
-        for values in (scan.modules, scan.symbols, scan.imports, scan.unknowns)
+        for values in (scan.modules, scan.symbols, scan.imports, scan.references, scan.unknowns)
         for record in values
     }
     evidence = {item["id"]: parse_evidence(item) for item in scan.evidence}
@@ -731,6 +732,7 @@ def _certify_dependency_scopes(
             import_ids=(),
             selected_inputs=selected,
             source_records=records,
+            allow_script_effects=facts.profile == PROFILES[Language.TYPESCRIPT].analyzer,
         )
     except ValueError:
         return

@@ -1,7 +1,8 @@
 # Archkeel
 # Copyright (c) 2026 Rapiddweller Asia Co., Ltd.
 # SPDX-License-Identifier: MIT
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import replace
 
 import pytest
@@ -22,6 +23,7 @@ from archkeel.ir.model import (
     RuleAssessment,
     RunResult,
 )
+from archkeel.render import terminal
 from archkeel.render.summary import Summary, check_summary, init_summary, report_summary
 from archkeel.render.terminal import print_result
 
@@ -50,6 +52,69 @@ _RESULTS = {
     "report-unverifiable": report_summary(RunResult("report", 2, diagnostics=(_DIAGNOSTIC,))),
     "check-reject": check_summary(replace(FAILED_CHECK, delta=_DELTA, failures=("regressed",))),
 }
+
+
+@pytest.fixture
+def progress_console(monkeypatch):
+    events: list[tuple[str, str | None]] = []
+
+    class ProgressConsole:
+        is_terminal = True
+
+        def __init__(self, *, stderr: bool) -> None:
+            assert stderr is True
+            events.append(("console", None))
+
+        @contextmanager
+        def status(self, message: str) -> Iterator[object]:
+            events.append(("start", message))
+            try:
+                yield self
+            finally:
+                events.append(("stop", message))
+
+    monkeypatch.setattr(terminal, "Console", ProgressConsole)
+    return ProgressConsole, events
+
+
+@pytest.mark.parametrize("interactive", [False, True])
+def test_progress_creates_console_only_on_entry_and_yields_none(progress_console, interactive):
+    console, events = progress_console
+    console.is_terminal = interactive
+    context = terminal.progress("working")
+    assert events == []
+    with context as value:
+        assert value is None
+        assert events == [("console", None)] + ([("start", "working")] if interactive else [])
+    assert events == [("console", None)] + (
+        [("start", "working"), ("stop", "working")] if interactive else []
+    )
+
+
+def test_progress_stops_status_and_preserves_the_body_exception(progress_console):
+    _, events = progress_console
+    failure = ValueError("failed work")
+    with pytest.raises(ValueError) as raised:
+        with terminal.progress("working"):
+            raise failure
+    assert raised.value is failure
+    assert events == [("console", None), ("start", "working"), ("stop", "working")]
+
+
+def test_progress_decorator_recreates_its_context_and_preserves_arguments_and_result(
+    progress_console,
+):
+    _, events = progress_console
+
+    @terminal.progress("working")
+    def operation(value: int, *, offset: int) -> int:
+        return value + offset
+
+    assert events == []
+    assert operation(2, offset=3) == 5
+    assert operation(7, offset=4) == 11
+    assert operation.__name__ == "operation"
+    assert events == [("console", None), ("start", "working"), ("stop", "working")] * 2
 
 
 def _render(result: RunResult, summary: Summary, width: int) -> str:

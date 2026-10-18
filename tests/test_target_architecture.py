@@ -106,6 +106,7 @@ def test_onboarding_dependency_uses_exact_modules_and_real_source_evidence(
 
 PORTS = (
     "archkeel.api.load_violations",
+    "archkeel.analyzer.python.collect.PythonProviderCollector.collect",
     "archkeel.ir.renames.renamed_contract",
     "archkeel.check.report.run_report",
     "archkeel.check.report.run_saved_report",
@@ -157,7 +158,8 @@ def _port_repository(tmp_path):
     selected.update(
         (entity["id"], entity)
         for entity in entities.values()
-        if entity.get("parent_id") == "COMPACT-OBSERVER" and entity["kind"] == "attribute"
+        if (entity.get("parent_id") == "COMPACT-OBSERVER" and entity["kind"] == "attribute")
+        or entity["id"] in {"COMPACT-FILES-TO-WRITE", "COMPACT-FILES-TO-WRITE-ENTRIES"}
     )
     target = []
     files = {
@@ -223,6 +225,11 @@ def test_real_core_and_render_ports_fulfil_independent_authored_signatures(tmp_p
     [
         ("api.py", "-> tuple[ViolationRow, ...]:", "-> str:"),
         ("check/ports.py", "roots: tuple[str, ...],", "roots: list[str],"),
+        (
+            "check/ports.py",
+            "entries: tuple[tuple[str, bytes], ...]",
+            "entries: tuple[tuple[str, str], ...]",
+        ),
         ("check/observe.py", 'tsconfig: str = "tsconfig.json"', "tsconfig: int = 1"),
         (
             "render/summary.py",

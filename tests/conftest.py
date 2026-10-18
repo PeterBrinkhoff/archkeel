@@ -27,8 +27,7 @@ def _parse_self_run(artifact: bytes, stdout: str) -> SelfRun:
     result = json.loads(stdout)
     assert result["diagnostics"] == []
     assert result["observation_complete"] == "PASS"
-    # Complete observation preserves the real undecided boundary evidence.
-    assert result["declared_rules"] == "UNKNOWN"
+    assert result["declared_rules"] == "PASS"
     assert result["expectation_fulfilled"] == "n/a"
     observation = parse_observation(decode_canonical_model(json.loads(artifact)))
     return SelfRun(observation, stdout, artifact)

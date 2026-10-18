@@ -36,6 +36,7 @@ from archkeel.ir.architecture_graph import (
 )
 from archkeel.ir.facts import (
     SOURCE_RESOLUTION_GAP_KIND,
+    SOURCE_SCRIPT_GLOBAL_KIND,
     InventoryStatus,
     MemberKind,
     MethodKind,
@@ -275,9 +276,6 @@ def _inventory_owners(model: Observation, selected: set[str]) -> tuple[str, ...]
             item.id
             for item in symbols
             if item.kind == "class"
-            and item.data.get("source_binding_unique") is True
-            and item.data.get("source_member_binding_static") is True
-            and item.data.get("class_header_static") is True
             and not item.data.get("definition_contexts")
             and names[item.data.get("qualified_name")] == 1
             and isinstance((module := item.data.get("module")), str)
@@ -738,41 +736,48 @@ def _reconcile_result_binding(
     return qualified_name, annotation, definition_contexts
 
 
+def _result_binding_identity(site: RecordData) -> tuple[str, str, str, str]:
+    if {key for key, _ in site.entries} != {
+        "id",
+        "name",
+        "target_kind",
+        "annotation",
+        "initializer",
+        "evidence_ids",
+        "definition_contexts",
+    } or not _texts(site.get("evidence_ids")):
+        raise ValueError("static result binding fields or evidence mismatch")
+    identity = _text(site.get("id")) or ""
+    name = _text(site.get("name")) or ""
+    initializer = _text(site.get("initializer")) or ""
+    target_kind = _text(site.get("target_kind")) or ""
+    if (
+        not identity
+        or not name
+        or not initializer
+        or target_kind not in {"name", "attribute", "subscript"}
+    ):
+        raise ValueError("invalid static result binding")
+    return identity, name, initializer, target_kind
+
+
 def _value_bindings(
     record: Record,
     source: str,
     entities: list[Entity],
     by_name: dict[str, list[Entity]],
+    positions: dict[str, int],
     language: str,
 ) -> tuple[tuple[Entity, str], ...]:
     sites = _records(record.data.get("result_bindings"))
     if not sites:
         return ()
-    owner = next(item for item in entities if item.id == source)
+    owner = entities[positions[source]]
     result: list[tuple[Entity, str]] = []
     for site in sites:
-        if {key for key, _ in site.entries} != {
-            "id",
-            "name",
-            "target_kind",
-            "annotation",
-            "initializer",
-            "evidence_ids",
-            "definition_contexts",
-        } or not _texts(site.get("evidence_ids")):
-            raise ValueError("static result binding fields or evidence mismatch")
-        identity = _text(site.get("id")) or ""
-        name = _text(site.get("name")) or ""
-        initializer = _text(site.get("initializer")) or ""
-        target_kind = _text(site.get("target_kind")) or ""
-        if (
-            not identity
-            or not name
-            or not initializer
-            or target_kind not in {"name", "attribute", "subscript"}
-        ):
-            raise ValueError("invalid static result binding")
-        previous = next((item for item in entities if item.id == identity), None)
+        identity, name, initializer, target_kind = _result_binding_identity(site)
+        previous_index = positions.get(identity)
+        previous = entities[previous_index] if previous_index is not None else None
         annotation = _text(site.get("annotation"))
         definition_contexts = _definition_contexts(site.get("definition_contexts"))
         qualified_name, annotation, definition_contexts = _reconcile_result_binding(
@@ -805,12 +810,13 @@ def _value_bindings(
             definition_contexts=definition_contexts,
             initializer=initializer,
         )
-        if previous:
-            entities[entities.index(previous)] = value
+        if previous_index is not None:
+            entities[previous_index] = value
             by_name[value.qualified_name] = [
                 value if item.id == identity else item for item in by_name[value.qualified_name]
             ]
         else:
+            positions[identity] = len(entities)
             entities.append(value)
             values: list[Entity] = by_name.setdefault(value.qualified_name, [])
             values.append(value)
@@ -942,13 +948,16 @@ def _relationships(
     observation: Observation, entities: list[Entity], language: str
 ) -> tuple[Relationship, ...]:
     by_name: dict[str, list[Entity]] = {}
-    for entity in entities:
+    positions: dict[str, int] = {}
+    for index, entity in enumerate(entities):
+        positions.setdefault(entity.id, index)
         if entity.kind != EntityKind.PACKAGE:
             definitions: list[Entity] = by_name.setdefault(entity.qualified_name, [])
             definitions.append(entity)
 
     result: list[Relationship] = []
     result.extend(_namespace_memberships(observation, entities))
+    indexed_count = len(entities)
     for section, kind in (
         ("imports", RelationshipKind.IMPORTS),
         ("calls", RelationshipKind.CALLS),
@@ -975,7 +984,9 @@ def _relationships(
                 result.append(
                     Relationship(
                         record.id,
-                        RelationshipKind.IMPORTS,
+                        RelationshipKind.REFERENCES
+                        if record.kind == SOURCE_SCRIPT_GLOBAL_KIND
+                        else RelationshipKind.IMPORTS,
                         sources[0],
                         targets[0] if len(targets) == 1 else None,
                         ResolutionKind.RESOLVED if len(targets) == 1 else ResolutionKind.PARTIAL,
@@ -993,9 +1004,27 @@ def _relationships(
                 targets = tuple(target_ids)
                 result.append(_site_relationship(record, kind, sources[0], targets))
                 if kind == RelationshipKind.CALLS:
-                    bindings = _value_bindings(record, sources[0], entities, by_name, language)
+                    for index in range(indexed_count, len(entities)):
+                        positions.setdefault(entities[index].id, index)
+                    bindings = _value_bindings(
+                        record, sources[0], entities, by_name, positions, language
+                    )
+                    indexed_count = len(entities)
                     result.extend(_construction_sites(record, sources[0], bindings, by_name))
-    for record in observation.records("symbols") or ():
+    result.extend(
+        _classifier_relationships(observation.records("symbols") or (), by_name, entities, language)
+    )
+    return tuple(result)
+
+
+def _classifier_relationships(
+    records: tuple[Record, ...],
+    by_name: dict[str, list[Entity]],
+    entities: list[Entity],
+    language: str,
+) -> list[Relationship]:
+    result: list[Relationship] = []
+    for record in records:
         for base in _records(record.data.get("base_declarations")):
             if record.kind != "class" or base.get("relationship_kind") is None:
                 raise ValueError("typed base needs a classifier source and relationship kind")
@@ -1017,7 +1046,7 @@ def _relationships(
             )
             edge = _site_relationship(site, base_kind, record.id, base_targets)
             result.append(replace(edge, record_ids=(record.id,)))
-    return tuple(result)
+    return result
 
 
 def _section_coverage(
@@ -1114,6 +1143,10 @@ def _member_inventory_coverage(
     observation: Observation, entities: list[Entity]
 ) -> tuple[Coverage, ...]:
     result: list[Coverage] = []
+    members: dict[tuple[str, EntityKind], set[str]] = {}
+    for entity in entities:
+        if entity.parent_id is not None:
+            members.setdefault((entity.parent_id, entity.kind), set()).add(entity.id)
     proof = validated_member_inventory_proof(observation)
     approved = set(proof.fact_ids) if proof is not None else set()
     symbols = observation.records("symbols") or ()
@@ -1125,11 +1158,7 @@ def _member_inventory_coverage(
                 and parse_symbol_class_kind(item.data.get("class_kind")) is SymbolClassKind.ENUM
                 else (EntityKind(inventory.kind),)
             )
-            actual = {
-                entity.id
-                for entity in entities
-                if entity.parent_id == item.id and entity.kind in kinds
-            }
+            actual = {identity for kind in kinds for identity in members.get((item.id, kind), ())}
             if item.kind != "class" or actual != set(inventory.definition_ids):
                 raise ValueError("member inventory identities disagree with their owner")
             complete = (

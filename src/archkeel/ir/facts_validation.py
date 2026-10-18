@@ -10,28 +10,35 @@ from .facts import (
     SOURCE_RESOLUTION_GAP_KIND,
     BuiltinTarget,
     ConstructSupport,
+    ContextManagerSignature,
     Evidence,
     EvidenceClass,
     ExternalPackageTarget,
     LocalTarget,
     MethodKind,
     PropertyOrigin,
+    ProviderBinding,
+    ProviderBindingKind,
     Record,
     RecordData,
+    ResolutionInput,
     SourceFacts,
     SourceProfile,
     SourceResolution,
     SourceSectionName,
     UnresolvedTarget,
+    contextmanager_signature,
     in_scope,
     member_inventories,
     parse_method_kind,
     parse_source_resolution,
     property_binding,
+    stable_id,
 )
 from .facts import MemberKind as _MemberKind
 from .facts import ResolutionRole as _ResolutionRole
 from .state_facts import ArgumentPass, AttributeAccess
+from .type_shapes import TypeApplication, TypeShape
 
 _REQUIRED = {
     SourceSectionName.SYMBOLS: ("qualified_name", "module", "name", "parent"),
@@ -125,6 +132,7 @@ _PROOF_FLAGS = frozenset(
         "source_member_binding_static",
         "origin_member_binding_static",
         "class_header_static",
+        "source_class_header_static",
         "typed_dict_header_static",
         "class_body_control_flow",
         "signature_decorators_proven",
@@ -181,6 +189,153 @@ def _payload(value: RecordData) -> None:
             not isinstance(child, tuple) or any(not isinstance(item, str) for item in child)
         ):
             raise ValueError(f"source payload {key} must be a string array")
+
+
+def _signature_origin(
+    data: RecordData, spelling: str, records: list[Record], facts: SourceFacts
+) -> str | None:
+    root, _, suffix = spelling.partition(".")
+    module = data.get("module")
+    files = [file for file in facts.files if file.module == module]
+    matches = [
+        record
+        for record in records
+        if record.kind == "import"
+        and record.data.get("source_module") == module
+        and record.data.get("binding") == root
+        and record.data.get("module_level_import") is True
+        and record.data.get("under_type_checking") is False
+    ]
+    if len(files) != 1 or root not in files[0].stable_bindings or len(matches) != 1:
+        return None
+    binding = matches[0].data
+    target, symbol = binding.get("target_module"), binding.get("symbol")
+    if not isinstance(target, str) or symbol is not None and not isinstance(symbol, str):
+        return None
+    return ".".join(part for part in (target, symbol, suffix) if part)
+
+
+def _signature_terminal(name: str, bindings: dict[str, ProviderBinding]) -> ProviderBinding | None:
+    seen: set[str] = set()
+    while name not in seen:
+        seen.add(name)
+        binding = bindings.get(name)
+        if binding is None or binding.kind is not ProviderBindingKind.ALIAS:
+            return binding
+        if binding.target is None:
+            return None
+        name = binding.target
+    return None
+
+
+def _signature_shapes(
+    data: RecordData, signature: ContextManagerSignature, shapes: dict[str, TypeShape]
+) -> TypeApplication:
+    source = data.get("returns")
+    original = shapes.get(source) if isinstance(source, str) else None
+    effective = signature.effective_return
+    result = shapes.get(f"{effective.wrapper}[{effective.payload}]")
+    if (
+        not isinstance(original, TypeApplication)
+        or len(original.arguments) != 1
+        or original.arguments[0].text != effective.payload
+        or not isinstance(result, TypeApplication)
+        or result.head.text != effective.wrapper
+        or len(result.arguments) != 1
+        or result.arguments[0].text != effective.payload
+        or effective.payload not in shapes
+    ):
+        raise ValueError("contextmanager source/effective type shapes disagree")
+    return original
+
+
+def _signature_support(
+    facts: SourceFacts,
+    record: Record,
+    signature: ContextManagerSignature,
+    evidence: dict[str, Evidence],
+    inputs: Mapping[str, ResolutionInput],
+) -> None:
+    own = set(record.evidence_ids)
+    source = [file for file in facts.files if file.module == record.data.get("module")]
+    if not own or not own <= set(signature.support_evidence_ids) or len(source) != 1:
+        raise ValueError("contextmanager signature needs its own source evidence")
+    for reference in own:
+        item = evidence.get(reference)
+        if (
+            item is None
+            or item.file != source[0].rel_path
+            or item.file not in inputs
+            or inputs[item.file].role is not _ResolutionRole.SELECTED
+        ):
+            raise ValueError("contextmanager signature needs its own selected source evidence")
+    support = [
+        evidence.get(reference)
+        for reference in signature.support_evidence_ids
+        if reference not in own
+    ]
+    if any(
+        item is None
+        or item.file not in inputs
+        or inputs[item.file].role is not _ResolutionRole.RESOLUTION
+        or not item.file.startswith(".archkeel-providers/")
+        for item in support
+    ):
+        raise ValueError("contextmanager signature needs captured provider support")
+    if not any(item is not None and item.file == ".archkeel-providers/abc.py" for item in support):
+        raise ValueError("contextmanager signature needs its bound ABC branch")
+
+
+def _contextmanager_signatures(
+    facts: SourceFacts,
+    records: list[Record],
+    evidence: dict[str, Evidence],
+    inputs: Mapping[str, ResolutionInput],
+) -> None:
+    bindings = {binding.qualified_name: binding for binding in facts.provider_bindings}
+    for record in records:
+        if "contextmanager_signature" not in dict(record.data.entries):
+            continue
+        data = record.data
+        signature = contextmanager_signature(data.get("contextmanager_signature"))
+        decorators = data.get("decorators")
+        if (
+            facts.profile is not SourceProfile.PYTHON
+            or facts.runtime.name != "python"
+            or signature.partial.version != facts.runtime.version
+            or data.get("source_binding_unique") is not True
+            or data.get("namespace_bound") is not True
+            or data.get("parent") is not None
+            or data.get("async") is not False
+            or data.get("signature_decorators_proven") is not False
+            or not isinstance(decorators, tuple)
+            or len(decorators) != 1
+            or not isinstance(decorators[0], str)
+        ):
+            raise ValueError("contextmanager signature source/runtime identity mismatch")
+        source = _signature_shapes(data, signature, dict(facts.type_shapes))
+        decorated = _signature_origin(data, decorators[0], records, facts)
+        iterator = _signature_origin(data, source.head.text, records, facts)
+        factory = _signature_terminal(decorated, bindings) if decorated is not None else None
+        payload = _signature_terminal(iterator, bindings) if iterator is not None else None
+        wrapper = bindings.get(signature.effective_return.wrapper)
+        if (
+            factory is None
+            or factory.kind is not ProviderBindingKind.FUNCTION
+            or factory.qualified_name != signature.factory
+            or payload is None
+            or payload.kind is not ProviderBindingKind.CLASS
+            or payload.qualified_name != "_collections_abc.Iterator"
+            or wrapper is None
+            or wrapper.kind is not ProviderBindingKind.CLASS
+            or wrapper.qualified_name.rpartition(".")[0] != signature.factory.rpartition(".")[0]
+            or not {factory.evidence_id, wrapper.evidence_id, payload.evidence_id}
+            <= set(signature.support_evidence_ids)
+        ):
+            raise ValueError(
+                "contextmanager signature needs bound factory/wrapper/iterator declarations"
+            )
+        _signature_support(facts, record, signature, evidence, inputs)
 
 
 def _property_bindings(records: list[Record], evidence: dict[str, Evidence]) -> None:
@@ -287,6 +442,10 @@ def _source_record(record: Record, section: SourceSectionName) -> None:
         if section != SourceSectionName.SYMBOLS or record.kind != "class":
             raise ValueError("member inventory needs its class owner")
         member_inventories(record.data.get("member_inventories"))
+    if "contextmanager_signature" in fields:
+        if section is not SourceSectionName.SYMBOLS or record.kind != "function":
+            raise ValueError("contextmanager signature needs a function owner")
+        contextmanager_signature(record.data.get("contextmanager_signature"))
     if "base_declarations" in fields:
         _base_declarations(record, section)
     _payload(record.data)
@@ -350,14 +509,17 @@ def _base_declarations(record: Record, section: SourceSectionName) -> None:
 
 
 def _member_inventory_bindings(records: list[Record]) -> None:
+    methods: dict[str, set[str]] = {}
+    for record in records:
+        if record.kind == "method":
+            parent = record.data.get("lexical_parent_id")
+            if isinstance(parent, str):
+                direct_methods: set[str] = methods.setdefault(parent, set())
+                direct_methods.add(record.id)
     for owner in records:
         for inventory in member_inventories(owner.data.get("member_inventories")):
             if inventory.kind == _MemberKind.METHOD:
-                actual = {
-                    item.id
-                    for item in records
-                    if item.kind == "method" and item.data.get("lexical_parent_id") == owner.id
-                }
+                actual = methods.get(owner.id, set())
             else:
                 attributes = owner.data.get("attribute_declarations")
                 if not isinstance(attributes, tuple) or any(
@@ -388,13 +550,19 @@ def validate_source_bindings(
     selected_inputs: Collection[str],
     allow_part_evidence: bool = False,
     source_records: Mapping[str, Record] | None = None,
+    allow_script_effects: bool = False,
 ) -> None:
     """Bind source records and their evidence to the same observed module."""
     _unique(module_paths.values(), "module path")
     modules_by_path = {path: module for module, path in module_paths.items()}
     for record in records:
         if record.kind == SOURCE_RESOLUTION_GAP_KIND:
-            if _resolution_gap_module(record, module_paths, evidence, source_records or {}) is None:
+            if (
+                _resolution_gap_module(
+                    record, module_paths, evidence, source_records or {}, allow_script_effects
+                )
+                is None
+            ):
                 raise ValueError("source resolution gap has no bound resolution dimension")
             continue
         source_module = (
@@ -440,14 +608,15 @@ def _resolution_gap_module(
     module_paths: Mapping[str, str],
     evidence: Mapping[str, Evidence],
     records: Mapping[str, Record],
+    allow_script_effects: bool,
 ) -> str | None:
-    """Read only explicitly bound dependency/signature uncertainty; legacy gaps prove no scope."""
+    """Read only witnessed uncertainty; a dimension label alone proves no scope."""
     module = gap.data.get("source_module", gap.data.get("module"))
     dimension = gap.data.get("resolution_dimension")
     if (
         gap.kind != SOURCE_RESOLUTION_GAP_KIND
         or gap.evidence_class != EvidenceClass.UNKNOWN
-        or dimension not in {"imports", "signature"}
+        or dimension not in {"imports", "signature", "runtime_effects"}
         or not isinstance(module, str)
         or gap.data.get("source_module", module) != module
         or gap.data.get("module", module) != module
@@ -459,6 +628,11 @@ def _resolution_gap_module(
             for identity in gap.evidence_ids
         )
         or gap.data.get("file", module_paths[module]) != module_paths[module]
+    ):
+        return None
+    if dimension == "runtime_effects" and not (
+        allow_script_effects
+        and _script_effect_binding(gap, records, evidence, module, module_paths[module])
     ):
         return None
     if dimension == "signature":
@@ -484,6 +658,37 @@ def _resolution_gap_module(
         ):
             return None
     return module
+
+
+def _script_effect_binding(
+    gap: Record,
+    records: Mapping[str, Record],
+    evidence: Mapping[str, Evidence],
+    module: str,
+    path: str,
+) -> bool:
+    if (
+        len(gap.fact_ids) != 1
+        or len(gap.evidence_ids) != 1
+        or not path.endswith((".js", ".ts", ".tsx"))
+    ):
+        return False
+    effect = records.get(gap.fact_ids[0])
+    location = evidence[gap.evidence_ids[0]]
+    return (
+        effect is not None
+        and effect.id == stable_id("TS_RUNTIME_EFFECT", module, location.line, location.column)
+        and gap.id == stable_id("UNKNOWN_RUNTIME_EFFECT", effect.id)
+        and effect.kind == "script_namespace_effect"
+        and effect.evidence_class == EvidenceClass.FACT
+        and effect.subjects == (module,)
+        and effect.data.get("source_module") == module
+        and effect.data.get("source_scope") == module
+        and effect.evidence_ids == gap.evidence_ids
+        and effect.data.get("expression") == location.excerpt
+        and effect.data.get("status") == SourceResolution.UNRESOLVED
+        and effect.data.get("targets") == ()
+    )
 
 
 def validate_source_facts(facts: SourceFacts) -> None:
@@ -515,8 +720,49 @@ def validate_source_facts(facts: SourceFacts) -> None:
     if facts.coverage.full_scope and facts.coverage.files_parsed and not facts.files:
         raise ValueError("complete parsed source needs an observed module")
     evidence_ids = _unique((item.id for item in facts.evidence), "evidence id")
+    _unique((item.qualified_name for item in facts.provider_bindings), "provider binding")
+    if facts.provider_bindings and facts.profile is not SourceProfile.PYTHON:
+        raise ValueError("provider bindings require Python source facts")
     candidate_ids = _unique((item.id for item in facts.candidate_evidence), "candidate evidence id")
     base_by_id = {item.id: item for item in facts.evidence}
+    input_by_path = {item.path: item for item in facts.inputs}
+    for binding in facts.provider_bindings:
+        _unique(binding.supporting_evidence_ids, "provider alias support")
+        evidence = base_by_id.get(binding.evidence_id)
+        qualified_name: str = binding.qualified_name
+        parts = qualified_name.rpartition(".")
+        module: str = qualified_name if binding.kind is ProviderBindingKind.MODULE else parts[0]
+        name: str = parts[2]
+        stem = ".archkeel-providers/" + module.replace(".", "/")
+        if (
+            binding.kind is ProviderBindingKind.ALIAS
+            and (
+                binding.target is None
+                or not all(part.isidentifier() for part in binding.target.split("."))
+            )
+            or binding.kind is not ProviderBindingKind.ALIAS
+            and (binding.target is not None or binding.supporting_evidence_ids)
+        ):
+            raise ValueError("provider alias needs a separate qualified target")
+        for reference in binding.supporting_evidence_ids:
+            support = base_by_id.get(reference)
+            if (
+                support is None
+                or not support.file.startswith(".archkeel-providers/")
+                or support.file not in input_by_path
+                or input_by_path[support.file].role is not _ResolutionRole.RESOLUTION
+            ):
+                raise ValueError("provider alias support needs its resolution source")
+        if (
+            not all(part.isidentifier() for part in module.split("."))
+            or not name.isidentifier()
+            or module in {item.module for item in facts.files}
+            or evidence is None
+            or evidence.file not in {stem + ".py", stem + "/__init__.py"}
+            or evidence.file not in input_by_path
+            or input_by_path[evidence.file].role is not _ResolutionRole.RESOLUTION
+        ):
+            raise ValueError("provider binding needs its separate resolution source")
     if any(
         item.id in base_by_id and base_by_id[item.id] != item for item in facts.candidate_evidence
     ):
@@ -563,7 +809,30 @@ def validate_source_facts(facts: SourceFacts) -> None:
         if not set(record.fact_ids).issubset(fact_ids):
             raise ValueError("dangling source fact reference")
     record_by_id = {record.id: record for record in records}
+    effects = [record for record in records if record.kind == "script_namespace_effect"]
+    effect_gaps = [
+        gap
+        for gap in facts.coverage.gaps
+        if gap.data.get("resolution_dimension") == "runtime_effects"
+    ]
+    script_effects = (
+        facts.profile == SourceProfile.TYPESCRIPT
+        and "script-globals-v1" in facts.capabilities.resolution_features
+    )
+    if effects and not script_effects:
+        raise ValueError("script effects require the registered TypeScript script profile")
+    validate_source_bindings(
+        effect_gaps,
+        {item.module: item.rel_path for item in facts.files},
+        {},
+        base_by_id,
+        import_ids=(),
+        selected_inputs=selected_inputs,
+        source_records=record_by_id,
+        allow_script_effects=script_effects,
+    )
     _property_bindings(records, base_by_id)
+    _contextmanager_signatures(facts, records, base_by_id, input_by_path)
     _member_inventory_bindings(records)
     for gap in facts.coverage.gaps:
         _source_record(gap, SourceSectionName.UNKNOWNS)
