@@ -332,6 +332,9 @@ class ParsedModule:
     global_names: frozenset[str] = field(init=False, repr=False)
     scope_bound_names: tuple[str, ...] = field(init=False, repr=False)
     unique_bindings: frozenset[str] = field(init=False, repr=False)
+    _member_containment_syntax: (
+        tuple[tuple[tuple[str, ast.AST], ...], frozenset[tuple[str, str]]] | None
+    ) = field(default=None, init=False, repr=False)
     stable_binding_cache: tuple[dict[str, AliasBinding], frozenset[str]] | None = field(
         default=None, init=False, repr=False
     )
@@ -1322,31 +1325,47 @@ def _contained_member_roots(
     owner_exposure_only: bool = False,
     unsafe_providers: AbstractSet[str] = frozenset(),
 ) -> set[tuple[str, str]]:
-    owners = _contained_member_owners(module, nodes)
-    contained = {
-        (name, target.id)
-        for name, owner in owners
-        for expression in [
-            *_protected_type_expressions(list(ast.walk(owner))),
-            *(owner.bases if isinstance(owner, ast.ClassDef) else ()),
-        ]
-        for target in ast.walk(expression)
-        if isinstance(target, ast.Name) and isinstance(target.ctx, ast.Load)
-    }
+    syntax = module._member_containment_syntax if nodes is module.all_nodes else None
+    if syntax is None:
+        candidates = _contained_member_owners(module, nodes)
+        contained = {
+            (name, target.id)
+            for name, owner in candidates
+            for expression in [
+                *_protected_type_expressions(list(ast.walk(owner))),
+                *(owner.bases if isinstance(owner, ast.ClassDef) else ()),
+            ]
+            for target in ast.walk(expression)
+            if isinstance(target, ast.Name) and isinstance(target.ctx, ast.Load)
+        }
+        contained |= {
+            (target.id, owner.name)
+            for owner in nodes
+            if isinstance(owner, ast.ClassDef)
+            for base in owner.bases
+            for target in ast.walk(base.value if isinstance(base, ast.Subscript) else base)
+            if isinstance(target, ast.Name) and isinstance(target.ctx, ast.Load)
+        }
+        contained |= {
+            (name, binding)
+            for name, owner in candidates
+            if any(
+                isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda)
+                for node in ast.walk(owner)
+            )
+            for binding in module.scope_bound_names
+        }
+        syntax = (tuple(candidates), frozenset(contained))
+        if nodes is module.all_nodes:
+            module._member_containment_syntax = syntax
+    owners, protected = syntax
+    contained = set(protected)
     contained |= {
         (name, target.id)
         for node, name in module_scope_bindings(module)
         if (value := admitted_type_alias_value(module, node)) is not None
         and value in module._proven_map_union_expressions | module._proven_callable_expressions
         for target in ast.walk(value)
-        if isinstance(target, ast.Name) and isinstance(target.ctx, ast.Load)
-    }
-    contained |= {
-        (target.id, owner.name)
-        for owner in nodes
-        if isinstance(owner, ast.ClassDef)
-        for base in owner.bases
-        for target in ast.walk(base.value if isinstance(base, ast.Subscript) else base)
         if isinstance(target, ast.Name) and isinstance(target.ctx, ast.Load)
     }
     # Native functions expose their defining namespace, including through a class's methods.
@@ -1373,10 +1392,6 @@ def _contained_member_roots(
                     for target in ast.walk(base.value if isinstance(base, ast.Subscript) else base)
                 )
             )
-        )
-        or any(
-            isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda)
-            for node in ast.walk(owner)
         )
         for binding in namespace
     }
