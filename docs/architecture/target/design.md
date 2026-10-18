@@ -1,16 +1,18 @@
 # Compact Target definition scope
 
-Status: compact target and bounded refactoring; validation results are recorded below.
-Baseline: `fd1c0c4b29cfa50da91a6adc7fb60e2b4601bba4` (current Main).
+Status: contracts and two code boundaries implemented; full architecture acceptance remains open.
+Baseline: `006bc089852a80bd60f8723e2c4b4f9bfb6d1210`.
 The earlier experiment at `2378c9006390f40d63f2948a0eff4ed0e3f895b4` is retained
 on `feat/detailed-target-architecture-experiment`; PR #604 is rebuilt from the baseline.
 
 ## Goal and scope
 
-Implement the compact target contracts and their bounded code refactoring in
+Implement the compact target contracts and align production code with them in
 PR #604, preserving supported behavior, conservative evidence and all existing
-rule meanings. Contract definition is the first milestone; code alignment and
-validation in the same PR are the end goal. Do not merge automatically.
+rule meanings. Contract definition is the first milestone; complete code alignment
+and validation in the same PR are the end goal. The two implemented boundary
+refactorings are a milestone, not evidence of complete architecture conformance.
+Do not merge automatically.
 
 Keep the baseline's root and eight nested contracts. Refine existing owners and
 actual crossing ports; do not add a parallel source inventory or prescribe a
@@ -138,11 +140,17 @@ Misplacement findings name the current owner, target owner and offending crossin
 
 ## Validation
 
-LOCAL VERIFIED: 913 behavior/contract tests passed; five Python 3.12 cases skipped
-on Python 3.11. `make target-contract-check` passed all 17 cases
-(included in that total). Lint, type checking, strict distribution metadata and
-isolated installed wheel/sdist smoke checks passed. Independent review checked
-ownership, compatibility and retained constraints.
+At `437e9022`, 913 selected tests passed locally, but CI Core failed five tests
+omitted from that selection; report/browser and Mermaid CI passed. Schema-version,
+render-port fixture and exact ownership expectations were corrected without
+weakening their checks. The three files then passed all 106 tests locally.
+
+The first full local Core run passed 4,728 tests and exposed five different CRLF
+fixture failures: inherited Git normalization changed bytes before observation.
+The temporary repository now owns that setting; all 73 byte/snapshot tests pass
+with exact assertions and host configuration preserved. Full Core acceptance is
+pending the complete repaired run. Lint, type checking and installed wheel/sdist
+smoke checks passed. Independent review checked both corrections.
 
 Native validation against the baseline: 144/144 files; no diagnostics or known
 violations; 58 UNKNOWNs, 837 unresolved calls and all debt budgets unchanged.
@@ -155,6 +163,6 @@ The attempted alias reduced the type-rule denominator from 122 to 117 and gated
 UNKNOWNs from 58 to 57. That lost scope was rejected; the signature-preserving
 report facade restores it without changing the evaluator or baseline.
 
-CI-ONLY VERIFICATION: the full PR suites, browser runtime and wider platform/version
-matrix. Existing UNKNOWN debt remains explicit; this does not close the old
+CI-ONLY VERIFICATION: fresh remote suites and the wider platform/version matrix.
+Existing UNKNOWN debt remains explicit; this does not close the old
 59-position investigation or prove complete target conformance.
