@@ -1038,6 +1038,34 @@ def _loader_mutations(
     )
 
 
+def _dynamic_target(
+    node: ast.Call, targets: AbstractSet[str], proven: bool
+) -> tuple[str | None, bool]:
+    target = _literal(_argument(node, 0, "name")) if proven else None
+    incomplete = not target
+    if "builtins.__import__" in targets:
+        fromlist = _argument(node, 3, "fromlist")
+        supplied = len(node.args) > 3 or any(k.arg == "fromlist" for k in node.keywords)
+        incomplete |= supplied and not (
+            isinstance(fromlist, ast.Tuple | ast.List)
+            and not fromlist.elts
+            or isinstance(fromlist, ast.Constant)
+            and fromlist.value is None
+        )
+        level = _argument(node, 4, "level")
+        if level is not None and not (
+            isinstance(level, ast.Constant) and type(level.value) is int and level.value == 0
+        ):
+            target = None
+    elif target and target.startswith("."):
+        package = _literal(_argument(node, 1, "package"))
+        try:
+            target = importlib.util.resolve_name(target, package) if package else None
+        except (ImportError, ValueError):
+            target = None
+    return target, incomplete
+
+
 class _DynamicImports(ImportCollector):
     def __init__(
         self,
@@ -1092,30 +1120,7 @@ class _DynamicImports(ImportCollector):
                 and binding_static
                 and not self.mutations.intersection(targets)
             )
-            target = _literal(_argument(node, 0, "name")) if proven else None
-            incomplete = not target
-            if "builtins.__import__" in targets:
-                fromlist = _argument(node, 3, "fromlist")
-                supplied = len(node.args) > 3 or any(k.arg == "fromlist" for k in node.keywords)
-                incomplete |= supplied and not (
-                    isinstance(fromlist, ast.Tuple | ast.List)
-                    and not fromlist.elts
-                    or isinstance(fromlist, ast.Constant)
-                    and fromlist.value is None
-                )
-                level = _argument(node, 4, "level")
-                if level is not None and not (
-                    isinstance(level, ast.Constant)
-                    and type(level.value) is int
-                    and level.value == 0
-                ):
-                    target = None
-            elif target and target.startswith("."):
-                package = _literal(_argument(node, 1, "package"))
-                try:
-                    target = importlib.util.resolve_name(target, package) if package else None
-                except (ImportError, ValueError):
-                    target = None
+            target, incomplete = _dynamic_target(node, targets, proven)
             if target and all(part.isidentifier() for part in target.split(".")):
                 self._record(node, target=target, symbol=None, binding="", relative_level=0)
                 # Loading a module proves a dependency, not a statically bound public symbol.
