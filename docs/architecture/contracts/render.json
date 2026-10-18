@@ -359,7 +359,40 @@
           ],
           "provenance": [
             "docs/architecture/render-target.md"
-          ]
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "result",
+                "annotation": "RunResult",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "architecture_json",
+                "annotation": "bytes",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "repository",
+                "annotation": "str",
+                "kind": "keyword_only",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "architecture_href",
+                "annotation": "str",
+                "kind": "keyword_only",
+                "default": null,
+                "default_known": true
+              }
+            ],
+            "returns": "bytes"
+          }
         },
         {
           "id": "RENDER-UML-atlas-document",
@@ -438,7 +471,54 @@
           ],
           "provenance": [
             "docs/architecture/render-target.md"
-          ]
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "model",
+                "annotation": "Observation",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "report",
+                "annotation": "ArchitectureReport",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "projection",
+                "annotation": "ArchitectureProjection",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "result",
+                "annotation": "RunResult",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "repository",
+                "annotation": "str",
+                "kind": "keyword_only",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "architecture_href",
+                "annotation": "str",
+                "kind": "keyword_only",
+                "default": null,
+                "default_known": true
+              }
+            ],
+            "returns": "dict[str, object]"
+          }
         },
         {
           "id": "RENDER-UML-summary",
@@ -470,7 +550,19 @@
           ],
           "provenance": [
             "docs/architecture/render-target.md"
-          ]
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "result",
+                "annotation": "RunResult",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              }
+            ],
+            "returns": "Summary"
+          }
         },
         {
           "id": "RENDER-UML-check-summary",
@@ -488,7 +580,19 @@
           ],
           "provenance": [
             "docs/architecture/render-target.md"
-          ]
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "result",
+                "annotation": "RunResult",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              }
+            ],
+            "returns": "Summary"
+          }
         },
         {
           "id": "RENDER-UML-terminal",
@@ -520,7 +624,40 @@
           ],
           "provenance": [
             "docs/architecture/render-target.md"
-          ]
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "result",
+                "annotation": "RunResult",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "summary",
+                "annotation": "Summary",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "artifacts",
+                "annotation": "tuple[str, ...]",
+                "kind": "keyword_only",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "console",
+                "annotation": "Console | None",
+                "kind": "keyword_only",
+                "default": "None",
+                "default_known": true
+              }
+            ],
+            "returns": "None"
+          }
         },
         {
           "language": "python",
@@ -811,6 +948,159 @@
           "responsibilities": [
             "Derive sorted allowed-unused then undeclared pairs without changing their stable IDs."
           ]
+        },
+        {
+          "id": "COMPACT-RENDER-RENDER-ARCHITECTURE-DETAILS",
+          "kind": "function",
+          "qualified_name": "archkeel.render.html.render_architecture_details",
+          "language": "python",
+          "presence": "planned",
+          "parent_id": "RENDER-UML-html",
+          "responsibilities": [
+            "Return offline detail filenames and bytes; the caller owns publication."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "result",
+                "annotation": "RunResult",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "architecture_json",
+                "annotation": "bytes",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "repository",
+                "annotation": "str",
+                "kind": "keyword_only",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "architecture_href",
+                "annotation": "str",
+                "kind": "keyword_only",
+                "default": null,
+                "default_known": true
+              }
+            ],
+            "returns": "dict[str, bytes]"
+          }
+        },
+        {
+          "id": "COMPACT-RENDER-RENDER-CHECK-HTML",
+          "kind": "function",
+          "qualified_name": "archkeel.render.html.render_check_html",
+          "language": "python",
+          "presence": "planned",
+          "parent_id": "RENDER-UML-html",
+          "responsibilities": [
+            "Compose the recorded check result as HTML bytes without changing verdicts."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "result",
+                "annotation": "RunResult",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "repository",
+                "annotation": "str",
+                "kind": "keyword_only",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "result_href",
+                "annotation": "str",
+                "kind": "keyword_only",
+                "default": null,
+                "default_known": true
+              }
+            ],
+            "returns": "bytes"
+          }
+        },
+        {
+          "id": "COMPACT-RENDER-BOUNDARY-PERMISSIONS-PAYLOAD",
+          "kind": "function",
+          "qualified_name": "archkeel.render.atlas.boundary_permissions_payload",
+          "language": "python",
+          "presence": "planned",
+          "parent_id": "RENDER-UML-atlas",
+          "responsibilities": [
+            "Project authenticated boundary permission context for the browser without granting permissions."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "model",
+                "annotation": "Observation",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "report",
+                "annotation": "ArchitectureReport",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "projection",
+                "annotation": "ArchitectureProjection",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              }
+            ],
+            "returns": "dict[str, object]"
+          }
+        },
+        {
+          "id": "COMPACT-RENDER-INIT-SUMMARY",
+          "kind": "function",
+          "qualified_name": "archkeel.render.summary.init_summary",
+          "language": "python",
+          "presence": "planned",
+          "parent_id": "RENDER-UML-summary",
+          "responsibilities": [
+            "Explain returned onboarding artifacts through the shared Summary."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "result",
+                "annotation": "RunResult",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              }
+            ],
+            "returns": "Summary"
+          }
         }
       ],
       "relationships": [

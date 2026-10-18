@@ -37,6 +37,8 @@ def test_gitlab_versions_become_exact_host_records(
             "projects/7/merge_requests/11/versions",
         ]
         assert kwargs["cwd"] == tmp_path
+        assert kwargs["timeout"] == 30
+        assert kwargs["encoding"] == "utf-8"
         return subprocess.CompletedProcess(args[0], 0, stdout=output, stderr="")
 
     monkeypatch.setattr("archkeel.host.gitlab.subprocess.run", run)
@@ -87,4 +89,26 @@ def test_missing_glab_is_not_ignored(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr("archkeel.host.gitlab.subprocess.run", missing)
     with pytest.raises(OrderingError, match="glab"):
+        load_gitlab_records(Path("."), expectation_sha=E, candidate_sha=H, environ=ENV)
+
+
+@pytest.mark.parametrize(
+    "error,message",
+    [
+        (
+            subprocess.TimeoutExpired("glab", 30, output="partial evidence"),
+            "GitLab diff-version request timed out",
+        ),
+        (
+            UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte"),
+            "GitLab diff-version response is not UTF-8",
+        ),
+    ],
+)
+def test_unavailable_host_response_is_an_ordering_error(monkeypatch, error, message):
+    def failed(*args, **kwargs):
+        raise error
+
+    monkeypatch.setattr("archkeel.host.gitlab.subprocess.run", failed)
+    with pytest.raises(OrderingError, match=f"^{message}$"):
         load_gitlab_records(Path("."), expectation_sha=E, candidate_sha=H, environ=ENV)

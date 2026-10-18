@@ -208,7 +208,7 @@
       },
       {
         "path": "src/archkeel/analyzer/python/source.py",
-        "responsibility": "Own ParsedModule and AST parsing."
+        "responsibility": "Own ParsedModule, AST parsing and the shared typed definition/control-flow contexts."
       },
       {
         "path": "src/archkeel/analyzer/python/resolve.py",
@@ -231,10 +231,6 @@
         "responsibility": "Collect constructs source facts."
       },
       {
-        "path": "src/archkeel/analyzer/python/contexts.py",
-        "responsibility": "Collect contexts source facts."
-      },
-      {
         "path": "src/archkeel/analyzer/python/imports.py",
         "responsibility": "Collect imports source facts."
       },
@@ -244,7 +240,7 @@
       },
       {
         "path": "src/archkeel/analyzer/python/symbols.py",
-        "responsibility": "Collect symbols source facts."
+        "responsibility": "Collect symbols and attach source-owned definition contexts as evidence."
       },
       {
         "path": "src/archkeel/analyzer/python/typing_signals.py",

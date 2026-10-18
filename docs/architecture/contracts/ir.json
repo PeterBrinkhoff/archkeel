@@ -11812,6 +11812,53 @@
           "responsibilities": [
             "Keep added/removed directions nominal without broadening the existing two-value domain."
           ]
+        },
+        {
+          "id": "COMPACT-IR-RENAMES",
+          "kind": "module",
+          "qualified_name": "archkeel.ir.renames",
+          "language": "python",
+          "presence": "planned",
+          "parent_id": "TARGET-GOVERNANCE",
+          "responsibilities": [
+            "Apply declared module renames to native contracts without changing their policy meaning."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ]
+        },
+        {
+          "id": "COMPACT-IR-RENAMED-CONTRACT",
+          "kind": "function",
+          "qualified_name": "archkeel.ir.renames.renamed_contract",
+          "language": "python",
+          "presence": "planned",
+          "parent_id": "COMPACT-IR-RENAMES",
+          "responsibilities": [
+            "Normalize historical contract references for the against comparison; preserve canonical parsing and ValueError for invalid results."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "contract",
+                "annotation": "ArchitectureContract",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "renames",
+                "annotation": "Mapping[str, str]",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              }
+            ],
+            "returns": "ArchitectureContract"
+          }
         }
       ],
       "relationships": [

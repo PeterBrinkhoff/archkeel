@@ -4,6 +4,7 @@
 """Explicit inside mounts remain scoped and revision-bound at every depth."""
 
 import json
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -330,3 +331,301 @@ def test_inside_tree_rejects_generated_parent_and_record_id_collisions(tmp_path:
     )
 
     assert any("generated declaration ID collision" in issue.reason for issue in id_tree.issues)
+
+
+def _dart_revision_fixture(tmp_path: Path):
+    from archkeel.cli.config import load_config
+
+    fixture = Path(__file__).parents[1] / "fixtures/H-uml-dart"
+    shutil.copytree(fixture, tmp_path, dirs_exist_ok=True)
+    _git(tmp_path, "init", "-q")
+    _git(tmp_path, "config", "user.email", "arch@example.invalid")
+    _git(tmp_path, "config", "user.name", "Archkeel test")
+    _git(tmp_path, "config", "core.autocrlf", "false")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "-c", "commit.gpgsign=false", "commit", "-qm", "nested UML baseline")
+    return load_config(tmp_path), _git(tmp_path, "rev-parse", "HEAD")
+
+
+def test_against_rejects_a_public_method_renamed_only_in_nested_uml(tmp_path: Path) -> None:
+    config, before = _dart_revision_fixture(tmp_path)
+    for relative in (
+        "lib/ordering/ports/order_repository.dart",
+        "lib/adapters/memory/in_memory_order_repository.dart",
+        "contracts/ordering.json",
+        "contracts/adapters.json",
+    ):
+        path = tmp_path / relative
+        assert "findById" in path.read_text()
+        path.write_text(path.read_text().replace("findById", "find"))
+
+    result, _ = run_validate(tmp_path, config, observe, against=before)
+
+    assert result.diagnostics == ()
+    assert result.exit_code == 1
+    assert {finding.subject for finding in result.widenings} == {
+        "inside 'ordering'.contract.declarations",
+        "inside 'adapters'.contract.declarations",
+    }
+
+
+def _commit_current_fixture(root: Path) -> str:
+    _git(root, "add", ".")
+    _git(root, "-c", "commit.gpgsign=false", "commit", "-qm", "declaration baseline")
+    return _git(root, "rev-parse", "HEAD")
+
+
+@pytest.mark.parametrize(
+    "change", ["remove_entity", "module_changed", "module_removed", "uml_version", "remove_scope"]
+)
+def test_against_compares_deep_module_and_uml_declarations(tmp_path: Path, change: str) -> None:
+    config, before = _dart_revision_fixture(tmp_path)
+    path = tmp_path / "contracts/domain.json"
+    raw = json.loads(path.read_text())
+    if change.startswith("module_"):
+        raw["declarations"]["modules"] = [
+            {
+                "path": "lib/ordering/domain/pricing/discount_policy.dart",
+                "responsibility": "Own deterministic discount policy.",
+            }
+        ]
+        _write(path, raw)
+        before = _commit_current_fixture(tmp_path)
+    elif change == "uml_version":
+        parent = tmp_path / "contracts/ordering.json"
+        parent_raw = json.loads(parent.read_text())
+        parent_raw["declarations"]["uml"]["schema_version"] = "1.2.0"
+        parent_raw["declarations"]["uml"]["entities"].append(
+            {
+                "id": "duplicate-qualified-reference",
+                "kind": "module",
+                "qualified_name": "commerce.ordering.domain.orders.order",
+                "language": "dart",
+                "presence": "referenced",
+                "provenance": ["docs/target.md"],
+            }
+        )
+        _write(parent, parent_raw)
+        before = _commit_current_fixture(tmp_path)
+    if change == "remove_entity":
+        uml = raw["declarations"]["uml"]
+        uml["entities"] = [row for row in uml["entities"] if row["id"] != "discount-cap"]
+    elif change == "module_changed":
+        raw["declarations"]["modules"][0]["responsibility"] = "Own bounded percent pricing."
+    elif change == "module_removed":
+        raw["declarations"]["modules"] = []
+    elif change == "uml_version":
+        raw["declarations"]["uml"]["schema_version"] = "1.2.0"
+    else:
+        assert raw["declarations"]["uml"]["scopes"]
+        raw["declarations"]["uml"]["scopes"].pop()
+    _write(path, raw)
+
+    result, _ = run_validate(tmp_path, config, observe, against=before)
+
+    assert result.diagnostics == ()
+    assert result.exit_code == 1
+    assert [(row.subject, row.field) for row in result.widenings] == [
+        ("inside 'ordering:domain'.contract.declarations", "declarations")
+    ]
+
+
+@pytest.mark.parametrize("format_only", [False, True])
+def test_against_preserves_unchanged_and_format_only_nested_declarations(
+    tmp_path: Path, format_only: bool
+) -> None:
+    config, before = _dart_revision_fixture(tmp_path)
+    if format_only:
+        path = tmp_path / "contracts/domain.json"
+        path.write_text(json.dumps(json.loads(path.read_text()), indent=4, sort_keys=True))
+
+    result, _ = run_validate(tmp_path, config, observe, against=before)
+
+    assert result.diagnostics == ()
+    assert result.exit_code == 0
+    assert result.widenings == ()
+
+
+def test_against_preserves_scope_identity_when_a_nested_contract_is_remounted(
+    tmp_path: Path,
+) -> None:
+    config, before = _dart_revision_fixture(tmp_path)
+    path = tmp_path / "contracts/ordering.json"
+    raw = json.loads(path.read_text())
+    domain = next(row for row in raw["components"] if row["label"] == "domain")
+    domain["inside"] = "contracts/remounted-domain.json"
+    (tmp_path / "contracts/domain.json").rename(tmp_path / domain["inside"])
+    _write(path, raw)
+
+    result, _ = run_validate(tmp_path, config, observe, against=before)
+
+    assert result.diagnostics == ()
+    assert result.exit_code == 1
+    assert result.widenings
+    assert all(row.field == "inside" for row in result.widenings)
+
+
+def test_nested_declaration_amendment_binds_both_scopes_and_rejects_stale_intent(
+    tmp_path: Path,
+) -> None:
+    config, before = _dart_revision_fixture(tmp_path)
+    for relative in (
+        "lib/ordering/ports/order_repository.dart",
+        "lib/adapters/memory/in_memory_order_repository.dart",
+        "contracts/ordering.json",
+        "contracts/adapters.json",
+    ):
+        path = tmp_path / relative
+        path.write_text(path.read_text().replace("findById", "find"))
+    amendment = tmp_path / "amendment.json"
+    written, files = run_validate(
+        tmp_path,
+        config,
+        observe,
+        against=before,
+        amendment=amendment,
+        write_amendment=True,
+        decided_by="agent",
+        rationale="Approve the synthetic nested persistence API transition.",
+    )
+    assert written.exit_code == 0
+    assert written.widenings == ()
+    amendment.write_bytes(files[str(amendment)])
+    accepted, _ = run_validate(tmp_path, config, observe, against=before, amendment=amendment)
+    assert accepted.exit_code == 0
+    assert accepted.widenings == ()
+    assert accepted.amendment_status == "valid"
+
+    path = tmp_path / "contracts/domain.json"
+    raw = json.loads(path.read_text())
+    raw["declarations"]["uml"]["entities"][0]["responsibilities"] = [
+        "Own the newly revised order boundary."
+    ]
+    _write(path, raw)
+    stale, _ = run_validate(tmp_path, config, observe, against=before, amendment=amendment)
+    assert stale.exit_code == 1
+    assert stale.amendment_status == "stale"
+
+
+@pytest.mark.parametrize("physical_target", [False, True])
+def test_recognized_rename_normalizes_nested_names_but_not_unmapped_file_paths(
+    tmp_path: Path, physical_target: bool
+) -> None:
+    from archkeel.ir.codec import contract_bytes
+    from archkeel.ir.renames import renamed_contract
+
+    config, before = _dart_revision_fixture(tmp_path)
+    path = tmp_path / "contracts/presentation.json"
+    if not physical_target:
+        raw = json.loads(path.read_text())
+        for row in raw["declarations"]["uml"]["entities"]:
+            row.pop("file_path", None)
+        _write(path, raw)
+        before = _commit_current_fixture(tmp_path)
+    prefixes = {"commerce.presentation": "commerce.web"}
+    for relative in ("architecture-contract.json", "contracts/presentation.json"):
+        target = tmp_path / relative
+        contract = renamed_contract(parse_contract(json.loads(target.read_text())), prefixes)
+        target.write_bytes(contract_bytes(contract))
+    (tmp_path / "lib/presentation").rename(tmp_path / "lib/web")
+    main = tmp_path / "lib/main.dart"
+    main.write_text(main.read_text().replace("presentation/controller.dart", "web/controller.dart"))
+    if physical_target:
+        raw = json.loads(path.read_text())
+        for row in raw["declarations"]["uml"]["entities"]:
+            if row.get("file_path") == "lib/presentation/controller.dart":
+                row["file_path"] = "lib/web/controller.dart"
+        _write(path, raw)
+
+    result, _ = run_validate(tmp_path, config, observe, against=before, against_config=config)
+
+    assert result.diagnostics == ()
+    assert result.renames == (("commerce.presentation", "commerce.web"),)
+    assert result.exit_code == (1 if physical_target else 0)
+    assert [(row.subject, row.field) for row in result.widenings] == (
+        [("inside 'presentation'.contract.declarations", "declarations")] if physical_target else []
+    )
+
+
+def test_against_rejects_a_rename_that_collides_in_historical_nested_uml(
+    tmp_path: Path,
+) -> None:
+    from archkeel.ir.codec import contract_bytes
+    from archkeel.ir.renames import renamed_contract
+
+    config, _ = _dart_revision_fixture(tmp_path)
+    path = tmp_path / "contracts/presentation.json"
+    raw = json.loads(path.read_text())
+    raw["declarations"]["uml"] = {
+        "schema_version": "1.1.0",
+        "entities": [
+            {
+                "id": label,
+                "kind": "module",
+                "qualified_name": f"commerce.{package}.controller",
+                "parent_id": "controller",
+                "language": "dart",
+                "presence": "planned",
+                "responsibilities": ["Own the checkout transport module."],
+                "provenance": ["docs/target.md"],
+            }
+            for label, package in (("old-target", "presentation"), ("future-target", "web"))
+        ],
+        "relationships": [],
+        "scopes": [],
+    }
+    parse_contract(raw)
+    _write(path, raw)
+    before = _commit_current_fixture(tmp_path)
+
+    raw["declarations"]["uml"]["entities"].pop(0)
+    _write(path, raw)
+    for relative in ("architecture-contract.json", "contracts/presentation.json"):
+        target = tmp_path / relative
+        target.write_bytes(
+            contract_bytes(
+                renamed_contract(
+                    parse_contract(json.loads(target.read_text())),
+                    {"commerce.presentation": "commerce.web"},
+                )
+            )
+        )
+    (tmp_path / "lib/presentation").rename(tmp_path / "lib/web")
+    main = tmp_path / "lib/main.dart"
+    main.write_text(main.read_text().replace("presentation/controller.dart", "web/controller.dart"))
+
+    result, _ = run_validate(tmp_path, config, observe, against=before, against_config=config)
+
+    assert result.diagnostics == ()
+    assert result.exit_code == 1
+    assert result.renames == ()
+    assert any(
+        row.subject == "inside 'presentation'.contract.declarations" for row in result.widenings
+    )
+    assert any(row.field == "packages" for row in result.widenings)
+
+    amendment = tmp_path / "amendment.json"
+    written, files = run_validate(
+        tmp_path,
+        config,
+        observe,
+        against=before,
+        against_config=config,
+        amendment=amendment,
+        write_amendment=True,
+        decided_by="agent",
+        rationale="Accept the explicit transition between distinct planned module targets.",
+    )
+    assert written.exit_code == 0
+    amendment.write_bytes(files[str(amendment)])
+    accepted, _ = run_validate(
+        tmp_path,
+        config,
+        observe,
+        against=before,
+        against_config=config,
+        amendment=amendment,
+    )
+    assert accepted.exit_code == 0
+    assert accepted.amendment_status == "valid"
+    assert accepted.renames == ()
