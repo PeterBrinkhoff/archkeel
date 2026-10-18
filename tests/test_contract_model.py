@@ -23,6 +23,7 @@ from archkeel.ir.architecture_graph import (
     Visibility,
 )
 from archkeel.ir.codec import contract_bytes, parse_contract
+from archkeel.ir.contract_version import ContractVersion
 from archkeel.ir.model import ArchitectureContract, module_references
 
 ROOT = Path(__file__).parents[1]
@@ -53,14 +54,26 @@ def test_contract_parser_matches_structure_corpus(path: Path) -> None:
 )
 def test_contract_encoding_round_trips_and_matches_the_schema(path: Path) -> None:
     raw = json.loads(path.read_bytes())
+    contract = parse_contract(raw)
+    schema = SCHEMA
+    if contract.schema_version not in {
+        ContractVersion.V2_1,
+        ContractVersion.V2_2,
+        ContractVersion.V2_3,
+    }:
+        version = contract.schema_version.rsplit(".", 1)[0]
+        schema = json.loads(
+            (ROOT / f"schema/architecture-contract-{version}.schema.json").read_bytes()
+        )
     reference = raw.get("$schema")
     if reference is not None and not reference.startswith(("https://", "http://")):
         linked = (path.parent / reference).resolve()
         assert linked.is_relative_to(ROOT), (path, reference)
-        assert json.loads(linked.read_bytes()) == SCHEMA
-    contract = parse_contract(raw)
+        assert json.loads(linked.read_bytes()) == schema
+    validator = Draft202012Validator(schema)
+    assert not list(validator.iter_errors(raw))
     encoded = json.loads(contract_bytes(contract))
-    assert not list(VALIDATOR.iter_errors(encoded))
+    assert not list(validator.iter_errors(encoded))
     assert parse_contract(encoded) == contract
 
 
