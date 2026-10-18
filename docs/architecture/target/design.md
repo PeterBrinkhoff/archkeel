@@ -148,8 +148,9 @@ weakening their checks. The three files then passed all 106 tests locally.
 The first full local Core run passed 4,728 tests and exposed five different CRLF
 fixture failures: inherited Git normalization changed bytes before observation.
 The temporary repository now owns that setting; all 73 byte/snapshot tests pass
-with exact assertions and host configuration preserved. Full Core acceptance is
-pending the complete repaired run. Lint, type checking and installed wheel/sdist
+with exact assertions and host configuration preserved. LOCAL VERIFIED: the complete
+`make ci-pr-check BASE=origin/main` passed with 4,733 tests and one existing Chromium
+skip (local Playwright unavailable). Lint, type checking and installed wheel/sdist
 smoke checks passed. Independent review checked both corrections.
 
 Native validation against the baseline: 144/144 files; no diagnostics or known
