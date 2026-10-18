@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path, PurePosixPath
 from queue import Empty, Queue
-from threading import Thread
+from threading import TIMEOUT_MAX, Thread
 from typing import BinaryIO
 
 from archkeel.ir.facts import Language, SourceFacts, SourceProfile
@@ -57,11 +57,13 @@ class ProcessCollector:
         if not self.argv or any(not value or "\x00" in value for value in self.argv):
             raise ValueError("collector argv must contain nonempty arguments")
         if (
-            self.timeout_seconds <= 0
+            not 0 < self.timeout_seconds <= TIMEOUT_MAX
             or self.output_limit_bytes <= 0
             or self.stderr_limit_bytes <= 0
         ):
-            raise ValueError("collector limits must be positive")
+            raise ValueError(
+                "collector limits must be positive; timeout must fit threading.TIMEOUT_MAX"
+            )
 
     def collect(self, request: CollectionRequest) -> SourceFacts | CollectionError:
         subject = self.argv[0]

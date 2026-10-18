@@ -9,6 +9,7 @@ import sys
 import time
 from enum import Enum
 from pathlib import Path
+from threading import TIMEOUT_MAX
 from types import SimpleNamespace
 from typing import get_type_hints
 from unittest.mock import patch
@@ -31,6 +32,12 @@ def _collector(code: str, **limits):
     from archkeel.analyzer.process import ProcessCollector
 
     return ProcessCollector((sys.executable, "-B", "-c", code), **limits)
+
+
+@pytest.mark.parametrize("timeout", [float("nan"), float("inf"), float("-inf"), TIMEOUT_MAX * 2])
+def test_unsupported_collector_timeout_is_rejected_before_execution(timeout):
+    with pytest.raises(ValueError, match="collector limits"):
+        _collector("pass", timeout_seconds=timeout)
 
 
 def _assert_process_exited(pid: int) -> None:

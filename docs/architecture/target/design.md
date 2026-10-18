@@ -88,7 +88,7 @@ Empty experiment directories are not source packages.
 | Reviewed subtree | Direct modules / subpackages | Actual review depth and decision |
 | --- | --- | --- |
 | `api.py` | 1 / 0 | Read the complete reader path through file read, strict decoding and violation projection. Keep this stable I/O edge; exact import ports and signature are native intent. |
-| `analyzer` | 4 / 3 | Structural review and process-protocol target review; process internals need their existing safety suites. Keep runtime/bootstrap above isolated language adapters. |
+| `analyzer` | 4 / 3 | Traced collector setup, request/response binding, bounded pipe exchange, deadline and POSIX process-group cleanup; Windows helper internals remain structurally reviewed. Keep runtime/bootstrap above isolated language adapters. |
 | `analyzer/python` | 17 / 0 | Traced collector assembly and source-owned definition contexts into symbol/call evidence; other specialist bodies structurally reviewed. Keep source/binding/member foundations below isolated collectors. No contexts module is needed. |
 | `analyzer/dart` | 6 / 0 | Structural review plus snapshot/syntax/resolution/collection declarations and ports; no new complete parser/resolver semantic review. Keep the five existing owners; file length alone does not justify a split. |
 | `analyzer/typescript` | 7 / 0 | Structural review plus input/configuration/syntax/resolution port declarations; no new complete parser/resolver semantic review. Keep these independently changing owners. |
@@ -281,7 +281,7 @@ The attempted alias reduced the type-rule denominator from 122 to 117 and gated
 UNKNOWNs from 58 to 57. That lost scope was rejected; the signature-preserving
 report facade restores it without changing the evaluator or baseline.
 
-For the refined candidate, LOCAL VERIFIED: 22 selected native signatures;
+At `af3f36ee`, LOCAL VERIFIED: 22 selected native signatures;
 `make target-contract-check` (27 passed); `make pr-test` (4,765 passed, one existing
 Chromium skip); 231 overlapping Inside/Widening/Rename/Codec controls; lint and
 Mypy (150 files). Native validation against Main accepts the bound amendment:
@@ -292,6 +292,12 @@ unchanged. Report generation takes 67.03 s under the unchanged 120 s ceiling;
 is claimed. The earlier 81-test browser/report run remains applicable to unchanged
 renderer/browser code; it predates the nested validation fix. Astra's four-perspective
 review found and closed the rename collision; no package findings remain.
+
+The subsequent collector guard rejects NaN, infinity and timeouts beyond the
+platform's `threading.TIMEOUT_MAX` before execution. Defaults and valid limits
+stay unchanged. Its 160 process/protocol controls, lint/Mypy, native validation
+with unchanged budgets and four-perspective Astra review pass. This does not
+close any required UNKNOWN; broader evidence remains revision-specific.
 
 CI-ONLY VERIFICATION: suites on the final committed head and the wider platform/version matrix.
 Existing UNKNOWN debt remains explicit; this does not close the old
