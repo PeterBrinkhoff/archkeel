@@ -274,7 +274,7 @@ def test_amendment_schema_and_parser_reject_malformed_digests(field: str, digest
 
 def test_ir_schemas_accept_the_parsed_self_observation(self_artifact_bytes: bytes) -> None:
     common = _schema("architecture-ir-common.schema.json")
-    profile = _schema("architecture-ir-python-decoded.schema.json")
+    profile = _schema("architecture-ir-python-decoded-2.1.schema.json")
     Draft202012Validator.check_schema(common)
     Draft202012Validator.check_schema(profile)
     registry = Registry().with_resources(
@@ -327,15 +327,17 @@ def test_requirement_state_schema_is_versioned_and_legacy_report_remains_valid()
 
 
 @pytest.mark.parametrize("profile", PROFILES.values(), ids=lambda profile: profile.analyzer)
-def test_shared_observation_schema_preserves_each_profile_and_provenance(profile) -> None:
+@pytest.mark.parametrize("version", ["2.0.0", "2.1.0"])
+def test_shared_observation_schema_preserves_each_profile_and_provenance(profile, version) -> None:
     registry = Registry().with_resources(
         (schema["$id"], Resource.from_contents(schema))
         for schema in (_schema(path.name) for path in (ROOT / "schema").glob("*.json"))
     )
     validator = Draft202012Validator(
-        {"$ref": "urn:archkeel:architecture-ir:decoded:2.1.0"}, registry=registry
+        {"$ref": f"urn:archkeel:architecture-ir:decoded:{version}"}, registry=registry
     )
     observation = _model(git_head="a" * 40)
+    observation["schema_version"] = version
     observation["analyzer"]["name"] = profile.analyzer
     observation["producer"] = dict(observation["analyzer"])
     observation["runtime"] = {"name": "python", "version": "3.11.12"}
@@ -379,15 +381,17 @@ def test_shared_observation_schema_preserves_each_profile_and_provenance(profile
 
 @pytest.mark.parametrize("field", ["runtime", "producer"])
 @pytest.mark.parametrize("value", ["", " ", "unknown", "UNKNOWN", None, False])
-def test_shared_observation_schema_rejects_unknown_provenance(field, value) -> None:
+@pytest.mark.parametrize("version", ["2.0.0", "2.1.0"])
+def test_shared_observation_schema_rejects_unknown_provenance(field, value, version) -> None:
     registry = Registry().with_resources(
         (schema["$id"], Resource.from_contents(schema))
         for schema in (_schema(path.name) for path in (ROOT / "schema").glob("*.json"))
     )
     validator = Draft202012Validator(
-        {"$ref": "urn:archkeel:architecture-ir:decoded:2.1.0"}, registry=registry
+        {"$ref": f"urn:archkeel:architecture-ir:decoded:{version}"}, registry=registry
     )
     observation = _model(git_head="a" * 40)
+    observation["schema_version"] = version
     observation[field] = {"name": "python", "version": "3.11.12"}
     if field == "producer":
         observation[field]["code_digest"] = "b" * 64

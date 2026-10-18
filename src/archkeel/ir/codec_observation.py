@@ -25,6 +25,7 @@ from archkeel.ir.codec_wire import (
     canonical_json_bytes,
 )
 from archkeel.ir.facts import RuntimeRequirementState, parse_runtime_requirement_state, source_dirty
+from archkeel.ir.facts import call_binding as _call_binding
 from archkeel.ir.model import (
     CLASSIFIED_SECTIONS,
     EVIDENCE_FIELDS,
@@ -183,6 +184,11 @@ def parse_observation(raw: object) -> Observation:
         for name in CLASSIFIED_SECTIONS
         if isinstance(section_items := item[name], list)
     )
+    if schema_version is _ObservationVersion.V2_1:
+        for section in sections:
+            if section.name == ObservedSection.CALLS:
+                for call in section.records:
+                    _call_binding(call.data.get("call_binding"))
     return Observation(
         schema_version=schema_version,
         analyzer=AnalyzerInfo(

@@ -123,9 +123,10 @@ instead of 0. Agent drafts and components without explicit architect attribution
 remain accepted; rule verdicts and rationale validation are unchanged.
 
 JSON null means unavailable/inapplicable; an empty list means measured empty.
-Pin CLI and [command schema](../schema/command-result-8.0.schema.json) together.
-Version 8 retains version 6/7 readers and permits an incomplete report to preserve
-a traceable FAIL assessment while coverage stays UNKNOWN/FAIL; it cannot claim PASS.
+Pin CLI and [command schema](../schema/command-result-9.0.schema.json) together.
+Version 9 accepts Observation2.1 with strict call-binding shapes and retains
+version6/7/8 results. Incomplete reports may preserve a traceable FAIL while
+coverage stays UNKNOWN/FAIL; they cannot claim PASS.
 Ignore unknown result properties; required fields and enum meanings remain strict.
 Schema shape validation proves neither authenticity nor conformance.
 `report`/`check --output` also write `.report.html`/`.check.html` companions.

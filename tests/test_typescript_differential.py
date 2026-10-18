@@ -123,7 +123,9 @@ def _size(name: str) -> int:
 def test_the_corpus_holds_every_catalog_case(judged: differential.Verdict) -> None:
     groups = judged.report["groups"]
     assert isinstance(groups, dict)
-    assert groups["variant"] == len(VARIANTS) == 34
+    frozen = json.loads((CATALOGS / "typescript-reference-demos.json").read_text())
+    assert groups["variant"] == len(frozen["variants"]) == 34
+    assert set(frozen["variants"]) <= {variant.id for variant in VARIANTS}
     assert groups["hidden-loader"] == _size("typescript-hidden-loaders.json") == 111
     # Each runtime alias runs once as written and once with a hidden dependency.
     assert groups["runtime-alias"] == 2 * _size("typescript-runtime-aliases.json") == 48

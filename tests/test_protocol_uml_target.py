@@ -116,12 +116,12 @@ def test_protocol_target_rejects_a_changed_language_discriminator_without_copyin
     assert target.entities == _graphs(self_observation)[1].entities
 
 
-def test_expanded_self_target_retains_exactly_eight_incomplete_member_scopes(
+def test_expanded_self_target_retains_exact_incomplete_member_scopes(
     self_observation: Observation,
 ):
     unknowns = self_observation.records("unknowns")
     inventory = tuple(item for item in unknowns if item.kind == "uml_conformance")
-    assert len(inventory) == 8
+    assert len(inventory) == 10
     assert {item.data.get("subject_id") for item in inventory} == {
         "ir:source-facts",
         "ir:coverage",
@@ -131,12 +131,14 @@ def test_expanded_self_target_retains_exactly_eight_incomplete_member_scopes(
         "ir:response",
         "ir:error",
         "check:port",
+        "ir:IR-CALL-OWNER-RULE",
+        "ir:IR-CALL-BINDING",
     }
     assert all(
         item.data.get("aspect") == "completeness" and item.data.get("status") == "UNKNOWN"
         for item in inventory
     )
-    # AD-92 adds twelve alias UNKNOWNs; these eight incomplete UML scopes stay unchanged.
+    # AD-241 adds two closed-attribute scopes; the prior eight remain incomplete.
     from archkeel.check.ratchets import unknown_positions_by_rule
 
     counts = dict(unknown_positions_by_rule(self_observation))
@@ -145,7 +147,7 @@ def test_expanded_self_target_retains_exactly_eight_incomplete_member_scopes(
         "CHECK-TYPES-DECLARED": 19,
         "ANALYZER-TYPES-DECLARED": 2,
     }
-    assert sum(counts.values()) == 58
+    assert sum(counts.values()) == 60
     detail_positions = [
         item
         for item in unknowns
@@ -161,4 +163,4 @@ def test_expanded_self_target_retains_exactly_eight_incomplete_member_scopes(
     assert detail_positions[0].data.get("nested_annotation") == "tuple[tuple[str, JsonValue], ...]"
     assert detail_positions[0].data.get("reason") == "other"
     baseline = json.loads((ROOT / "architecture-baseline.json").read_text())
-    assert baseline["budgets"]["unknown_positions"] == 58
+    assert baseline["budgets"]["unknown_positions"] == 60

@@ -479,11 +479,6 @@ def _update_contract_schema(path: Path) -> None:
 def _update_source_profile_schema(path: Path) -> None:
     schema = json.loads(path.read_bytes())
     schema.setdefault("$defs", {})["member_inventory"] = member_inventory_schema()
-    source = json.loads(path.with_name("source-facts.schema.json").read_bytes())
-    call_data = schema["properties"]["calls"]["items"]["allOf"][1]["properties"]["data"]
-    call_data["properties"]["call_binding"] = {
-        "oneOf": [{"type": "null"}, {"$ref": source["$id"] + "#/$defs/CallBinding"}]
-    }
     path.write_text(json.dumps(schema, indent=2) + "\n", encoding="utf-8")
 
 
