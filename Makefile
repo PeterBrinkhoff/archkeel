@@ -362,6 +362,7 @@ smoke:
 .PHONY: browser-runtime-install browser-runtime-generate browser-runtime-check
 browser-runtime-install:
 	npm ci --prefix tools/browser-runtime --ignore-scripts --no-audit --no-fund
+	$(UV) run --locked python -m tools.browser_runtime --prepare-dependencies
 
 browser-runtime-generate: browser-runtime-install
 	uv run --locked python -m tools.browser_runtime
@@ -373,21 +374,28 @@ browser-runtime-check: browser-runtime-install
 
 .PHONY: browser-graph-generate browser-graph-check
 .PHONY: browser-architecture-check
-browser-architecture-check:
+browser-architecture-check: browser-runtime-install
 	$(UV) run --locked python -m tools.browser_architecture
 
-BROWSER_GRAPH_PROTOCOL := src/archkeel/render/assets/report-graph-vocabulary.ts src/archkeel/render/assets/report-graph-protocol.ts
-BROWSER_GRAPH_COMPILER := npx --yes --package typescript@5.9.3 tsc --strict --target ES2022 --module none --newLine lf
+BROWSER_GRAPH_PROTOCOL := src/archkeel/render/assets/report-graph-vocabulary.ts src/archkeel/render/assets/report-graph-schema.ts
+BROWSER_GRAPH_COMPILER := node tools/browser-runtime/node_modules/typescript/bin/tsc --strict --target ES2022 --module none --newLine lf
 
-browser-graph-generate:
+browser-graph-generate: browser-runtime-install
 	$(UV) run --locked python -m tools.browser_graph_protocol
 	$(BROWSER_GRAPH_COMPILER) --outFile src/archkeel/render/assets/report-graph-protocol.js $(BROWSER_GRAPH_PROTOCOL)
+	cat tools/browser-runtime/protocol-exports.js >> src/archkeel/render/assets/report-graph-protocol.js
+	$(BROWSER_GRAPH_COMPILER) --declaration --emitDeclarationOnly --outFile src/archkeel/render/assets/report-graph-protocol.types.d.ts $(BROWSER_GRAPH_PROTOCOL)
+	cat tools/browser-runtime/protocol-exports.types.d.ts >> src/archkeel/render/assets/report-graph-protocol.types.d.ts
 
-browser-graph-check:
+browser-graph-check: browser-runtime-install
 	$(UV) run --locked mypy --strict tools/browser_graph_protocol.py
 	$(UV) run --locked python -m tools.browser_graph_protocol --check
 	@set -e; browser_graph_stage=$$(mktemp -d); \
 		trap 'rm -rf "$$browser_graph_stage"' EXIT; \
 		$(BROWSER_GRAPH_COMPILER) --outFile "$$browser_graph_stage/protocol.js" $(BROWSER_GRAPH_PROTOCOL); \
-		cmp src/archkeel/render/assets/report-graph-protocol.js "$$browser_graph_stage/protocol.js"
-	$(BROWSER_GRAPH_COMPILER) --allowJs --checkJs --noEmit $(BROWSER_GRAPH_PROTOCOL) src/archkeel/render/assets/report-graph-scene.js tests/browser_graph_scene_target.ts src/archkeel/render/assets/report-atlas-deviations.js
+		cat tools/browser-runtime/protocol-exports.js >> "$$browser_graph_stage/protocol.js"; \
+		cmp src/archkeel/render/assets/report-graph-protocol.js "$$browser_graph_stage/protocol.js"; \
+		$(BROWSER_GRAPH_COMPILER) --declaration --emitDeclarationOnly --outFile "$$browser_graph_stage/protocol.types.d.ts" $(BROWSER_GRAPH_PROTOCOL); \
+		cat tools/browser-runtime/protocol-exports.types.d.ts >> "$$browser_graph_stage/protocol.types.d.ts"; \
+		cmp src/archkeel/render/assets/report-graph-protocol.types.d.ts "$$browser_graph_stage/protocol.types.d.ts"
+	$(BROWSER_GRAPH_COMPILER) --module esnext --moduleResolution node --moduleSuffixes .types, --allowJs --checkJs --noEmit src/archkeel/render/assets/report-graph-scene.js tests/browser_graph_scene_target.ts src/archkeel/render/assets/report-atlas-deviations.js

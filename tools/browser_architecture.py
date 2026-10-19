@@ -28,12 +28,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     contract = parse_contract(json.loads((root / config.contract).read_bytes()))
     assets = root / "src/archkeel/render/assets"
     # Runtime derivation and vendor publication have separate generation/source witnesses.
-    derived_or_vendor = {assets / "flow.runtime.js", assets / "elkjs-0.12.0.bundled.js"}
+    derived_or_vendor = {
+        assets / "flow.runtime.js",
+        assets / "explorer.runtime.js",
+        assets / "elkjs-0.12.0.bundled.js",
+    }
     selected = {root / path for path in config.roots}
     if selected | derived_or_vendor != set(assets.glob("*.js")):
         raise ValueError("Browser roots must cover every shipped JavaScript source")
     inputs = {
         *selected,
+        root / "node_modules/elkjs/package.json",
+        root / "node_modules/elkjs/lib/elk.bundled.js",
+        root / "node_modules/elkjs/LICENSE.md",
         *derived_or_vendor,
         *assets.glob("*.ts"),
         *assets.glob("*.md"),

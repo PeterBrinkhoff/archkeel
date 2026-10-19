@@ -18,3 +18,6 @@ fixtures/D-self/architecture.json
 
 # Locked development-only Flow publication dependencies.
 /tools/browser-runtime/node_modules/
+
+# Verified browser dependency bridge; source bytes remain pinned in the tool lock.
+/node_modules/elkjs/

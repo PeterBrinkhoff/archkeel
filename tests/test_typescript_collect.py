@@ -270,7 +270,7 @@ def test_esm_require_indirect_require_and_triple_slash_references_are_unknown(
     assert any("Indirect require" in item for item in gaps)
     assert "Unproven or shadowed require call" in gaps
     assert "Unobserved triple-slash reference: ./other.d.ts" in gaps
-    assert facts.imports == ()
+    assert facts.imports and all(isinstance(item, UnresolvedTarget) for item in facts.imports)
 
 
 def test_a_resolved_external_package_is_bound_to_its_snapshot_inputs(tmp_path: Path) -> None:
@@ -871,3 +871,202 @@ def test_runtime_alias_catalog_never_claims_a_runtime_file_the_catalog_denies(
                 "src/pkg/types.ts" if example.get("type_only") else example.get("runtime_path")
             )
             assert target.runtime_file == (expected or "src/runtime.js")
+
+
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        "export function port() {}",
+        "function port() {} export {port};",
+        "export const port = {};",
+        "var port; port = {}; export {port};",
+        "export let port; function initialize() { port = {}; }",
+        "export class port {}",
+    ],
+)
+@pytest.mark.parametrize("local", ["port", "alias"])
+def test_named_esm_imports_bind_unique_source_exports_and_live_cells(tmp_path, declaration, local):
+    facts = _facts(
+        tmp_path,
+        {
+            "src/main.js": f"import {{port as {local}}} from './ports.js'; {local};",
+            "src/ports.js": declaration,
+        },
+        options={"allowJs": True, "module": "esnext", "moduleResolution": "node"},
+    )
+    [record] = [
+        r for section in facts.sections if section.name == "imports" for r in section.records
+    ]
+    assert record.data.get("symbol") == "port"
+    assert record.data.get("binding") == local
+    assert record.data.get("symbols_known") is True
+    evidence = {item.id: item for item in facts.evidence}
+    assert {evidence[key].file for key in record.evidence_ids} == {"src/main.js"}
+    bindings = {
+        r.id: r for section in facts.sections if section.name == "bindings" for r in section.records
+    }
+    assert len(record.fact_ids) == 1
+    assert {evidence[key].file for key in bindings[record.fact_ids[0]].evidence_ids} == {
+        "src/ports.js"
+    }
+
+
+@pytest.mark.parametrize(
+    "consumer,provider",
+    [
+        ("import {port} from './ports.js';", "function port() {}"),
+        ("import {port} from './ports.js';", "export default function port() {}"),
+        ("import {port} from './ports.js';", "function other() {} export {other as port};"),
+        ("import {port} from './ports.js';", "export {port} from './other.js';"),
+        ("import {port} from './ports.js';", "export * from './other.js';"),
+        ("import {port} from './ports.js';", "export function port() {} export {port};"),
+        (
+            "import {port} from './ports.js';",
+            "export function port() {} export {port} from './other.js';",
+        ),
+        ("import {port} from './ports.js';", "var port; var port; export {port};"),
+        ("import {port} from './ports.js';", "if (flag) { var port; } export {port};"),
+        ("import {port} from './ports.js';", "export function port( {}"),
+        ("import {port} from './ports.js'; const port = replacement;", "export function port() {}"),
+        ("import {port} from './ports.js'; port = replacement;", "export function port() {}"),
+        ("import {port} from './ports.js'; function change() { port++; }", "export let port;"),
+        ("import {port} from './ports.js'; delete port;", "export let port;"),
+        ("import port from './ports.js';", "export default function port() {}"),
+        ("import * as ns from './ports.js'; ns.port();", "export function port() {}"),
+        ("import type {port} from './ports.js';", "export class port {}"),
+        ("import {type port} from './ports.js';", "export class port {}"),
+        ("import {port} from './ports.js';", "export interface port {}"),
+        ("import('./ports.js');", "export function port() {}"),
+    ],
+)
+def test_esm_source_binding_uncertainty_never_becomes_named_permission(
+    tmp_path, consumer, provider
+):
+    facts = _facts(
+        tmp_path,
+        {
+            "src/main.ts": consumer,
+            "src/ports.js": provider,
+            "src/other.js": "export function port() {}",
+        },
+        options={"allowJs": True, "module": "esnext", "moduleResolution": "node"},
+    )
+    records = [
+        r
+        for section in facts.sections
+        if section.name == "imports"
+        for r in section.records
+        if r.data.get("source_module") == "app.src.main_x2e_ts"
+    ]
+    assert records and all(r.data.get("symbols_known") is False for r in records)
+
+
+def test_named_esm_imports_keep_every_member_and_type_namespace_separate(tmp_path):
+    facts = _facts(
+        tmp_path,
+        {
+            "src/main.ts": (
+                "import {port as alias, hidden, type Shape} from './ports.js'; "
+                "function local(alias) { return alias; }"
+            ),
+            "src/ports.js": (
+                "export function port() {} export function hidden() {} export class Shape {}"
+            ),
+        },
+        options={"allowJs": True, "module": "esnext", "moduleResolution": "node"},
+    )
+    records = [
+        r for section in facts.sections if section.name == "imports" for r in section.records
+    ]
+    assert {
+        (
+            r.data.get("symbol"),
+            r.data.get("binding"),
+            r.data.get("symbols_known"),
+            r.data.get("type_only"),
+        )
+        for r in records
+    } == {
+        ("port", "alias", True, False),
+        ("hidden", "hidden", True, False),
+        ("Shape", "Shape", False, True),
+    }
+    assert len({r.id for r in records}) == len(records) == len(facts.imports) == 3
+    assert {r.id for r in records} == {target.import_id for target in facts.imports}
+
+
+@pytest.mark.parametrize(
+    "expression",
+    [
+        "Scene.search();",
+        "window.Scene.search();",
+        "(window.Scene.search)();",
+        "window.Scene?.search();",
+        "const alias = window.Scene; alias.search();",
+        "window.Scene.member = 1;",
+        "window.Scene += 1;",
+        "window[Scene.name] = {};",
+    ],
+)
+def test_esm_legacy_global_crossings_remain_explicit_unknowns(tmp_path, expression):
+    facts = _facts(
+        tmp_path,
+        {"src/main.js": "export {}; " + expression},
+        options={"allowJs": True, "module": "esnext", "moduleResolution": "node"},
+    )
+    assert not facts.coverage.full_scope
+    assert any(
+        isinstance(item, UnresolvedTarget) and item.specifier == "Scene" for item in facts.imports
+    )
+    assert any("Scene" in gap.title for gap in facts.coverage.gaps)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "export {}; const Scene = {search() {}}; Scene.search();",
+        "export {}; window.Scene = {};",
+        (
+            "export {}; const window = {Scene: {search() {}}}; "
+            "const root = window; root.Scene.search();"
+        ),
+        (
+            "export {}; function run(globalThis) { "
+            "const root = globalThis; root['Scene']['search'](); }"
+        ),
+        "export {}; typeof window;",
+    ],
+)
+def test_esm_local_bindings_and_plain_publication_targets_are_not_global_reads(tmp_path, source):
+    facts = _facts(
+        tmp_path,
+        {"src/main.js": source},
+        options={"allowJs": True, "module": "esnext", "moduleResolution": "node"},
+    )
+    assert facts.coverage.full_scope, _gaps(facts)
+    assert not any(isinstance(item, UnresolvedTarget) for item in facts.imports)
+
+
+@pytest.mark.parametrize(
+    "expression",
+    [
+        "const root = window; root.Scene.search();",
+        "const root = globalThis; root.Scene.search();",
+        "const root = window; root['Scene']['search']();",
+        "const {Scene: scene} = window; scene.search();",
+        "window['Scene']['search']();",
+        "(window)['Scene']['search']();",
+        "(window['Scene']['search'])();",
+        "const root = (globalThis); root.Scene.search();",
+        "const {Scene} = globalThis; Scene.search();",
+        "const root = window[key]; root.search();",
+    ],
+)
+def test_esm_escaped_or_computed_host_roots_cannot_hide_dependencies(tmp_path, expression):
+    facts = _facts(
+        tmp_path,
+        {"src/main.js": "export {}; " + expression},
+        options={"allowJs": True, "module": "esnext", "moduleResolution": "node"},
+    )
+    assert not facts.coverage.full_scope
+    assert facts.coverage.gaps

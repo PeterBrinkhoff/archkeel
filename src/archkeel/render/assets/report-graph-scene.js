@@ -1,3 +1,4 @@
+import { ArchkeelGraphProtocol, ArchkeelGraphSceneProtocol } from "./report-graph-protocol.js";
 "use strict";
 // Native graph projection owns containment, member presentation and scene construction.
 /** @typedef {ArchkeelGraphSceneProtocol.Graph} Graph */
@@ -11,7 +12,6 @@
 /** @typedef {ArchkeelGraphSceneProtocol.EdgeGroup} EdgeGroup */
 /** @typedef {ArchkeelGraphSceneProtocol.GraphIndex} GraphIndex */
 /** @typedef {ArchkeelGraphSceneProtocol.ViewMode} PView */
-var ArchkeelGraphScene = (function () {
   const G = ArchkeelGraphProtocol;
   const P = ArchkeelGraphSceneProtocol;
   const visibility = new Map([
@@ -436,5 +436,7 @@ var ArchkeelGraphScene = (function () {
       unassignedModules: unassignedArchitectureModules,
     };
   }
-  return { create };
-})();
+
+export { create };
+
+window.ArchkeelGraphScene = { create };

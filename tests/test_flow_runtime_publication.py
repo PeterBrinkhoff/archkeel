@@ -39,6 +39,26 @@ def test_locked_publication_disables_optimization_and_name_changes():
     assert options["format"]["comments"] is False
 
 
+def test_generated_publication_keeps_lf_on_every_checkout():
+    root = Path(__file__).parents[1]
+    paths = [
+        "src/archkeel/render/assets/explorer.runtime.js",
+        "src/archkeel/render/assets/report-graph-protocol.js",
+        "src/archkeel/render/assets/report-graph-protocol.types.d.ts",
+        "src/archkeel/render/assets/report-graph-vocabulary.ts",
+        "tools/browser-runtime/protocol-exports.js",
+        "tools/browser-runtime/protocol-exports.types.d.ts",
+    ]
+    result = subprocess.run(
+        ["git", "check-attr", "eol", "--", *paths],
+        cwd=root,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    assert result.stdout.splitlines() == [f"{path}: eol: lf" for path in paths]
+
+
 def test_committed_flow_runtime_is_deterministic_and_check_is_read_only(publisher):
     authored = {
         path: path.read_bytes()
@@ -83,3 +103,35 @@ def test_published_flow_preserves_actual_ast_and_rejects_semantic_mutations(publ
         check=True,
     )
     print(result.stdout)
+
+
+def test_offline_module_bundle_is_deterministic_and_read_only(publisher):
+    original = publisher._BUNDLE.read_bytes()
+    assert publisher.bundle_bytes() == original
+    assert publisher.bundle_bytes() == original
+    assert publisher._BUNDLE.read_bytes() == original
+
+
+def test_dependency_bridge_rejects_modified_vendor_bytes(publisher, tmp_path, monkeypatch):
+    package = tmp_path / "tools/node_modules/elkjs"
+    shutil.copytree(publisher._TOOLS / "node_modules/elkjs", package)
+    bundle = package / "lib/elk.bundled.js"
+    bundle.write_bytes(bundle.read_bytes() + b"\nwindow.Math = {};\n")
+    monkeypatch.setattr(publisher, "_TOOLS", tmp_path / "tools")
+    monkeypatch.setattr(publisher, "_ROOT", tmp_path)
+    with pytest.raises(SystemExit, match="canonical vendored bundle"):
+        publisher.prepare_dependencies()
+    assert not (tmp_path / "node_modules/elkjs").exists()
+
+
+def test_dependency_bridge_preserves_a_different_existing_install(publisher, tmp_path, monkeypatch):
+    target = tmp_path / "node_modules/elkjs"
+    target.mkdir(parents=True)
+    marker = target / "package.json"
+    marker.write_text('{"name":"elkjs","version":"other"}')
+    before = marker.read_bytes()
+    monkeypatch.setattr(publisher, "_ROOT", tmp_path)
+    with pytest.raises(SystemExit, match="refusing to overwrite"):
+        publisher.prepare_dependencies()
+    assert marker.read_bytes() == before
+    assert list(target.iterdir()) == [marker]

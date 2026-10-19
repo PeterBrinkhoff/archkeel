@@ -1,3 +1,6 @@
+import { ArchkeelGraphProtocol, ArchkeelGraphSceneProtocol } from "../src/archkeel/render/assets/report-graph-protocol.js";
+import * as ArchkeelGraphScene from "../src/archkeel/render/assets/report-graph-scene.js";
+import * as ArchkeelAtlasDeviations from "../src/archkeel/render/assets/report-atlas-deviations.js";
 // Independently authored consumer requirements for the actual native graph scene API.
 namespace GraphSceneTarget {
   import G = ArchkeelGraphProtocol;

@@ -1,5 +1,5 @@
+import ELK from "elkjs/lib/elk.bundled.js";
 "use strict";
-(function (global) {
   let engine = null;
   function layout(graph) {
     if (!engine) {
@@ -652,8 +652,9 @@
     return routes;
   }
 
-  global.ArchkeelReportLayout = {
-    layout, decodeLayout, buildAtlasGraph,
-    layoutUml, layoutAtlas, routeUmlRelationships, hasCompleteManualPositions,
-  };
-})(window);
+
+export { layout, decodeLayout, buildAtlasGraph, layoutUml, layoutAtlas, routeUmlRelationships, hasCompleteManualPositions };
+
+window.ArchkeelReportLayout = { layout, decodeLayout, buildAtlasGraph, layoutUml, layoutAtlas, routeUmlRelationships, hasCompleteManualPositions };
+
+window.ELK = ELK;

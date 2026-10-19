@@ -24,6 +24,11 @@ native source evidence and conservative UNKNOWNs.
   compiler target/lib settings; UMD publications require an explicit classic-browser
   host and authenticated provider evidence. Ambiguous bindings and unsupported
   effects remain UNKNOWN; source identity does not prove runtime availability.
+- **Explicit browser ports.** First-party report sources use named ES imports and
+  exports under the existing component boundaries. A checked, pinned build creates
+  one inline offline bundle; compatibility globals remain available. Native direct
+  named-export witnesses support exact ports; missing or competing bindings retain
+  UNKNOWN. Opaque vendor calls do not acquire a purity assumption.
 - **Call ownership.** Opt-in contract **3.7.0** adds `call_owner` for exact targets
   and allowed caller scopes. Bound calls can fail; unrelated same-named methods
   do not. Missing target proof stays UNKNOWN. Declared receivers prove a static
@@ -33,7 +38,8 @@ native source evidence and conservative UNKNOWNs.
   one parsed snapshot while resolving import bindings live. Changed compiler inputs
   rebuild the index; binding decisions are not cached.
   Main and detail HTML share one strictly decoded observation and report projection;
-  existing entry points and page bytes remain compatible.
+  existing Python entry points retain their behavior. Browser assets are republished
+  as one checked offline bundle.
 - **Complete release assets.** Releases require a version-matched plugin ZIP and
   checksum, verified against the canonical skill and both manifests. GitHub assets
   are downloaded and checked before publishing the Python package.

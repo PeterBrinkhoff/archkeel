@@ -112,32 +112,30 @@ Empty experiment directories are not source packages.
 | `render` | 6 / 0 | Read exact public ports and existing payload/summary direction constraints; HTML composition bodies structurally reviewed. Keep payload/summary below HTML and terminal. |
 | `render/assets` | 9 authored JS/TS; 2 CSS | Read projection/layout ports, layout validation, Explorer async generation handling and their existing browser controls. Other UI paths structurally reviewed; Python rules do not scan these assets. |
 
-The three generated outputs are `flow.runtime.js`, `report-graph-protocol.js` and
-`report-graph-vocabulary.ts`; their authored sources are Flow, the TypeScript scene
-protocol and canonical Python enums. The pinned
-`elkjs-0.12.0.bundled.js` is vendored; icons, logos and CSS are presentation resources.
-`make browser-runtime-check` verifies Terser publication and source identity, without
-Flow typechecking. `make browser-graph-check` checks protocol generation and statically
-checks graph-scene/deviation consumers, not report-scene, layout or Explorer dependencies.
+Browser sources use named ES imports and exports across the same nine selected
+JavaScript identities and original exact port restrictions. Compatibility globals
+remain available; internal dependencies use lexical bindings. The separate Python
+scan retains every maintained module. Native source witnesses prove unique direct
+named exports and same-name export clauses, including aliased named imports.
+Defaults, namespaces, re-exports, missing and competing bindings cannot prove exact
+ports. Legacy global reads remain conservative in modules too.
 
-Existing browser evidence is explicit: `test_report_renderer_units.py` covers pure
-projection, input preservation and rejection of incomplete/duplicate/nonfinite layout
-output; `test_uml_rendering.py::test_standard_uml_ignores_stale_layout_and_retries_rejected_layout`
-covers async generation ownership and retries. Interactions and offline CSP have
-separate suites. Complete native enforcement of these JavaScript boundaries remains
-open; a Python PASS does not close it. Before the native extension, an isolated TypeScript collector
-probe read and parsed both unchanged `report-layout.js` and `report-scene.js` with
-`allowJs`: two selected files, 35 symbols and zero imports. Their global IIFE ports
-are not import edges; receiver dispatch remains unproven. One scan currently has one
-language/namespace, so replacing the Python scan with this probe would lose its scope.
-The native extension adds witnessed script-global dependencies. Its browser gate selects
-eight authored JavaScript files and the generated graph protocol; Flow runtime derivation,
-the authored TypeScript protocol and generated vocabulary retain their separate existing
-publication/compiler checks. The existing Python scan retains every maintained module.
-Standard globals require closed language/library provenance; DOM is never inferred from
-an arbitrary free name. Source declarations and runtime effects remain separate claims.
-Required namespace, factory-return and vendor-publication proofs must pass the actual
-consumer and missing/rebinding controls before this milestone is accepted.
+Generated assets are `flow.runtime.js`, `report-graph-protocol.js`, its
+`report-graph-protocol.types.d.ts` companion, `report-graph-vocabulary.ts` and
+`explorer.runtime.js`. Flow, `report-graph-schema.ts` and canonical Python enums
+remain their authored sources. `make browser-runtime-check` verifies the Terser
+publication witness and the pinned offline bundle. `make browser-graph-check`
+checks protocol/declaration generation and strict graph-scene/deviation consumers.
+It does not typecheck all Explorer JavaScript. Installed reports need no Node or
+network; the locked ELK package must match the existing canonical vendored bytes.
+
+Existing browser controls cover projection/input preservation, duplicate/nonfinite
+layout rejection, async generation ownership, retry, interactions and offline CSP.
+Actual-source PASS, forbidden-port FAIL, missing/ambiguous-source UNKNOWN and stale
+output rejection are separate obligations. Classic UMD declarations retain source
+identity after opaque factory calls, but their effects remain UNKNOWN. The bundle
+is derived output, not a replacement source scope or a claim of runtime purity.
+See [AD-242](../decisions/ad-242-explicit-browser-module-ports.md).
 Failure/lifecycle meanings in port responsibilities likewise need behavior tests beyond signatures.
 
 The Host acquisition contract bounds the `glab` request to 30 seconds, decodes UTF-8

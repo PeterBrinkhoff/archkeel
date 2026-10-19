@@ -169,8 +169,9 @@ def test_actual_deviation_decoder_and_index_keep_rows_and_level_identity():
 )
 def test_actual_deviation_consumer_rejects_type_corruption(tmp_path, before, after):
     import shutil
-    import subprocess
     from pathlib import Path
+
+    from test_graph_scene_protocol import _typecheck_sources
 
     compiler = shutil.which("npx")
     if compiler is None:
@@ -179,7 +180,7 @@ def test_actual_deviation_consumer_rejects_type_corruption(tmp_path, before, aft
     assets = root / "src/archkeel/render/assets"
     sources = (
         "report-graph-vocabulary.ts",
-        "report-graph-protocol.ts",
+        "report-graph-schema.ts",
         "report-graph-scene.js",
         "report-atlas-deviations.js",
     )
@@ -187,28 +188,12 @@ def test_actual_deviation_consumer_rejects_type_corruption(tmp_path, before, aft
         shutil.copyfile(assets / name, tmp_path / name)
     target = tmp_path / "browser_graph_scene_target.ts"
     shutil.copyfile(root / "tests/browser_graph_scene_target.ts", target)
-    command = [
-        compiler,
-        "--yes",
-        "--package",
-        "typescript@5.9.3",
-        "tsc",
-        "--strict",
-        "--allowJs",
-        "--checkJs",
-        "--noEmit",
-        "--target",
-        "ES2022",
-        "--module",
-        "none",
-        *(str(tmp_path / name) for name in sources),
-        str(target),
-    ]
-    valid = subprocess.run(command, text=True, capture_output=True, check=False)
+    target.write_text(target.read_text().replace("../src/archkeel/render/assets/", "./"))
+    valid = _typecheck_sources(tmp_path, root)
     assert valid.returncode == 0, valid.stdout + valid.stderr
     candidate = tmp_path / "report-atlas-deviations.js"
     source = candidate.read_text()
     assert source.count(before) == 1
     candidate.write_text(source.replace(before, after, 1))
-    mutated = subprocess.run(command, text=True, capture_output=True, check=False)
+    mutated = _typecheck_sources(tmp_path, root)
     assert mutated.returncode != 0 and "error TS" in mutated.stdout, mutated.stdout + mutated.stderr

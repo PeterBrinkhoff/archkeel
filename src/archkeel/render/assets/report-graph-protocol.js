@@ -369,3 +369,6 @@ var ArchkeelGraphSceneProtocol;
     }
     ArchkeelGraphSceneProtocol.decodeComparison = decodeComparison;
 })(ArchkeelGraphSceneProtocol || (ArchkeelGraphSceneProtocol = {}));
+export { ArchkeelGraphProtocol, ArchkeelGraphSceneProtocol };
+window.ArchkeelGraphProtocol = ArchkeelGraphProtocol;
+window.ArchkeelGraphSceneProtocol = ArchkeelGraphSceneProtocol;

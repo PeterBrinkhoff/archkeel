@@ -7,7 +7,7 @@ const modules = path.resolve(process.argv[2]);
 const acorn = require(path.join(modules,"acorn"));
 const walk = require(path.join(modules,"acorn-walk"));
 function semanticAst(source) {
-  const tree = acorn.parse(source,{ecmaVersion:2022,sourceType:"script"});
+  const tree = acorn.parse(source,{ecmaVersion:2022,sourceType:"module"});
   const tagged = new WeakSet();
   walk.simple(tree,{TaggedTemplateExpression(node) { tagged.add(node.quasi); }});
   walk.simple(tree,{

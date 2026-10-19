@@ -205,6 +205,7 @@ class ImportBinding:
     local: str
     namespace: bool = False
     type_only: bool = False
+    source_unique: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -296,3 +297,4 @@ class Syntax:
     script_destructures: tuple[ScriptDestructure, ...] = ()
     script_bindings: tuple[str, ...] = ()
     script_namespaces: tuple[ScriptNamespace, ...] = ()
+    module_exports: tuple[tuple[str, Span, Span], ...] = ()

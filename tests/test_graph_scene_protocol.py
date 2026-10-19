@@ -81,7 +81,7 @@ def test_scene_vocabulary_is_generated_from_canonical_owners():
             "return { id, kind: G.ComponentRole.COMPONENT, entity, sourceGraph, assessments,",
         ),
         (
-            "report-graph-protocol.ts",
+            "report-graph-schema.ts",
             "id: string; kind: G.EntityKind; entity: Entity;",
             "id: string; kind: string; entity: Entity;",
         ),
@@ -91,12 +91,12 @@ def test_scene_vocabulary_is_generated_from_canonical_owners():
             "@param {Context} context @param {Options} [options] @returns {object}",
         ),
         (
-            "report-graph-protocol.ts",
+            "report-graph-schema.ts",
             "case ViewMode.REVIEW: return ViewMode.DIAGRAM;",
             "case ViewMode.REVIEW: return ViewMode.REVIEW;",
         ),
         (
-            "report-graph-protocol.ts",
+            "report-graph-schema.ts",
             "export function projectViewMode(value: ViewMode): ProjectionMode {",
             "export function projectViewMode(value: ViewMode): ViewMode {",
         ),
@@ -112,7 +112,6 @@ def test_scene_vocabulary_is_generated_from_canonical_owners():
 )
 def test_actual_scene_consumer_rejects_type_mutations(tmp_path, path, before, after):
     import shutil
-    import subprocess
     from pathlib import Path
 
     compiler = shutil.which("npx")
@@ -122,7 +121,7 @@ def test_actual_scene_consumer_rejects_type_mutations(tmp_path, path, before, af
     assets = root / "src/archkeel/render/assets"
     sources = (
         "report-graph-vocabulary.ts",
-        "report-graph-protocol.ts",
+        "report-graph-schema.ts",
         "report-graph-scene.js",
         "report-atlas-deviations.js",
     )
@@ -130,30 +129,14 @@ def test_actual_scene_consumer_rejects_type_mutations(tmp_path, path, before, af
         shutil.copyfile(assets / name, tmp_path / name)
     target = tmp_path / "browser_graph_scene_target.ts"
     shutil.copyfile(root / "tests/browser_graph_scene_target.ts", target)
-    command = [
-        compiler,
-        "--yes",
-        "--package",
-        "typescript@5.9.3",
-        "tsc",
-        "--strict",
-        "--allowJs",
-        "--checkJs",
-        "--noEmit",
-        "--target",
-        "ES2022",
-        "--module",
-        "none",
-        *(str(tmp_path / name) for name in sources),
-        str(target),
-    ]
-    valid = subprocess.run(command, text=True, capture_output=True, check=False)
+    target.write_text(target.read_text().replace("../src/archkeel/render/assets/", "./"))
+    valid = _typecheck_sources(tmp_path, root)
     assert valid.returncode == 0, valid.stdout + valid.stderr
     candidate = tmp_path / path
     source = candidate.read_text(encoding="utf-8")
     assert source.count(before) == 1, "Mutation must hit exactly one actual consumer declaration"
     candidate.write_text(source.replace(before, after), encoding="utf-8")
-    mutated = subprocess.run(command, text=True, capture_output=True, check=False)
+    mutated = _typecheck_sources(tmp_path, root)
     assert mutated.returncode != 0, "Compiler accepted actual source widening/domain corruption"
     assert "error TS" in mutated.stdout, mutated.stdout + mutated.stderr
 
@@ -300,16 +283,13 @@ def test_actual_own_graph_scene_preserves_full_wire_json(self_observation):
         playwright.stop()
 
 
-def test_offline_report_loads_the_actual_protocol_before_scene_consumers():
-    from archkeel.render.html import _explorer_section
+def test_offline_report_embeds_the_checked_module_bundle():
+    from archkeel.render.html import _asset, _explorer_section
 
     page = _explorer_section("{}")
-    assert (
-        page.index('data-report-asset="graph-protocol"')
-        < page.index('data-report-asset="graph-scene"')
-        < page.index('data-report-asset="scene"')
-        < page.index('data-report-asset="layout"')
-    )
+    assert _asset("explorer.runtime.js").decode() in page
+    assert page.count('<script data-elkjs-version="0.12.0">') == 1
+    assert "<script src=" not in page
 
 
 def test_stale_generated_vocabulary_fails_the_actual_check_command(tmp_path, monkeypatch):
@@ -409,3 +389,56 @@ def test_visible_evidence_views_keep_the_observed_scene(tmp_path, mode, label, h
     finally:
         browser.close()
         playwright.stop()
+
+
+def _typecheck_sources(directory, root):
+    import subprocess
+
+    compiler = ["node", str(root / "tools/browser-runtime/node_modules/typescript/bin/tsc")]
+    declarations = directory / "report-graph-protocol.types.d.ts"
+    generated = subprocess.run(
+        [
+            *compiler,
+            "--strict",
+            "--target",
+            "ES2022",
+            "--module",
+            "none",
+            "--declaration",
+            "--emitDeclarationOnly",
+            "--outFile",
+            str(declarations),
+            str(directory / "report-graph-vocabulary.ts"),
+            str(directory / "report-graph-schema.ts"),
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if generated.returncode:
+        return generated
+    with declarations.open("a") as stream:
+        stream.write((root / "tools/browser-runtime/protocol-exports.types.d.ts").read_text())
+    return subprocess.run(
+        [
+            *compiler,
+            "--strict",
+            "--target",
+            "ES2022",
+            "--module",
+            "esnext",
+            "--moduleResolution",
+            "node",
+            "--moduleSuffixes",
+            ".types,",
+            "--allowJs",
+            "--checkJs",
+            "--noEmit",
+            str(directory / "report-graph-scene.js"),
+            str(directory / "report-atlas-deviations.js"),
+            str(directory / "browser_graph_scene_target.ts"),
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )

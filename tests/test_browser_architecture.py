@@ -31,6 +31,7 @@ def _repository(tmp_path):
         destination = fixture / relative
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(ROOT / relative, destination)
+    shutil.copytree(ROOT / "node_modules/elkjs", fixture / "node_modules/elkjs")
     return _prepare_repo(tmp_path, {}, fixture)
 
 
@@ -45,7 +46,13 @@ def test_browser_contract_schema_and_canonical_roundtrip():
 
 @pytest.mark.parametrize(
     ("mutation", "expected"),
-    [("none", "PASS"), ("forbidden", "FAIL"), ("missing-publication", "UNKNOWN")],
+    [
+        ("none", "PASS"),
+        ("forbidden", "FAIL"),
+        ("global-forbidden", "UNKNOWN"),
+        ("window-forbidden", "UNKNOWN"),
+        ("missing-publication", "UNKNOWN"),
+    ],
 )
 def test_actual_browser_sources_require_proven_bindings_with_fixed_intent(
     tmp_path, mutation, expected
@@ -54,13 +61,20 @@ def test_actual_browser_sources_require_proven_bindings_with_fixed_intent(
     intent = (root / INTENT).read_bytes()
     if mutation == "forbidden":
         layout = root / ASSETS / "report-layout.js"
-        layout.write_text(layout.read_text() + "\nArchkeelReportScene.search([], 'probe');\n")
+        layout.write_text(
+            layout.read_text()
+            + "\nimport { search as forbiddenSearch } from './report-scene.js';\n"
+            "forbiddenSearch([], 'probe');\n"
+        )
+    elif mutation in {"global-forbidden", "window-forbidden"}:
+        layout = root / ASSETS / "report-layout.js"
+        prefix = "window." if mutation == "window-forbidden" else ""
+        layout.write_text(
+            layout.read_text() + f"\n{prefix}ArchkeelReportScene.search([], 'probe');\n"
+        )
     elif mutation == "missing-publication":
         scene = root / ASSETS / "report-scene.js"
-        original = (
-            "global.ArchkeelReportScene = "
-            "{ create, search, sceneToMermaid, decider, perspectives };"
-        )
+        original = "export { create, search, sceneToMermaid, decider, perspectives };"
         text = scene.read_text()
         assert text.count(original) == 1
         scene.write_text(

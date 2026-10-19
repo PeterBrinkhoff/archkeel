@@ -217,6 +217,7 @@ class _Collection:
         self.modules: dict[str, str] = {}
         self.import_targets: dict[str, ImportTarget] = {}
         self.import_sites: dict[str, tuple[str, int, int]] = {}
+        self.import_binding_facts: dict[str, RawRecord] = {}
         self.read = 0
         self.script_resolution: dict[tuple[str, Site], tuple[str, ...]] = {}
         self.script_evidence: dict[tuple[str, Site], tuple[str, ...]] = {}
@@ -235,6 +236,7 @@ class _Collection:
         while index < len(self.queue):
             self._file(self.queue[index])
             index += 1
+        self._named_imports()
         self._script_dependencies()
         symbols, calls, references, bindings = self._inner_facts()
         for rel, span in dict.fromkeys(self.script_pending_effects):
@@ -280,7 +282,8 @@ class _Collection:
                 _FEATURES
                 + (
                     ("script-globals-v1",)
-                    if any(syntax.script_mode for syntax in self.syntax.values())
+                    if self.import_binding_facts
+                    or any(self._global_dependency_scope(rel) for rel in self.syntax)
                     else ()
                 ),
                 (
@@ -301,6 +304,104 @@ class _Collection:
                 unknowns,
             ),
             tuple(parse_evidence(item) for _, item in sorted(self.evidence.items())),
+        )
+
+    def _named_imports(self) -> None:
+        imports: list[RawRecord] = []
+        targets: dict[str, list[ImportTarget]] = {}
+        for item in self.imports:
+            identity = item["id"]
+            rel, line, column = self.import_sites[identity]
+            syntax = self.syntax[rel]
+            bindings = [
+                binding
+                for binding in syntax.import_bindings
+                if (binding.span.line, binding.span.column) == (line, column)
+            ]
+            target = self.import_targets[identity]
+            if not bindings:
+                imports.append(item)
+                continue
+            destination = self.syntax.get(target.file) if isinstance(target, LocalTarget) else None
+            targets[identity] = []
+            for ordinal, binding in enumerate(bindings):
+                matches = (
+                    [
+                        (declaration, exported)
+                        for name, declaration, exported in destination.module_exports
+                        if name == binding.imported
+                    ]
+                    if destination is not None
+                    else []
+                )
+                known = bool(
+                    binding.source_unique
+                    and not binding.namespace
+                    and not binding.type_only
+                    and syntax.first_error is None
+                    and not self.config.partial
+                    and isinstance(target, LocalTarget)
+                    and target.runtime_file is not None
+                    and destination is not None
+                    and destination.first_error is None
+                    and len(matches) == 1
+                )
+                bound_id = stable_id("IMP_BINDING", identity, ordinal)
+                witnesses: list[str] = []
+                if known and isinstance(target, LocalTarget):
+                    witness = self._export_binding(target, binding.imported, matches[0])
+                    witnesses.append(witness)
+                imports.append(
+                    {
+                        **item,
+                        "id": bound_id,
+                        "fact_ids": witnesses,
+                        "data": {
+                            **item["data"],
+                            "symbol": None if binding.namespace else binding.imported,
+                            "binding": binding.local,
+                            "symbols_known": known,
+                            "type_only": binding.type_only,
+                            "under_type_checking": binding.type_only,
+                        },
+                    }
+                )
+                targets[identity].append(replace(target, import_id=bound_id))
+        self.imports = imports
+        self.targets = [
+            expanded
+            for target in self.targets
+            for expanded in targets.get(target.import_id, [target])
+        ]
+
+    def _export_binding(self, target: LocalTarget, name: str, spans: tuple[Span, Span]) -> str:
+        witness = stable_id("ESM_EXPORT", target.module, name)
+        self.import_binding_facts[witness] = classified(
+            item_id=witness,
+            evidence_class=EvidenceClass.FACT,
+            area="source",
+            kind="bindings",
+            title="Exported source binding",
+            subjects=[target.module],
+            evidence_ids=list(dict.fromkeys(self._cite(target.file, span) for span in spans)),
+            data={
+                "module": target.module,
+                "source_module": target.module,
+                "source_scope": target.module,
+                "name": name,
+            },
+        )
+        return witness
+
+    def _global_dependency_scope(self, rel: str) -> bool:
+        suffix = classify_file(rel)
+        form = self.resolver.format_of(rel)
+        return bool(
+            suffix is not None
+            and suffix.source_kind is not SourceKind.DECLARATION
+            and suffix.format_hint is not ModuleFormat.CJS
+            and form is not ModuleFormat.CJS
+            and not isinstance(form, Unknown)
         )
 
     def _script_dependencies(self) -> None:
@@ -326,6 +427,8 @@ class _Collection:
         self.script_source_writes = tuple(source_writes)
         self._script_unbounded_effects(publications, writes)
         for rel, syntax in self.syntax.items():
+            if not self._global_dependency_scope(rel):
+                continue
             for site in syntax.sites:
                 destructures = [
                     item for item in syntax.script_destructures if item.span == site.span
@@ -351,6 +454,8 @@ class _Collection:
                     if alias_call is not None
                     else site.path
                 )
+                if self._script_root_escape(rel, site, path):
+                    continue
                 if path and path[0] in _SCRIPT_ROOTS:
                     path = path[1:]
                 if (
@@ -367,8 +472,7 @@ class _Collection:
                 ):
                     continue
                 if (
-                    not syntax.script_mode
-                    or not path
+                    not path
                     or not (site.script_free or alias_call is not None)
                     or alias_call is None
                     and site.path[0] in site.shadowed_names
@@ -377,6 +481,22 @@ class _Collection:
                 self._script_dependency(
                     rel, site, path, alias_call, alias, publications.get(path[0], []), writes
                 )
+
+    def _script_root_escape(self, rel: str, site: Site, path: tuple[str, ...]) -> bool:
+        if (
+            len(path) == 1
+            and path[0] in _SCRIPT_ROOTS
+            and site.script_free
+            and (site.script_escape or site.computed or site.kind is not SiteKind.REFERENCE)
+        ):
+            self._gap(
+                "Escaped or computed global host dependency is not statically bounded",
+                (self._cite(rel, site.span),),
+                self.modules[rel],
+                kind=_GapKind.RESOLUTION,
+            )
+            return True
+        return False
 
     def _script_unbounded_effects(
         self,
@@ -1171,7 +1291,9 @@ class _Collection:
     ) -> tuple[list[RawRecord], list[RawRecord], list[RawRecord]]:
         calls: list[RawRecord] = []
         references: list[RawRecord] = []
-        bindings: list[RawRecord] = list(self.script_publications.values())
+        bindings = list(self.script_publications.values()) + list(
+            self.import_binding_facts.values()
+        )
         top_by_module: dict[str, list[tuple[str, Definition]]] = {}
         definitions_by_module: dict[str, list[Definition]] = {}
         for rel, module, definition in definitions:

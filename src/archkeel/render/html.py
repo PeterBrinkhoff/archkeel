@@ -713,25 +713,12 @@ def _flow_section_head(*, atlas: bool = False) -> str:
 
 
 def _explorer_section(payload: str, *, atlas: bool = False) -> str:
-    scripts: list[str] = []
-    for name, attributes in (
-        ("elkjs-0.12.0.bundled.js", ' data-elkjs-version="0.12.0"'),
-        ("report-graph-protocol.js", ' data-report-asset="graph-protocol"'),
-        ("report-graph-scene.js", ' data-report-asset="graph-scene"'),
-        ("report-atlas-deviations.js", ' data-report-asset="atlas-deviations"'),
-        ("report-scene.js", ' data-report-asset="scene"'),
-        ("report-layout.js", ' data-report-asset="layout"'),
-        ("flow.runtime.js", ""),
-        ("report-canvas.js", ' data-report-asset="canvas"'),
-    ):
-        source: bytes = _asset(name)
-        script: str = source.decode("utf-8")
-        scripts.append(f"      <script{attributes}>{script}</script>")
+    script = _asset("explorer.runtime.js").decode("utf-8")
     return (
         _flow_section_head(atlas=atlas)
         + payload
         + "</script>\n"
-        + "\n".join(scripts)
+        + f'      <script data-elkjs-version="0.12.0">{script}</script>'
         + "\n    </section>"
     )
 

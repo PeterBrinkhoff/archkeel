@@ -120,6 +120,7 @@ class _NodeKind(Enum):
     COMPUTED_PROPERTY_NAME = "computed_property_name"
     CONST = "const"
     DECLARE = "declare"
+    DEFAULT = "default"
     DELETE = "delete"
     DECORATOR = "decorator"
     ENUM_ASSIGNMENT = "enum_assignment"
@@ -230,6 +231,7 @@ class _Modifier(Enum):
     OVERRIDE = "override"
     READONLY = "readonly"
     DECLARE = "declare"
+    DEFAULT = "default"
 
 
 class _SpecialName(Enum):
@@ -485,7 +487,7 @@ def parse(rel_path: str, data: bytes) -> Syntax:
         source.span(errors[0]) if errors else None,
         definitions,
         sites,
-        _import_bindings(source),
+        _module_import_bindings(source, bindings, ambiguous_bindings),
         _rebound_names(source),
         comparisons,
         script_globals if script_mode else (),
@@ -498,6 +500,7 @@ def parse(rel_path: str, data: bytes) -> Syntax:
         _script_destructures(source, bindings, ambiguous_bindings) if script_mode else (),
         tuple(sorted(bindings.get(source.root, ()))),
         _script_namespaces(source, bindings) if script_mode else (),
+        _module_export_bindings(source, bindings, ambiguous_bindings),
     )
 
 
@@ -1400,6 +1403,7 @@ def _call_site(
     scope = next((item for item, _, _ in reversed(scopes) if _contains(item, node)), None)
     scope_name = next((name for item, name, _ in scopes if item is scope), None)
     scope_line = next((line for item, _, line in scopes if item is scope), None)
+    receiver = _dependency_receiver(target)
     assigned = _assigned_name(node)
     target_name = _target_name(target)
     shadowed, ambiguous_scope = _active_scope_names(node, scope, source)
@@ -1420,8 +1424,8 @@ def _call_site(
         receiver_kind=target_name.receiver_kind,
         scope_ambiguous=ambiguous_scope,
         scope_column=source.span(scope).column if scope is not None else None,
-        path=_static_path(target),
-        script_free=source.script_mode and _script_free(target, node, bindings, ambiguous_bindings),
+        path=_static_path(target) or _static_path(receiver),
+        script_free=_script_free(receiver, node, bindings, ambiguous_bindings),
     )
 
 
@@ -1538,7 +1542,7 @@ def _sites(
                 scope_line,
                 name=target_name.name,
                 receiver=target_name.receiver,
-                computed=target_name.computed,
+                computed=target_name.computed or _subscript_receiver(node),
                 receiver_kind=target_name.receiver_kind,
                 shadowed_names=shadowed,
                 use=SiteUse.TYPE
@@ -1551,7 +1555,7 @@ def _sites(
                 path=_static_path(node.parent)
                 if target_name.receiver and node.parent is not None
                 else _static_path(node),
-                script_free=source.script_mode
+                script_free=not _global_publication_target(node)
                 and _script_free(
                     node.parent if target_name.receiver and node.parent is not None else node,
                     node,
@@ -1562,6 +1566,25 @@ def _sites(
             )
         )
     return sites, comparisons
+
+
+def _subscript_receiver(node: _RawNode) -> bool:
+    return (
+        node.parent is not None
+        and _node_kind(node.parent) is _NodeKind.SUBSCRIPT_EXPRESSION
+        and node.parent.child_by_field_name("object") == node
+    )
+
+
+def _global_publication_target(node: _RawNode) -> bool:
+    return any(
+        _node_kind(parent) is _NodeKind.ASSIGNMENT_EXPRESSION
+        and (left := parent.child_by_field_name("left")) is not None
+        and len(path := _static_path(left)) == 2
+        and path[0] in _SCRIPT_ROOTS
+        and _contains(left, node)
+        for parent in _ancestors(node)
+    )
 
 
 def _declaration_name(node: _RawNode) -> bool:
@@ -1600,6 +1623,21 @@ def _target_name(node: _RawNode) -> _TargetName:
             else ReceiverKind.NONE,
         )
     return _TargetName(None, None, True)
+
+
+def _dependency_receiver(node: _RawNode) -> _RawNode:
+    while not _static_path(node):
+        child = (
+            next(iter(node.named_children), None)
+            if _node_kind(node) is _NodeKind.PARENTHESIZED_EXPRESSION
+            else node.child_by_field_name("object")
+            if _node_kind(node) in {_NodeKind.MEMBER_EXPRESSION, _NodeKind.SUBSCRIPT_EXPRESSION}
+            else None
+        )
+        if child is None:
+            break
+        node = child
+    return node
 
 
 def _static_path(node: _RawNode) -> tuple[str, ...]:
@@ -2074,6 +2112,8 @@ def _script_escape(node: _RawNode) -> bool:
     if (
         _node_kind(parent) in {_NodeKind.MEMBER_EXPRESSION, _NodeKind.SUBSCRIPT_EXPRESSION}
         and parent.child_by_field_name("object") == target
+        or _node_kind(parent) is _NodeKind.UNARY_EXPRESSION
+        and any(_node_kind(child) is _NodeKind.TYPEOF for child in parent.children)
     ):
         return False
     return not (
@@ -3201,6 +3241,95 @@ def _import_bindings(source: _Source) -> tuple[ImportBinding, ...]:
                     )
                 )
     return tuple(result)
+
+
+def _module_import_bindings(
+    source: _Source, bindings: dict[_RawNode, dict[str, int]], ambiguous: set[_RawNode]
+) -> tuple[ImportBinding, ...]:
+    written = {
+        _text(target)
+        for node in _walk(source.root)
+        for target in _script_assignment_targets(node)
+        if _node_kind(target) is _NodeKind.IDENTIFIER
+        and _script_bound_scope(target, _text(target), bindings) == source.root
+    }
+    return tuple(
+        replace(
+            item,
+            source_unique=source.root not in ambiguous
+            and bindings.get(source.root, {}).get(item.local) == 1
+            and item.local not in written,
+        )
+        for item in _import_bindings(source)
+    )
+
+
+def _module_export_bindings(
+    source: _Source, bindings: dict[_RawNode, dict[str, int]], ambiguous: set[_RawNode]
+) -> tuple[tuple[str, Span, Span], ...]:
+    if (
+        source.root.has_error
+        or source.root in ambiguous
+        or any(
+            _node_kind(statement) is _NodeKind.EXPORT_STATEMENT
+            and statement.child_by_field_name("source") is not None
+            for statement in source.root.named_children
+        )
+    ):
+        return ()
+    declarations: dict[str, list[Span]] = {}
+    exports: list[tuple[str, Span]] = []
+    for statement in source.root.named_children:
+        exported = _node_kind(statement) is _NodeKind.EXPORT_STATEMENT
+        declaration = statement.child_by_field_name("declaration") if exported else statement
+        direct = exported and not any(
+            _node_kind(child) in {_NodeKind.DEFAULT, _NodeKind.TYPE} for child in statement.children
+        )
+        candidates = (
+            declaration.named_children
+            if declaration is not None
+            and _node_kind(declaration)
+            in {_NodeKind.LEXICAL_DECLARATION, _NodeKind.VARIABLE_DECLARATION}
+            else (declaration,)
+            if declaration is not None
+            else ()
+        )
+        for node in candidates:
+            name = node.child_by_field_name("name")
+            if (
+                _node_kind(node)
+                not in {
+                    _NodeKind.VARIABLE_DECLARATOR,
+                    _NodeKind.FUNCTION_DECLARATION,
+                    _NodeKind.CLASS_DECLARATION,
+                }
+                or name is None
+                or not _valid_unicode_member_name(name)
+            ):
+                continue
+            declarations.setdefault(_text(name), []).append(source.span(node))
+            if direct:
+                exports.append((_text(name), source.span(statement)))
+        clause = next(iter(_children(statement, _NodeKind.EXPORT_CLAUSE)), None) if direct else None
+        if statement.child_by_field_name("source") is not None:
+            continue
+        for specifier in _children(clause, _NodeKind.EXPORT_SPECIFIER):
+            name, alias = _specifier_names(specifier)
+            if (
+                name is not None
+                and _valid_unicode_member_name(name)
+                and alias is None
+                and not any(_node_kind(child) is _NodeKind.TYPE for child in specifier.children)
+            ):
+                exports.append((_text(name), source.span(specifier)))
+    counts = _Counter(name for name, _ in exports)
+    return tuple(
+        (name, declarations[name][0], span)
+        for name, span in exports
+        if counts[name] == 1
+        and len(declarations.get(name, ())) == 1
+        and bindings.get(source.root, {}).get(name) == 1
+    )
 
 
 def _rebound_names(source: _Source) -> tuple[str, ...]:

@@ -113,15 +113,8 @@ def test_mermaid_exports_native_uml_assessments_and_relationship_evidence():
 def _asset_page(api, assets):
     playwright, browser, page = _browser_page(api, "<!doctype html><html><body></body></html>")
     try:
-        for asset in assets:
-            if asset == "report-scene.js":
-                for dependency in (
-                    "report-graph-protocol.js",
-                    "report-graph-scene.js",
-                    "report-atlas-deviations.js",
-                ):
-                    page.add_script_tag(path=str(ASSET_DIR / dependency))
-            page.add_script_tag(path=str(ASSET_DIR / asset))
+        assert set(assets) <= {"report-scene.js", "report-layout.js", "elkjs-0.12.0.bundled.js"}
+        page.add_script_tag(path=str(ASSET_DIR / "explorer.runtime.js"))
     except Exception:
         browser.close()
         playwright.stop()
@@ -495,11 +488,9 @@ def test_uml_layout_request_has_an_explicit_edge_clearance_without_changing_inpu
     try:
         result = page.evaluate("""async () => {
           const requests = [];
-          window.ELK = class {
-            async layout(graph) {
+          window.ELK.prototype.layout = async function(graph) {
               requests.push(structuredClone(graph.layoutOptions));
               return {...graph, children: graph.children.map(node => ({...node, x: 0, y: 0}))};
-            }
           };
           const input = {nodes: [{id: 'a'}], edges: [], cardWidth: 200, cardHeights: {a: 92}};
           const before = JSON.stringify(input);

@@ -59,12 +59,20 @@ roots are directories. Inputs must exist inside `--root`.
 For supported UMD vendors, the `tsconfig` extension `archkeel` declares
 `scriptHost: "classic-browser"` and `scriptProviders`, each with `source` and
 `provenance` paths relative to `--root`. See the
-[browser configuration](architecture/browser.tsconfig.json) and
 [provenance example](../src/archkeel/render/assets/ELKJS-LICENSE.md).
 Provenance records the package, version, bundle SHA-256 and license; the hash binds
 the exact bundle bytes. Publication identity does not bound factory effects: unproved
 calls or constructors leave standard-global and vendor dependencies UNKNOWN.
 Missing, invalid or competing evidence stays UNKNOWN.
+
+Named ES imports can prove exact local ports when the destination has one witnessed
+runtime declaration and a direct or same-name export. Import aliases retain that
+source identity. Defaults, namespaces, re-exports and ambiguous/missing bindings
+remain unproved for exact ports. Global reads in modules retain UNKNOWN when their
+binding cannot be established. This establishes a source dependency, not runtime
+immutability or dispatch. ArchKeel's [browser configuration](architecture/browser.tsconfig.json)
+uses these explicit ports; [AD-242](architecture/decisions/ad-242-explicit-browser-module-ports.md)
+describes its offline publication checks.
 
 `report` and `validate --config PATH` select a root-relative file. `check` uses
 only `archkeel.toml`, bound by its accepted lock. Give separate scopes separate

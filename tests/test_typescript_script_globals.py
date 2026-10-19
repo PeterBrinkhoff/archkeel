@@ -5,7 +5,6 @@
 
 import json
 from importlib import import_module
-from pathlib import Path
 
 import pytest
 from test_architecture_demo import _prepare_repo
@@ -1076,16 +1075,25 @@ def test_native_complete_requires_rejects_drift_and_missing_actual_globals(
     assert (root / "contract.json").read_bytes() == intent
 
 
-def test_actual_data_reads_preserve_source_bound_publication_and_member_witnesses(tmp_path):
+def test_classic_data_reads_preserve_source_bound_publication_and_member_witnesses(tmp_path):
     import hashlib
 
-    root = Path(__file__).parents[1]
-    assets = root / "src/archkeel/render/assets"
     files = {
-        "src/scene.js": (assets / "report-graph-scene.js").read_bytes(),
-        "src/layout.js": (assets / "report-layout.js").read_bytes(),
+        "src/scene.js": (
+            b"var ArchkeelGraphScene = (function () { function create(data) {"
+            b"return data.nodes; } return { create }; })();"
+        ),
+        "src/layout.js": (
+            b"(function (global) { function layout(data) { return data.nodes; }"
+            b"function decodeLayout() {} function buildAtlasGraph() {} function layoutUml() {}"
+            b"function layoutAtlas() {} function routeUmlRelationships() {}"
+            b"function hasCompleteManualPositions() {}"
+            b"global.ArchkeelReportLayout = { layout, decodeLayout, buildAtlasGraph, layoutUml,"
+            b"layoutAtlas, routeUmlRelationships, hasCompleteManualPositions }; })(window);"
+        ),
         "src/consumer.js": (
             b"ArchkeelGraphScene.create({}); window.ArchkeelReportLayout.layout({});"
+            b"window.MissingData.value;"
         ),
     }
     (tmp_path / "src").mkdir()
@@ -1155,3 +1163,95 @@ def test_actual_data_reads_preserve_source_bound_publication_and_member_witnesse
         gap.title == "Script namespace effects are not statically bounded"
         for gap in facts.coverage.gaps
     )
+
+
+@pytest.mark.parametrize(
+    "consumer,provider,expected",
+    [
+        (
+            "import {create as alias} from './scene.js'; alias();",
+            "export function create() {}",
+            "PASS",
+        ),
+        ("import {hidden} from './scene.js'; hidden();", "export function hidden() {}", "FAIL"),
+        ("import {create} from './scene.js'; create();", "function create() {}", "UNKNOWN"),
+        ("import {create} from './scene.js'; create();", None, "UNKNOWN"),
+        (
+            "import * as ns from './scene.js'; ns.create();",
+            "export function create() {}",
+            "UNKNOWN",
+        ),
+        (
+            "export {}; const root = window; root.Scene.search();",
+            "export function create() {}",
+            "UNKNOWN",
+        ),
+        ("export {}; window['Scene']['search']();", "export function create() {}", "UNKNOWN"),
+    ],
+)
+def test_named_esm_boundary_permissions_require_source_export_evidence(
+    tmp_path, consumer, provider, expected
+):
+    components = [
+        {
+            "id": name,
+            "label": name,
+            "role": "component",
+            "packages": [],
+            "exact_modules": [f"browser.src.{name}_x2e_js"],
+            "requires": [
+                {
+                    "component": "scene",
+                    "through": ["browser.src.scene_x2e_js:create"],
+                    "rationale": "Use the declared source port.",
+                }
+            ]
+            if name == "consumer"
+            else [],
+            "responsibilities": [f"Own {name}."],
+            "forbidden_responsibilities": [],
+            "provenance": ["docs/target.md"],
+            "decided_by": "architect",
+        }
+        for name in ("consumer", "scene")
+    ]
+    contract = {
+        "schema_version": "2.2.0",
+        "components": components,
+        "rules": [
+            {
+                "id": "ports",
+                "kind": "complete_requires",
+                "rationale": "Bound imports.",
+                "provenance": ["docs/target.md"],
+                "decided_by": "architect",
+            }
+        ],
+    }
+    files = {
+        "src/consumer.js": consumer,
+        "tsconfig.json": json.dumps(
+            {
+                "compilerOptions": {
+                    "allowJs": True,
+                    "module": "esnext",
+                    "moduleResolution": "node",
+                },
+                "include": ["src"],
+            }
+        ),
+        "contract.json": json.dumps(contract),
+        "docs/target.md": "Boundary intent.\n",
+    }
+    if provider is not None:
+        files["src/scene.js"] = provider
+    root = _prepare_repo(tmp_path, files)
+    config = ScanConfig(("src",), "browser", "contract.json", "unused", language="typescript")
+    result, artifact = run_report(root, config=config, analyzer=Observer(_TypeScriptCollector()))
+    assert artifact is not None, result.diagnostics
+    [assessment] = result.rule_assessments
+    assert assessment.status == expected
+    if expected != "UNKNOWN":
+        assert assessment.evaluation_proven
+        assert assessment.undecided == 0
+    assert (root / "contract.json").read_text() == json.dumps(contract)
