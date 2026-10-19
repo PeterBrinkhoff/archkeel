@@ -13,7 +13,7 @@ PR #604, preserving supported behavior, conservative evidence and all existing
 rule meanings. Contract definition is the first milestone; complete code alignment
 and validation in the same PR are the end goal. The two implemented boundary
 refactorings are a milestone, not evidence of complete architecture conformance.
-Do not merge automatically.
+Merge only after the complete acceptance below; the user has authorized merge and release.
 
 The user selected source-declaration semantics: compare direct declarations and
 traceable source bindings, without claiming stability against later runtime effects.
@@ -90,7 +90,7 @@ Compatibility bridges constrain migration, not the permanent responsibility mode
 
 ## Reviewed physical scope
 
-The recursive structure review inventories all 145 maintained Python modules,
+The recursive structure review inventories all 146 maintained Python modules,
 including initializers, plus authored browser assets. It checks module responsibilities,
 imports, declared owners and direct I/O sites; it does not prove every function body
 correct. Counts below exclude initializers. A large count triggers review, not a split.
@@ -104,7 +104,7 @@ Empty experiment directories are not source packages.
 | `analyzer/dart` | 6 / 0 | Structural review plus snapshot/syntax/resolution/collection declarations and ports; no new complete parser/resolver semantic review. Keep the five existing owners; file length alone does not justify a split. |
 | `analyzer/typescript` | 7 / 0 | Structural review plus input/configuration/syntax/resolution port declarations; no new complete parser/resolver semantic review. Keep these independently changing owners. |
 | `check` | 18 / 2 | Traced shared repository observation, UML authentication, report/saved-report boundaries and Check input ordering; remaining workflow helpers structurally reviewed. Keep shared observation below command consumers. |
-| `check/evaluation` | 7 / 0 | Located coverage composition/profile-rule callers and reviewed responsibility placement; the recursive interpreter needs its separate proof review. `evaluate` composes coverage and `rules` owns availability; no coverage module is needed. |
+| `check/evaluation` | 8 / 0 | Reviewed coverage composition/profile-rule callers and call-owner binding/target proof. The recursive interpreter has separate source/body permission controls. `evaluate` composes coverage and `rules` owns availability; no coverage module is needed. |
 | `check/validation` | 8 / 0 | Read public validation/error entry and containment handling; diagnostic modules structurally reviewed. Keep focused diagnostics under validation orchestration. |
 | `cli` | 5 / 0 | Read parser construction, nominal input targets and adapter wiring; remaining dispatch/configuration bodies structurally reviewed. Keep typed choices in arguments and parser/configuration I/O in composition. |
 | `host` | 1 / 0 | Read the complete environment/identity/subprocess/decode/record path. Keep forge acquisition outside Check; fail bounded requests through typed ordering errors. |
@@ -359,14 +359,15 @@ capability and checker-retirement work. No P0 is closed by this PR's partial evi
 Accept only a frozen candidate with complete scope, zero required UNKNOWNs,
 no diagnostics or violations, and passing relevant Core/report/browser,
 packaging and final-head CI checks. Earlier receipts do not validate later code.
-The 120-second report ceiling, 837 unresolved-call ceiling and 52 typing-position
-ceiling remain unchanged; proved reductions use the ordinary downward ratchet.
+The 120-second report ceiling and 52 typing-position ceiling remain unchanged.
+The native writer tightened unresolved calls from 837 to 835 without `--accept-new`;
+that tighter ceiling remains binding.
 Microbenchmarks do not establish whole-report acceptance.
 
 Preserve every original field of 921 UML entities, exclusions and 121 original
 rules. The accepted Mapping replacement removes only its obsolete constructor-map
 allowance and corrects the rationale. Nine Python contracts add four constraints
-and 136 entities; one separate browser contract adds five owners and one rule.
+and 151 entities, including the call-owner model; one separate browser contract adds five owners and one rule.
 The original 59-to-58 scope reconciliation is not an evidence gain.
 
 The target requires both `collect → collect_response → _exchange` edges. Native

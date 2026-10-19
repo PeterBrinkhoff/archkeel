@@ -25,11 +25,12 @@ def _target_binding_static(target: RawRecord, symbols: Sequence[RawRecord]) -> b
     if target["kind"] == "method":
         parent = data.get("parent")
         owners = [r for r in symbols if r["data"]["qualified_name"] == parent]
+        if len(owners) != 1 or owners[0]["kind"] != "class":
+            return False
+        owner_data: dict[str, object] = owners[0]["data"]
         return (
-            len(owners) == 1
-            and owners[0]["kind"] == "class"
-            and owners[0]["data"].get("source_binding_unique") is True
-            and owners[0]["data"].get("source_member_binding_static") is True
+            owner_data.get("source_binding_unique") is True
+            and owner_data.get("source_member_binding_static") is True
         )
     return data.get("source_binding_unique") is True and data.get("source_binding_static") is True
 
