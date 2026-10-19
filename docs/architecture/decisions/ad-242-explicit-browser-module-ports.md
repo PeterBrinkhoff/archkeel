@@ -23,6 +23,8 @@ A handwritten module rewriter or an ELK purity whitelist would add weaker machin
 Alex expressly accepts an unresolved-call ceiling of 840, replacing 832 after the
 eight additional Source/browser calls. The canonical baseline amendment binds this
 specific change. No other rule, debt budget or performance gate changes.
+The later canonical-vendor size correction naturally reduces the measurement to
+839; the native baseline records that exact value without debt-only refactoring.
 
 Required checks: actual-source PASS, forbidden-port FAIL, missing-publication
 UNKNOWN or build failure, stale-output rejection, offline browser navigation,

@@ -382,8 +382,9 @@ no diagnostics or violations, and passing relevant Core/report/browser,
 packaging and final-head CI checks. Earlier receipts do not validate later code.
 The 120-second report ceiling and 52 typing-position ceiling remain unchanged.
 Earlier native integrations tightened unresolved calls from 837 to 832. After
-eight additional Source/browser calls, Alex expressly accepts 840 as the new
-ceiling, bound by the canonical baseline amendment. All other
+eight additional Source/browser calls, Alex expressly authorizes up to 840.
+The canonical-vendor size correction reduces the current measurement to 839;
+the native baseline records that exact value, bound by the amendment. All other
 debt budgets and rules remain unchanged.
 Microbenchmarks do not establish whole-report acceptance.
 

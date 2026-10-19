@@ -2526,6 +2526,7 @@ def test_generic_uml_entry_keeps_theme_return_selection_and_has_no_fragment(tmp_
         assert "not recorded in this snapshot" in page.locator(".flow-alternative").inner_text()
         page.get_by_role("button", name="Open architecture map", exact=True).click()
         assert "scope=not-a-component" not in page.url
+        _wait_for_layout(page)
         assert page.locator('.flow-nodes [data-uml-id="core"]').is_visible()
         assert not errors
     finally:
