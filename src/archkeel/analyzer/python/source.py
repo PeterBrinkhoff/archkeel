@@ -2130,6 +2130,148 @@ def _class_value_expressions(module: ParsedModule) -> Iterator[ast.expr]:
             yield expression
 
 
+_CLASS_VALUE_TYPE_HEADS: Final = frozenset({"dict", "list", "tuple", "set", "frozenset"})
+_CLASS_VALUE_BUILTIN_TYPES: Final = _CLASS_VALUE_TYPE_HEADS | {
+    "str",
+    "int",
+    "float",
+    "bool",
+    "bytes",
+    "object",
+    "type",
+    "complex",
+}
+
+
+def _prove_class_numeric_value(
+    provider: ParsedModule,
+    expression: ast.expr,
+    pending: frozenset[tuple[str, str]],
+    modules: Mapping[str, ParsedModule],
+    imported_bindings: Mapping[tuple[str, str], tuple[str, str]],
+    definitions: dict[tuple[str, str], ast.expr],
+) -> tuple[bool, frozenset[tuple[str, str]]] | None:
+    if any(isinstance(node, ast.Call) for node in ast.walk(expression)):
+        return None
+    try:
+        value = ast.literal_eval(expression)
+    except (ValueError, TypeError, SyntaxError, RecursionError):
+        pass
+    else:
+        return isinstance(value, int | float | complex), frozenset()
+    if isinstance(expression, ast.Name):
+        binding = (provider.module, expression.id)
+        if binding in pending or expression.id not in stable_direct_module_bindings(provider):
+            return None
+        origin = imported_bindings.get(binding, binding)
+        declaration = definitions.get(origin)
+        if declaration is None or (origin == binding and declaration.lineno >= expression.lineno):
+            return None
+        result = _prove_class_numeric_value(
+            modules[origin[0]],
+            declaration,
+            pending | {binding, origin},
+            modules,
+            imported_bindings,
+            definitions,
+        )
+        if result is not None:
+            numeric, dependencies = result
+            return numeric, dependencies | {binding, origin}
+    elif isinstance(expression, ast.BinOp) and isinstance(
+        expression.op,
+        ast.Add
+        | ast.Sub
+        | ast.Mult
+        | ast.Div
+        | ast.FloorDiv
+        | ast.Mod
+        | ast.Pow
+        | ast.LShift
+        | ast.RShift
+        | ast.BitOr
+        | ast.BitAnd
+        | ast.BitXor,
+    ):
+        left = _prove_class_numeric_value(
+            provider, expression.left, pending, modules, imported_bindings, definitions
+        )
+        right = _prove_class_numeric_value(
+            provider, expression.right, pending, modules, imported_bindings, definitions
+        )
+        if left is not None and right is not None and left[0] and right[0]:
+            return True, left[1] | right[1]
+    elif isinstance(expression, ast.UnaryOp) and isinstance(
+        expression.op, ast.UAdd | ast.USub | ast.Invert
+    ):
+        operand = _prove_class_numeric_value(
+            provider, expression.operand, pending, modules, imported_bindings, definitions
+        )
+        if operand is not None and operand[0]:
+            return operand
+    return None
+
+
+def _prove_class_type_value(
+    provider: ParsedModule,
+    expression: ast.expr,
+    statement: ast.AST,
+    modules: Mapping[str, ParsedModule],
+    imported_bindings: Mapping[tuple[str, str], tuple[str, str]],
+    classes: dict[tuple[str, str], ast.ClassDef],
+    unsafe_providers: AbstractSet[str],
+) -> frozenset[tuple[str, str]] | None:
+    if isinstance(expression, ast.Constant) and expression.value is None:
+        return frozenset()
+    if isinstance(expression, ast.Name):
+        if _bare_builtin(provider, expression, _CLASS_VALUE_BUILTIN_TYPES):
+            return frozenset()
+        if not bound_once_before(provider.tree.body, statement, expression.id):
+            return None
+        binding = (provider.module, expression.id)
+        origin = imported_bindings.get(binding, binding)
+        definition = classes.get(origin)
+        if definition is None:
+            return None
+        owner = modules[origin[0]]
+        class_dependencies = frozenset({binding, origin})
+        if not definition.bases and class_creation_static(
+            owner, definition, owner_exposure_only=False, unsafe_providers=unsafe_providers
+        ):
+            return class_dependencies
+        if (
+            len(definition.bases) == 1
+            and resolve_static_name(owner, definition.bases[0]) in NATIVE_TYPED_DICT_BASES
+            and native_owner_creation_static(owner, definition, unsafe_providers)
+        ):
+            base = definition.bases[0]
+            root = base.value if isinstance(base, ast.Attribute) else base
+            if isinstance(root, ast.Name):
+                return class_dependencies | {(owner.module, root.id)}
+        return None
+    if isinstance(expression, ast.Subscript) and _bare_builtin(
+        provider, expression.value, _CLASS_VALUE_TYPE_HEADS
+    ):
+        arguments: Sequence[ast.expr] = (
+            expression.slice.elts
+            if isinstance(expression.slice, ast.Tuple)
+            else (expression.slice,)
+        )
+    elif isinstance(expression, ast.BinOp) and isinstance(expression.op, ast.BitOr):
+        arguments = (expression.left, expression.right)
+    else:
+        return None
+    argument_dependencies: set[tuple[str, str]] = set()
+    for argument in arguments:
+        proof = _prove_class_type_value(
+            provider, argument, statement, modules, imported_bindings, classes, unsafe_providers
+        )
+        if proof is None:
+            return None
+        argument_dependencies |= proof
+    return frozenset(argument_dependencies)
+
+
 def proven_class_value_candidates(
     modules: Mapping[str, ParsedModule],
     imported_bindings: Mapping[tuple[str, str], tuple[str, str]],
@@ -2148,74 +2290,11 @@ def proven_class_value_candidates(
         if isinstance(target, ast.Name) and target.id in stable_direct_module_bindings(provider)
     }
 
-    def prove(
-        provider: ParsedModule, expression: ast.expr, pending: frozenset[tuple[str, str]]
-    ) -> tuple[bool, frozenset[tuple[str, str]]] | None:
-        if any(isinstance(node, ast.Call) for node in ast.walk(expression)):
-            return None
-        try:
-            value = ast.literal_eval(expression)
-        except (ValueError, TypeError, SyntaxError, RecursionError):
-            pass
-        else:
-            return isinstance(value, int | float | complex), frozenset()
-        if isinstance(expression, ast.Name):
-            binding = (provider.module, expression.id)
-            if binding in pending or expression.id not in stable_direct_module_bindings(provider):
-                return None
-            origin = imported_bindings.get(binding, binding)
-            declaration = definitions.get(origin)
-            if declaration is None or (
-                origin == binding and declaration.lineno >= expression.lineno
-            ):
-                return None
-            result = prove(modules[origin[0]], declaration, pending | {binding, origin})
-            if result is not None:
-                numeric, dependencies = result
-                return numeric, dependencies | {binding, origin}
-        elif isinstance(expression, ast.BinOp) and isinstance(
-            expression.op,
-            ast.Add
-            | ast.Sub
-            | ast.Mult
-            | ast.Div
-            | ast.FloorDiv
-            | ast.Mod
-            | ast.Pow
-            | ast.LShift
-            | ast.RShift
-            | ast.BitOr
-            | ast.BitAnd
-            | ast.BitXor,
-        ):
-            left = prove(provider, expression.left, pending)
-            right = prove(provider, expression.right, pending)
-            if left is not None and right is not None and left[0] and right[0]:
-                return True, left[1] | right[1]
-        elif isinstance(expression, ast.UnaryOp) and isinstance(
-            expression.op, ast.UAdd | ast.USub | ast.Invert
-        ):
-            operand = prove(provider, expression.operand, pending)
-            if operand is not None and operand[0]:
-                return operand
-        return None
-
-    type_heads = frozenset({"dict", "list", "tuple", "set", "frozenset"})
-    builtin_types = type_heads | {
-        "str",
-        "int",
-        "float",
-        "bool",
-        "bytes",
-        "object",
-        "type",
-        "complex",
-    }
     builtin_dependencies = frozenset(
         (name, node.id)
         for name, provider in modules.items()
         for node in provider.all_nodes
-        if isinstance(node, ast.Name) and node.id in builtin_types
+        if isinstance(node, ast.Name) and node.id in _CLASS_VALUE_BUILTIN_TYPES
     )
     for name in modules:
         for binding in modules[name].aliases:
@@ -2237,62 +2316,13 @@ def proven_class_value_candidates(
     }
     unsafe = unsafe_providers | frozenset(modules)
 
-    def prove_type(
-        provider: ParsedModule, expression: ast.expr, statement: ast.AST
-    ) -> frozenset[tuple[str, str]] | None:
-        if isinstance(expression, ast.Constant) and expression.value is None:
-            return frozenset()
-        if isinstance(expression, ast.Name):
-            if _bare_builtin(provider, expression, builtin_types):
-                return frozenset()
-            if not bound_once_before(provider.tree.body, statement, expression.id):
-                return None
-            binding = (provider.module, expression.id)
-            origin = imported_bindings.get(binding, binding)
-            definition = classes.get(origin)
-            if definition is None:
-                return None
-            owner = modules[origin[0]]
-            class_dependencies = frozenset({binding, origin})
-            if not definition.bases and class_creation_static(
-                owner, definition, owner_exposure_only=False, unsafe_providers=unsafe
-            ):
-                return class_dependencies
-            if (
-                len(definition.bases) == 1
-                and resolve_static_name(owner, definition.bases[0]) in NATIVE_TYPED_DICT_BASES
-                and native_owner_creation_static(owner, definition, unsafe)
-            ):
-                base = definition.bases[0]
-                root = base.value if isinstance(base, ast.Attribute) else base
-                if isinstance(root, ast.Name):
-                    return class_dependencies | {(owner.module, root.id)}
-            return None
-        if isinstance(expression, ast.Subscript) and _bare_builtin(
-            provider, expression.value, type_heads
-        ):
-            arguments: Sequence[ast.expr] = (
-                expression.slice.elts
-                if isinstance(expression.slice, ast.Tuple)
-                else (expression.slice,)
-            )
-        elif isinstance(expression, ast.BinOp) and isinstance(expression.op, ast.BitOr):
-            arguments = (expression.left, expression.right)
-        else:
-            return None
-        argument_dependencies: set[tuple[str, str]] = set()
-        for argument in arguments:
-            proof = prove_type(provider, argument, statement)
-            if proof is None:
-                return None
-            argument_dependencies |= proof
-        return frozenset(argument_dependencies)
-
     candidates: dict[str, dict[ast.expr, frozenset[tuple[str, str]]]] = {}
     for name, module in modules.items():
         values: dict[ast.expr, frozenset[tuple[str, str]]] = {}
         for expression in _class_value_expressions(module):
-            proof = prove(module, expression, frozenset())
+            proof = _prove_class_numeric_value(
+                module, expression, frozenset(), modules, imported_bindings, definitions
+            )
             if proof is not None:
                 values[expression] = proof[1]
         if type_values_static:
@@ -2300,7 +2330,9 @@ def proven_class_value_candidates(
                 value = admitted_type_alias_value(module, statement)
                 if value is None or binding not in stable_direct_module_bindings(module):
                     continue
-                type_proof = prove_type(module, value, statement)
+                type_proof = _prove_class_type_value(
+                    module, value, statement, modules, imported_bindings, classes, unsafe
+                )
                 if type_proof is not None:
                     values[value] = type_proof | builtin_dependencies | {(name, binding)}
         module._proven_class_values = frozenset(values)

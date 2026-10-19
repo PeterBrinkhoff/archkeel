@@ -1642,16 +1642,19 @@ def test_inherited_reexport_retains_result_candidates_at_each_scope(
 
 @pytest.mark.parametrize("published_module", [False, True])
 @pytest.mark.parametrize(
-    "alias",
+    ("alias", "members_static"),
     [
-        "from typing import Literal\nPayload = Literal['a', 'b']\n",
-        "from enum import Enum\nfrom typing import Literal\n"
-        "class Kind(Enum):\n    A = 'a'\n    B = 'b'\n"
-        "Payload = Literal[Kind.A, Kind.B]\n",
+        ("from typing import Literal\nPayload = Literal['a', 'b']\n", True),
+        (
+            "from enum import Enum\nfrom typing import Literal\n"
+            "class Kind(Enum):\n    A = 'a'\n    B = 'b'\n"
+            "Payload = Literal[Kind.A, Kind.B]\n",
+            False,
+        ),
     ],
 )
 def test_public_dto_field_reaches_alias_name_without_proving_body(
-    tmp_path: Path, published_module: bool, alias: str
+    tmp_path: Path, published_module: bool, alias: str, members_static: bool
 ) -> None:
     unused, facade_types, _, usage_unknown = _generic_facade_diagnostics(
         tmp_path,
@@ -1664,8 +1667,20 @@ def test_public_dto_field_reaches_alias_name_without_proving_body(
         contract = json.loads(contract_path.read_text())
         contract["components"][0]["public"][0] = "sample.api"
         contract_path.write_text(json.dumps(contract))
-        result = _observe(tmp_path)
-        assert result.observation is not None
+    result = _observe(tmp_path)
+    assert result.observation is not None
+    [payload] = [
+        item
+        for item in result.observation.records("symbols") or ()
+        if item.data.get("qualified_name") == "sample.models.Payload"
+    ]
+    assert payload.data.get("source_binding_unique") is True
+    assert payload.data.get("source_member_binding_static") is members_static
+    assert not any(
+        item.kind == "boundary_type_allowance"
+        for item in result.observation.records("typing_signals") or ()
+    )
+    if published_module:
         diagnostics = interface_diagnostics(parse_contract(contract), result.observation)
         assert not any(d.subject == "sample.models:Payload" for d in diagnostics)
     assert "sample.models:Payload" not in unused

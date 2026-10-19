@@ -1224,11 +1224,13 @@ def _bound_root_mapping_union(
     return typed
 
 
-def _alias_binding_static(binding: RecordData | _AmbiguousBinding) -> bool:
+def _alias_binding_static(
+    binding: RecordData | _AmbiguousBinding, *, member_surface: bool = True
+) -> bool:
     return (
         isinstance(binding, dict)
         and binding.get("source_binding_unique") is True
-        and binding.get("source_member_binding_static") is True
+        and (not member_surface or binding.get("source_member_binding_static") is True)
     )
 
 
@@ -4058,7 +4060,7 @@ def _declared_field_reach(
     static_routes = {
         f"{owner}.{name}"
         for owner, name in bindings
-        if _alias_binding_static(bindings[(owner, name)])
+        if _alias_binding_static(bindings[(owner, name)], member_surface=False)
     }
     for field in data.get("fields", ()):
         annotation = field.get("annotation")
@@ -4097,11 +4099,10 @@ def _declared_field_reach(
             and _declared_field_binding_static(data, field["name"])
             and isinstance(origin, tuple)
             and isinstance(provider, dict)
-            and _alias_binding_static(provider)
-            and (route is None or _alias_binding_static(route))
+            and _alias_binding_static(provider, member_surface=False)
+            and (route is None or _alias_binding_static(route, member_surface=False))
             and chain_static
             and shape is not None
-            and _base_route_member_static(shape, module, bindings, classes)
             and verdict.undecidable not in {_Cause.AMBIGUOUS_BINDING, _Cause.UNRESOLVED}
         )
         if certain:

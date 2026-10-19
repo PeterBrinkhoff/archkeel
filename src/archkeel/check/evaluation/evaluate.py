@@ -347,12 +347,9 @@ def _inside_rule_results(
         available_by_owner[mount.parent_id] = source_modules
         contract_by_owner[mount.parent_id] = scoped
         failures.extend(scope_failures)
-        scoped_unknowns: list[RawRecord] = []
-        for item in source_unknowns:
-            data: dict[str, object] = item["data"]
-            if data.get("source_module") in source_modules:
-                scoped_unknowns.append(item)
-        unknowns.extend(dynamic_dependency_limits(scoped, scoped_unknowns))
+        unknowns.extend(
+            dynamic_dependency_limits(scoped, source_unknowns, source_modules=source_modules)
+        )
         results = _evaluate_inside_contract(
             parent,
             scoped,

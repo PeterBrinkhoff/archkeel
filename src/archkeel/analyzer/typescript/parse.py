@@ -13,7 +13,7 @@ from __future__ import annotations
 import re
 from bisect import bisect_right
 from collections import Counter as _Counter
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field, replace
 from enum import Enum
 from functools import cache
@@ -238,6 +238,11 @@ class _SpecialName(Enum):
     EVAL = "eval"
     FUNCTION = "Function"
     REFLECT = "Reflect"
+    OBJECT = "Object"
+    ASSIGN = "assign"
+    SET = "set"
+    DELETE_PROPERTY = "deleteProperty"
+    UNKNOWN_MEMBER = "*"
     GET_PROTOTYPE_OF = "getPrototypeOf"
     GET_OWN_PROPERTY_DESCRIPTOR = "getOwnPropertyDescriptor"
     GET_OWN_PROPERTY_DESCRIPTORS = "getOwnPropertyDescriptors"
@@ -257,6 +262,23 @@ class _LoaderModule(Enum):
 _NODE_KINDS: Final[dict[str, _NodeKind]] = {item.value: item for item in _NodeKind}
 _MODIFIER_WORDS: Final[dict[str, _Modifier]] = {item.value: item for item in _Modifier}
 _SPECIAL_NAMES: Final[dict[str, _SpecialName]] = {item.value: item for item in _SpecialName}
+_SCRIPT_EFFECT_NAMES: Final = frozenset(
+    {
+        _SpecialName.CONSTRUCTOR,
+        _SpecialName.EVAL,
+        _SpecialName.FUNCTION,
+        _SpecialName.REFLECT,
+        _SpecialName.GET_PROTOTYPE_OF,
+        _SpecialName.GET_OWN_PROPERTY_DESCRIPTOR,
+        _SpecialName.GET_OWN_PROPERTY_DESCRIPTORS,
+        _SpecialName.DEFINE_PROPERTY,
+        _SpecialName.DEFINE_PROPERTIES,
+        _SpecialName.SET_PROTOTYPE_OF,
+        _SpecialName.PROTO,
+        _SpecialName.SET_TIMEOUT,
+        _SpecialName.SET_INTERVAL,
+    }
+)
 _LOADER_MODULES: Final[dict[str, _LoaderModule]] = {item.value: item for item in _LoaderModule}
 _SCRIPT_ROOTS: Final = frozenset(item.value for item in ScriptRoot)
 _SCRIPT_FUNCTIONS: Final = frozenset(
@@ -326,6 +348,16 @@ _QUERIES: Final = {
         (call_expression function: (identifier) @callee (#eq? @callee "require")) @require
         """,
     "comments": "(comment) @comment",
+    "umd_writes": """
+        [(with_statement) (function_declaration) (function_expression)
+         (generator_function_declaration) (generator_function) (arrow_function)
+         (method_definition) (catch_clause) (for_in_statement)
+         (class) (class_declaration) (variable_declarator)] @binding
+        [(assignment_expression) (augmented_assignment_expression)
+         (for_in_statement) (update_expression) (unary_expression)] @write
+        (call_expression function: [(member_expression) (subscript_expression)
+         (parenthesized_expression)]) @call
+        """,
     "errors": "[(ERROR) (MISSING)] @error",
     "require_names": """
         ([(identifier) (type_identifier) (shorthand_property_identifier)
@@ -1597,11 +1629,13 @@ def _static_path(node: _RawNode) -> tuple[str, ...]:
     return ()
 
 
-def _script_bindings(source: _Source) -> tuple[dict[_RawNode, dict[str, int]], set[_RawNode]]:
+def _script_bindings(
+    source: _Source, nodes: Iterable[_RawNode] | None = None
+) -> tuple[dict[_RawNode, dict[str, int]], set[_RawNode]]:
     bindings: dict[_RawNode, dict[str, int]] = {}
     ambiguous: set[_RawNode] = set()
     patterns: list[tuple[_RawNode, _RawNode]] = []
-    for node in _walk(source.root):
+    for node in _walk(source.root) if nodes is None else nodes:
         kind = _node_kind(node)
         if kind is _NodeKind.WITH_STATEMENT:
             ambiguous.add(node)
@@ -2191,7 +2225,7 @@ def _script_intrinsic_effect(node: _RawNode) -> bool:
         )
         else None
     )
-    if intrinsic not in {None, _SpecialName.REQUIRE}:
+    if intrinsic in _SCRIPT_EFFECT_NAMES:
         target = (
             parent
             if parent is not None
@@ -2254,7 +2288,7 @@ def _script_opaque_writes(
         literal = _literal(node.child_by_field_name("index"))
         indexed_intrinsic = _SPECIAL_NAMES.get(literal) if literal is not None else None
         if (
-            indexed_intrinsic not in {None, _SpecialName.REQUIRE}
+            indexed_intrinsic in _SCRIPT_EFFECT_NAMES
             or receiver is not None
             and _script_free(receiver, node, bindings, ambiguous_bindings)
             or literal is None
@@ -2268,7 +2302,7 @@ def _script_opaque_writes(
         if key is not None and (
             _node_kind(key) is _NodeKind.COMPUTED_PROPERTY_NAME
             or _node_kind(key) is _NodeKind.STRING
-            and (literal_key is None or key_intrinsic not in {None, _SpecialName.REQUIRE})
+            and (literal_key is None or key_intrinsic in _SCRIPT_EFFECT_NAMES)
         ):
             yield source.span(node)
 
@@ -2720,7 +2754,20 @@ def _script_write_alias_path(
     source: _Source,
     bindings: dict[_RawNode, dict[str, int]],
     seen: tuple[_RawNode, ...],
+    declarations_by_binding: dict[tuple[_RawNode, str], list[_RawNode]] | None = None,
+    global_this_owner: _RawNode | None = None,
 ) -> tuple[str, ...] | None:
+    target = _unparenthesized(target)
+    if _node_kind(target) is _NodeKind.THIS and global_this_owner is not None:
+        owner = next(
+            (
+                parent
+                for parent in _ancestors(target)
+                if _node_kind(parent) in _SCRIPT_FUNCTIONS - {_NodeKind.ARROW_FUNCTION}
+            ),
+            None,
+        )
+        return () if owner == global_this_owner else None
     path = _static_path(target)
     if not path:
         return None
@@ -2731,29 +2778,47 @@ def _script_write_alias_path(
             return None
         receiver = object_node
     if not _valid_unicode_member_name(receiver):
-        return None
+        return () if declarations_by_binding is not None else None
     scope = _script_bound_scope(receiver, path[0], bindings)
     if scope is None:
         return path[1:] if path[0] in _SCRIPT_ROOTS else path
-    if bindings[scope].get(path[0]) != 1:
+    declarations = (
+        declarations_by_binding.get((scope, path[0]), [])
+        if declarations_by_binding is not None
+        else [
+            node
+            for node in _walk(scope)
+            if _node_kind(node) is _NodeKind.VARIABLE_DECLARATOR
+            and (name := node.child_by_field_name("name")) is not None
+            and _node_kind(name) is _NodeKind.IDENTIFIER
+            and _text(name) == path[0]
+            and _script_bound_scope(name, path[0], bindings) == scope
+        ]
+    )
+    if declarations_by_binding is None and (
+        bindings[scope].get(path[0]) != 1 or len(declarations) != 1
+    ):
         return None
-    declarations = [
-        node
-        for node in _walk(scope)
-        if _node_kind(node) is _NodeKind.VARIABLE_DECLARATOR
-        and (name := node.child_by_field_name("name")) is not None
-        and _node_kind(name) is _NodeKind.IDENTIFIER
-        and _text(name) == path[0]
-        and _script_bound_scope(name, path[0], bindings) == scope
-    ]
-    if len(declarations) != 1 or declarations[0] in seen:
-        return None
-    declaration = declarations[0]
-    value = declaration.child_by_field_name("value")
-    if value is None:
-        return None
-    origin = _script_write_alias_path(value, source, bindings, (*seen, declaration))
-    return (*origin, *path[1:]) if origin is not None else None
+    origins: list[tuple[str, ...]] = []
+    for declaration in declarations:
+        if declaration in seen:
+            continue
+        value = declaration.child_by_field_name("value")
+        if value is None and declarations_by_binding is not None:
+            value = declaration.child_by_field_name("right")
+        if value is None:
+            continue
+        origin = _script_write_alias_path(
+            value,
+            source,
+            bindings,
+            (*seen, declaration),
+            declarations_by_binding,
+            global_this_owner,
+        )
+        if origin is not None:
+            origins.append(origin)
+    return (*min(origins, key=len), *path[1:]) if origins else None
 
 
 def _script_factories(
@@ -3422,7 +3487,7 @@ def _umd_matches(actual: _RawNode, pattern: _RawNode, captures: dict[_UMDSlot, _
     )
 
 
-def umd_publication(rel: str, content: bytes) -> tuple[str, Span] | None:
+def umd_publication(rel: str, content: bytes) -> tuple[str, Span, frozenset[str] | None] | None:
     """Recognize only a closed UMD declaration envelope; its factory remains a runtime effect."""
     suffix = classify_file(rel)
     if (
@@ -3481,4 +3546,156 @@ def umd_publication(rel: str, content: bytes) -> tuple[str, Span] | None:
         False,
         _line_starts(content),
     )
-    return _text(publication), source.span(publication)
+    return _text(publication), source.span(publication), _umd_factory_global_writes(factory, source)
+
+
+def _umd_factory_global_writes(factory: _RawNode, source: _Source) -> frozenset[str] | None:
+    captures = source.captures("umd_writes", factory)
+    nodes = captures.get("binding", [])
+    bindings, _ = _script_bindings(source, nodes)
+    declarations: dict[tuple[_RawNode, str], list[_RawNode]] = {}
+    for node in (*nodes, *captures.get("write", [])):
+        name = node.child_by_field_name("name")
+        if name is not None and not _valid_unicode_member_name(name):
+            return None
+        if (
+            _node_kind(node) in {_NodeKind.VARIABLE_DECLARATOR, _NodeKind.ASSIGNMENT_EXPRESSION}
+            and (name := node.child_by_field_name("name") or node.child_by_field_name("left"))
+            is not None
+            and _node_kind(name) is _NodeKind.IDENTIFIER
+            and (scope := _script_bound_scope(name, _text(name), bindings)) is not None
+        ):
+            declared: list[_RawNode] = declarations.setdefault((scope, _text(name)), [])
+            declared.append(node)
+    written: set[str] = set()
+    for node in captures.get("write", []):
+        for target in _script_assignment_targets(node):
+            if (
+                _node_kind(target) is _NodeKind.IDENTIFIER
+                and _script_bound_scope(target, _text(target), bindings) is not None
+            ):
+                continue
+            path = _umd_global_path(target, factory, source, bindings, declarations)
+            if path is not None and len(path) <= 1:
+                if not path or path[0] is None:
+                    return None
+                written.add(path[0])
+    for node in captures.get("call", []):
+        function = node.child_by_field_name("function")
+        arguments = node.child_by_field_name("arguments")
+        intrinsic_path = _umd_intrinsic_path(function) if function is not None else ()
+        if (
+            len(intrinsic_path) == 2
+            and intrinsic_path[0]
+            in {_SpecialName.OBJECT, _SpecialName.REFLECT, _SpecialName.UNKNOWN_MEMBER}
+            and (
+                intrinsic_path[1] is _SpecialName.UNKNOWN_MEMBER
+                or intrinsic_path[1]
+                in {
+                    _SpecialName.DEFINE_PROPERTY,
+                    _SpecialName.DEFINE_PROPERTIES,
+                    _SpecialName.SET_PROTOTYPE_OF,
+                }
+                or intrinsic_path
+                in {
+                    (_SpecialName.OBJECT, _SpecialName.ASSIGN),
+                    (_SpecialName.REFLECT, _SpecialName.SET),
+                    (_SpecialName.REFLECT, _SpecialName.DELETE_PROPERTY),
+                }
+            )
+            and arguments is not None
+            and arguments.named_children
+            and _umd_global_path(
+                arguments.named_children[0], factory, source, bindings, declarations
+            )
+            == ()
+        ):
+            names = _umd_intrinsic_write_names(intrinsic_path, arguments)
+            if names is None:
+                return None
+            written.update(names)
+    return frozenset(written)
+
+
+def _umd_global_path(
+    target: _RawNode,
+    factory: _RawNode,
+    source: _Source,
+    bindings: dict[_RawNode, dict[str, int]],
+    declarations: dict[tuple[_RawNode, str], list[_RawNode]],
+) -> tuple[str | None, ...] | None:
+    receiver = _unparenthesized(target)
+    suffix: list[str | None] = []
+    while _node_kind(receiver) in {_NodeKind.MEMBER_EXPRESSION, _NodeKind.SUBSCRIPT_EXPRESSION}:
+        parent = receiver.child_by_field_name("object")
+        if parent is None:
+            return None
+        key = receiver.child_by_field_name("property")
+        suffix.append(
+            (_text(key) if _valid_unicode_member_name(key) else None)
+            if key is not None
+            else _literal(receiver.child_by_field_name("index"))
+        )
+        receiver = _unparenthesized(parent)
+    if len(suffix) > 1:
+        return tuple(suffix)
+    path = _script_write_alias_path(receiver, source, bindings, (), declarations, factory)
+    return (*path, *reversed(suffix)) if path is not None else None
+
+
+def _umd_intrinsic_write_names(
+    path: tuple[_SpecialName | None, ...], arguments: _RawNode
+) -> frozenset[str] | None:
+    values = arguments.named_children[1:]
+    if path in {
+        (_SpecialName.OBJECT, _SpecialName.ASSIGN),
+        (_SpecialName.OBJECT, _SpecialName.DEFINE_PROPERTIES),
+    }:
+        names: set[str] = set()
+        for value in values:
+            if _node_kind(value) is not _NodeKind.OBJECT:
+                return None
+            if any(
+                not _valid_unicode_member_name(member.child_by_field_name("key") or member)
+                for member in value.named_children
+            ):
+                return None
+            members = _script_object_values(value)
+            if not members and value.named_children:
+                return None
+            names.update(name for name, _ in members)
+        return frozenset(names)
+    if (
+        path[-1] in {_SpecialName.DEFINE_PROPERTY, _SpecialName.SET, _SpecialName.DELETE_PROPERTY}
+        and values
+    ):
+        name = _literal(values[0])
+        return frozenset({name}) if name is not None else None
+    return None
+
+
+def _unparenthesized(node: _RawNode) -> _RawNode:
+    while _node_kind(node) is _NodeKind.PARENTHESIZED_EXPRESSION:
+        child = next(iter(node.named_children), None)
+        if child is None:
+            break
+        node = child
+    return node
+
+
+def _umd_intrinsic_path(node: _RawNode) -> tuple[_SpecialName | None, ...]:
+    node = _unparenthesized(node)
+    receiver = node.child_by_field_name("object")
+    if receiver is None:
+        return ()
+    receiver = _unparenthesized(receiver)
+    key = node.child_by_field_name("property")
+    name = _text(key) if key is not None else _literal(node.child_by_field_name("index"))
+    if not _valid_unicode_member_name(receiver):
+        return (_SpecialName.UNKNOWN_MEMBER, _SpecialName.UNKNOWN_MEMBER)
+    if name is None or (key is not None and not _valid_unicode_member_name(key)):
+        return (
+            *(_special_name(part) for part in _static_path(receiver)),
+            _SpecialName.UNKNOWN_MEMBER,
+        )
+    return (*(_special_name(part) for part in _static_path(receiver)), _special_name(name))

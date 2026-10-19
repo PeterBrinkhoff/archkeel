@@ -111,9 +111,13 @@ def test_validate_accepts_archkeel_self_contract(self_validation: RunResult) -> 
     result = self_validation
     assert result.exit_code == 0
     assert result.observation_complete == "PASS"
-    # AD-72: declaring boundary_types for check and render leaves 16 positions the checker
-    # cannot read (15 a union, 1 an unentered generic), so the verdict says so -- exit 0.
-    assert result.declared_rules == "UNKNOWN"
+    assert result.declared_rules == "PASS"
+    assert not result.diagnostics
+    assert result.rule_assessments
+    assert all(
+        row.status == "PASS" and row.evaluation_proven and row.count == row.undecided == 0
+        for row in result.rule_assessments
+    )
     assert result.expectation_fulfilled == "n/a"
 
 

@@ -16,8 +16,13 @@ native source evidence and conservative UNKNOWNs.
 - **Literal dynamic dependencies.** Dependency rules include proven literal
   `importlib.import_module` and builtin `__import__` calls. Uncertain loader
   bindings remove complete proof only from affected rule scopes. Conditional and
-  later bindings retain the possible builtin fallback; mounted rules use their
-  clipped source domain.
+  later bindings retain the possible builtin fallback. Mounted rules use their
+  clipped source domain; module-cycle uncertainty follows the full scanned graph.
+- **JavaScript script-global dependencies.** The TypeScript adapter records supported
+  script-global crossings for existing dependency rules, including bounded alias,
+  factory-member and destructuring forms. Standard globals and UMD publications
+  require matching host and provider evidence. Ambiguous bindings and unsupported
+  effects remain UNKNOWN; source identity does not prove runtime availability.
 - **Call ownership.** Opt-in contract **3.7.0** adds `call_owner` for exact targets
   and allowed caller scopes. Bound calls can fail; unrelated same-named methods
   do not. Missing target proof stays UNKNOWN. Declared receivers prove a static

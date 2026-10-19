@@ -7,8 +7,9 @@ format, collector peer, generic interpreter or project-specific rule.
 [Supported forms and proof limits](../python-dynamic-dependencies.md) define the
 bounded observation. Existing dependency rules consume it without new policy.
 
-The existing 837-call ceiling and all other measurement budgets remain. New
-operations must use honest receiver types without exclusions or resolver whitelists.
+Native verification tightened the original 837-call ceiling to 835; the canonical
+baseline remains authoritative. Other measurement budgets remain. New operations
+must use honest receiver types without exclusions or resolver whitelists.
 The [shared amendment](compact-target-amendment.json) binds the combined contract
 and baseline; this capability adds no separate debt allowance.
 

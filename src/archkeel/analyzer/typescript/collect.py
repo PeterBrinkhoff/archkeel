@@ -227,6 +227,8 @@ class _Collection:
         self.script_source_writes: tuple[tuple[str, str | None, Span], ...] = ()
         self.script_vendors: dict[str, list[str]] = {}
         self.script_vendors_complete = False
+        self.script_vendor_writes: set[str] = set()
+        self.script_vendor_writes_unbounded = False
 
     def facts(self) -> SourceFacts:
         index = 0
@@ -572,6 +574,8 @@ class _Collection:
         return (
             not publishers
             and self.script_vendors_complete
+            and not self.script_vendor_writes_unbounded
+            and name not in self.script_vendor_writes
             and name not in self.script_vendors
             and name in standard_globals(self.config.options)
             and not self.config.partial
@@ -629,6 +633,11 @@ class _Collection:
             if publication is None or publication[0] in _SCRIPT_LOADER_NAMES:
                 return
             publications.setdefault(publication[0], []).append(package)
+            writes = publication[2]
+            if writes is None:
+                self.script_vendor_writes_unbounded = True
+            else:
+                self.script_vendor_writes.update(writes)
         self.script_vendors = publications
         self.script_vendors_complete = True
 
@@ -640,6 +649,8 @@ class _Collection:
         if (
             publishers
             or len(packages) != 1
+            or self.script_vendor_writes_unbounded
+            or collisions.intersection(self.script_vendor_writes)
             or any(syntax.first_error is not None for syntax in self.syntax.values())
             or any(
                 collisions.intersection(syntax.script_bindings) for syntax in self.syntax.values()

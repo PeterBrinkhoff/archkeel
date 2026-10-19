@@ -2581,10 +2581,10 @@
                 "default_known": true
               }
             ],
-            "returns": "tuple[str, Span] | None"
+            "returns": "tuple[str, Span, frozenset[str] | None] | None"
           },
           "responsibilities": [
-            "Recognize only the bounded UMD publication envelope; infer no runtime factory result."
+            "Observe the bounded UMD publication envelope and competing global writes; infer no runtime factory result."
           ]
         },
         {

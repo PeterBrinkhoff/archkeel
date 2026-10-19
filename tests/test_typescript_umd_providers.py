@@ -431,6 +431,119 @@ def test_standard_global_proof_requires_a_closed_declared_provider_inventory(tmp
         assert any(gap.data.get("resolution_dimension") == "imports" for gap in facts.coverage.gaps)
 
 
+def test_provider_factory_global_write_cannot_prove_a_standard_binding(tmp_path):
+    from archkeel.ir.facts import BuiltinTarget, ExternalPackageTarget, UnresolvedTarget
+
+    source = UMD.replace(
+        "return function Widget(){};",
+        "window.Math = {abs: function(){return 7}}; return function Widget(){};",
+    )
+    _repository(tmp_path, source=source)
+    (tmp_path / "main.js").write_text("Math.abs(-1); new Widget();")
+    facts = _native(tmp_path, v4=True)
+    assert not any(isinstance(target, BuiltinTarget) for target in facts.imports)
+    assert any(isinstance(target, UnresolvedTarget) for target in facts.imports)
+    assert any(isinstance(target, ExternalPackageTarget) for target in facts.imports)
+    assert any(gap.data.get("resolution_dimension") == "imports" for gap in facts.coverage.gaps)
+
+
+@pytest.mark.parametrize("written", ["Widget", "[key]"])
+def test_other_provider_factory_cannot_replace_a_vendor_binding(tmp_path, written):
+    from archkeel.ir.facts import ExternalPackageTarget, UnresolvedTarget
+
+    _repository(tmp_path)
+    target = "window" + (written if written.startswith("[") else "." + written)
+    source = UMD.replace("g.Widget", "g.Helper").replace(
+        "return function Widget(){};", target + " = replacement; return function Widget(){};"
+    )
+    _second_provider(tmp_path, source)
+    facts = _native(tmp_path, v4=True)
+    assert not any(isinstance(target, ExternalPackageTarget) for target in facts.imports)
+    assert any(isinstance(target, UnresolvedTarget) for target in facts.imports)
+
+
+def test_unrelated_provider_write_preserves_standard_global_identity(tmp_path):
+    from archkeel.ir.facts import BuiltinTarget
+
+    source = UMD.replace(
+        "return function Widget(){};", "window.Other = {}; return function Widget(){};"
+    )
+    _repository(tmp_path, source=source)
+    (tmp_path / "main.js").write_text("Math.abs(-1);")
+    facts = _native(tmp_path, v4=True)
+    assert len(facts.imports) == 1 and isinstance(facts.imports[0], BuiltinTarget)
+    assert facts.imports[0].name == "Math"
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "window.Math = replacement;",
+        r"window.M\u0061th = replacement;",
+        r"Object.assign(window, {M\u0061th: replacement});",
+        r"const Math = replacement; Object.assign(window, {M\u0061th});",
+        r"const Math = {value: replacement}; Object.defineProperties(window, {M\u0061th});",
+        "const Math = replacement; Object.assign(window, {Math});",
+        r"Object.defin\u0065Property(window, 'Math', {value: replacement});",
+        "Reflect[key](window, 'Math', replacement);",
+        "Object?.defineProperty?.((window), 'Math', {value: replacement});",
+        r"const ro\u006ft = window; root.Math = replacement;",
+        r"w\u0069ndow.Math = replacement;",
+        "(window).Math = replacement;",
+        "const root = (window); root.Math = replacement;",
+        "const root = ((window)); (root).Math = replacement;",
+        "globalThis.Math = replacement;",
+        "this.Math = replacement;",
+        "const root = this; root.Math = replacement;",
+        "Math = replacement;",
+        "const root = window; root.Math = replacement;",
+        "const root = window; const alias = root; alias.Math = replacement;",
+        "var root = window; var root; root.Math = replacement;",
+        "let root; root = window; root.Math = replacement;",
+        "let root = {}; if (flag) root = window; root.Math = replacement;",
+        "window['Math'] = replacement;",
+        "window[key] = replacement;",
+        "const root = window; root[key] = replacement;",
+        "Object.defineProperty(window, 'Math', {value: replacement});",
+        'Object["defineProperty"](window, "Math", {value: replacement});',
+        '(Object["defineProperty"])((window), "Math", {value: replacement});',
+        'Reflect["set"](window, "Math", replacement);',
+        "Reflect.set(window, 'Math', replacement);",
+        "Object.assign(window, {Math: replacement});",
+    ],
+)
+def test_umd_factory_explicit_global_rebindings_are_recorded(body):
+    source = UMD.replace("return function Widget(){};", body + "return function Widget(){};")
+    publication = umd_publication("vendor.js", source.encode())
+    assert publication is not None
+    assert publication[2] is None or "Math" in publication[2]
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "touch();",
+        "let Math; Math = replacement;",
+        "const window = {}; window.Math = replacement;",
+        "const local = {}; local.Math = replacement;",
+        "const local = ({}); (local).Math = replacement;",
+        "const window = {}; (window).Math = replacement;",
+        'Reflect["set"]({}, "Math", replacement);',
+        '(Object["defineProperty"])({}, "Math", {value: replacement});',
+        "const local = {}; local[key] = replacement;",
+        "let root = window; root = {};",
+        "window['namespace'][key] = replacement;",
+        "Object.assign({}, {Math: replacement});",
+        "Object.defineProperty({}, 'Math', {value: replacement});",
+    ],
+)
+def test_umd_factory_local_writes_and_opaque_effects_keep_source_identity(body):
+    source = UMD.replace("return function Widget(){};", body + "return function Widget(){};")
+    publication = umd_publication("vendor.js", source.encode())
+    assert publication is not None and publication[0] == "Widget"
+    assert publication[2] == frozenset()
+
+
 def test_vendor_checkout_preserves_authenticated_bytes_with_autocrlf(tmp_path):
     import subprocess
 

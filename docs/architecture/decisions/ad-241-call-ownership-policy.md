@@ -60,8 +60,9 @@ member mutation, missing scope, stale/missing capabilities, mounted rules and
 known FAIL beside UNKNOWN. This slice does not retire any EE checker until
 its full supported forms and installed-release evidence are equivalent.
 
-Call ownership retains the existing 837 unresolved-call and 52 typing-position
-ceilings. Closed attribute scopes for `CallOwnerRule` and `CallBinding` remain strict;
+Native verification tightened the original 837 unresolved-call ceiling to 835.
+The canonical baseline remains authoritative; the 52 typing-position ceiling remains.
+Closed attribute scopes for `CallOwnerRule` and `CallBinding` remain strict;
 required positions need positive proof, with no additional UNKNOWN allowance.
 The [shared amendment](compact-target-amendment.json) binds this target together with
 the three explicit version-API exports. This does not prove EE checker equivalence.

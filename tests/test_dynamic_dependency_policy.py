@@ -646,3 +646,81 @@ def test_dynamic_import_producer_calls_keep_explicit_receivers(tmp_path):
         ):
             failures.append((function, expression, selected_calls))
     assert not failures, failures
+
+
+@pytest.mark.parametrize("mount", ["root", "wide", "narrow"])
+@pytest.mark.parametrize("level", [None, "module"])
+@pytest.mark.parametrize("mode", ["unknown", "cycle", "acyclic", "shadowed", "missing"])
+def test_cycle_proof_uses_its_actual_graph_domain(tmp_path, mount, level, mode):
+    import json
+
+    from test_exact_module_ownership import _component, _observe_tree, _rule
+
+    contract = {
+        "schema_version": "2.1.0",
+        "components": [_component("owned", ["sample.owned"])],
+        "rules": [
+            _rule(
+                "no_component_cycles", components=["owned"], **({"level": level} if level else {})
+            )
+        ],
+    }
+    bodies = {
+        "unknown": "def load(name):\n    return __import__(name)\n",
+        "cycle": 'def load():\n    return __import__("sample.owned")\n',
+        "acyclic": 'def load():\n    return __import__("math")\n',
+        "shadowed": '__import__ = lambda name: name\n__import__("sample.owned")\n',
+        "missing": "VALUE = 1\n",
+    }
+    files = {"sample/__init__.py": "", "sample/unowned.py": bodies[mode]}
+    if mode != "missing":
+        files["sample/owned.py"] = "import sample.unowned\n"
+    if mount != "root":
+        files["inside.json"] = json.dumps(contract)
+        contract = {
+            "schema_version": "2.1.0",
+            "components": [
+                _component(
+                    "host", ["sample" if mount == "wide" else "sample.owned"], inside="inside.json"
+                )
+            ],
+            "rules": [],
+        }
+    result = _observe_tree(tmp_path, files, contract)
+    assert result.observation is not None, result.diagnostics
+    [row] = [
+        r
+        for r in rule_assessments(result.observation, undecided_by_rule={})
+        if r.kind == "no_component_cycles"
+    ]
+    expected = (
+        "UNKNOWN"
+        if mode == "missing" or level == "module" and mode == "unknown"
+        else "FAIL"
+        if level == "module" and mode == "cycle"
+        else "PASS"
+    )
+    assert row.status == expected, row
+    assert row.evaluation_proven is (expected != "UNKNOWN")
+    unknowns = result.observation.records("unknowns") or ()
+    gaps = [r for r in unknowns if r.kind == "dynamic_import_limit"]
+    assert bool(gaps) is (mode == "unknown")
+    if gaps:
+        assert all(
+            r.data.get("source_module") == "sample.unowned" and r.fact_ids and r.evidence_ids
+            for r in gaps
+        )
+    limits = [r for r in unknowns if r.kind == "dynamic_dependency_limit" and row.id in r.rule_ids]
+    assert bool(limits) is (level == "module" and mode == "unknown")
+    if limits:
+        assert all(
+            r.data.get("source_module") == "sample.unowned" and r.fact_ids and r.evidence_ids
+            for r in limits
+        )
+    violations = [r for r in result.observation.records("violations") or () if row.id in r.rule_ids]
+    if expected == "FAIL":
+        [violation] = violations
+        assert set(violation.subjects) == {"sample.owned", "sample.unowned"}
+        assert violation.fact_ids and violation.evidence_ids
+    else:
+        assert not violations

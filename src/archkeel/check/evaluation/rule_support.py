@@ -17,6 +17,7 @@ from archkeel.ir.model import (
     CompleteExternalScopeRule,
     CompleteRequiresRule,
     ComponentOwnership,
+    CycleLevel,
     EvidenceClass,
     ExternalDependencyScopeRule,
     ForbiddenDependencyRule,
@@ -184,7 +185,10 @@ def _rule_evaluation_receipt(
 
 
 def dynamic_dependency_limits(
-    contract: ArchitectureContract, unknowns: Sequence[RawRecord]
+    contract: ArchitectureContract,
+    unknowns: Sequence[RawRecord],
+    *,
+    source_modules: frozenset[str] | None = None,
 ) -> list[RawRecord]:
     """Withhold dependency receipts when a proven loader's target is unknown."""
     ownership = tuple(
@@ -197,6 +201,12 @@ def dynamic_dependency_limits(
             continue
         source = item["data"]["source_module"]
         for rule in contract.rules:
+            module_cycle = (
+                isinstance(rule, NoComponentCyclesRule) and rule.level is CycleLevel.MODULE
+            )
+            # Module SCCs can close through sources outside a mounted ownership scope.
+            if source_modules is not None and source not in source_modules and not module_cycle:
+                continue
             if isinstance(rule, ForbiddenDependencyRule):
                 sources, _ = forbidden_dependency_scopes(rule, ownership)
                 applies = (
@@ -207,7 +217,7 @@ def dynamic_dependency_limits(
             elif isinstance(
                 rule, CompleteRequiresRule | InterfaceBoundaryRule | NoComponentCyclesRule
             ):
-                applies = contract.component_for(source) is not None
+                applies = module_cycle or contract.component_for(source) is not None
             elif isinstance(rule, SiblingIsolationRule):
                 applies = any(in_scope(source, member) for member in rule.members)
             elif isinstance(rule, CompleteExternalScopeRule):

@@ -275,6 +275,8 @@ require a complete authenticated provider inventory, an explicit classic-browser
 the actual UMD envelope and existing package/hash provenance. Host contradictions veto
 that proof. Real opaque effects remain bound runtime-effect gaps; Core authenticates
 their own source facts, evidence, profile and replay digest. Runtime calls stay conservative.
+Captured UMD factory writes exclude competing standard globals or vendor publications.
+An unbounded global write target cannot certify that namespace.
 
 The user approved exactly one additional CLI-to-Analyzer coupling name:
 `archkeel.analyzer.python.collect:PythonProviderCollector`. It keeps Python-specific
