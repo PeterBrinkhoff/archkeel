@@ -4,12 +4,12 @@
 """One report boundary retains independent graphs and verified Core receipts."""
 
 import json
-from dataclasses import replace
+from dataclasses import asdict, replace
 from pathlib import Path
 
 import pytest
 from jsonschema import Draft202012Validator
-from test_target_graph import _nested_repository
+from test_target_graph import _contract, _nested_repository
 
 from archkeel.check.report import run_report
 from archkeel.cli.observe import observe
@@ -18,10 +18,11 @@ from archkeel.ir.architecture_graph import (
     ArchitectureReport,
     GraphComparison,
 )
-from archkeel.ir.codec import decode_canonical_model, parse_observation
+from archkeel.ir.codec import decode_canonical_model, parse_contract, parse_observation
 from archkeel.ir.graph_codec import parse_report, report_bytes
 from archkeel.ir.report_graph import architecture_report
 from archkeel.ir.source_graph import observed_graph
+from archkeel.ir.target_graph import declared_graph
 from archkeel.ir.target_records import recorded_target_graph
 from archkeel.render.html import render_html
 from tools.architecture_graph_schema import report_schema
@@ -38,11 +39,91 @@ def test_report_standard_retains_independent_graphs_and_core_comparison(tmp_path
     assert report.target == recorded_target_graph(model, target)
     assert report.comparison is not None
     wire = json.loads(report_bytes(report))
+    legacy_payload = asdict(report)
+    for graph in (legacy_payload["observed"], legacy_payload["target"]):
+        if graph is not None:
+            for intent in graph["component_intents"]:
+                if intent["layer"] is None:
+                    del intent["layer"]
+    assert (
+        set(wire)
+        == set(legacy_payload)
+        == {
+            "observed",
+            "target",
+            "comparison",
+            "unavailable",
+            "schema_version",
+            "findings",
+            "memberships",
+            "decision_gaps",
+        }
+    )
+    assert report_bytes(report) == (
+        json.dumps(legacy_payload, sort_keys=True, ensure_ascii=False) + "\n"
+    ).encode("utf-8")
     Draft202012Validator(report_schema()).validate(wire)
     assert parse_report(wire) == report
     assert report_schema() == json.loads(
         Path("schema/architecture-report.schema.json").read_bytes()
     )
+
+
+@pytest.mark.parametrize("observed,target", [(True, False), (False, True), (False, False)])
+def test_report_serialization_retains_unavailable_graphs(observed, target):
+    report = ArchitectureReport(
+        ArchitectureGraph("observed") if observed else None,
+        ArchitectureGraph("declared") if target else None,
+        unavailable=None if observed else "Source facts are absent.",
+    )
+    wire = json.loads(report_bytes(report))
+    assert (wire["observed"] is not None) is observed
+    assert (wire["target"] is not None) is target
+    assert wire["comparison"] is None
+    assert wire["unavailable"] == report.unavailable
+    assert parse_report(wire) == report
+
+
+@pytest.mark.parametrize("layer", [None, "Cœur"])
+def test_report_serialization_preserves_layer_presence(layer):
+    raw = _contract()
+    raw["schema_version"] = "2.3.0"
+    if layer is not None:
+        raw["components"][0]["layer"] = layer
+    report = ArchitectureReport(
+        ArchitectureGraph("observed"),
+        declared_graph(parse_contract(raw)),
+        schema_version="1.2.0" if layer is not None else "1.0.0",
+    )
+    wire = json.loads(report_bytes(report))
+    intent = wire["target"]["component_intents"][0]
+    assert ("layer" in intent) is (layer is not None)
+    if layer is not None:
+        assert intent["layer"] == layer
+        assert layer.encode() in report_bytes(report)
+    assert parse_report(wire) == report
+
+
+@pytest.mark.parametrize(
+    "report,reason",
+    [
+        (ArchitectureReport(ArchitectureGraph("declared"), None), "observed origin"),
+        (
+            ArchitectureReport(ArchitectureGraph("observed"), ArchitectureGraph("observed")),
+            "declared origin",
+        ),
+        (ArchitectureReport(None, None), "reason"),
+        (
+            ArchitectureReport(
+                None, None, GraphComparison("UNKNOWN"), unavailable="Source facts are absent."
+            ),
+            "both source and Target",
+        ),
+    ],
+)
+def test_report_serialization_keeps_full_validation(report, reason):
+    with pytest.raises(ValueError, match=reason):
+        report_bytes(report)
 
 
 def test_browser_receives_only_the_standard_report(tmp_path):

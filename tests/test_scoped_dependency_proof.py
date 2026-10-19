@@ -19,8 +19,110 @@ from archkeel.check.ports import ScanConfig
 from archkeel.check.report import run_report, run_saved_report
 from archkeel.ir.codec import decode_canonical_model, parse_observation, result_payload
 from archkeel.ir.decisions import rule_assessments, rule_uncertainty_evidence
-from archkeel.ir.model import Evidence, EvidenceClass, Record, RecordData, Section
+from archkeel.ir.facts_validation import validate_source_bindings
+from archkeel.ir.model import Evidence, EvidenceClass, Record, RecordData, Section, stable_id
 from archkeel.ir.module_explore import module_exploration
+
+
+@pytest.fixture
+def script_effect_source():
+    module = "demo.src.consumer_x2e_js"
+    evidence = Evidence("EFFECT-EVD", "src/consumer.js", 3, 3, 2, "mutate(window);")
+    effect = Record(
+        stable_id("TS_RUNTIME_EFFECT", module, evidence.line, evidence.column),
+        EvidenceClass.FACT,
+        "source",
+        "script_namespace_effect",
+        "Opaque script effect",
+        (module,),
+        (evidence.id,),
+        (),
+        (),
+        (),
+        RecordData(
+            (
+                ("source_module", module),
+                ("source_scope", module),
+                ("expression", evidence.excerpt),
+                ("status", "unresolved"),
+                ("targets", ()),
+                ("use", "value"),
+            )
+        ),
+    )
+    gap = replace(
+        effect,
+        id=stable_id("UNKNOWN_RUNTIME_EFFECT", effect.id),
+        kind="source_resolution_gap",
+        evidence_class=EvidenceClass.UNKNOWN,
+        fact_ids=(effect.id,),
+        data=RecordData((("module", module), ("resolution_dimension", "runtime_effects"))),
+    )
+    return gap, effect, {module: evidence.file}, {evidence.id: evidence}
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "none",
+        "profile",
+        "missing",
+        "foreign",
+        "kind",
+        "scope",
+        "span",
+        "expression",
+        "status",
+        "relabel",
+    ],
+)
+def test_runtime_gap_requires_its_own_registered_source_effect(script_effect_source, mutation):
+    gap, effect, paths, evidence = script_effect_source
+    data = dict(effect.data.entries)
+    if mutation == "foreign":
+        data["source_module"] = "demo.src.other_x2e_js"
+    elif mutation == "scope":
+        data["source_scope"] += ".nested"
+    elif mutation == "expression":
+        data["expression"] = "MissingScene.create();"
+    elif mutation == "status":
+        data["status"] = "resolved"
+    effect = replace(
+        effect,
+        kind="script_global" if mutation == "kind" else effect.kind,
+        evidence_ids=() if mutation == "span" else effect.evidence_ids,
+        data=RecordData(tuple(data.items())),
+    )
+    if mutation == "relabel":
+        gap = replace(gap, id="MISSING-PUBLISHER-GAP")
+
+    def validate():
+        validate_source_bindings(
+            (gap,),
+            paths,
+            {},
+            evidence,
+            import_ids=(),
+            selected_inputs=tuple(paths.values()),
+            source_records={} if mutation == "missing" else {effect.id: effect},
+            allow_script_effects=mutation != "profile",
+        )
+
+    if mutation == "none":
+        validate()
+    else:
+        with pytest.raises(ValueError, match="bound resolution dimension"):
+            validate()
+
+
+def test_scoped_dependency_proof_binds_source_effect_content(script_effect_source):
+    from archkeel.ir.decisions import dependency_binding_id
+
+    gap, effect, _, evidence = script_effect_source
+    sections = (Section("references", (effect,)),)
+    original = dependency_binding_id(sections, (gap,), evidence.values())
+    changed = (Section("references", (replace(effect, title="Changed source effect"),)),)
+    assert dependency_binding_id(changed, (gap,), evidence.values()) != original
 
 
 def _component(label: str, modules: list[str], **extra) -> dict:

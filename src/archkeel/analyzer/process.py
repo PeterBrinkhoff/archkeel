@@ -15,12 +15,26 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path, PurePosixPath
 from queue import Empty, Queue
-from threading import Thread
+from threading import TIMEOUT_MAX, Thread
 from typing import BinaryIO
 
-from archkeel.ir.facts import Language, SourceFacts, SourceProfile
+from archkeel.ir.facts import (
+    Language,
+    ProviderBindingKind,
+    ResolutionRole,
+    SourceFacts,
+    SourceProfile,
+)
 from archkeel.ir.facts_codec import ProtocolError, decode_response, encode_request
-from archkeel.ir.protocol import CollectionError, CollectionErrorKind, CollectionRequest
+from archkeel.ir.protocol import (
+    PYTHON_IMPORT_SURVEY_SECTIONS,
+    CollectionError,
+    CollectionErrorKind,
+    CollectionRequest,
+    CollectionResponse,
+    PythonCollectionPhase,
+    PythonSettings,
+)
 
 
 class _OutputLimitError(ValueError):
@@ -57,13 +71,19 @@ class ProcessCollector:
         if not self.argv or any(not value or "\x00" in value for value in self.argv):
             raise ValueError("collector argv must contain nonempty arguments")
         if (
-            self.timeout_seconds <= 0
+            not 0 < self.timeout_seconds <= TIMEOUT_MAX
             or self.output_limit_bytes <= 0
             or self.stderr_limit_bytes <= 0
         ):
-            raise ValueError("collector limits must be positive")
+            raise ValueError(
+                "collector limits must be positive; timeout must fit threading.TIMEOUT_MAX"
+            )
 
     def collect(self, request: CollectionRequest) -> SourceFacts | CollectionError:
+        response = self.collect_response(request)
+        return response if isinstance(response, CollectionError) else response.facts
+
+    def collect_response(self, request: CollectionRequest) -> CollectionResponse | CollectionError:
         subject = self.argv[0]
         try:
             payload = encode_request(request)
@@ -112,9 +132,10 @@ class ProcessCollector:
                         subject,
                         f"Collector exited {process.returncode}: {message}",
                     )
-            facts = decode_response(stdout).facts
-            _requested_facts(facts, request)
-            return facts
+            response = decode_response(stdout)
+            _requested_facts(response.facts, request)
+            _requested_provider_sources(response, request)
+            return response
         except subprocess.TimeoutExpired:
             return CollectionError(
                 CollectionErrorKind.TIMEOUT,
@@ -199,6 +220,21 @@ class ProcessCollector:
         return results["stdout"], results["stderr"]
 
 
+def _requested_provider_sources(response: CollectionResponse, request: CollectionRequest) -> None:
+    discovery = (
+        isinstance(request.resolver, PythonSettings)
+        and request.resolver.phase is PythonCollectionPhase.PROVIDERS
+    )
+    expected = {
+        item.path: item.digest
+        for item in response.facts.inputs
+        if item.path.startswith(".archkeel-providers/")
+    }
+    captured = {item.path: item.digest for item in response.provider_sources}
+    if (discovery and captured != expected) or (not discovery and captured):
+        raise ProtocolError("collector captured provider sources disagree with discovery inputs")
+
+
 def _requested_facts(facts: SourceFacts, request: CollectionRequest) -> None:
     profiles: dict[Language, SourceProfile] = {
         Language.PYTHON: SourceProfile.PYTHON,
@@ -207,6 +243,12 @@ def _requested_facts(facts: SourceFacts, request: CollectionRequest) -> None:
     }
     if facts.profile != profiles[request.resolver.language]:
         raise ProtocolError("collector profile disagrees with requested language")
+    if (
+        isinstance(request.resolver, PythonSettings)
+        and request.resolver.phase is not PythonCollectionPhase.COLLECT
+        and frozenset(facts.capabilities.sections) != frozenset(PYTHON_IMPORT_SURVEY_SECTIONS)
+    ):
+        raise ProtocolError("collector sections disagree with requested import survey")
     if (
         facts.source.git_head != request.snapshot.git_head
         or facts.source.dirty != request.snapshot.dirty
@@ -218,6 +260,35 @@ def _requested_facts(facts: SourceFacts, request: CollectionRequest) -> None:
         for path in facts.coverage.selected_files
     ):
         raise ProtocolError("collector selected files escape requested scope")
+    providers = (
+        request.resolver.provider_sources if isinstance(request.resolver, PythonSettings) else ()
+    )
+    discovery = (
+        isinstance(request.resolver, PythonSettings)
+        and request.resolver.phase is PythonCollectionPhase.PROVIDERS
+    )
+    expected = {item.path: item.digest for item in providers}
+    actual: dict[str, str] = {}
+    for item in facts.inputs:
+        path: str = item.path
+        if path.startswith(".archkeel-providers/") and item.role is ResolutionRole.RESOLUTION:
+            actual[path] = item.digest
+    if (not discovery and actual != expected) or set(actual) & set(facts.coverage.selected_files):
+        raise ProtocolError("collector provider sources disagree with requested snapshot")
+    providers_by_path = {item.path: item for item in providers}
+    evidence = {item.id: item for item in facts.evidence}
+    for binding in facts.provider_bindings:
+        if discovery:
+            continue
+        source = providers_by_path.get(evidence[binding.evidence_id].file)
+        qualified_name: str = binding.qualified_name
+        module = (
+            qualified_name
+            if binding.kind is ProviderBindingKind.MODULE
+            else qualified_name.rpartition(".")[0]
+        )
+        if source is None or module != source.module:
+            raise ProtocolError("collector provider binding disagrees with requested source")
 
 
 def _terminate_process_tree(process: subprocess.Popen[bytes]) -> None:

@@ -274,7 +274,7 @@ def test_nest_realworld_catalog_and_reports_preserve_full_target_with_partial_co
         if item.kind == "complete_requires" and item.status == "FAIL"
     )
     assert violation.rule_ids == ("REQUIRES-COMPLETE",)
-    assert violation.id == "VIO-67fab996e87538cc"
+    assert violation.id == "VIO-9e00d972f8328957"
     assert violation.status == "FAIL"
     assert violation.evidence_ids == edge.evidence_ids == ("EVD-17576bc5e19411f3",)
     assert not any(

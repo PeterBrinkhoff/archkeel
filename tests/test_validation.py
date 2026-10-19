@@ -111,9 +111,13 @@ def test_validate_accepts_archkeel_self_contract(self_validation: RunResult) -> 
     result = self_validation
     assert result.exit_code == 0
     assert result.observation_complete == "PASS"
-    # AD-72: declaring boundary_types for check and render leaves 16 positions the checker
-    # cannot read (15 a union, 1 an unentered generic), so the verdict says so -- exit 0.
-    assert result.declared_rules == "UNKNOWN"
+    assert result.declared_rules == "PASS"
+    assert not result.diagnostics
+    assert result.rule_assessments
+    assert all(
+        row.status == "PASS" and row.evaluation_proven and row.count == row.undecided == 0
+        for row in result.rule_assessments
+    )
     assert result.expectation_fulfilled == "n/a"
 
 
@@ -129,20 +133,6 @@ def test_validate_reports_no_check_types_declared_violation_against_this_reposit
     subjects = {diagnostic.subject for diagnostic in result.diagnostics}
     assert "CHECK-TYPES-DECLARED" not in subjects
     assert result.exit_code == 0
-
-
-def _as_path_bytes(files: object) -> dict[str, bytes]:
-    """Normalize `run_validate`'s written-files result into path -> bytes.
-
-    Works whether that value is the bare `dict[str, bytes]` AD-68's Limit flags, or the typed
-    model that replaces it: the pin below is about which paths a run writes and what bytes it
-    writes into them, not about the container shape carrying that answer.
-    """
-    if isinstance(files, dict):
-        return files
-    if hasattr(files, "items"):
-        return dict(files.items())
-    return dict(files)  # type: ignore[call-overload]
 
 
 def _second_return_type(func: Callable[..., object]) -> type:
@@ -176,7 +166,7 @@ def test_run_validate_declares_a_files_type_that_is_not_a_bare_dict(
     result, files = run_validate(stale, SHOP_CONFIG, observe, write_graph=True)
 
     assert result.exit_code == 0
-    written = _as_path_bytes(files)
+    written = dict(files.entries)
     assert set(written) == {"docs/architecture/shop.md"}
     assert written["docs/architecture/shop.md"] != original
 
@@ -186,7 +176,7 @@ def test_run_validate_declares_a_files_type_that_is_not_a_bare_dict(
     revalidated, rerun_files = run_validate(stale, SHOP_CONFIG, observe, write_graph=True)
     assert revalidated.exit_code == 0
     assert revalidated.diagnostics == ()
-    assert _as_path_bytes(rerun_files) == {}
+    assert dict(rerun_files.entries) == {}
 
 
 def test_validate_rejects_contract_1_1_with_exact_pointer(tmp_path: Path) -> None:
@@ -1736,7 +1726,7 @@ def test_validation_diagnostics_preserve_inspected_evidence(
     assert result.declared_rules == report.declared_rules
     assert result.measurements == report.measurements
     assert result.expectation_fulfilled == "n/a"
-    assert not files
+    assert not files.entries
     assert "Nothing was checked" not in report_summary(result).sentence
 
 

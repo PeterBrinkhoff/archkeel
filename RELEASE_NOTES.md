@@ -1,3 +1,82 @@
+# ArchKeel 5.0.0 — Explicit architecture ports and native ownership evidence
+
+Declare component responsibilities, exact interfaces and invocation ownership, with
+native source evidence and conservative UNKNOWNs.
+
+## Highlights
+
+- **Detailed architecture contracts.** ArchKeel's own Target defines lower-level
+  owners, ports and responsibilities across Core, language collectors and reports.
+  Observation, policy evaluation and rendering have separate owners.
+- **Bounded native Python proof.** Supported provider sources, class creation,
+  inherited generic signatures and context-manager signatures retain source-bound
+  evidence. Missing binding identity and unsupported forms remain UNKNOWN;
+  known declaration violations remain visible beside runtime uncertainty.
+  Source declaration identity does not establish runtime immutability.
+- **Literal dynamic dependencies.** Dependency rules include proven literal
+  `importlib.import_module` and builtin `__import__` calls. Uncertain loader
+  bindings remove complete proof only from affected rule scopes. Conditional and
+  later bindings retain the possible builtin fallback. Mounted rules use their
+  clipped source domain; module-cycle uncertainty follows the full scanned graph.
+- **JavaScript script-global dependencies.** The TypeScript adapter records supported
+  script-global crossings for existing dependency rules, including bounded alias,
+  factory-member and destructuring forms. Standard globals follow supported
+  compiler target/lib settings; UMD publications require an explicit classic-browser
+  host and authenticated provider evidence. Ambiguous bindings and unsupported
+  effects remain UNKNOWN; source identity does not prove runtime availability.
+- **Explicit browser ports.** First-party report sources use named ES imports and
+  exports under the existing component boundaries. A checked, pinned build creates
+  an inline first-party bundle after unchanged canonical ELK; reports stay offline
+  and compatibility globals remain available. Native direct
+  named-export witnesses support exact ports; missing or competing bindings retain
+  UNKNOWN. Opaque vendor calls do not acquire a purity assumption.
+- **Call ownership.** Opt-in contract **3.7.0** adds `call_owner` for exact targets
+  and allowed caller scopes. Bound calls can fail; unrelated same-named methods
+  do not. Missing target proof stays UNKNOWN. Declared receivers prove a static
+  boundary, not runtime dispatch. Saved receipts bind the exact evaluation claim
+  and observation version; copying a receipt cannot certify a different scope.
+- **Less repeated collector work.** Python collectors share lexical indexes within
+  one parsed snapshot while resolving import bindings live. Changed compiler inputs
+  rebuild the index; binding decisions are not cached.
+  Main and detail HTML share one strictly decoded observation and report projection;
+  existing Python entry points retain their behavior. Browser assets are republished
+  as a checked first-party bundle after the canonical vendor.
+- **Complete release assets.** Releases require a version-matched plugin ZIP and
+  checksum. The release tag sets both exported manifest versions automatically;
+  canonical skill content and the finished ZIP are checked independently. GitHub
+  assets are downloaded and checked before publishing the Python package.
+- **Bounded Actions inventory.** Five reviewed workflow files cover CI, full
+  verification, release and initial-PR receipts. Main maintenance disables obsolete
+  file-backed registrations while preserving history; temporary workflows fail
+  the repository inventory check. Pages retains its Main-only deployment policy.
+
+## Upgrade from 4.0.1
+
+Upgrade CLI, collectors and strict JSON consumers together. Native Python provider
+collection adds **SourceFacts/protocol 4.0.0** for captured source, provider bindings
+and supported context-manager signatures. Generic collection retains its 3.0.0
+default; known 1/2/3 packets remain readable without the new payloads.
+
+New observations use ArchitectureIR **2.1.0** and command-result **9.0.0**.
+Python 2.1 call records require `call_binding`, including an explicit `null` when
+unproved; an omitted key is invalid. Supported historical reports remain readable;
+command schemas 6/7/8 reject 2.1 observations.
+Older readers reject the new evidence and cannot assess the new call policy.
+Re-observe both revisions with the same release before comparing snapshots.
+These documented evidence/protocol incompatibilities require a new package major
+under the existing compatibility policy.
+
+The internal `FilesToWrite` mapping becomes an immutable `entries` tuple. Internal
+callers must use `FilesToWrite(entries=(("path", content),))` and iterate
+`files.entries`. Mapping operations are no longer supported. Documented CLI commands,
+configuration and `archkeel.api` exports retain their interfaces.
+
+See [dependency evidence](docs/architecture/python-dynamic-dependencies.md),
+[call ownership](docs/architecture/decisions/ad-241-call-ownership-policy.md),
+[compatibility](docs/reference.md#compatibility) and [known limits](docs/known-limits.md).
+
+---
+
 # ArchKeel 4.0.1 — Exact dependency rules and typed controls
 
 Declare narrower component APIs and check more native source evidence.

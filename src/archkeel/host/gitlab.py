@@ -67,8 +67,14 @@ def load_gitlab_records(
             cwd=root,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            timeout=30,
             check=False,
         )
+    except subprocess.TimeoutExpired as error:
+        raise OrderingError("GitLab diff-version request timed out") from error
+    except UnicodeDecodeError as error:
+        raise OrderingError("GitLab diff-version response is not UTF-8") from error
     except OSError as error:
         raise OrderingError(f"GitLab diff-version request failed: {error}") from error
     if result.returncode:

@@ -190,8 +190,10 @@ _CONSTRUCT_VARIANTS = tuple(
         item=f"forbidden_construct:{kind.value}",
         summary=f"A new shop.model probe module uses {kind.value}, firing {_CONSTRUCT_RULE[kind]}.",
         files={f"shop/model/probe_{kind.value}.py": _CONSTRUCT_SOURCE[kind]},
-        expected_violations=(_CONSTRUCT_RULE[kind],) * _CONSTRUCT_VIOLATION_COUNT[kind],
-        expected_codes=("rule.violated",) * _CONSTRUCT_VIOLATION_COUNT[kind],
+        expected_violations=(_CONSTRUCT_RULE[kind],) * _CONSTRUCT_VIOLATION_COUNT[kind]
+        + (("EXTERNAL-JSON-STORE",) if kind is ForbiddenConstructKind.DYNAMIC_IMPORT else ()),
+        expected_codes=("rule.violated",) * _CONSTRUCT_VIOLATION_COUNT[kind]
+        + (("rule.violated",) if kind is ForbiddenConstructKind.DYNAMIC_IMPORT else ()),
     )
     for kind in ForbiddenConstructKind
 )

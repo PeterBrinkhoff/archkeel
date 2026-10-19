@@ -8,13 +8,15 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
+from collections import Counter
 from pathlib import Path
 from textwrap import dedent
 
 import pytest
 
 ROOT = Path(__file__).parents[1]
-GATE_STEPS = ["self-validate", "check", "build", "smoke"]
+GATE_STEPS = ["self-validate", "browser-architecture-check", "check", "build", "smoke"]
 CI_CHECK_STEPS = [
     "ci-artifacts-clean",
     "browser-install",
@@ -91,7 +93,7 @@ def test_gate_uses_pinned_base_instead_of_duplicate_self_validation(
     tmp_path: Path, jobs: int, failed: str | None
 ) -> None:
     result, steps = _run_gate(tmp_path, "gate", failed, jobs, True, base="a" * 40)
-    expected = ["against", "check", "build", "smoke"]
+    expected = ["against", "browser-architecture-check", "check", "build", "smoke"]
     if failed is not None:
         expected = expected[: expected.index(failed) + 1]
     assert steps == expected, result.stderr
@@ -178,10 +180,13 @@ def test_against_receives_the_exact_ci_base_and_stops_before_tests(tmp_path: Pat
     ]
 
 
-@pytest.mark.parametrize("failed", [None, "against", "pr-test"])
+@pytest.mark.parametrize("failed", [None, "against", "browser-architecture-check", "pr-test"])
 def test_pr_gate_keeps_policy_and_stops_before_later_checks(tmp_path, failed):
     result, steps = _run_gate(tmp_path, "ci-pr-check", failed, 2, False, base="a" * 40)
-    assert steps == (["against"] if failed == "against" else ["against", "pr-test"])
+    expected = ["against", "browser-architecture-check", "pr-test"]
+    if failed is not None:
+        expected = expected[: expected.index(failed) + 1]
+    assert steps == expected
     assert result.returncode == (0 if failed is None else 2)
 
 
@@ -342,6 +347,16 @@ def test_main_core_uses_pinned_playwright_once_and_report_stage_only_runs_proof(
     assert "make report-browser-tests" not in commands
 
 
+def test_workflow_files_require_an_explicit_governance_change() -> None:
+    assert {path.name for path in (ROOT / ".github/workflows").iterdir() if path.is_file()} == {
+        "ci.yml",
+        "full-verification.yml",
+        "release.yml",
+        "github-opened.yml",
+        "github-opened-receipt.yml",
+    }
+
+
 def test_ci_workflow_keeps_fast_required_checks_and_routes_full_verification() -> None:
     workflow = (ROOT / ".github/workflows/ci.yml").read_text()
     check = workflow.split("  check:\n", 1)[1].split("\n  pr-core-check:", 1)[0]
@@ -368,11 +383,11 @@ def test_ci_workflow_keeps_fast_required_checks_and_routes_full_verification() -
 
     for job_id, next_job, area, make_target, junit_name, junit_path, timeout in (
         (
-            "pr-core-check",
+            "pr-core-shards",
             "pr-report-check",
             "core",
             "ci-pr-check",
-            "pytest-results-pr-core",
+            "pytest-results-pr-core-${{ matrix.shard }}",
             "pr-core.xml",
             35,
         ),
@@ -399,8 +414,21 @@ def test_ci_workflow_keeps_fast_required_checks_and_routes_full_verification() -
         assert f"name: {junit_name}" in job
         assert junit_path in job
         assert "retention-days: 7" in job
-    core_job = workflow.split("  pr-core-check:\n", 1)[1].split("\n  pr-report-check:", 1)[0]
+    core_job = workflow.split("  pr-core-shards:\n", 1)[1].split("\n  pr-report-check:", 1)[0]
     assert "BASE: ${{ github.event.pull_request.base.sha }}" in core_job
+    assert "fail-fast: false" in core_job
+    assert "shard: [0, 1]" in core_job
+    assert "run: make ci-pr-check PR_TEST_SHARD=${{ matrix.shard }}" in core_job
+    aggregate = workflow.split("  pr-core-check:\n", 1)[1].split("\n  pr-core-shards:", 1)[0]
+    assert "name: pr-core-check" in aggregate
+    assert "needs: [changes, pr-core-shards]" in aggregate
+    assert "timeout-minutes: 35" in aggregate
+    assert (
+        "always() && (needs.changes.result != 'success' || needs.changes.outputs.core != 'false')"
+        in aggregate
+    )
+    assert "continue-on-error" not in aggregate
+    assert "if: cancelled()\n        run: exit 1" in aggregate
     report_job = workflow.split("  pr-report-check:\n", 1)[1].split(
         "\n  prune-report-artifacts:", 1
     )[0]
@@ -415,6 +443,9 @@ def test_ci_workflow_keeps_fast_required_checks_and_routes_full_verification() -
     assert "actions: write" in cleanup
     assert "ref: ${{ github.sha }}" in cleanup
     assert "make prune-report-artifacts DELETE=true" in cleanup
+    assert "make prune-workflows DISABLE=true" in cleanup
+    assert "group: actions-maintenance" in cleanup
+    assert "workflow-prune/plan.json" in cleanup
     assert "cancel-in-progress: ${{ github.event_name == 'pull_request' }}" in workflow
     mermaid = workflow.split("  mermaid:\n", 1)[1].split("\n    steps:", 1)[0]
     assert "needs.changes.outputs.mermaid == 'true'" in mermaid
@@ -449,6 +480,9 @@ def test_ci_workflow_keeps_fast_required_checks_and_routes_full_verification() -
     prune = full.split("  prune-report-artifacts:\n", 1)[1].split("\n  deploy-report-pages:", 1)[0]
     assert "needs: [verified, deploy-report-pages]" in prune
     assert "make prune-report-artifacts DELETE=true" in prune
+    assert "make prune-workflows DISABLE=true" in prune
+    assert "group: actions-maintenance" in prune
+    assert "workflow-prune/plan.json" in prune
     assert "needs: [full-suite-and-reports, verified]" in full
     assert "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'" in full
     assert "name: report-browser-evidence" in full
@@ -458,6 +492,7 @@ def test_ci_workflow_keeps_fast_required_checks_and_routes_full_verification() -
     )[0]
     assert "github.ref == 'refs/heads/main'" in pages_upload
     assert "retention-days: 1" in pages_upload
+    assert "startsWith(github.ref, 'refs/tags/')" not in pages_upload
     assert "actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9" in full
     assert "name: scheduled-report-site" not in full
 
@@ -701,3 +736,160 @@ def test_browser_runtime_gate_installs_before_running_the_actual_publication_tes
     install = command.index("npm ci --prefix tools/browser-runtime")
     publication = command.index("python -m pytest -q tests/test_flow_runtime_publication.py")
     assert install < publication
+
+
+def test_pr_core_shards_partition_the_actual_make_arguments_once(tmp_path, monkeypatch) -> None:
+    from tools import pr_test
+
+    arguments_path = tmp_path / "arguments.json"
+    runner = tmp_path / "uv"
+    runner.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, os, sys\nfrom pathlib import Path\n"
+        "Path(os.environ['SHARD_ARGUMENTS']).write_text(json.dumps(sys.argv[1:]))\n"
+    )
+    runner.chmod(0o755)
+
+    def invocation(shard):
+        result = subprocess.run(
+            ["make", "pr-test", f"UV={runner}", f"PR_TEST_SHARD={'' if shard is None else shard}"],
+            cwd=ROOT,
+            env={**os.environ, "MAKEFLAGS": "", "SHARD_ARGUMENTS": str(arguments_path)},
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        assert result.returncode == 0, result.stderr
+        tokens = json.loads(arguments_path.read_text())
+        arguments = tokens[tokens.index("tools.pr_test") + 1 :]
+        calls = []
+        monkeypatch.setattr(pr_test.os, "execv", lambda executable, argv: calls.append(argv))
+        pr_test.main(arguments)
+        [command] = calls
+        assert command[:3] == [sys.executable, "-m", "pytest"]
+        if shard is None:
+            assert command[3:] == [arg for arg in arguments if arg != "--"]
+        return command[3:]
+
+    full = invocation(None)
+    shards = [invocation(0), invocation(1)]
+    selectors = [arg for arg in full if arg.startswith("tests/")]
+    options = [arg for arg in full if not arg.startswith("tests/")]
+    assert options == [
+        "-n",
+        "2",
+        "--dist=loadfile",
+        "--max-worker-restart=0",
+        "-q",
+        "--durations=10",
+        "--junitxml=test-artifacts/pytest/pr-core.xml",
+    ]
+    assert len(selectors) == len(set(selectors))
+    assert selectors.count("tests/test_binding_proof_reuse.py") == 1
+    assert selectors.count("tests/test_local_inherited_methods.py") == 1
+    assert Counter(arg for shard in shards for arg in shard if arg.startswith("tests/")) == Counter(
+        selectors
+    )
+    owners = {}
+    for number, shard in enumerate(shards):
+        assert [arg for arg in shard if not arg.startswith("tests/")] == options
+        for selector in (arg for arg in shard if arg.startswith("tests/")):
+            filename = selector.partition("::")[0]
+            assert owners.setdefault(filename, number) == number
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        ["--shard=2", "--", "-q", "--", "tests/test_a.py"],
+        ["--shard=-1", "--", "-q", "--", "tests/test_a.py"],
+        ["--shard=invalid", "--", "-q", "--", "tests/test_a.py"],
+        ["--shard=1", "--", "-q", "--", "tests/test_a.py"],
+        ["--", "-q", "--"],
+        ["--", "-q", "tests/test_a.py"],
+        ["--", "-q", "--", "--ignore=tests/test_a.py"],
+    ],
+)
+def test_pr_core_shard_rejects_invalid_or_empty_selection(monkeypatch, arguments) -> None:
+    from tools import pr_test
+
+    monkeypatch.setattr(
+        pr_test.os, "execv", lambda *args: pytest.fail("invalid shard reached pytest")
+    )
+    with pytest.raises(SystemExit) as error:
+        pr_test.main(arguments)
+    assert error.value.code == 2
+
+
+@pytest.mark.parametrize("shard", [None, 0, 1])
+@pytest.mark.parametrize("exit_code", [0, 7])
+def test_pr_core_runner_preserves_pytest_exit_and_node_selectors(
+    tmp_path, shard, exit_code
+) -> None:
+    result_path = tmp_path / "arguments.json"
+    (tmp_path / "pytest.py").write_text(
+        "import json, os, sys\nfrom pathlib import Path\n"
+        "Path(os.environ['SHARD_ARGUMENTS']).write_text(json.dumps(sys.argv[1:]))\n"
+        "raise SystemExit(int(os.environ['SHARD_EXIT']))\n"
+    )
+    selectors = ["tests/a.py::first", "tests/b.py", "tests/a.py::second"]
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "tools.pr_test",
+            *([] if shard is None else [f"--shard={shard}"]),
+            "--",
+            "-q",
+            "--",
+            *selectors,
+        ],
+        cwd=ROOT,
+        env={
+            **os.environ,
+            "PYTHONPATH": str(tmp_path),
+            "SHARD_ARGUMENTS": str(result_path),
+            "SHARD_EXIT": str(exit_code),
+        },
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    assert result.returncode == exit_code, result.stderr
+    expected = (
+        selectors
+        if shard is None
+        else [selectors[0], selectors[2]]
+        if shard == 0
+        else [selectors[1]]
+    )
+    assert json.loads(result_path.read_text()) == ["-q", *expected]
+
+
+@pytest.mark.parametrize(
+    "changes,core,shards,success",
+    [
+        ("success", "true", "success", True),
+        ("success", "true", "failure", False),
+        ("success", "true", "cancelled", False),
+        ("success", "true", "skipped", False),
+        ("success", "true", "", False),
+        ("failure", "true", "success", False),
+        ("cancelled", "true", "success", False),
+        ("success", "false", "success", False),
+        ("success", "invalid", "success", False),
+    ],
+)
+def test_pr_core_aggregate_executes_its_workflow_script_fail_closed(
+    changes, core, shards, success
+) -> None:
+    workflow = (ROOT / ".github/workflows/ci.yml").read_text()
+    aggregate = workflow.split("  pr-core-check:\n", 1)[1].split("\n  pr-core-shards:", 1)[0]
+    script = dedent(aggregate.split("        run: |\n", 1)[1])
+    result = subprocess.run(
+        ["bash", "-eu", "-c", script],
+        env={**os.environ, "CHANGES_RESULT": changes, "CORE": core, "SHARDS_RESULT": shards},
+        capture_output=True,
+        text=True,
+    )
+    assert (result.returncode == 0) is success, result.stderr

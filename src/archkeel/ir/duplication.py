@@ -142,6 +142,12 @@ def _resolved_calls(observation: Observation) -> dict[str, tuple[str, ...]]:
         if name in definitions:
             bucket: list[Record] = grouped[name]
             bucket.append(record)
+    nested_scopes = {
+        scope[:index]
+        for scope in scopes
+        for index, character in enumerate(scope)
+        if character == "."
+    }
     evidence: dict[str, Evidence] = {item.id: item for item in observation.evidence}
     result: dict[str, tuple[str, ...]] = {}
     for name, rows in grouped.items():
@@ -149,7 +155,7 @@ def _resolved_calls(observation: Observation) -> dict[str, tuple[str, ...]]:
         if definition is None or len(definition.evidence_ids) != 1:
             continue
         # Body shapes include nested scopes, whose call correspondence is not established here.
-        if any(scope != name and in_scope(scope, name) for scope in scopes):
+        if name in nested_scopes:
             continue
         origin = evidence.get(definition.evidence_ids[0])
         if origin is None:

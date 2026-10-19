@@ -436,6 +436,16 @@
           "provenance": [
             "docs/target.md"
           ]
+        },
+        {
+          "id": "string-global",
+          "kind": "symbol",
+          "qualified_name": "String",
+          "language": "typescript",
+          "presence": "referenced",
+          "provenance": [
+            "docs/target.md"
+          ]
         }
       ],
       "relationships": [
@@ -543,6 +553,15 @@
           "kind": "calls",
           "source_id": "build",
           "target_id": "unit",
+          "provenance": [
+            "docs/target.md"
+          ]
+        },
+        {
+          "id": "core-string-reference",
+          "kind": "references",
+          "source_id": "core-module",
+          "target_id": "string-global",
           "provenance": [
             "docs/target.md"
           ]

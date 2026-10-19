@@ -29,6 +29,13 @@ export class Endpoint {
   plain(): void {}
 }
 """
+# Inventory controls bind decorator names so unrelated import gaps cannot decide them.
+DECORATORS = """
+function Get() { return () => {}; }
+function Controller(path: string) { return () => {}; }
+function Field() { return () => {}; }
+function First() {}
+"""
 QUALIFIED = "app.src.main_x2e_ts.Endpoint"
 
 
@@ -76,7 +83,8 @@ def test_decorated_members_keep_source_metadata_ownership_and_complete_inventory
     assert (run.span.line, run.span.column, run.returns, run.static) == (7, 3, "string", True)
     assert [(item.name, item.annotation) for item in run.parameters] == [("value", "string")]
 
-    facts = _collected(tmp_path, SOURCE)
+    facts = _collected(tmp_path, SOURCE + DECORATORS)
+    assert facts.coverage.full_scope and not facts.coverage.gaps
     symbols = {
         record.data.get("name"): record
         for section in facts.sections
@@ -87,6 +95,9 @@ def test_decorated_members_keep_source_metadata_ownership_and_complete_inventory
     assert symbols["Endpoint"].data.get("decorators") == ("@Controller('api')",)
     assert symbols["run"].data.get("decorators") == ("@First", "@Get('route')")
     assert symbols["plain"].data.get("decorators") == ()
+    assert symbols["Endpoint"].data.get("signature_decorators_proven") is None
+    assert symbols["run"].data.get("signature_decorators_proven") is False
+    assert symbols["plain"].data.get("signature_decorators_proven") is True
     assert symbols["run"].data.get("lexical_parent_id") == symbols["Endpoint"].id
     assert symbols["run"].data.get("qualified_name") == f"{QUALIFIED}.run"
     refs = symbols["run"].data.get("decorator_evidence_ids")
@@ -104,6 +115,23 @@ def test_decorated_members_keep_source_metadata_ownership_and_complete_inventory
     assert [(evidence[identity].line, evidence[identity].excerpt) for identity in field_refs] == [
         (3, "@Field()"),
     ]
+
+
+def test_plain_top_level_and_nested_functions_publish_signature_identity(tmp_path):
+    facts = _collected(
+        tmp_path,
+        "export function build(value: string): string { "
+        "function nested(text: string): string { return text; } return nested(value); }",
+    )
+    functions = [
+        record
+        for section in facts.sections
+        if section.name == "symbols"
+        for record in section.records
+        if record.kind == "function"
+    ]
+    assert {record.data.get("name") for record in functions} == {"build", "nested"}
+    assert all(record.data.get("signature_decorators_proven") is True for record in functions)
 
 
 @pytest.mark.parametrize(
@@ -166,7 +194,7 @@ def test_decorated_instance_constructor_spellings_keep_closed_methods_unknown(
     assert syntax.first_error is None
     assert syntax.definitions[0].members_complete is False
     assert syntax.definitions[1].name == spelling
-    graph = _graph_from_source_facts(_collected(tmp_path, source), ("src",))
+    graph = _graph_from_source_facts(_collected(tmp_path, source + DECORATORS), ("src",))
     comparison = compare_graphs(graph, _target((spelling,)))
     assert comparison.status == "UNKNOWN"
     assert not any(item.status == "FAIL" for item in comparison.assessments)
@@ -196,7 +224,7 @@ def test_decorated_static_constructor_named_methods_keep_metadata_and_complete_i
     method = syntax.definitions[1]
     assert method.name == spelling and method.decorators is True and method.static is True
     assert method.parent == "Endpoint"
-    facts = _collected(tmp_path, source)
+    facts = _collected(tmp_path, source + DECORATORS)
     method_record = next(
         record
         for section in facts.sections
@@ -222,7 +250,7 @@ def test_constructor_escape_recognition_does_not_reinterpret_other_member_names(
     assert syntax.first_error is None
     assert syntax.definitions[0].members_complete is True
     assert syntax.definitions[1].name == spelling and syntax.definitions[1].decorators is True
-    graph = _graph_from_source_facts(_collected(tmp_path, source), ("src",))
+    graph = _graph_from_source_facts(_collected(tmp_path, source + DECORATORS), ("src",))
     assert compare_graphs(graph, _target((spelling,))).status == "PASS"
 
 
@@ -245,7 +273,7 @@ def test_invalid_unicode_member_names_cannot_close_a_decorated_inventory(
     syntax = parse("src/main.ts", source.encode())
     assert syntax.first_error is not None or syntax.definitions[0].members_complete is False
     name = spelling.removeprefix("static ")
-    graph = _graph_from_source_facts(_collected(tmp_path, source), ("src",))
+    graph = _graph_from_source_facts(_collected(tmp_path, source + DECORATORS), ("src",))
     assert compare_graphs(graph, _target((name,))).status == "UNKNOWN"
 
 
@@ -267,7 +295,7 @@ def test_unvalidated_escaped_identifiers_keep_decorated_inventory_unknown(
     syntax = parse("src/main.ts", source.encode())
     assert syntax.first_error is None
     assert syntax.definitions[0].members_complete is False
-    graph = _graph_from_source_facts(_collected(tmp_path, source), ("src",))
+    graph = _graph_from_source_facts(_collected(tmp_path, source + DECORATORS), ("src",))
     assert compare_graphs(graph, _target((spelling,))).status == "UNKNOWN"
 
 
@@ -290,7 +318,7 @@ def test_quoted_string_names_retain_their_distinct_unicode_character_rules(
     assert syntax.first_error is None
     assert syntax.definitions[0].members_complete is True
     assert syntax.definitions[1].decorators is True
-    graph = _graph_from_source_facts(_collected(tmp_path, source), ("src",))
+    graph = _graph_from_source_facts(_collected(tmp_path, source + DECORATORS), ("src",))
     assert compare_graphs(graph, _target((spelling,))).status == "PASS"
 
 
@@ -313,7 +341,7 @@ def test_decorated_class_cannot_close_an_invalid_undecorated_method_name(
     assert syntax.first_error is None
     assert syntax.definitions[0].members_complete is False
     assert syntax.definitions[1].decorators is True
-    graph = _graph_from_source_facts(_collected(tmp_path, source), ("src",))
+    graph = _graph_from_source_facts(_collected(tmp_path, source + DECORATORS), ("src",))
     comparison = compare_graphs(graph, _target(("run", spelling, "missing")))
     assert comparison.status == "UNKNOWN"
     assert not any(item.status == "FAIL" for item in comparison.assessments)
@@ -328,7 +356,7 @@ def test_decorated_class_retains_valid_undecorated_quoted_method_names(
     syntax = parse("src/main.ts", source.encode())
     assert syntax.first_error is None
     assert syntax.definitions[0].members_complete is True
-    graph = _graph_from_source_facts(_collected(tmp_path, source), ("src",))
+    graph = _graph_from_source_facts(_collected(tmp_path, source + DECORATORS), ("src",))
     assert compare_graphs(graph, _target(("run", spelling))).status == "PASS"
 
 
@@ -351,7 +379,7 @@ def test_mixed_decorator_closed_target_detects_supported_constructor_properties(
     syntax = parse("src/main.ts", source.encode())
     assert syntax.first_error is None
     assert syntax.definitions[0].members_complete is (status == "FAIL")
-    facts = _collected(tmp_path, source)
+    facts = _collected(tmp_path, source + DECORATORS)
     graph = _graph_from_source_facts(facts, ("src",))
     comparison = compare_graphs(graph, _target((), kind="attribute"))
     assert comparison.status == status
@@ -365,7 +393,7 @@ def test_mixed_decorator_static_constructor_named_method_has_no_instance_propert
     source = f"class Endpoint {{ static {spelling}(repo: string) {{}} @Get() run() {{}} }}"
     syntax = parse("src/main.ts", source.encode())
     assert syntax.first_error is None and syntax.definitions[0].members_complete is True
-    graph = _graph_from_source_facts(_collected(tmp_path, source), ("src",))
+    graph = _graph_from_source_facts(_collected(tmp_path, source + DECORATORS), ("src",))
     assert compare_graphs(graph, _target((), kind="attribute")).status == "PASS"
 
 
@@ -386,7 +414,7 @@ def test_mixed_decorator_cannot_certify_unsupported_instance_constructor_shapes(
     syntax = parse("src/main.ts", source.encode())
     assert syntax.first_error is None
     assert syntax.definitions[0].members_complete is False
-    graph = _graph_from_source_facts(_collected(tmp_path, source), ("src",))
+    graph = _graph_from_source_facts(_collected(tmp_path, source + DECORATORS), ("src",))
     assert compare_graphs(graph, _target((), kind="attribute")).status == "UNKNOWN"
 
 
@@ -408,7 +436,7 @@ def test_constructor_signatures_keep_uncollected_property_inventory_partial(
     assert syntax.first_error is None
     assert syntax.definitions[0].members_complete is False
     assert syntax.definitions[1].overload_signature is True
-    graph = _graph_from_source_facts(_collected(tmp_path, source), ("src",))
+    graph = _graph_from_source_facts(_collected(tmp_path, source + DECORATORS), ("src",))
     assert compare_graphs(graph, _target((), kind="attribute")).status == "UNKNOWN"
 
 
@@ -418,7 +446,7 @@ def test_constructor_overload_bindings_remain_ambiguous_in_a_decorated_class(
     source = (
         "class Endpoint { constructor(repo: string); constructor(repo: string) {} @Get() run() {} }"
     )
-    graph = _graph_from_source_facts(_collected(tmp_path, source), ("src",))
+    graph = _graph_from_source_facts(_collected(tmp_path, source + DECORATORS), ("src",))
     comparison = compare_graphs(graph, _target(("constructor", "run")))
     assert comparison.status == "UNKNOWN"
     assert any(
@@ -439,7 +467,7 @@ def test_decorated_closed_methods_detect_known_presence_extra_and_absence(
     names: tuple[str, ...],
     status: str,
 ) -> None:
-    graph = _graph_from_source_facts(_collected(tmp_path, SOURCE), ("src",))
+    graph = _graph_from_source_facts(_collected(tmp_path, SOURCE + DECORATORS), ("src",))
     comparison = compare_graphs(graph, _target(names))
     assert comparison.status == status
     assert not any(item.status == "UNKNOWN" for item in comparison.assessments)
@@ -447,7 +475,7 @@ def test_decorated_closed_methods_detect_known_presence_extra_and_absence(
 
 def test_duplicate_decorated_owners_keep_closed_inventory_unknown(tmp_path: Path) -> None:
     graph = _graph_from_source_facts(
-        _collected(tmp_path, "class Endpoint { @Get() run() {} } class Endpoint {}"),
+        _collected(tmp_path, "class Endpoint { @Get() run() {} } class Endpoint {}" + DECORATORS),
         ("src",),
     )
     comparison = compare_graphs(graph, _target(("run",)))
@@ -468,7 +496,7 @@ def test_unsupported_decorated_inventory_cannot_prove_member_absence(
     member: str,
 ) -> None:
     graph = _graph_from_source_facts(
-        _collected(tmp_path, f"class Endpoint {{ {member} }}"),
+        _collected(tmp_path, f"class Endpoint {{ {member} }}" + DECORATORS),
         ("src",),
     )
     names = ("run", "missing", "constructor") if "constructor" in member else ("run", "missing")
@@ -485,7 +513,7 @@ def test_decorated_closed_attributes_detect_extra_and_missing_fields(
     names: tuple[str, ...],
     status: str,
 ) -> None:
-    graph = _graph_from_source_facts(_collected(tmp_path, SOURCE), ("src",))
+    graph = _graph_from_source_facts(_collected(tmp_path, SOURCE + DECORATORS), ("src",))
     comparison = compare_graphs(graph, _target(names, kind="attribute"))
     assert comparison.status == status
     assert not any(item.status == "UNKNOWN" for item in comparison.assessments)
@@ -543,7 +571,7 @@ def test_decorated_inventory_live_and_saved_reports_agree(
     status: str,
 ) -> None:
     root, config = _project(tmp_path / "decorated", matching=True)
-    (root / "src/main.ts").write_text(SOURCE)
+    (root / "src/main.ts").write_text(SOURCE + DECORATORS)
     contract_path = root / config.contract
     contract = json.loads(contract_path.read_text())
     qualified = "demo.src.main_x2e_ts.Endpoint"
@@ -598,3 +626,16 @@ def test_decorated_inventory_live_and_saved_reports_agree(
     assert saved.architecture_projection == result.architecture_projection
     assert saved.declared_rules == result.declared_rules == status
     assert saved.exit_code == result.exit_code
+
+
+@pytest.mark.parametrize("names", [("run",), ("run", "missing")])
+def test_missing_decorator_binding_cannot_certify_closed_inventory(tmp_path, names):
+    facts = _collected(tmp_path, "class Endpoint { @Get() run() {} }")
+    assert len(facts.coverage.gaps) == 1
+    gap = facts.coverage.gaps[0]
+    assert gap.kind == "source_resolution_gap"
+    assert gap.data.get("resolution_dimension") == "imports"
+    assert gap.data.get("module") == "app.src.main_x2e_ts"
+    comparison = compare_graphs(_graph_from_source_facts(facts, ("src",)), _target(names))
+    assert comparison.status == "UNKNOWN"
+    assert not any(item.status == "FAIL" for item in comparison.assessments)

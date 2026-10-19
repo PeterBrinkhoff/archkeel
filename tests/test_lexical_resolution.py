@@ -3,14 +3,19 @@
 # SPDX-License-Identifier: MIT
 """A lexical name must not borrow an unrelated module binding."""
 
+import symtable
+import sys
+from pathlib import Path
+
 import pytest
-from test_analyzer import _parsed_module
+from test_analyzer import _observe, _parsed_module
 
 from archkeel.analyzer.python.calls import collect_calls
 from archkeel.analyzer.python.imports import collect_imports
 from archkeel.analyzer.python.references import collect_references
 from archkeel.analyzer.python.resolve import build_symbol_index
 from archkeel.analyzer.python.symbols import collect_symbols
+from archkeel.ir.references import unreferenced_symbols
 
 
 def _facts(source):
@@ -114,6 +119,103 @@ def test_headers_are_evaluated_in_the_enclosing_scope():
 def test_comprehension_outer_iterator_uses_the_enclosing_scope():
     _, _, calls, _ = _facts("def Service(): pass\nuse = [Service() for Service in Service()]\n")
     assert sorted(item["data"]["status"] for item in calls) == ["resolved", "unresolved"]
+
+
+@pytest.mark.parametrize(
+    "expression,inlined_comprehension",
+    [
+        ("helper(items)", False),
+        ("any(helper(name) for name in items) or any(item for item in items)", False),
+        ("[helper(name) for name in items] or [item for item in items]", True),
+        ("{helper(name) for name in items} or {item for item in items}", True),
+        ("{name: helper(name) for name in items} or {item: item for item in items}", True),
+    ],
+    ids=["direct", "generator", "list", "set", "dict"],
+)
+def test_deferred_calls_follow_available_compiler_scope(expression, inlined_comprehension):
+    source = f"def caller(items):\n return {expression}\ndef helper(item): return True\n"
+    _, _, calls, _ = _facts(source)
+    [call] = [item["data"] for item in calls if item["data"]["expression"] == "helper"]
+    if inlined_comprehension and sys.version_info >= (3, 12):
+        # Inlined scopes need a native ownership proof before calls can be resolved.
+        caller = symtable.symtable(source, "sample.py", "exec").get_children()[0]
+        assert caller.get_children() == []
+        assert call["status"] == "unresolved" and call["targets"] == []
+        return
+    assert call["status"] == "resolved" and call["targets"] == ["sample.core.helper"]
+
+
+def test_provider_parent_helper_is_referenced_from_both_actual_call_sites(tmp_path: Path):
+    from test_dependency_api_target import _source_members
+
+    package = tmp_path / "sample"
+    package.mkdir()
+    (package / "core.py").write_text(
+        _source_members(
+            "src/archkeel/analyzer/python/collect.py",
+            {"_provider_bindings", "_provider_parents_static"},
+        )
+    )
+    result = _observe(tmp_path)
+    assert result.observation is not None, result.diagnostics
+    observation = result.observation
+    target = "sample.core._provider_parents_static"
+    calls = [
+        item
+        for item in observation.records("calls") or ()
+        if item.data.get("expression") == "_provider_parents_static"
+    ]
+    assert len(calls) == 2
+    assert {
+        (item.data.get("source_scope"), item.data.get("status"), item.data.get("targets"))
+        for item in calls
+    } == {("sample.core._provider_bindings", "resolved", (target,))}
+    evidence = {item.id: item for item in observation.evidence}
+    assert {evidence[item.evidence_ids[0]].excerpt.strip() for item in calls} == {
+        "runtime_parent = _provider_parents_static(module.module, by_module)",
+        "if not runtime_parent and not _provider_parents_static(",
+    }
+    assert target not in {item.name for item in unreferenced_symbols(observation).candidates}
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "def caller(items):\n"
+        " return any(helper(name) for name in items) or any(name for name in items)\n"
+        "def helper(item): return True\n",
+        "def helper(): return True\ndef caller(helper, items):\n"
+        " return any(helper() for name in items) or any(item for item in items)\n",
+        "def helper(): return True\ndef caller(items):\n"
+        " return any(helper() for helper in items) or any(item for item in items)\n",
+        "def helper(): return True\ndef caller(items):\n"
+        " return any((helper := name) for name in items) or any(helper() for item in items)\n",
+        "value = any(helper(name) for name in items) or any(item for item in items)\n"
+        "def helper(item): return True\n",
+        "class Owner:\n"
+        " value = any(helper(name) for name in items) or any(item for item in items)\n"
+        "def helper(item): return True\n",
+    ],
+    ids=["same-targets", "free-parameter", "target-shadow", "walrus", "eager", "class-body"],
+)
+def test_same_line_comprehension_matching_keeps_unproven_bindings_unknown(source):
+    _, _, calls, _ = _facts(source)
+    [call] = [item["data"] for item in calls if item["data"]["expression"] == "helper"]
+    assert call["status"] == "unresolved" and call["targets"] == []
+
+
+def test_comprehension_matching_needs_a_real_compiler_table(monkeypatch):
+    def unavailable(*_args):
+        raise SyntaxError("compiler table unavailable")
+
+    monkeypatch.setattr("archkeel.analyzer.python.scopes.symtable.symtable", unavailable)
+    _, _, calls, _ = _facts(
+        "def caller(items):\n"
+        " return any(helper(name) for name in items) or any(item for item in items)\n"
+        "def helper(item): return True\n"
+    )
+    [call] = [item["data"] for item in calls if item["data"]["expression"] == "helper"]
+    assert call["status"] == "unresolved" and call["targets"] == []
 
 
 def test_lambda_parameters_do_not_borrow_outer_receiver_types():

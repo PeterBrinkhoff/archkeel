@@ -62,6 +62,21 @@ class LexicalScopes(ast.NodeVisitor):
         self.by_node: dict[ast.AST, Scope] = {}
         self.visit(module.tree)
 
+    @staticmethod
+    def for_module(module: ParsedModule) -> LexicalScopes:
+        cached = module._lexical_scopes
+        key = (module.source, module.rel_path, module.module)
+        if (
+            cached is not None
+            and cached[0] is module.tree
+            and cached[1:4] == key
+            and isinstance(cached[4], LexicalScopes)
+        ):
+            return cached[4]
+        scopes = LexicalScopes(module)
+        module._lexical_scopes = (module.tree, *key, scopes)
+        return scopes
+
     def visit(self, node: ast.AST) -> None:
         self.by_node[node] = self.current
         super().visit(node)
@@ -111,6 +126,28 @@ class LexicalScopes(ast.NodeVisitor):
                 if table.get_name() == name and table.get_lineno() == location(node)[0]
             ]
         )
+        if len(matches) > 1 and isinstance(
+            node, ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp
+        ):
+            # Eager sites need execution-order proof before a better table can authorize a call.
+            deferred: Scope | None = parent
+            while deferred is not None and not isinstance(
+                deferred.node, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda
+            ):
+                deferred = deferred.parent
+            if deferred is not None:
+                targets = {
+                    target.id
+                    for generator in node.generators
+                    for target in ast.walk(generator.target)
+                    if isinstance(target, ast.Name) and isinstance(target.ctx, ast.Store)
+                }
+                matches = [
+                    table
+                    for table in matches
+                    if isinstance(table, symtable.Function)
+                    and set(table.get_locals()) - set(table.get_parameters()) == targets
+                ]
         self.current = Scope(
             node, matches[0] if len(matches) == 1 else None, qualified_name, identity, parent
         )

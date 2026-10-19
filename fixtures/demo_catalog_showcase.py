@@ -42,7 +42,8 @@ _TOUR_APP_ORDERS = HEADER + (
     "from shop.model.entities import Line, Money, Order\n"
     "from shop.store import OrderRepository\n"
     "from shop.store.backend.files import write_payload\n"
-    "from shop.store.sqlite import vacuum\n\n"
+    "from shop.store.sqlite import vacuum\n"
+    "from shop.app.maintenance import run_maintenance\n\n"
     "if TYPE_CHECKING:\n"
     "    from shop.store.sqlite import Connection\n\n\n"
     "def place_order(\n"
@@ -61,6 +62,7 @@ _TOUR_APP_ORDERS = HEADER + (
     "    return OrderRepository(store_dir).load(order_id).total()\n\n\n"
     "def describe_connection(connection: Connection) -> str:\n"
     '    """Type-only use of the maintenance connection; never imported at runtime here."""\n'
+    "    run_maintenance(connection)\n"
     '    return f"connection to {connection.path}"\n\n\n'
     "def restate_total(order: Order) -> Money:\n"
     '    """A second home for the arithmetic shop.model is declared to own (AD-30)."""\n'
@@ -79,7 +81,7 @@ _TOUR_MODEL_ENTITIES = HEADER + (
     '"""Order and Line value types with Money arithmetic."""\n\n'
     "from __future__ import annotations\n\n"
     "from dataclasses import dataclass\n"
-    "from typing import Any, TypedDict\n\n"
+    "from typing import TypedDict\n\n"
     '__all__ = ["Order", "Line", "Money", "OrderPayload", "LinePayload"]\n\n\n'
     "class LinePayload(TypedDict):\n"
     '    """The serialised shape of one order line."""\n\n'
@@ -142,6 +144,15 @@ _TOUR_MODEL_ENTITIES = HEADER + (
     "    def from_dict(cls, payload: OrderPayload) -> Order:\n"
     '        lines = tuple(Line.from_dict(item) for item in payload["lines"])\n'
     '        return cls(order_id=payload["order_id"], lines=lines)\n\n\n'
+)
+
+# Dynamic probes must not invalidate the public DTO provider's namespace proof.
+_TOUR_MODEL_PROMOTIONS = ROGUE_DATACLASS_MODULE.replace(
+    "from dataclasses import dataclass\n",
+    "from dataclasses import dataclass\nfrom typing import Any\n\n"
+    "from shop.model.entities import Order\n",
+) + (
+    "\n\n"
     "def audit_total(order: Order, options: Any) -> str:\n"
     '    """Assert/eval probe, an Any parameter and a local render import, for the tour."""\n'
     '    assert order.lines, "orders must have at least one line"\n'
@@ -192,7 +203,7 @@ _TOUR = Variant(
     "app->store.backend reach one package level deeper, an app->json scope violation, an "
     "app->shop_analytics reach no rule names at all, a cli->render underscore reach, a "
     "three-member model/render/store cycle that also violates DEP-MODEL-NO-RENDER, an "
-    "assert, an eval and a getattr, Any in the shop.model serialisation boundary, a "
+    "assert, an eval and a getattr, an Any parameter in shop.model's audit probe, a "
     "broad except outside the one exactly exempted function, an "
     "unassigned module, a store.sqlite->store.repository peer reach (the inside contract "
     "grants api that same edge, so the level below stays silent there), a store.sqlite-"
@@ -201,8 +212,8 @@ _TOUR = Variant(
     "parameter on place_order itself, the one function app.orders declares public (AD-63: "
     "only a declared facade function is inspected, so touch_store's own bare-object "
     "parameter, never declared, no longer fires here). Real "
-    "run: 20 rule ids and 21 violations, since CONSTRUCT-NO-DYNAMIC answers both the eval "
-    "and the getattr; at validate time the same 21 rule.violated diagnostics plus 2 "
+    "run: 21 rule ids and 22 violations, since CONSTRUCT-NO-DYNAMIC answers both the eval "
+    "and the getattr; at validate time the same 22 rule.violated diagnostics plus 2 "
     "closed_world.observed_forbidden pairs (model->render, render->store) and 1 graph.drift, "
     "since the marked component graph never declared either edge.",
     files={
@@ -216,13 +227,14 @@ _TOUR = Variant(
         "shop/store/architecture-contract.json": STORE_INSIDE_WITH_REPOSITORY_PEER_GRANT,
         "shop/cli/main.py": MAIN_WITH_UNDERSCORE_IMPORT,
         "shop/model/entities.py": _TOUR_MODEL_ENTITIES,
-        "shop/model/promotions.py": ROGUE_DATACLASS_MODULE,
+        "shop/model/promotions.py": _TOUR_MODEL_PROMOTIONS,
         "shop/app/maintenance.py": _TOUR_APP_MAINTENANCE,
         "shop/extra.py": SHOP_EXTRA,
     },
     expected_violations=(
         "APP-TYPES-NOT-DICT",
         "ASSIGNMENT-COMPLETE",
+        "CALL-DESCRIBE-NO-MAINTENANCE",
         "COMPONENT-NO-CYCLES",
         "CONSTRUCT-NO-ANY",
         "CONSTRUCT-NO-ASSERT",
@@ -247,6 +259,7 @@ _TOUR = Variant(
         "closed_world.observed_forbidden",
         "closed_world.observed_forbidden",
         "graph.drift",
+        "rule.violated",
         "rule.violated",
         "rule.violated",
         "rule.violated",

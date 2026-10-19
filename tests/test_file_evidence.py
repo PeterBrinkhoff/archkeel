@@ -164,9 +164,11 @@ def test_an_empty_dart_library_is_the_same_root_layout_violation(
 
 def _ir_schema_errors(observation: dict[str, object]) -> list[str]:
     """What the published IR schemas reject in one decoded observation, as test_schema_drift."""
-    common = json.loads((SCHEMA / "architecture-ir-common.schema.json").read_bytes())
-    profile = json.loads((SCHEMA / "architecture-ir-python-decoded.schema.json").read_bytes())
-    registry = Registry().with_resource(common["$id"], Resource.from_contents(common))
+    profile = json.loads((SCHEMA / "architecture-ir-python-decoded-2.1.schema.json").read_bytes())
+    schemas = [json.loads(path.read_bytes()) for path in SCHEMA.glob("*.json")]
+    registry = Registry().with_resources(
+        (schema["$id"], Resource.from_contents(schema)) for schema in schemas
+    )
     validator = Draft202012Validator(profile, registry=registry)
     return [error.message for error in validator.iter_errors(observation)]
 

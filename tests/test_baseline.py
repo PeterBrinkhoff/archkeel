@@ -114,7 +114,7 @@ def test_a_baselined_violation_passes_while_validate_alone_still_fails(tmp_path:
 
     result, files = run_validate(root, SHOP_CONFIG, observe, baseline=baseline)
 
-    assert (result.exit_code, result.failures, files) == (0, (), {})
+    assert (result.exit_code, result.failures, dict(files.entries)) == (0, (), {})
     assert result.declared_rules == "FAIL"
     bare, _ = run_validate(root, SHOP_CONFIG, observe)
     assert bare.exit_code == 2
@@ -154,7 +154,12 @@ def test_updating_an_existing_baseline_refuses_new_fingerprints_by_default(
 
     result, files = run_validate(root, SHOP_CONFIG, observe, baseline=baseline, write_baseline=True)
 
-    assert (result.exit_code, result.baseline_new, result.baseline_resolved, files) == (
+    assert (
+        result.exit_code,
+        result.baseline_new,
+        result.baseline_resolved,
+        dict(files.entries),
+    ) == (
         1,
         1,
         0,
@@ -183,7 +188,7 @@ def test_a_refused_write_says_why_and_how_to_proceed_without_advising_itself(
     )
 
     assert plain.failures[0].endswith("; rewrite the baseline with --write-baseline")
-    assert (refused.exit_code, refused.artifact, files) == (1, None, {})
+    assert (refused.exit_code, refused.artifact, dict(files.entries)) == (1, None, {})
     assert refused.failures == (
         f"resolved violation: {GETATTR_RULE} | shop.model.probe.read "
         "(0 observed, 1 in the baseline)",
@@ -240,7 +245,7 @@ def test_a_refusal_compares_current_policy_and_stays_the_last_failure(
         against="main",
     )
 
-    assert (result.exit_code, result.artifact, files) == (1, None, {})
+    assert (result.exit_code, result.artifact, dict(files.entries)) == (1, None, {})
     assert baseline.read_bytes() == before
     assert result.failures == expected_failures
 
@@ -261,7 +266,9 @@ def test_accept_new_explicitly_updates_an_existing_baseline(tmp_path: Path) -> N
     )
 
     assert (result.exit_code, result.baseline_new, result.baseline_resolved) == (0, 1, 0)
-    assert parse_baseline(decode_json(files[str(baseline)])) == observed_violations(_observe(root))
+    assert parse_baseline(decode_json(dict(files.entries)[str(baseline)])) == observed_violations(
+        _observe(root)
+    )
 
 
 def test_updating_an_existing_baseline_refuses_an_increased_count(tmp_path: Path) -> None:
@@ -271,7 +278,12 @@ def test_updating_an_existing_baseline_refuses_an_increased_count(tmp_path: Path
 
     result, files = run_validate(root, SHOP_CONFIG, observe, baseline=baseline, write_baseline=True)
 
-    assert (result.exit_code, result.baseline_new, result.baseline_resolved, files) == (
+    assert (
+        result.exit_code,
+        result.baseline_new,
+        result.baseline_resolved,
+        dict(files.entries),
+    ) == (
         1,
         1,
         0,
@@ -292,7 +304,9 @@ def test_updating_an_existing_baseline_allows_resolved_only_drift(tmp_path: Path
     result, files = run_validate(root, SHOP_CONFIG, observe, baseline=baseline, write_baseline=True)
 
     assert (result.exit_code, result.baseline_new, result.baseline_resolved) == (0, 0, 1)
-    assert parse_baseline(decode_json(files[str(baseline)])) == observed_violations(_observe(root))
+    assert parse_baseline(decode_json(dict(files.entries)[str(baseline)])) == observed_violations(
+        _observe(root)
+    )
 
 
 def test_a_baseline_entry_matches_its_violation_in_any_subject_order(tmp_path: Path) -> None:
@@ -301,7 +315,7 @@ def test_a_baseline_entry_matches_its_violation_in_any_subject_order(tmp_path: P
     root = _repo(tmp_path, "reordered", {"shop/store/repository.py": REPOSITORY_WITH_MONEY_IMPORT})
     baseline = root / "known-violations.json"
     _, files = run_validate(root, SHOP_CONFIG, observe, baseline=baseline, write_baseline=True)
-    written = json.loads(files[str(baseline)])
+    written = json.loads(dict(files.entries)[str(baseline)])
     subjects = ["shop.model.entities.Money", "shop.store.repository"]
     assert written["violations"][0]["subjects"] == subjects
     written["violations"][0]["subjects"].reverse()
@@ -315,7 +329,7 @@ def test_a_baseline_entry_matches_its_violation_in_any_subject_order(tmp_path: P
     assert (result.exit_code, result.failures) == (0, ())
     assert (result.baseline_new, result.baseline_resolved) == (0, 0)
     assert (rewritten.exit_code, rewritten.failures) == (0, ())
-    assert json.loads(files[str(baseline)])["violations"][0]["subjects"] == subjects
+    assert json.loads(dict(files.entries)[str(baseline)])["violations"][0]["subjects"] == subjects
 
 
 def test_a_fingerprint_is_the_same_in_any_list_order() -> None:
@@ -360,7 +374,7 @@ def test_two_entries_differing_only_in_subject_order_are_named_not_summed(
         root, SHOP_CONFIG, observe, baseline=baseline, write_baseline=True
     )
 
-    assert files == {}
+    assert dict(files.entries) == {}
     for result in (plain, writing):
         assert result.exit_code == 2
         ((code, claim, remedy),) = [
@@ -445,18 +459,20 @@ def test_write_baseline_records_the_observed_violations(tmp_path: Path) -> None:
 
     assert result.exit_code == 0
     assert result.artifact == str(baseline)
-    written = parse_baseline(decode_json(files[str(baseline)]))
+    written = parse_baseline(decode_json(dict(files.entries)[str(baseline)]))
     assert written == (
         KnownViolation(ViolationFingerprint((GETATTR_RULE,), ("shop.model.probe.read",)), 2),
     )
-    assert json.loads(files[str(baseline)])["schema_version"] == BASELINE_SCHEMA_VERSION
+    assert (
+        json.loads(dict(files.entries)[str(baseline)])["schema_version"] == BASELINE_SCHEMA_VERSION
+    )
 
 
 def test_a_written_baseline_passes_the_run_that_wrote_it(tmp_path: Path) -> None:
     root = _repo(tmp_path, "roundtrip", {"shop/model/probe.py": TWICE_PROBE})
     baseline = root / "known-violations.json"
     _, files = run_validate(root, SHOP_CONFIG, observe, baseline=baseline, write_baseline=True)
-    baseline.write_bytes(files[str(baseline)])
+    baseline.write_bytes(dict(files.entries)[str(baseline)])
 
     result, _ = run_validate(root, SHOP_CONFIG, observe, baseline=baseline)
 
@@ -497,7 +513,7 @@ def test_a_baseline_does_not_hide_any_other_diagnostic(tmp_path: Path) -> None:
     result, files = run_validate(root, SHOP_CONFIG, observe, baseline=baseline, write_baseline=True)
 
     assert result.exit_code == 2
-    assert files == {}
+    assert dict(files.entries) == {}
     assert baseline.read_bytes() == baseline_bytes(observed_violations(_observe(root)))
     assert [item.code for item in result.diagnostics] == ["rationale.placeholder"]
 

@@ -13,6 +13,7 @@ matching is not visual or accessibility proof.
 import json
 from pathlib import Path
 
+import pytest
 from test_baseline import GETATTR_RULE, PROBE, _repo
 from test_html_report import _start_tags
 from test_report_filter import CONFIG, _tour_root
@@ -52,8 +53,28 @@ def _linked_audit(page: str, directory: Path):
     return model
 
 
-def _report(tmp_path: Path, *, only_violations: bool = False):
+def _report(
+    tmp_path: Path,
+    *,
+    only_violations: bool = False,
+    mixed_evidence: bool = False,
+    opaque_provider: bool = False,
+):
     root = _tour_root(tmp_path)
+    if opaque_provider:
+        provider = root / "shop/model/entities.py"
+        provider.write_text(
+            provider.read_text() + "\ndef opaque_probe():\n    return eval('Order')\n"
+        )
+    if mixed_evidence:
+        (root / "shop/app/mixed.py").write_text(
+            "def mixed(payload: dict, stamp: 'Missing') -> str:\n    return ''\n"
+        )
+        contract_path = root / CONFIG.contract
+        contract = json.loads(contract_path.read_bytes())
+        app = next(item for item in contract["components"] if item["id"] == "COMP-APP")
+        app["public"].append("shop.app.mixed:mixed")
+        contract_path.write_text(json.dumps(contract))
     result, architecture = run_report(
         root, config=CONFIG, analyzer=observe, only_violations=only_violations
     )
@@ -68,82 +89,6 @@ def _report(tmp_path: Path, *, only_violations: bool = False):
         result, architecture, repository="shop", architecture_href="architecture.json"
     ).decode()
     return result, observation, page
-
-
-def _renderer_only_mixed_report(tmp_path: Path, *, only_violations: bool = False):
-    """Render injected UNKNOWN evidence beside a real scan; this is not an E2E proof.
-
-    The UNKNOWN summary is synthetic and added after measurement. This only probes renderer
-    output; it does not prove that a rule row associates status with the correct evidence.
-    A browser/structured-state acceptance must establish that association.
-    """
-    root = _tour_root(tmp_path)
-    result, architecture = run_report(
-        root, config=CONFIG, analyzer=observe, only_violations=only_violations
-    )
-    assert architecture is not None
-    raw = decode_canonical_model(json.loads(architecture))
-    observed_violations = len(raw["violations"])
-    position = {
-        "module": "shop.app.orders",
-        "qualified_name": "shop.app.orders.place_order",
-        "position": "return",
-        "annotation": "SyntheticType",
-        "reason": "other",
-        "occurrence": 0,
-    }
-    raw["unknowns"].append(
-        {
-            "id": "UNKNOWN-APP-TYPES-PARTIAL",
-            "evidence_class": "UNKNOWN",
-            "area": "type_architecture",
-            "kind": "boundary_type_limit",
-            "title": "One facade type position is undecided",
-            "subjects": ["shop.app.orders.place_order"],
-            "evidence_ids": [],
-            "rule_ids": ["APP-TYPES-NOT-DICT"],
-            "fact_ids": [],
-            "provenance": ["docs/architecture/shop.md"],
-            "data": {
-                "positions": 2,
-                "decided": 1,
-                "undecided": 1,
-                "missing_annotation": 0,
-                "forward_reference": 0,
-                "dotted_name": 0,
-                "generic": 0,
-                "union": 0,
-                "unresolved_name": 0,
-                "external_type": 0,
-                "other": 1,
-                "undecidable_positions": [position],
-            },
-        }
-    )
-    raw["unknowns"].append(
-        {
-            "id": "UNKNOWN-APP-TYPES-POSITION",
-            "evidence_class": "UNKNOWN",
-            "area": "type_architecture",
-            "kind": "boundary_type_position",
-            "title": "Synthetic facade return type is undecided",
-            "subjects": ["shop.app.orders.place_order"],
-            "evidence_ids": [],
-            "rule_ids": ["APP-TYPES-NOT-DICT"],
-            "fact_ids": [],
-            "provenance": ["docs/architecture/shop.md"],
-            "data": position,
-        }
-    )
-    observation = parse_observation(raw)
-    (tmp_path / "architecture.json").write_bytes(canonical_report_bytes(observation))
-    page = render_architecture_html(
-        result,
-        canonical_report_bytes(observation),
-        repository="shop",
-        architecture_href="architecture.json",
-    ).decode()
-    return result, observation, page, observed_violations
 
 
 def test_same_fingerprint_growth_is_one_counted_finding_not_an_exact_line_claim() -> None:
@@ -233,32 +178,84 @@ def test_report_lists_every_declared_rule_and_its_provenance(tmp_path: Path) -> 
     )
 
 
+@pytest.mark.parametrize("opaque_provider", [False, True])
 def test_fail_and_unknown_evidence_coexist_without_downgrading_the_verdict(
-    tmp_path: Path,
+    tmp_path: Path, opaque_provider: bool
 ) -> None:
-    result, observation, page, observed_violations = _renderer_only_mixed_report(tmp_path)
-    violation = next(
+    result, observation, page = _report(
+        tmp_path, mixed_evidence=True, opaque_provider=opaque_provider
+    )
+    violations = [
         item
         for item in observation.records("violations") or ()
         if "APP-TYPES-NOT-DICT" in item.rule_ids
+    ]
+    assert len(violations) == 2
+    assert {
+        tuple(item.data.get(key) for key in ("qualified_name", "position", "annotation"))
+        for item in violations
+    } == {
+        ("shop.app.orders.place_order", "store_dir", "object"),
+        ("shop.app.mixed.mixed", "payload", "dict"),
+    }
+    violation = next(
+        item for item in violations if item.data.get("qualified_name") == "shop.app.mixed.mixed"
     )
     (unknown,) = [
         item for item in observation.records("unknowns") or () if item.kind == "boundary_type_limit"
     ]
     assert violation.rule_ids == unknown.rule_ids == ("APP-TYPES-NOT-DICT",)
     assert violation.id != unknown.id
+    assert unknown.data.get("ambiguous_facade") == 0
+    assert unknown.data.get("ambiguous_binding") == int(opaque_provider)
+    assert unknown.data.get("forward_reference") == 1
+    assert tuple(unknown.data.get(key) for key in ("positions", "decided", "undecided")) == (
+        9,
+        8 - int(opaque_provider),
+        1 + int(opaque_provider),
+    )
+    positions = [
+        item
+        for item in observation.records("unknowns") or ()
+        if item.kind == "boundary_type_position" and item.rule_ids == unknown.rule_ids
+    ]
+    expected_positions = {
+        ("shop.app.mixed", "shop.app.mixed.mixed", "stamp", 0, "'Missing'", "forward_reference")
+    }
+    if opaque_provider:
+        expected_positions.add(
+            (
+                "shop.app.orders",
+                "shop.app.orders.place_order",
+                "return",
+                0,
+                "Order",
+                "ambiguous_binding",
+            )
+        )
+    assert len(positions) == len(expected_positions)
+    keys = ("module", "qualified_name", "position", "occurrence", "annotation", "reason")
+    assert {tuple(item.data.get(key) for key in keys) for item in positions} == expected_positions
+    assessment = next(row for row in result.rule_assessments if row.id == "APP-TYPES-NOT-DICT")
+    assert (
+        assessment.status,
+        assessment.evaluation_proven,
+        assessment.count,
+        assessment.undecided,
+    ) == ("FAIL", True, 2, 1 + int(opaque_provider))
     assert result.declared_rules == "FAIL"
     assert result.measurements is not None
-    assert result.measurements.scalars.violations == observed_violations
+    assert result.measurements.scalars.violations == len(observation.records("violations") or ())
     audit = _linked_audit(page, tmp_path)
-    assert violation in audit.records("violations") and unknown in audit.records("unknowns")
+    assert all(item in audit.records("violations") for item in violations)
+    assert unknown in audit.records("unknowns")
     assert 'aria-label="Decision: FAIL"' in page
 
 
 def test_report_is_deterministic_and_keeps_unknown_context_when_focusing_violations(
     tmp_path: Path,
 ) -> None:
-    result, observation, page, _ = _renderer_only_mixed_report(tmp_path, only_violations=True)
+    result, observation, page = _report(tmp_path, only_violations=True, mixed_evidence=True)
     repeated = render_architecture_html(
         result,
         canonical_report_bytes(observation),

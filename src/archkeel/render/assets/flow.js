@@ -1,3 +1,6 @@
+import { create as createScene } from "./report-scene.js";
+import { layoutUml, layoutAtlas, routeUmlRelationships, hasCompleteManualPositions } from "./report-layout.js";
+export let flow;
 "use strict";
 // One report model, scene projection and UML renderer for every architecture view.
 (function () {
@@ -7,8 +10,8 @@
   const flowHeading = document.getElementById("flow-heading");
   flowHeading.tabIndex = -1;
   const DATA = JSON.parse(dataNode.textContent);
-  const REPORT_SCENE = window.ArchkeelReportScene.create(DATA);
-  const REPORT_LAYOUT = window.ArchkeelReportLayout;
+  const REPORT_SCENE = createScene(DATA);
+  const REPORT_LAYOUT = { layoutUml, layoutAtlas, routeUmlRelationships, hasCompleteManualPositions };
   const ATLAS = REPORT_SCENE.atlas;
   const NAV = DATA.navigation || null;
   const SIDECAR = Boolean(NAV?.module_ids);
@@ -3067,7 +3070,7 @@
     });
   }
   // Seam for presentation controllers (report-canvas.js). No verdict logic crosses it.
-  window.ArchkeelFlow = {
+  window.ArchkeelFlow = flow = {
     root, svg, canvas, nodeLayer, edgeLayer, atlas: ATLAS, reportScene: REPORT_SCENE,
     selectElement: (id) => selectArchitectureSubject("node", id),
     fit, zoomBy, zoomAt, syncExpansionInert, emphasize: atlasEmphasize,

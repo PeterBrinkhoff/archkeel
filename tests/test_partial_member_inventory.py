@@ -227,6 +227,40 @@ def certified(request, tmp_path_factory):
     return model, inputs
 
 
+@pytest.mark.parametrize("state", ["runtime_uncertain", "conditional", "ambiguous"])
+def test_inventory_proof_ownership_tracks_declarations_instead_of_runtime_flags(certified, state):
+    model, inputs = certified
+    owner = next(
+        item
+        for item in model.records("symbols") or ()
+        if item.kind == "class" and item.data.get("name") == "Data"
+    )
+    values = dict(owner.data.entries)
+    if state == "conditional":
+        values["definition_contexts"] = (RecordData((("kind", "if"), ("branch", "body"))),)
+    else:
+        values.update(
+            source_binding_unique=False,
+            source_member_binding_static=False,
+            class_header_static=False,
+        )
+    changed = replace(owner, data=RecordData(tuple(values.items())))
+    symbols = tuple(
+        changed if item.id == owner.id else item for item in model.records("symbols") or ()
+    )
+    if state == "ambiguous":
+        symbols += (replace(changed, id="other-definition"),)
+    model = replace(
+        model,
+        sections=tuple(
+            replace(section, records=symbols) if section.name == "symbols" else section
+            for section in model.sections
+        ),
+    )
+    proof = member_inventory_proof(model, inputs)
+    assert (proof is not None and owner.id in proof.fact_ids) is (state == "runtime_uncertain")
+
+
 @pytest.mark.parametrize(
     "alter",
     [

@@ -787,7 +787,7 @@ def test_cyclic_publication_stays_unknown_without_weakening_private_imports(
     assert interface.status == ("FAIL" if name.startswith("_") else "UNKNOWN")
 
 
-def test_unproven_ordinary_reexport_stays_unknown_in_cli_json(
+def test_stable_ordinary_reexport_proves_source_violation_in_cli_json(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     variant = next(
@@ -799,9 +799,9 @@ def test_unproven_ordinary_reexport_stays_unknown_in_cli_json(
 
     validate_code = main(["validate", "--root", str(root), "--json"])
     validation = json.loads(capsys.readouterr().out)
-    assert validate_code == 0
-    assert validation["diagnostics"] == []
-    assert validation["declared_rules"] == "UNKNOWN"
+    assert validate_code == 2
+    assert [item["code"] for item in validation["diagnostics"]] == ["rule.violated"]
+    assert validation["declared_rules"] == "FAIL"
 
     architecture_path = tmp_path / "architecture.json"
     report_code = main(
@@ -809,22 +809,36 @@ def test_unproven_ordinary_reexport_stays_unknown_in_cli_json(
     )
     report = json.loads(capsys.readouterr().out)
     assert report_code == 0
-    assert report["declared_rules"] == "UNKNOWN"
+    assert report["declared_rules"] == "FAIL"
 
     observation = parse_observation(
         decode_canonical_model(json.loads(architecture_path.read_bytes()))
     )
-    assert not trace_valid_violations(observation)
+    violations = trace_valid_violations(observation)
+    assert len(violations) == 1
+    assert violations[0].rule_ids == ("RENDER-TYPES-NOT-DICT",)
+    location = next(
+        item for item in observation.evidence if item.id == violations[0].evidence_ids[0]
+    )
+    assert location.file == "shop/render/text.py"
+    assert "order: dict" in location.excerpt
+    intermediate = next(
+        item
+        for item in observation.records("imports") or ()
+        if item.data.get("source_module") == "shop.render.intermediate"
+        and item.data.get("binding") == "render_order"
+    )
+    assert intermediate.data.get("reexport") is False
+    assert intermediate.data.get("source_binding_unique") is True
+    assert intermediate.data.get("origin_definition") == "shop.render.text.render_order"
+    assert intermediate.data.get("source_member_binding_static") is False
     uncertain_routes = {
         subject
         for item in observation.records("unknowns") or ()
         if item.kind == "boundary_type_route"
         for subject in item.subjects
     }
-    assert uncertain_routes == {
-        "shop.render.facade.render_order",
-        "shop.render.facade",
-    }
+    assert uncertain_routes == set()
 
 
 @pytest.mark.parametrize(
@@ -1131,11 +1145,11 @@ def test_graph_drift_names_the_command_or_the_line_it_refuses(tmp_path: Path) ->
     assert {item.code for item in drifted} == {"graph.drift"}
     assert {"archkeel validate --write-graph" in item.remedy for item in drifted} == {True}
     fixed, files = run_validate(stale, CONFIG, observe, write_graph=True)
-    assert (fixed.exit_code, set(files)) == (0, {"docs/architecture/shop.md"})
+    assert (fixed.exit_code, set(dict(files.entries))) == (0, {"docs/architecture/shop.md"})
 
     refused = _prepare_repo(tmp_path / "refused", dict(rows["graph.drift:subgraph"].files))
     result, files = run_validate(refused, CONFIG, observe, write_graph=True)
-    assert files == {}
+    assert dict(files.entries) == {}
     assert {item.code for item in result.diagnostics} == {"graph.drift"}
     for item in result.diagnostics:
         assert "`subgraph composition`" in item.remedy
@@ -1152,14 +1166,14 @@ def test_target_graph_drift_leaves_the_observed_graph_untouched(tmp_path: Path) 
     assert drift.subject == "docs/architecture/shop.md (target graph)"
     assert "archkeel validate --write-graph" in drift.remedy
     fixed, files = run_validate(stale, CONFIG, observe, write_graph=True)
-    assert (fixed.exit_code, set(files)) == (0, {"docs/architecture/shop.md"})
+    assert (fixed.exit_code, set(dict(files.entries))) == (0, {"docs/architecture/shop.md"})
 
     refused = _prepare_repo(
         tmp_path / "target-refused", dict(rows["graph.drift:target-subgraph"].files)
     )
     result, files = run_validate(refused, CONFIG, observe, write_graph=True)
     (drift,) = result.diagnostics
-    assert files == {}
+    assert dict(files.entries) == {}
     assert drift.subject == "docs/architecture/shop.md (target graph)"
     assert "`subgraph composition`" in drift.remedy
     assert "by hand" in drift.remedy
@@ -1250,7 +1264,7 @@ def test_clean_variant_has_no_violations_but_store_scope_is_unknown(tmp_path: Pa
     assert (validate_result.exit_code, validate_result.declared_rules) == (0, "UNKNOWN")
     assert validate_result.diagnostics == ()
     # AD-46: the clean page is what --write-graph writes, so the command leaves it alone.
-    assert run_validate(root, CONFIG, observe, write_graph=True)[1] == {}
+    assert run_validate(root, CONFIG, observe, write_graph=True)[1].entries == ()
 
     report_result, _ = run_report(root, config=CONFIG, analyzer=observe)
     # AD-93 follows collection-contained fields through the declared DTO graph.
@@ -1271,7 +1285,7 @@ def test_dart_clean_variant_has_no_violations_but_unknown_cycle_scope(tmp_path: 
 
     validate_result, _ = run_validate(root, load_config(root), observe)
     assert (validate_result.exit_code, validate_result.diagnostics) == (0, ())
-    assert run_validate(root, load_config(root), observe, write_graph=True)[1] == {}
+    assert run_validate(root, load_config(root), observe, write_graph=True)[1].entries == ()
 
     report_result, _ = run_report(root, config=load_config(root), analyzer=observe)
     assert (report_result.exit_code, report_result.declared_rules) == (0, "UNKNOWN")

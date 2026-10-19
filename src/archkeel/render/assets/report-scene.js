@@ -1,9 +1,10 @@
+import { create as createGraph } from "./report-graph-scene.js";
+import { create as createDeviations } from "./report-atlas-deviations.js";
 "use strict";
-(function (global) {
   function create(data) {
-    const nativeGraph = ArchkeelGraphScene.create(data);
+    const nativeGraph = createGraph(data);
     const ATLAS = data.atlas ? structuredClone(data.atlas) : null;
-    const deviationIndex = ATLAS ? ArchkeelAtlasDeviations.create(ATLAS.deviations || []) : null;
+    const deviationIndex = ATLAS ? createDeviations(ATLAS.deviations || []) : null;
     const DATA = { ...data, atlas: ATLAS };
     const NAV = DATA.navigation || null;
     const countLabel = (value, singular, plural = `${singular}s`) =>
@@ -236,5 +237,7 @@
         }),
     ].join("\n");
   }
-  global.ArchkeelReportScene = { create, search, sceneToMermaid, decider, perspectives };
-})(window);
+
+export { create, search, sceneToMermaid, decider, perspectives };
+
+window.ArchkeelReportScene = { create, search, sceneToMermaid, decider, perspectives };

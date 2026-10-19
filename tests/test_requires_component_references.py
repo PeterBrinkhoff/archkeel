@@ -129,7 +129,7 @@ def test_validate_and_report_reject_root_reference_before_writes(tmp_path: Path)
     assert result.diagnostics[0].code == "contract.invalid"
     assert result.diagnostics[0].pointer == "/components/0/requires/0/component"
     assert result.diagnostics[0].subject == "missing"
-    assert not files
+    assert not files.entries
     assert not baseline.exists()
 
     report, architecture = run_report(tmp_path, config=config, analyzer=observe)
@@ -216,7 +216,7 @@ def test_nested_reference_may_not_borrow_a_parent_label(tmp_path: Path) -> None:
         "/components/0/inside/components/0/requires/0/component"
     )
     assert result.diagnostics[0].subject == "root-target"
-    assert not files
+    assert not files.entries
 
 
 def test_revision_materialization_and_check_auth_keep_nested_pointer(tmp_path: Path) -> None:

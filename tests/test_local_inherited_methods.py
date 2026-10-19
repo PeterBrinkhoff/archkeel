@@ -6,6 +6,7 @@
 import json
 import sys
 from pathlib import Path
+from types import FunctionType
 from unittest.mock import patch
 
 import pytest
@@ -40,8 +41,8 @@ def _report(
     for name, source in (extra_files or {}).items():
         (root / name).write_text(source)
     with (
-        patch("archkeel.check.report.resolve_commit", return_value="a" * 40),
-        patch("archkeel.check.report.git_bytes", return_value=b""),
+        patch("archkeel.check.uml.resolve_commit", return_value="a" * 40),
+        patch("archkeel.check.uml.git_bytes", return_value=b""),
     ):
         result, architecture = run_report(
             root,
@@ -582,7 +583,7 @@ def test_unproven_metaclass_keeps_inherited_mro_unknown(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    "variant,status,count",
+    "variant,inherited_status,count",
     [
         ("class-a-inherited-local-declared", "PASS", 0),
         ("class-a-inherited-local-broad", "FAIL", 0),
@@ -590,24 +591,60 @@ def test_unproven_metaclass_keeps_inherited_mro_unknown(tmp_path: Path) -> None:
     ],
 )
 def test_cli_and_report_agree_on_the_inherited_boundary(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str], variant: str, status: str, count: int
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    variant: str,
+    inherited_status: str,
+    count: int,
 ) -> None:
     from fixtures.architecture_demo import main as demo_main
 
     output = tmp_path / f"{variant}.json"
     assert demo_main(["--replay", variant, "--output", str(output)]) == (
-        2 if status == "FAIL" else 0
+        2 if inherited_status == "FAIL" else 0
     )
     validation, report = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
-    assert validation["exit_code"] == (2 if status == "FAIL" else 0)
+    assert validation["exit_code"] == (2 if inherited_status == "FAIL" else 0)
     assert report["exit_code"] == 0
     [assessment] = [row for row in report["rule_assessments"] if row["id"] == "APP-TYPES-NOT-DICT"]
-    assert assessment["status"] == status and assessment["undecided"] == count
+    assert assessment["status"] == inherited_status
+    assert assessment["undecided"] == count
     assert report["measurements"]["scalars"]["unknown_positions"] == count
     observation = parse_observation(decode_canonical_model(json.loads(output.read_text())))
     assert unknown_positions(observation) == count
+    positions = [
+        item
+        for item in observation.records("unknowns") or ()
+        if item.kind == "boundary_type_position" and "APP-TYPES-NOT-DICT" in item.rule_ids
+    ]
+    # Source identity closes body-effect uncertainty; the external Path type stays visible.
+    assert {
+        (item.data.get("qualified_name"), item.data.get("position"), item.data.get("reason"))
+        for item in positions
+        if item.data.get("qualified_name") == "shop.app.orders.place_order"
+    } == {("shop.app.orders.place_order", "store_dir", "external_type")}
+    [function] = [
+        item
+        for item in observation.records("symbols") or ()
+        if item.data.get("qualified_name") == "shop.app.orders.place_order"
+    ]
+    assert function.data.get("source_binding_unique") is True
+    assert function.data.get("namespace_bound") is True
+    assert function.data.get("signature_decorators_proven") is True
+    assert sum(item.data.get("reason") == "inherited_surface" for item in positions) == count
+    limits = [
+        item
+        for item in observation.records("unknowns") or ()
+        if item.kind == "boundary_type_limit" and "APP-TYPES-NOT-DICT" in item.rule_ids
+    ]
+    [limit] = limits
+    assert limit.data.get("positions") == (7 if count else 8)
+    assert limit.data.get("decided") == (5 if count else 7)
+    assert limit.data.get("undecided") == count + 1
+    assert limit.data.get("external_type") == 1
+    assert limit.data.get("inherited_surface") == count
     details = _native_details(output, observation)
-    if status == "FAIL":
+    if inherited_status == "FAIL":
         [finding] = trace_valid_violations(observation)
         assert finding.subjects[1] == "shop.app.service.Child.convert"
         assert any(
@@ -627,7 +664,7 @@ def test_cli_and_report_agree_on_the_inherited_boundary(
             for proof in detail.observed.evidence
             if proof.id in finding.evidence_ids
         )
-    elif status == "UNKNOWN":
+    elif inherited_status == "UNKNOWN":
         unknown = next(
             item
             for item in observation.records("unknowns") or ()
@@ -691,15 +728,24 @@ def test_shadowed_descriptor_is_not_a_proven_static_method(tmp_path: Path) -> No
 def test_escaped_reexport_retains_origin_identity_and_surface_unknown(
     tmp_path: Path, source: str
 ) -> None:
-    result, observation = _report(
-        tmp_path,
+    implementation = "class Base:\n    def get(self) -> str: ...\nclass Child(Base): pass\n"
+    consumer = (
         "from .impl import Child as Alias\n__all__ = ['Alias']\n"
         "def mutate(cls): cls.get = lambda self: {}\n"
         + ("Child = Alias\n" if source == "Child" else "")
-        + f"mutate({source})\n",
-        public=["sample.app.api:Alias"],
-        implementation="class Base:\n    def get(self) -> str: ...\nclass Child(Base): pass\n",
+        + f"mutate({source})\n"
     )
+    result, observation = _report(
+        tmp_path,
+        consumer,
+        public=["sample.app.api:Alias"],
+        implementation=implementation,
+    )
+    namespace = {}
+    exec(implementation, namespace)
+    namespace["Alias"] = namespace["Child"]
+    exec(consumer.split("\n", 1)[1], namespace)
+    assert namespace["Alias"]().get() == {}
     [assessment] = result.rule_assessments or ()
     assert assessment.status == "UNKNOWN"
     assert unknown_positions(observation) >= 1
@@ -719,10 +765,12 @@ def test_escaped_reexport_retains_origin_identity_and_surface_unknown(
         item.data.get("reason") == "inherited_surface"
         for item in observation.records("unknowns") or ()
     )
-    assert not any(
-        item.data.get("reason") == "unresolved_reexport_route"
+    assert imported.data.get("origin_definition") == "sample.app.impl.Child"
+    assert {
+        item.data.get("qualified_name")
         for item in observation.records("unknowns") or ()
-    )
+        if item.kind == "boundary_type_route"
+    } == set()
 
 
 @pytest.mark.parametrize(
@@ -740,11 +788,257 @@ def test_ordinary_type_and_constant_arguments_preserve_reexport_identity(
         implementation=definition + "\ndef consume(value): return None\n",
     )
     _assert_decided(result, observation)
+    assert trace_valid_violations(observation) == ()
+    assert {
+        item.data.get("qualified_name")
+        for item in observation.records("unknowns") or ()
+        if item.kind == "boundary_type_route"
+    } == set()
     imported = next(
         item for item in observation.records("imports") or () if item.data.get("binding") == name
     )
     assert imported.data.get("source_binding_unique") is True
     assert imported.data.get("reexport") is True
+    assert imported.data.get("origin_definition") == f"sample.app.impl.{name}"
+    assert imported.data.get("source_member_binding_static") is False
+
+
+@pytest.mark.parametrize(
+    "name,plain,replacement,source_header_proven",
+    [
+        (
+            "Marker",
+            "class Marker: pass\n",
+            "def replace(cls): return lambda value: {}\n@replace\nclass Marker: pass\n",
+            False,
+        ),
+        (
+            "Marker",
+            "class Marker: pass\n",
+            "class Replace(type):\n"
+            "    def __new__(mcls, name, bases, namespace):\n"
+            "        return lambda value: {}\n"
+            "class Marker(metaclass=Replace): pass\n",
+            False,
+        ),
+        (
+            "TOKEN",
+            "TOKEN = 1\n",
+            "TOKEN = 1\ndef consume(value):\n"
+            "    consume.__globals__['TOKEN'] = lambda value: {}\nconsume(TOKEN)\n",
+            True,
+        ),
+        (
+            "Marker",
+            "from enum import Enum\nclass Marker(Enum):\n    ready = 'ready'\n",
+            "from enum import Enum\nclass Marker(Enum):\n    ready = 'ready'\n"
+            "def replace(cls):\n"
+            "    replace.__globals__['Marker'] = lambda value: {}\nreplace(Marker)\n",
+            True,
+        ),
+    ],
+    ids=["decorator", "metaclass", "constant-namespace", "enum-namespace"],
+)
+@pytest.mark.parametrize("changed", [False, True], ids=["plain", "replaced"])
+def test_ast_class_or_constant_origin_does_not_prove_its_runtime_binding_kind(
+    tmp_path: Path,
+    name: str,
+    plain: str,
+    replacement: str,
+    source_header_proven: bool,
+    changed: bool,
+) -> None:
+    source = replacement if changed else plain
+    result, observation = _report(
+        tmp_path,
+        f"from .impl import {name}\n__all__ = ['{name}', 'safe']\n"
+        "def safe(value: str) -> str: return value\n",
+        public=[f"sample.app.api:{name}", "sample.app.api:safe"],
+        implementation=source,
+    )
+    namespace = {"__name__": "runtime_control"}
+    exec(source, namespace)
+    exported = namespace[name]
+    assert isinstance(exported, FunctionType) is changed
+    imported = next(
+        item for item in observation.records("imports") or () if item.data.get("binding") == name
+    )
+    assert imported.data.get("origin_definition") == f"sample.app.impl.{name}"
+    if changed:
+        assert exported("input") == {}
+    if changed and not source_header_proven:
+        [assessment] = result.rule_assessments or ()
+        assert assessment.status == "UNKNOWN"
+        assert any(
+            item.kind == "boundary_type_route"
+            and item.data.get("qualified_name") == f"sample.app.api.{name}"
+            for item in observation.records("unknowns") or ()
+        )
+        assert trace_valid_violations(observation) == ()
+    else:
+        _assert_decided(result, observation)
+
+
+@pytest.mark.parametrize("header", [True, False, None])
+def test_public_class_route_needs_positive_native_header_evidence(header):
+    from test_analyzer import _parsed_module
+
+    from archkeel.analyzer.python.symbols import collect_symbols
+    from archkeel.check.evaluation.boundary_types import _public_alias_definition_proven
+
+    [symbol], _, _ = collect_symbols([_parsed_module("class Empty: pass\n", "sample.api")], {})
+    assert symbol["data"]["source_binding_unique"] is True
+    assert symbol["data"]["class_header_static"] is True
+    if header is None:
+        symbol["data"].pop("class_header_static")
+    else:
+        symbol["data"]["class_header_static"] = header
+    assert _public_alias_definition_proven(symbol, {}) is (header is True)
+
+
+@pytest.mark.parametrize(
+    "decorator,setup,expected",
+    [
+        ("@dataclass(frozen=True)", "from dataclasses import dataclass\n", True),
+        ("@model(slots=True)", "from dataclasses import dataclass as model\n", True),
+        ("@dataclass(frozen=flag())", "from dataclasses import dataclass\n", False),
+        ("@dataclass", "def dataclass(cls): return lambda: {}\n", False),
+        ("@dataclass\n@replace", "from dataclasses import dataclass\n", False),
+        ("@dataclass", "from dataclasses import dataclass\ndataclass = replacement\n", False),
+        ("@dataclass", "from missing import dataclass\n", False),
+        (
+            "@dataclass",
+            "from dataclasses import dataclass\ndataclass.__code__ = replacement\n",
+            False,
+        ),
+    ],
+)
+def test_native_dataclass_header_identity_does_not_certify_generated_surface(
+    tmp_path, decorator, setup, expected
+):
+    from test_boundary_type_recursive_aliases import _native_case
+
+    from archkeel.check.evaluation.boundary_types import _public_alias_definition_proven
+    from archkeel.ir.facts_codec import raw_record
+
+    facts = _native_case(
+        tmp_path,
+        "from __future__ import annotations\n"
+        + setup
+        + decorator
+        + "\nclass Marker:\n    value: str\n",
+    )
+    [symbol] = [
+        raw_record(row)
+        for section in facts.sections
+        for row in section.records
+        if section.name == "symbols" and row.data.get("name") == "Marker"
+    ]
+    assert symbol["data"]["class_header_static"] is False
+    assert (symbol["data"].get("source_class_header_static") is True) is expected
+    assert _public_alias_definition_proven(symbol, dict(facts.type_shapes)) is expected
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "value: str = make_default()",
+        "@property\n    def label(self) -> str: return 'label'",
+        "value: computed_annotation()",
+    ],
+    ids=["opaque-default", "property", "evaluated-annotation"],
+)
+def test_native_dataclass_source_header_does_not_require_an_inert_body(tmp_path, body):
+    from test_boundary_type_recursive_aliases import _native_case
+
+    from archkeel.check.evaluation.boundary_types import _public_alias_definition_proven
+    from archkeel.ir.facts_codec import raw_record
+
+    facts = _native_case(
+        tmp_path,
+        "from dataclasses import dataclass\n@dataclass(frozen=True)\nclass Marker:\n    "
+        + body
+        + "\n",
+    )
+    [symbol] = [
+        raw_record(row)
+        for section in facts.sections
+        for row in section.records
+        if section.name == "symbols" and row.data.get("name") == "Marker"
+    ]
+    assert symbol["data"]["class_header_static"] is False
+    assert symbol["data"]["source_member_binding_static"] is False
+    assert symbol["data"]["default_instance_result"] is False
+    assert symbol["data"].get("source_class_header_static") is True
+    assert _public_alias_definition_proven(symbol, dict(facts.type_shapes))
+
+
+@pytest.mark.parametrize(
+    "relative,name",
+    [
+        ("check/ports.py", "ScanConfig"),
+        ("ir/architecture_graph.py", "ArchitectureGraph"),
+        ("ir/architecture_graph.py", "ArchitectureReport"),
+        ("ir/architecture_projection.py", "ArchitectureProjection"),
+        ("ir/measurements.py", "Measurements"),
+        ("ir/model.py", "ObservationResult"),
+        ("ir/model.py", "RunResult"),
+        ("ir/module_explore.py", "ModuleExploreLevel"),
+    ],
+)
+def test_actual_native_dataclass_sources_have_a_declared_header(tmp_path, relative, name):
+    from test_boundary_type_recursive_aliases import _native_case
+
+    from archkeel.check.evaluation.boundary_types import _public_alias_definition_proven
+    from archkeel.ir.facts_codec import raw_record
+
+    source = (Path(__file__).parents[1] / "src/archkeel" / relative).read_text()
+    facts = _native_case(tmp_path, source)
+    [symbol] = [
+        raw_record(row)
+        for section in facts.sections
+        for row in section.records
+        if section.name == "symbols" and row.data.get("name") == name
+    ]
+    assert symbol["data"]["source_binding_unique"] is True
+    assert symbol["data"]["class_header_static"] is False
+    assert symbol["data"]["source_member_binding_static"] is False
+    assert symbol["data"].get("source_class_header_static") is True
+    assert _public_alias_definition_proven(symbol, dict(facts.type_shapes))
+
+
+@pytest.mark.parametrize("proof", [True, False, None])
+def test_native_dataclass_source_header_needs_positive_wire_evidence(tmp_path, proof):
+    from test_boundary_type_recursive_aliases import _native_case
+
+    from archkeel.check.evaluation.boundary_types import _public_alias_definition_proven
+    from archkeel.ir.facts_codec import decode_response, encode_response, raw_record
+    from archkeel.ir.protocol import CollectionResponse, ProtocolVersion
+
+    facts = _native_case(
+        tmp_path,
+        "from __future__ import annotations\nfrom dataclasses import dataclass\n"
+        "@dataclass(frozen=True)\nclass Marker:\n    value: str\n",
+    )
+    payload = json.loads(encode_response(CollectionResponse(facts, ProtocolVersion.V4)))
+    [symbol] = [
+        row
+        for section in payload["facts"]["sections"]
+        for row in section["records"]
+        if section["name"] == "symbols" and row["data"].get("name") == "Marker"
+    ]
+    if proof is None:
+        symbol["data"].pop("source_class_header_static")
+    else:
+        symbol["data"]["source_class_header_static"] = proof
+    decoded = decode_response(json.dumps(payload).encode()).facts
+    [native] = [
+        raw_record(row)
+        for section in decoded.sections
+        for row in section.records
+        if section.name == "symbols" and row.data.get("name") == "Marker"
+    ]
+    assert _public_alias_definition_proven(native, dict(decoded.type_shapes)) is (proof is True)
 
 
 @pytest.mark.parametrize("entry", ["base", "facade"])
@@ -771,10 +1065,11 @@ def test_intermediate_reexport_escape_cannot_disappear_at_the_origin(
         item.data.get("reason") == "inherited_surface"
         for item in observation.records("unknowns") or ()
     )
-    assert not any(
-        item.data.get("reason") == "unresolved_reexport_route"
+    assert {
+        item.data.get("qualified_name")
         for item in observation.records("unknowns") or ()
-    )
+        if item.kind == "boundary_type_route"
+    } == set()
 
 
 @pytest.mark.parametrize(
@@ -2547,3 +2842,133 @@ def test_generated_owner_imported_member_requires_owner_receipt_proof(
     [assessment] = result.rule_assessments or ()
     assert assessment.status == "UNKNOWN" and assessment.undecided == 1
     assert unknown_positions_by_rule(observation) == {"APP-TYPES-NOT-DICT": 1}
+
+
+@pytest.mark.parametrize("changed", [False, True])
+def test_native_dataclass_source_header_rejects_cross_module_factory_mutation(tmp_path, changed):
+    import subprocess
+
+    from archkeel.analyzer.python.collect import collect
+    from archkeel.check.evaluation.boundary_types import _public_alias_definition_proven
+    from archkeel.ir.facts_codec import raw_record
+    from archkeel.ir.protocol import CollectionRequest, PythonSettings, SnapshotInput, SourceScope
+
+    package = tmp_path / "sample"
+    package.mkdir()
+    (package / "__init__.py").write_text("")
+    mutation = (
+        "import dataclasses\n"
+        "def replacement(cls=None, **kwargs): return lambda owner: {}\n"
+        "dataclasses.dataclass.__code__ = replacement.__code__\n"
+    )
+    (package / "mutator.py").write_text(mutation if changed else "")
+    (package / "values.py").write_text(
+        "from . import mutator\nfrom dataclasses import dataclass\n"
+        "@dataclass(frozen=True)\nclass Marker:\n    value: str\n"
+    )
+    runtime = subprocess.run(
+        [sys.executable, "-c", "from sample.values import Marker; print(type(Marker).__name__)"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert runtime.stdout.strip() == ("dict" if changed else "type")
+    facts = collect(
+        CollectionRequest(
+            SnapshotInput(str(tmp_path), "a" * 40, False),
+            SourceScope(("sample",), "sample"),
+            PythonSettings(),
+        )
+    )
+    [symbol] = [
+        raw_record(row)
+        for section in facts.sections
+        if section.name == "symbols"
+        for row in section.records
+        if row.data.get("name") == "Marker"
+    ]
+    assert symbol["data"]["source_binding_unique"] is True
+    assert (symbol["data"].get("source_class_header_static") is True) is not changed
+    assert _public_alias_definition_proven(symbol, dict(facts.type_shapes)) is not changed
+
+
+@pytest.mark.parametrize("hook", ["none", "getitem", "init-subclass", "metaclass"])
+def test_native_generic_ancestry_rejects_actual_creation_hooks(tmp_path, hook):
+    setup = "from typing import Generic, TypeVar\nT = TypeVar('T')\nU = TypeVar('U')\n"
+    meta = ""
+    body = ""
+    if hook == "getitem":
+        body = (
+            "    @classmethod\n    def __class_getitem__(cls, value):\n"
+            "        Base.get = lambda self: {}\n        return cls\n"
+        )
+    elif hook == "init-subclass":
+        body = "    def __init_subclass__(cls):\n        Base.get = lambda self: {}\n"
+    elif hook == "metaclass":
+        setup += (
+            "class Meta(type):\n    def __getitem__(cls, value):\n"
+            "        Base.get = lambda self: {}\n        return cls\n"
+        )
+        meta = ", metaclass=Meta"
+    source = (
+        setup
+        + "class Hidden: pass\n"
+        + f"class Base(Generic[T]{meta}):\n    def get(self) -> list[T]: return []\n"
+        + body
+        + "class Middle(Base[U], Generic[U]): pass\nclass Child(Middle[Hidden]): pass\n"
+    )
+    namespace = {"__name__": "sample.app.api"}
+    exec(source, namespace)
+    assert namespace["Child"]().get() == ([] if hook == "none" else {})
+    result, observation = _report(tmp_path, source)
+    if hook == "none":
+        _assert_decided(result, observation, status="FAIL")
+    else:
+        [assessment] = result.rule_assessments or ()
+        assert assessment.status == "UNKNOWN"
+        assert unknown_positions(observation) >= 1
+        assert trace_valid_violations(observation) == ()
+
+
+@pytest.mark.parametrize("operation", ["none", "call", "subscript", "callback"])
+def test_opaque_payload_transfer_can_rebind_a_sibling_alias(tmp_path, operation):
+    from types import ModuleType
+
+    helpers = (
+        "import sys\ndef mutate(owner):\n    sys.modules[owner.__module__].Other = dict\n"
+        "class Receiver:\n    def __getitem__(self, owner): mutate(owner); return str\n"
+        "receiver = Receiver()\n"
+        "def take(callback): callback.__globals__['Other'] = dict\n"
+    )
+    implementation = (
+        "from outside_helpers import mutate, receiver, take\nfrom typing import Callable\n"
+        "class Payload: value: str\nclass Safe: value: str\n"
+        "Lookup = Callable[[Payload], Payload]\nOther = Callable[[Safe], Safe]\n"
+        + {
+            "none": "",
+            "call": "mutate(Payload)\n",
+            "subscript": "receiver[Payload]\n",
+            "callback": "take(lambda value=Payload: None)\n",
+        }[operation]
+    )
+    module = ModuleType("sample.app.impl")
+    provider = ModuleType("outside_helpers")
+    exec(helpers, provider.__dict__)
+    with patch.dict(sys.modules, {module.__name__: module, provider.__name__: provider}):
+        exec(implementation, module.__dict__)
+        assert (module.Other is dict) is (operation != "none")
+    result, observation = _report(
+        tmp_path,
+        "from .impl import Other\nclass Child:\n    def get(self) -> Other: return {}\n",
+        implementation=implementation,
+        extra_files={"outside_helpers.py": helpers},
+    )
+    if operation == "none":
+        _assert_decided(result, observation, status="FAIL")
+    else:
+        [assessment] = result.rule_assessments or ()
+        assert assessment.status == "UNKNOWN"
+        assert unknown_positions(observation) >= 1
+        assert trace_valid_violations(observation) == ()

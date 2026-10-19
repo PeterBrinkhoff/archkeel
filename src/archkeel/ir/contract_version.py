@@ -10,6 +10,7 @@ CONTRACT_SCHEMA_VERSION: Final = "2.1.0"
 
 
 class ContractFeature(StrEnum):
+    CALL_OWNER = "call_owner"
     UML = "uml"
     LAYERS = "layers"
     ALIAS_BODY = "alias_body"
@@ -32,6 +33,7 @@ class ContractVersion(StrEnum):
     V3_4 = "3.4.0"
     V3_5 = "3.5.0"
     V3_6 = "3.6.0"
+    V3_7 = "3.7.0"
 
 
 # Declaration order is the supported contract evolution order.
@@ -39,6 +41,7 @@ _VERSION_RANK: dict[ContractVersion, int] = {
     version: position for position, version in enumerate(ContractVersion)
 }
 _FEATURE_START: dict[ContractFeature, ContractVersion] = {
+    ContractFeature.CALL_OWNER: ContractVersion.V3_7,
     ContractFeature.UML: ContractVersion.V2_2,
     ContractFeature.LAYERS: ContractVersion.V2_3,
     ContractFeature.ALIAS_BODY: ContractVersion.V3_0,

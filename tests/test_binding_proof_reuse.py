@@ -2,11 +2,14 @@
 # Copyright (c) 2026 Rapiddweller Asia Co., Ltd.
 # SPDX-License-Identifier: MIT
 import ast
+import sys
+from pathlib import Path
+from types import ModuleType
 from unittest.mock import patch
 
 import pytest
 from test_analyzer import _parsed_module
-from test_boundary_types_reexport_proofs import _OVERLOAD_GROUP
+from test_boundary_types_reexport_proofs import _OVERLOAD_GROUP, _observe_facade
 
 from archkeel.analyzer.python import source
 from archkeel.analyzer.python.binding_types import ImportKind
@@ -17,6 +20,324 @@ from archkeel.analyzer.python.source import (
     unique_direct_module_bindings,
     unproven_member_bindings,
 )
+from archkeel.ir.decisions import rule_assessments, unknown_positions_by_rule
+
+
+@pytest.mark.parametrize(
+    ("expression", "initial", "first", "second"),
+    [
+        ("alias", "alias", "first.provider", "second.provider"),
+        (
+            "alias.member.inner",
+            "alias.member.inner",
+            "first.provider.member.inner",
+            "second.provider.member.inner",
+        ),
+        ("factory().member", "factory().member", "factory().member", "factory().member"),
+        ("alias[Payload]", "alias[Payload]", "alias[Payload]", "alias[Payload]"),
+        ("'alias.member'", "'alias.member'", "'alias.member'", "'alias.member'"),
+    ],
+)
+def test_static_name_text_keeps_live_alias_resolution(expression, initial, first, second):
+    module = _parsed_module("value = 1\n")
+    node = ast.parse(expression, mode="eval").body
+    assert source.resolve_static_name(module, node) == initial
+    module.aliases["alias"] = AliasBinding("first.provider", ImportKind.MODULE)
+    assert source.resolve_static_name(module, node) == first
+    module.aliases["alias"] = AliasBinding("second.provider", ImportKind.SYMBOL)
+    assert source.resolve_static_name(module, node) == second
+    del module.aliases["alias"]
+    assert source.resolve_static_name(module, node) == initial
+
+
+@pytest.mark.parametrize(
+    ("effect", "mutation"),
+    [
+        ("annotations", "['run'].__annotations__['value'] = dict"),
+        ("binding", "['run'] = lambda value: {}"),
+    ],
+)
+def test_declared_signature_does_not_claim_opaque_callback_effect_freedom(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, effect: str, mutation: str
+) -> None:
+    api = (
+        "from opaque import probe\n"
+        "def run(value: str) -> str:\n    probe()\n    return value\n"
+        "run('x')\n"
+    )
+    observation = _observe_facade(tmp_path, api=api, public="sample.app.api:run")
+    function = next(
+        item
+        for item in observation.records("symbols") or ()
+        if item.data.get("qualified_name") == "sample.app.api.run"
+    )
+    assert function.data.get("source_binding_unique") is True
+    assert function.data.get("signature_decorators_proven") is True
+    assert function.data.get("source_member_binding_static") is False
+    [assessment] = rule_assessments(
+        observation, undecided_by_rule=unknown_positions_by_rule(observation)
+    )
+    assert assessment.status == "PASS"
+    assert not [
+        item
+        for item in observation.records("unknowns") or ()
+        if item.kind == "boundary_type_position"
+    ]
+
+    opaque = ModuleType("opaque")
+    exec("import sys\ndef probe():\n    sys._getframe(1).f_globals" + mutation, opaque.__dict__)
+    monkeypatch.setitem(sys.modules, "opaque", opaque)
+    namespace: dict[str, object] = {}
+    declarations, invocation = api.rsplit("\n", 2)[:2]
+    exec(declarations, namespace)
+    original = namespace["run"]
+    assert original.__annotations__["value"] is str
+    exec(invocation, namespace)
+    if effect == "annotations":
+        assert namespace["run"] is original
+        assert original.__annotations__["value"] is dict
+    else:
+        assert namespace["run"] is not original
+        assert namespace["run"]("x") == {}
+
+
+def test_symbol_collection_reuses_proofs_only_within_one_invocation() -> None:
+    from archkeel.analyzer.python import symbols as collector
+    from archkeel.analyzer.python.imports import collect_imports
+
+    module = _parsed_module(
+        "from typing import TypeAlias\n"
+        "Text: TypeAlias = str\n"
+        "class First: pass\n"
+        "class Second: pass\n"
+    )
+    collect_imports([module], {module.module}, {}, namespace="sample")
+    with patch.object(
+        collector, "unproven_member_bindings", wraps=unproven_member_bindings
+    ) as prove:
+        records, _, _ = collector.collect_symbols([module], {})
+    assert prove.call_count == 1
+    assert {item["data"]["name"] for item in records} >= {"Text", "First", "Second"}
+    assert all(
+        item["data"]["source_member_binding_static"]
+        for item in records
+        if item["kind"] in {"class", "type_alias"}
+    )
+
+    module.incoming_member_escapes.add("First")
+    records, _, _ = collector.collect_symbols([module], {})
+    first = next(item["data"] for item in records if item["data"]["name"] == "First")
+    assert first["source_member_binding_static"] is False
+    assert all(item["status"] == "complete" for item in first["member_inventories"])
+
+
+def test_static_member_indexes_keep_alias_and_type_proofs_live():
+    from archkeel.analyzer.python.imports import collect_imports
+
+    module = _parsed_module(
+        "from typing import TypeAlias, Callable\n"
+        "class Left: pass\nclass Right: pass\n"
+        "Alias: TypeAlias = Left | Right\n"
+        "Handler: TypeAlias = Callable[[Left], Right]\n"
+    )
+    collect_imports([module], {module.module}, {}, namespace="sample")
+    values = {
+        node.target.id: node.value for node in module.tree.body if isinstance(node, ast.AnnAssign)
+    }
+    owners, static = module._contained_owners, module._static_containment
+    first = source._contained_member_roots(module, module.all_nodes)
+    assert ("Alias", "Left") not in first and ("Handler", "Right") not in first
+    module._proven_map_union_expressions = frozenset({values["Alias"]})
+    second = source._contained_member_roots(module, module.all_nodes)
+    assert {("Alias", "Left"), ("Alias", "Right")} <= second - first
+    module._proven_callable_expressions = frozenset({values["Handler"]})
+    third = source._contained_member_roots(module, module.all_nodes)
+    assert {("Handler", "Left"), ("Handler", "Right")} <= third - second
+    module.aliases["TypeAlias"] = AliasBinding("opaque.TypeAlias", ImportKind.SYMBOL)
+    assert source._contained_member_roots(module, module.all_nodes) == first
+    module.aliases["TypeAlias"] = AliasBinding("typing.TypeAlias", ImportKind.SYMBOL)
+    module._proven_map_union_expressions = frozenset()
+    module._proven_callable_expressions = frozenset()
+    assert source._contained_member_roots(module, module.all_nodes) == first
+    assert module._contained_owners is owners and module._static_containment is static
+
+
+def test_static_member_indexes_keep_namespace_and_provider_uncertainty_live():
+    from archkeel.analyzer.python.imports import collect_imports
+
+    module = _parsed_module(
+        "from typing import TypedDict\nclass Record(TypedDict):\n value: int\nsentinel = 1\n"
+    )
+    collect_imports([module], {module.module}, {}, namespace="sample")
+    owners, static = module._contained_owners, module._static_containment
+    first = source._contained_member_roots(module, module.all_nodes, owner_exposure_only=True)
+    assert ("Record", "sentinel") not in first
+    unsafe = source._contained_member_roots(
+        module, module.all_nodes, owner_exposure_only=True, unsafe_providers=frozenset({"typing"})
+    )
+    assert ("Record", "sentinel") in unsafe - first
+    assert (
+        source._contained_member_roots(module, module.all_nodes, owner_exposure_only=True) == first
+    )
+    module.incoming_member_escapes.add("TypedDict")
+    exposed = source._contained_member_roots(module, module.all_nodes, owner_exposure_only=True)
+    assert ("Record", "sentinel") in exposed - first
+    module.incoming_member_escapes.clear()
+    assert (
+        source._contained_member_roots(module, module.all_nodes, owner_exposure_only=True) == first
+    )
+    assert source._contained_member_roots(module, module.all_nodes) == first
+    assert module._contained_owners is owners and module._static_containment is static
+
+
+def test_static_member_indexes_do_not_replace_a_requested_subtree():
+    module = _parsed_module("class First:\n value: Left\nclass Second:\n value: Right\n")
+    assert source._contained_member_roots(module, module.all_nodes) == {
+        ("First", "Left"),
+        ("Second", "Right"),
+    }
+    nodes = tuple(ast.walk(module.tree.body[0]))
+    assert source._contained_member_roots(module, nodes) == {("First", "Left")}
+
+
+def test_member_escape_pass_reuses_proofs_until_incoming_changes():
+    from archkeel.analyzer.python import imports as collector
+
+    module = _parsed_module("class Payload: pass\n")
+    modules = {module.module: module}
+    exposed = {module.module: set()}
+    transferred = {module.module: set()}
+    proofs = {}
+    with patch.object(
+        collector, "unproven_member_bindings", wraps=unproven_member_bindings
+    ) as prove:
+        first = collector._member_escape_pass(modules, exposed, transferred, frozenset(), proofs)
+        assert (
+            collector._member_escape_pass(modules, exposed, transferred, frozenset(), proofs)
+            == first
+        )
+        assert prove.call_count == 3
+        module.incoming_member_escapes.add("Payload")
+        changed = collector._member_escape_pass(modules, exposed, transferred, frozenset(), proofs)
+        assert "Payload" in changed[0][module.module]
+        assert prove.call_count == 6
+        exposed[module.module].add("Payload")
+        changed = collector._member_escape_pass(modules, exposed, transferred, frozenset(), proofs)
+        assert "Payload" in changed[1][module.module]
+        assert "Payload" not in changed[2][module.module]
+        assert prove.call_count == 7
+
+
+def test_member_escape_pass_separates_creation_modes_and_unsafe_providers():
+    from archkeel.analyzer.python import imports as collector
+
+    module = _parsed_module(
+        "from typing import TypedDict\nclass Payload(TypedDict):\n value: str\n"
+    )
+    collector.collect_imports([module], {module.module}, {}, namespace="sample")
+    modules = {module.module: module}
+    incoming = {module.module: set()}
+    proofs = {}
+    safe = collector._member_escape_pass(modules, incoming, incoming, frozenset(), proofs)
+    unsafe = collector._member_escape_pass(modules, incoming, incoming, {"typing"}, proofs)
+    assert "Payload" not in safe[1][module.module]
+    assert "Payload" in unsafe[1][module.module]
+    assert "Payload" not in unsafe[2][module.module]
+
+
+def test_member_escape_convergence_does_not_reuse_another_invocations_source():
+    from archkeel.analyzer.python import imports as collector
+
+    results = []
+    for extra in ("", "mutate(Payload)\n"):
+        module = _parsed_module("class Payload: pass\n" + extra)
+        results.append(
+            collector._converge_member_escapes(
+                [],
+                {module.module: module},
+                {module.module: stable_direct_module_bindings(module)},
+                {module.module: unproven_member_bindings(module)},
+                {module.module: {}},
+            )[0][module.module]
+        )
+    assert "Payload" not in results[0]
+    assert "Payload" in results[1]
+
+
+def test_member_escape_convergence_recomputes_after_late_protection_revocation():
+    from archkeel.analyzer.python import imports as collector
+
+    modules, _, _ = _map_union_project(local=True)
+    module = modules[1]
+    candidates = {
+        module.module: {
+            expression: frozenset({(module.module, "SexKey")})
+            for expression in module._proven_map_union_expressions
+        }
+    }
+    states = {}
+    retain_calls = 0
+    retain = collector._retain_type_reference_protection
+
+    def revoke_after_first_pass(modules, candidates, escaped, exposed, transferred):
+        nonlocal retain_calls
+        retain_calls += 1
+        if retain_calls == 2:
+            # Arriving dependency uncertainty must invalidate otherwise identical proof inputs.
+            escaped[module.module] |= {"SexKey"}
+        return retain(modules, candidates, escaped, exposed, transferred)
+
+    def trace(module, **options):
+        incoming = options.get("incoming")
+        state = (
+            options.get("owner_exposure_only", False),
+            options.get("include_creation_uncertainty", True),
+            None if incoming is None else frozenset(incoming),
+            frozenset(module.incoming_member_escapes),
+            frozenset(options.get("unsafe_providers", ())),
+        )
+        states.setdefault(state, set()).add(bool(module._proven_map_union_expressions))
+        return unproven_member_bindings(module, **options)
+
+    with (
+        patch.object(collector, "unproven_member_bindings", side_effect=trace),
+        patch.object(
+            collector, "_retain_type_reference_protection", side_effect=revoke_after_first_pass
+        ),
+    ):
+        escaped, _ = collector._converge_member_escapes(
+            [],
+            {module.module: module},
+            {module.module: stable_direct_module_bindings(module)},
+            {module.module: frozenset()},
+            candidates,
+        )
+    assert not module._proven_map_union_expressions
+    assert "SexKey" in escaped[module.module]
+    assert any(protection == {False, True} for protection in states.values())
+
+
+def test_module_function_proofs_do_not_grant_nested_or_conditional_bindings() -> None:
+    from archkeel.analyzer.python.symbols import collect_symbols
+
+    module = _parsed_module(
+        "def outer():\n    def inner(): pass\n"
+        "if condition:\n    def conditional(): pass\n"
+        "def rebound(): pass\nrebound = lambda: None\n"
+        "class Owner:\n    def method(self): pass\n"
+    )
+    records, _, _ = collect_symbols([module], {})
+    by_name = {item["data"]["name"]: item["data"] for item in records}
+    assert by_name["outer"]["source_binding_unique"] is True
+    assert by_name["conditional"]["source_binding_unique"] is False
+    assert by_name["rebound"]["source_binding_unique"] is False
+    assert by_name["inner"]["source_binding_unique"] is True
+    assert by_name["inner"]["namespace_bound"] is False
+    from archkeel.check.evaluation.boundary_types import _declared_function_signature
+
+    assert not _declared_function_signature(by_name["inner"])
+    assert "source_binding_unique" not in by_name["method"]
+    assert by_name["outer"]["signature_decorators_proven"] is True
 
 
 def test_overload_origin_proof_keeps_bound_once_inventories_unchanged() -> None:
@@ -35,7 +356,11 @@ def test_overload_origin_proof_keeps_bound_once_inventories_unchanged() -> None:
     unique = {m.module: unique_direct_module_bindings(m) for m in modules}
     assert "resolve_source_entity" not in stable["sample.impl"] | unique["sample.impl"]
     assert static_overload_bindings(modules[0]) == frozenset({"resolve_source_entity"})
-    assert not resolve_reexports(imports, {m.module: m.all_exports for m in modules}, modules)
+    uncertain, unsafe = resolve_reexports(
+        imports, {m.module: m.all_exports for m in modules}, modules
+    )
+    assert not uncertain
+    assert not unsafe
     imported = next(item for item in imports if item["data"]["source_module"] == "sample.api")
     assert imported["data"]["origin_binding_unique"] is True
     assert imported["data"]["origin_definition"] == "sample.impl.resolve_source_entity"
@@ -107,6 +432,51 @@ def test_core_overload_route_needs_the_exact_complete_origin_proof(missing: str)
     )
 
 
+@pytest.mark.parametrize("change", ["missing-hop", "different-origin", "different-suffix", "cycle"])
+def test_reexport_route_requires_each_exact_source_suffix(change: str) -> None:
+    from archkeel.analyzer.python.imports import collect_imports, resolve_reexports
+    from archkeel.analyzer.python.symbols import collect_symbols
+    from archkeel.check.evaluation.boundary_types import (
+        _public_alias_route_has_unproven_hop,
+        _reexport_declaration_proven,
+    )
+    from archkeel.check.evaluation.rule_support import _reexport_index
+
+    modules = [
+        _parsed_module("def run(value: str) -> str: return value\n", "sample.impl"),
+        _parsed_module("from .impl import run\n__all__ = ['run']\n", "sample.bridge"),
+        _parsed_module("from .bridge import run\n__all__ = ['run']\n", "sample.api"),
+    ]
+    imports = collect_imports(modules, {m.module for m in modules}, {}, namespace="sample")
+    resolve_reexports(imports, {m.module: m.all_exports for m in modules}, modules)
+    symbols, _, _ = collect_symbols(modules, {})
+    publisher = next(item for item in imports if item["data"]["source_module"] == "sample.api")
+    bridge = next(item for item in imports if item["data"]["source_module"] == "sample.bridge")
+    route = ("sample.api.run", "sample.bridge.run", "sample.impl.run")
+    stable = {m.module: stable_direct_module_bindings(m) for m in modules}
+    definitions = {("sample.impl", "run"): symbols}
+    bindings = {("sample.api", "run"): [publisher], ("sample.bridge", "run"): [bridge]}
+    assert _reexport_declaration_proven(publisher["data"], _reexport_index(imports)[1])
+    assert not _public_alias_route_has_unproven_hop(
+        route, definitions, bindings, set(stable), stable, type_shapes={}
+    )
+    if change == "missing-hop":
+        imports.remove(bridge)
+        del bindings["sample.bridge", "run"]
+    elif change == "different-origin":
+        bridge["data"]["origin_definition"] = "sample.other.run"
+        bridge["data"]["reexport_chain"] = ["sample.other.run"]
+    else:
+        bridge["data"]["reexport_chain"] = [
+            "sample.api.run" if change == "cycle" else "sample.extra.run",
+            "sample.impl.run",
+        ]
+    assert not _reexport_declaration_proven(publisher["data"], _reexport_index(imports)[1])
+    assert _public_alias_route_has_unproven_hop(
+        route, definitions, bindings, set(stable), stable, type_shapes={}
+    )
+
+
 def _callable_proof_modules(extra: str = "", provider: str | None = None):
     from archkeel.analyzer.python.imports import collect_imports, resolve_reexports
 
@@ -138,7 +508,7 @@ def _callable_proof_modules(extra: str = "", provider: str | None = None):
         ("mutate(Lookup)\n", False),
         ("Payload.attr = 1\n", True),
         ("mutate(Callable)\n", False),
-        ("other = Unknown[Payload]\n", True),
+        ("other = Unknown[Payload]\n", False),
         ("other = Callable[[factory(Payload)], int]\n", False),
         ("def other(value=Payload): pass\n", True),
         ("@decorate(Payload)\ndef other(): pass\n", False),
@@ -189,6 +559,36 @@ def test_unique_proof_does_not_repeat_ast_walks() -> None:
         first_visits = visits.call_count
         assert unique_direct_module_bindings(module) == frozenset({"Api", "Other"})
         assert visits.call_count == first_visits
+
+
+def test_local_annotation_carrier_does_not_inherit_the_imported_identity() -> None:
+    from archkeel.analyzer.python.imports import collect_imports, resolve_reexports
+    from archkeel.analyzer.python.symbols import collect_symbols
+
+    text = (
+        "from typing import Sequence\nclass Payload: pass\n"
+        "def build(Sequence):\n    def consume(value: Sequence[Payload]): pass\n"
+    )
+    module = _parsed_module(text)
+    imports = collect_imports([module], {module.module}, {}, namespace="sample")
+    resolve_reexports(imports, {module.module: module.all_exports}, [module])
+    symbols, _, _ = collect_symbols([module], {})
+    payload = next(item["data"] for item in symbols if item["data"]["name"] == "Payload")
+    assert not module._proven_annotation_carriers
+    assert payload["source_member_binding_static"] is False
+    assert all(item["status"] == "complete" for item in payload["member_inventories"])
+
+    class Evil:
+        @classmethod
+        def __class_getitem__(cls, value):
+            value.changed = True
+            return int
+
+    namespace: dict[str, object] = {}
+    exec(text, namespace)
+    assert "changed" not in vars(namespace["Payload"])
+    namespace["build"](Evil)
+    assert namespace["Payload"].changed is True
 
 
 def test_stable_proof_does_not_repeat_namespace_scans() -> None:
@@ -565,28 +965,31 @@ def test_callable_source_proof_is_order_independent_and_keeps_safe_sibling(
         for r in imports
         if r["data"]["source_module"] == "sample.api"
     }
-    assert bindings["Other"]["source_member_binding_static"] is True
-    assert bindings["Lookup"]["source_member_binding_static"] is True
+    for name in ("Other", "Lookup"):
+        assert bindings[name]["source_binding_unique"] is True
+        assert bindings[name]["origin_binding_unique"] is True
+        assert bindings[name]["origin_definition"] == f"sample.impl.{name}"
+        assert bindings[name]["source_member_binding_static"] is not bool(escape)
     import ast
 
     from archkeel.analyzer.python.source import unproven_member_bindings
 
     protected = {ast.unparse(node) for node in provider._proven_callable_expressions}
-    assert "Callable[[Safe], Safe]" in protected
-    assert "Callable[[Payload], Payload]" in protected
+    assert ("Callable[[Safe], Safe]" in protected) is not bool(escape)
+    assert ("Callable[[Payload], Payload]" in protected) is not bool(escape)
     assert ("Payload" in unproven_member_bindings(provider)) is bool(escape)
 
 
 def test_member_containment_reuses_only_immutable_syntax() -> None:
-    module = _parsed_module(
-        "class Payload: pass\nclass Container:\n"
-        "    def read(self, value: Payload) -> Payload: return value\n",
-        "sample.api",
-        rel_path="sample/api.py",
-    )
     with patch.object(
         source, "_protected_type_expressions", wraps=source._protected_type_expressions
     ) as scans:
+        module = _parsed_module(
+            "class Payload: pass\nclass Container:\n"
+            "    def read(self, value: Payload) -> Payload: return value\n",
+            "sample.api",
+            rel_path="sample/api.py",
+        )
         expected = source._contained_member_roots(module, module.all_nodes)
         first = scans.call_count
         assert first
@@ -596,3 +999,29 @@ def test_member_containment_reuses_only_immutable_syntax() -> None:
         fresh = _parsed_module(module.source, "sample.api", rel_path="sample/api.py")
         assert source._contained_member_roots(fresh, fresh.all_nodes) == expected
         assert scans.call_count > first
+
+
+def test_import_source_projection_does_not_replace_factory_cache():
+    module = _parsed_module("__import__('sample')\nVALUE = 1\n")
+    call = next(node for node in module.all_nodes if isinstance(node, ast.Call))
+    assert source.exposes_dynamic_namespace(module, call)
+    assert not source.exposes_dynamic_namespace(module, call, include_import_effects=False)
+    assert stable_direct_module_bindings(module) == frozenset()
+    factory_cache = module.stable_binding_cache
+    assert stable_direct_module_bindings(module, include_import_effects=False) == {"VALUE"}
+    assert module.stable_binding_cache is factory_cache
+    assert stable_direct_module_bindings(module) == frozenset()
+
+
+@pytest.mark.parametrize(
+    "expression",
+    ["globals()", "exec('x = 1')", "eval('x')", "__builtins__", "frame.f_globals"],
+)
+def test_import_source_projection_preserves_namespace_mutation_guards(expression):
+    module = _parsed_module(expression + "\n")
+    assert any(
+        source.exposes_dynamic_namespace(
+            module, node, member_surface=True, include_import_effects=False
+        )
+        for node in module.all_nodes
+    )

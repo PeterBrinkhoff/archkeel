@@ -1,6 +1,6 @@
 {
-  "$schema": "https://raw.githubusercontent.com/rapiddweller/archkeel/main/schema/architecture-contract.schema.json",
-  "schema_version": "2.3.0",
+  "$schema": "https://raw.githubusercontent.com/rapiddweller/archkeel/main/schema/architecture-contract-3.7.schema.json",
+  "schema_version": "3.7.0",
   "components": [
     {
       "id": "COMP-MODEL",
@@ -135,6 +135,16 @@
     "compat": []
   },
   "rules": [
+    {
+      "id": "CALL-DESCRIBE-NO-MAINTENANCE",
+      "kind": "call_owner",
+      "source": "shop.app.orders.describe_connection",
+      "target": "shop.app.maintenance.run_maintenance",
+      "allowed_sources": [],
+      "rationale": "Describing a connection must not run store maintenance.",
+      "provenance": ["docs/architecture/shop.md"],
+      "decided_by": "architect"
+    },
     {
       "id": "DEP-MODEL-NO-STORE",
       "kind": "forbidden_dependency",

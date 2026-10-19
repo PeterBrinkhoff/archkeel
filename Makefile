@@ -3,9 +3,9 @@ UV ?= uv
 DART_EXECUTABLE ?= dart
 FLUTTER_EXECUTABLE ?= flutter
 
-.PHONY: against gate ci ci-check ci-core-check ci-report-check ci-pr-check ci-pr-report-check pr-test pr-report-test ci-typescript ci-artifacts-clean prune-report-artifacts mermaid check test collector-safety typescript-native typescript-compiler-check dart-test lint typecheck self-validate fixtures self-observation demo demo-github github-pr-report demo-onboarding demo-dart demo-typescript demo-snapshot-check demo-architecture demo-uml loop-figure demo-screenshots browser-install report-browser report-browser-tests report-browser-proof report-pages plugin plugin-directory build smoke release-check rule-yield architecture-graph-schema report-timing flutter-demo-check
+.PHONY: against gate ci ci-check ci-core-check ci-report-check ci-pr-check ci-pr-report-check pr-test pr-report-test ci-typescript ci-artifacts-clean prune-report-artifacts prune-workflows mermaid check test collector-safety typescript-native typescript-compiler-check dart-test lint typecheck self-validate fixtures self-observation demo demo-github github-pr-report demo-onboarding demo-dart demo-typescript demo-snapshot-check demo-architecture demo-uml loop-figure demo-screenshots browser-install report-browser report-browser-tests report-browser-proof report-pages plugin plugin-directory plugin-release build smoke release-check rule-yield architecture-graph-schema report-timing flutter-demo-check
 
-check: lint typecheck test
+check: lint typecheck browser-architecture-check test
 
 # These stages consume the previous stage's success, even with make -j.
 .NOTPARALLEL: gate release-check ci ci-check ci-core-check ci-report-check ci-pr-check ci-pr-report-check
@@ -24,30 +24,50 @@ ci-core-check: browser-install gate typescript-compiler-check browser-graph-chec
 
 ci-report-check: report-timing report-browser-proof
 
-ci-pr-check: $(if $(strip $(BASE)),against,self-validate) lint typecheck pr-test
+ci-pr-check: $(if $(strip $(BASE)),against,self-validate) lint typecheck browser-architecture-check pr-test
 
 ci-pr-report-check: browser-install browser-runtime-check browser-graph-check pr-report-test
 
 pr-test:
-	$(UV) run --locked python -m pytest -n 2 --dist=loadfile --max-worker-restart=0 \
-		-q --durations=10 --junitxml=test-artifacts/pytest/pr-core.xml \
-		tests/test_ci_changes.py tests/test_make_gate.py tests/test_repository_hygiene.py \
-		tests/test_responsibility_validation.py \
-		tests/test_contract_model.py tests/test_contract_version_types.py tests/test_dependency_selectors.py tests/test_requires_symbol_ports.py tests/test_typed_dependency_api.py tests/test_dependency_api_target.py tests/test_module_object_grants.py tests/test_dependency_typed_control.py tests/test_typed_state_protocol.py tests/test_typed_python_bindings.py tests/test_typed_python_receivers.py tests/test_typed_method_descriptors.py tests/test_typed_graph_vocabulary.py tests/test_typed_diagnostic_owner.py tests/test_state_facts.py tests/test_boundary_type_nested_mapping.py tests/test_decisions.py tests/test_typed_python_properties.py tests/test_typed_contract_rule_grammar.py tests/test_typed_contract_rule_native.py tests/test_core_command_result.py tests/test_typed_measurement_controls.py tests/test_typed_parameter_kinds.py tests/test_atlas_deviation_target.py tests/test_definition_context_types.py tests/test_permission_status_types.py tests/test_snapshot_language_types.py tests/test_source_resolution_types.py tests/test_known_delta_action_types.py tests/test_typed_symbol_class_kinds.py tests/test_source_name_visibility.py tests/test_git_blob_types.py tests/test_typed_structure_levels.py tests/test_classifier_projections.py tests/test_unresolved_call_change_types.py \
+	$(UV) run --locked python -m tools.pr_test $(if $(PR_TEST_SHARD),--shard=$(PR_TEST_SHARD),) -- \
+		-n 2 --dist=loadfile --max-worker-restart=0 \
+		-q --durations=10 --junitxml=test-artifacts/pytest/pr-core.xml -- \
+		tests/test_workflow_registry.py tests/test_ci_changes.py tests/test_make_gate.py tests/test_publish_release.py tests/test_repository_hygiene.py \
+		tests/test_responsibility_validation.py tests/test_target_architecture.py tests/test_self.py tests/test_contract_maintenance.py tests/test_skill.py \
+		tests/test_contract_model.py tests/test_contract_version_types.py tests/test_dependency_selectors.py tests/test_requires_symbol_ports.py tests/test_typed_dependency_api.py tests/test_dependency_api_target.py tests/test_module_object_grants.py tests/test_dependency_typed_control.py tests/test_typed_state_protocol.py tests/test_typed_python_bindings.py tests/test_typed_python_receivers.py tests/test_typed_method_descriptors.py tests/test_typed_graph_vocabulary.py tests/test_typed_diagnostic_owner.py tests/test_state_facts.py tests/test_boundary_type_nested_mapping.py tests/test_typed_dict_bound_aliases.py tests/test_decisions.py tests/test_typed_python_properties.py tests/test_typed_contract_rule_grammar.py tests/test_typed_contract_rule_native.py tests/test_core_command_result.py tests/test_typed_measurement_controls.py tests/test_typed_parameter_kinds.py tests/test_atlas_deviation_target.py tests/test_definition_context_types.py tests/test_permission_status_types.py tests/test_snapshot_language_types.py tests/test_source_resolution_types.py tests/test_known_delta_action_types.py tests/test_typed_symbol_class_kinds.py tests/test_source_name_visibility.py tests/test_git_blob_types.py tests/test_typed_structure_levels.py tests/test_classifier_projections.py tests/test_unresolved_call_change_types.py \
 		tests/test_target_graph.py::test_contract_corpus_preserves_version_and_uml_presence \
 		tests/test_collection_protocol.py tests/test_typed_collector_protocol.py tests/test_typed_collector_native.py tests/test_source_trust_boundary.py tests/test_shared_runtime_bootstrap.py \
+		tests/test_python_class_value_proofs.py tests/test_local_inherited_methods.py tests/test_inherited_generic_facade_negative.py tests/test_python_provider_sources.py tests/test_python_contextmanager_signatures.py tests/test_boundary_types_contextmanager.py \
+		'tests/test_architecture_demo.py::test_variant_produces_the_catalogued_findings[class-a-inherited-generic-return]' \
+		'tests/test_architecture_demo.py::test_variant_produces_the_catalogued_findings[class-a-inherited-generic-undeclared-return]' \
+		'tests/test_architecture_demo.py::test_variant_produces_the_catalogued_findings[class-a-inherited-generic-undeclared-batch]' \
+		'tests/test_architecture_demo.py::test_variant_produces_the_catalogued_findings[class-a-boundary-types-ordinary-reexport-chain-unknown]' \
+		'tests/test_architecture_demo.py::test_variant_produces_the_catalogued_findings[public-api-alias-missing]' \
+		'tests/test_architecture_demo.py::test_variant_produces_the_catalogued_findings[public-api-alias-declared]' \
+		tests/test_architecture_demo.py::test_stable_ordinary_reexport_proves_source_violation_in_cli_json \
+		tests/test_report_159_160_e2e_oracle.py::test_unknown_position_is_associated_with_its_rule_not_every_boundary_rule \
+		tests/test_typescript_script_globals.py tests/test_typescript_standard_globals.py tests/test_typescript_umd_providers.py tests/test_browser_architecture.py tests/test_source_graph.py tests/test_binding_proof_reuse.py tests/test_shared_lexical_index.py tests/test_namespace_scan_cost.py \
+		tests/test_boundary_types_chain_proof.py tests/test_boundary_types_reexport_proofs.py tests/test_boundary_types_facades.py tests/test_boundary_types_aliases.py tests/test_boundary_type_recursive_aliases.py \
+		tests/test_callable_boundaries.py tests/test_boundary_type_literal_mapping_arms.py tests/test_boundary_type_native_payloads.py tests/test_boundary_types_mappings.py tests/test_boundary_type_native_open_maps.py tests/test_boundary_type_enum_literals.py \
+		tests/test_boundary_type_bound_aliases.py::test_opaque_alias_transfer_keeps_source_identity_without_an_exact_permission \
+		tests/test_boundary_type_bound_aliases.py::test_redirected_metadata_class_cannot_grant_an_exact_alias_permission \
+		tests/test_boundary_type_bound_aliases.py::test_alias_body_separates_source_identity_from_runtime_member_proof \
+		tests/test_boundary_type_bound_aliases.py::test_literal_outer_and_sibling_survive_uncertain_alias \
+		tests/test_boundary_type_bound_aliases.py::test_uncertain_inner_alias_does_not_erase_exact_literal_outer_map_permission \
+		tests/test_boundary_type_bound_aliases.py::test_uncertain_alias_ordinary_permission_is_independent_of_union_order \
 		tests/test_typescript_owned_types.py tests/test_typescript_syntax_types.py tests/test_typescript_syntax_compatibility.py tests/test_typescript_json_fields.py tests/test_typescript_control_target.py tests/test_typescript_source_input.py tests/test_typescript_string_constructs.py \
-		tests/test_python_source_evidence_lines.py tests/test_analyzer.py tests/test_typescript_config.py tests/test_typescript_resolve.py tests/test_type_shapes.py \
+		tests/test_python_source_evidence_lines.py tests/test_definition_source_owners.py tests/test_analyzer.py tests/test_typescript_config.py tests/test_typescript_resolve.py tests/test_type_shapes.py \
 		tests/test_typescript_array_constants.py \
 		tests/test_typescript_decorated_inventory.py \
 		tests/test_typescript_parameter_properties.py \
 		tests/test_typescript_differential.py \
-		tests/test_uml_comparison.py tests/test_saved_report.py tests/test_cli.py tests/test_cli_typed_inputs.py tests/test_cli_input_target.py \
-		tests/test_partial_member_inventory.py \
+		tests/test_uml_comparison.py tests/test_saved_report.py tests/test_architecture_projection.py tests/test_cli.py tests/test_cli_typed_inputs.py tests/test_cli_input_target.py \
+		tests/test_member_inventory.py tests/test_partial_member_inventory.py \
 		tests/test_report_recorded_unknowns.py \
 		tests/test_report_agent_json.py \
 		tests/test_native_violation_filter.py \
 		tests/test_scoped_dependency_proof.py \
+		tests/test_call_owner_policy.py tests/test_call_owner_wire_compatibility.py tests/test_call_scope_receipt_identity.py \
 		tests/test_typescript_namespace_identities.py \
 		tests/test_result_schema.py \
 		tests/test_dart_parse.py tests/test_dart_snapshot.py tests/test_dart_resolve.py \
@@ -66,13 +86,13 @@ pr-test:
 		tests/test_runtime_delta.py tests/test_delta_version_types.py tests/test_comparison_support_types.py tests/test_nullable_profile_measurements.py tests/test_source_section_types.py tests/test_graph_topology_level_types.py \
 		tests/test_collection_runtime_gate.py tests/test_ratchets.py tests/test_model.py tests/test_trace.py tests/test_violations.py \
 		tests/test_typescript_demo.py tests/test_onboarding_guidance.py \
-		tests/test_references.py tests/test_levels.py tests/test_widening.py tests/test_measurement_budgets.py tests/test_typed_amendment_artifact.py \
+		tests/test_references.py tests/test_levels.py tests/test_recursive_inside_contracts.py tests/test_widening.py tests/test_measurement_budgets.py tests/test_typed_amendment_artifact.py \
 		tests/test_onboarding.py tests/test_terminal.py tests/test_summary_badge_types.py tests/test_summary_badge_target.py \
 		tests/test_onboarding_demo.py tests/test_pypi_description.py tests/test_typescript_onboarding.py \
-		tests/test_unknown_positions.py tests/test_inside_rule_coverage.py tests/test_report_159_160.py \
+		tests/test_unknown_positions.py tests/test_inside_rule_coverage.py tests/test_inside_rule_parity.py tests/test_report_159_160.py \
 		tests/test_target_navigation_graph.py \
-		tests/test_binding_proof_reuse.py tests/test_annotation_carriers.py tests/test_local_inherited_methods.py \
-		tests/test_absent_import_namespace.py tests/test_string_comparison_observation.py tests/test_local_string_comparisons.py tests/test_string_predicate_observation.py tests/test_python_string_predicate_target.py tests/test_typed_host_events.py
+		tests/test_annotation_carriers.py \
+		tests/test_absent_import_namespace.py tests/test_dynamic_dependency_policy.py tests/test_string_comparison_observation.py tests/test_local_string_comparisons.py tests/test_string_predicate_observation.py tests/test_python_string_predicate_target.py tests/test_typed_host_events.py
 
 pr-report-test:
 	$(UV) run --locked --with playwright==$(PLAYWRIGHT_VERSION) python -m pytest -n 2 --dist=loadfile --max-worker-restart=0 -q \
@@ -82,9 +102,12 @@ pr-report-test:
 		tests/test_report_interactions.py::test_native_card_drag_reroutes_all_hits_and_keeps_architecture_unchanged \
 		tests/test_uml_rendering.py::test_standard_uml_ignores_stale_layout_and_retries_rejected_layout \
 		tests/test_atlas_report.py::test_target_content_is_independent_of_observed_evidence \
+		tests/test_atlas_report.py::test_atlas_ignores_stale_layout_and_retries_rejected_layout \
 		tests/test_atlas_report.py::test_atlas_browser_keeps_positions_and_unknown_cells_across_lenses \
 		tests/test_atlas_report.py::test_atlas_component_layout_keeps_union_geometry_and_active_edges \
 		tests/test_report_interactions.py::test_atlas_component_routes_select_leafs_and_open_inside_scopes \
+		tests/test_report_interactions.py::test_atlas_unknown_rule_links_its_analyzer_gap_while_failures_remain_visible \
+		tests/test_report_interactions.py::test_atlas_fail_with_undecided_and_mixed_evidence_keeps_all_actions \
 		tests/test_python_realworld_project_report.py::test_python_http_module_scope_preserves_nested_ownership_and_target_routes \
 		tests/test_python_realworld_project_report.py::test_python_realworld_module_overview_uses_actual_edges_and_keeps_isolated_routes \
 		tests/test_own_uml_target.py::test_own_filtered_calls_keep_clear_routes_and_readable_arrow_endpoints \
@@ -120,6 +143,15 @@ prune-report-artifacts:
 			echo "Dry run: review $$plan; rerun with DELETE=true to delete selected IDs."; \
 		fi
 
+WORKFLOW_PRUNE_DIR ?= test-artifacts/workflow-prune
+DISABLE ?= false
+prune-workflows:
+	@set -eu; \
+		case "$(DISABLE)" in true|false) ;; *) echo "DISABLE must be true or false" >&2; exit 2 ;; esac; \
+		: "$${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is required}"; \
+		python3 -m tools.workflow_registry --repository "$$GITHUB_REPOSITORY" \
+			--output "$(WORKFLOW_PRUNE_DIR)/plan.json" $(if $(filter true,$(DISABLE)),--disable,)
+
 mermaid:
 	@set -eu; mermaid_dir=$$(mktemp -d); \
 		trap 'rm -rf "$$mermaid_dir"' 0; \
@@ -141,6 +173,10 @@ against: BASE ?= origin/main
 against:
 	$(UV) run --locked python -m tools.against --base "$(BASE)"
 
+.PHONY: target-contract-check
+target-contract-check:
+	$(UV) run --locked python -m pytest -q tests/test_target_architecture.py
+
 self-validate:
 	$(UV) run --locked archkeel validate --root . --baseline architecture-baseline.json --json
 
@@ -160,11 +196,12 @@ collector-safety:
 typescript-compiler-check:
 	npx --yes --package typescript@5.9.3 tsc --noEmit --project fixtures/H-uml-typescript/tsconfig.json
 
-typescript-native:
+typescript-native: browser-runtime-install
 	$(UV) run --locked python -m pytest -q tests/test_typescript_parse.py \
 		tests/test_typescript_inner.py tests/test_typescript_uml_acceptance.py \
 		tests/test_typescript_namespace_identities.py \
 		tests/test_typescript_collect.py tests/test_typescript_owned_types.py tests/test_typescript_syntax_types.py tests/test_typescript_syntax_compatibility.py tests/test_typescript_source_input.py \
+		tests/test_typescript_script_globals.py tests/test_typescript_standard_globals.py tests/test_typescript_umd_providers.py tests/test_browser_architecture.py \
 		tests/test_typescript_json_fields.py tests/test_typescript_control_target.py tests/test_typescript_config.py tests/test_typescript_string_constructs.py \
 		tests/test_typescript_config_reference.py \
 		tests/test_typescript_resolve.py tests/test_typescript_provenance.py \
@@ -180,13 +217,13 @@ typescript-differential:
 	ARCHKEEL_DIFFERENTIAL_OUTPUT="$(or $(OUTPUT),test-artifacts/typescript-differential)" \
 		$(UV) run --locked python -m pytest -q tests/test_typescript_differential.py
 
-LINT_PATHS := src tests tools/terminal_svg.py tools/interface_profile.py tools/rule_yield.py tools/mermaid_blocks.py tools/ci_changes.py \
+LINT_PATHS := src tests tools/pr_test.py tools/terminal_svg.py tools/interface_profile.py tools/rule_yield.py tools/mermaid_blocks.py tools/ci_changes.py \
 	tools/classify_unresolved.py tools/onboarding_svg.py tools/report_browser.py tools/report_pages.py tools/package_plugin.py tools/github_pr_report.py tools/against.py \
 	fixtures/reproduce_milestone1.py fixtures/reproduce_onboarding.py \
 	fixtures/reproduce_dart.py fixtures/reproduce_snapshot_check.py fixtures/consume_result.py fixtures/reproduce_github.py \
 	fixtures/reproduce_typescript.py fixtures/typescript_differential.py fixtures/typescript_scenarios.py fixtures/typescript_realworld.py \
 	fixtures/architecture_demo.py fixtures/demo_catalog_*.py \
-	tools/architecture_graph_schema.py tools/report_timing.py tools/report_artifact_retention.py tools/browser_runtime.py tools/browser_graph_protocol.py
+	tools/architecture_graph_schema.py tools/report_timing.py tools/report_artifact_retention.py tools/workflow_registry.py tools/browser_runtime.py tools/browser_graph_protocol.py tools/browser_architecture.py tools/publish_release.py
 
 # The same commit measured 80-96s on hosted runners; allow for runner noise.
 REPORT_MAX_SECONDS ?= 120
@@ -199,14 +236,14 @@ report-pages:
 	$(UV) run --locked python -m tools.report_pages
 
 architecture-graph-schema:
-	$(UV) run --locked python -m tools.architecture_graph_schema schema/architecture-graph.schema.json --contract schema/architecture-contract.schema.json --contract schema/architecture-contract-3.0.schema.json --contract schema/architecture-contract-3.1.schema.json --contract schema/architecture-contract-3.2.schema.json --contract schema/architecture-contract-3.3.schema.json --contract schema/architecture-contract-3.4.schema.json --contract schema/architecture-contract-3.5.schema.json --contract schema/architecture-contract-3.6.schema.json --comparison schema/architecture-comparison.schema.json --report schema/architecture-report.schema.json --source-inventory schema/source-member-inventory.schema.json --source-profile schema/architecture-ir-python-decoded.schema.json --projection schema/architecture-projection.schema.json --command schema/architecture-command-2.0.schema.json
+	$(UV) run --locked python -m tools.architecture_graph_schema schema/architecture-graph.schema.json --contract schema/architecture-contract.schema.json --contract schema/architecture-contract-3.0.schema.json --contract schema/architecture-contract-3.1.schema.json --contract schema/architecture-contract-3.2.schema.json --contract schema/architecture-contract-3.3.schema.json --contract schema/architecture-contract-3.4.schema.json --contract schema/architecture-contract-3.5.schema.json --contract schema/architecture-contract-3.6.schema.json --contract schema/architecture-contract-3.7.schema.json --comparison schema/architecture-comparison.schema.json --report schema/architecture-report.schema.json --source-inventory schema/source-member-inventory.schema.json --source-profile schema/architecture-ir-python-decoded.schema.json --projection schema/architecture-projection.schema.json --command schema/architecture-command-2.0.schema.json
 
 lint:
 	$(UV) run --locked ruff format --check $(LINT_PATHS)
 	$(UV) run --locked ruff check $(LINT_PATHS)
 
 typecheck:
-	$(UV) run --locked mypy src/archkeel tools/github_pr_report.py tools/against.py tools/architecture_graph_schema.py tools/report_timing.py tools/ci_changes.py tools/report_artifact_retention.py
+	$(UV) run --locked mypy src/archkeel tools/pr_test.py tools/github_pr_report.py tools/against.py tools/architecture_graph_schema.py tools/report_timing.py tools/ci_changes.py tools/report_artifact_retention.py tools/workflow_registry.py tools/browser_architecture.py tools/publish_release.py
 
 fixtures:
 	$(UV) run --locked python fixtures/reproduce_milestone1.py $(if $(OUTPUT),--output "$(OUTPUT)")
@@ -293,6 +330,11 @@ plugin:
 	@test -n "$(OUTPUT)" || { echo "OUTPUT is required"; exit 2; }
 	$(UV) run --locked python -m tools.package_plugin "$(OUTPUT)"
 
+plugin-release:
+	@test -n "$(VERSION)" || { echo "VERSION is required"; exit 2; }
+	$(UV) run --locked python -m tools.package_plugin --release-version "$(VERSION)" --expected-version "$(VERSION)" "build/plugin-release/archkeel-plugin-$(VERSION)"
+	$(UV) run --locked python -m tools.package_plugin --check --release-version "$(VERSION)" --expected-version "$(VERSION)" "build/plugin-release/archkeel-plugin-$(VERSION).zip"
+
 plugin-directory:
 	@mkdir -p build plugins/archkeel
 	@set -e; stage=$$(mktemp -d build/plugin.XXXXXX); \
@@ -321,6 +363,7 @@ smoke:
 .PHONY: browser-runtime-install browser-runtime-generate browser-runtime-check
 browser-runtime-install:
 	npm ci --prefix tools/browser-runtime --ignore-scripts --no-audit --no-fund
+	$(UV) run --locked python -m tools.browser_runtime --prepare-dependencies
 
 browser-runtime-generate: browser-runtime-install
 	uv run --locked python -m tools.browser_runtime
@@ -331,18 +374,29 @@ browser-runtime-check: browser-runtime-install
 	uv run --locked python -m pytest -q tests/test_flow_runtime_publication.py
 
 .PHONY: browser-graph-generate browser-graph-check
-BROWSER_GRAPH_PROTOCOL := src/archkeel/render/assets/report-graph-vocabulary.ts src/archkeel/render/assets/report-graph-protocol.ts
-BROWSER_GRAPH_COMPILER := npx --yes --package typescript@5.9.3 tsc --strict --target ES2022 --module none --newLine lf
+.PHONY: browser-architecture-check
+browser-architecture-check: browser-runtime-install
+	$(UV) run --locked python -m tools.browser_architecture
 
-browser-graph-generate:
+BROWSER_GRAPH_PROTOCOL := src/archkeel/render/assets/report-graph-vocabulary.ts src/archkeel/render/assets/report-graph-schema.ts
+BROWSER_GRAPH_COMPILER := node tools/browser-runtime/node_modules/typescript/bin/tsc --strict --target ES2022 --module none --newLine lf
+
+browser-graph-generate: browser-runtime-install
 	$(UV) run --locked python -m tools.browser_graph_protocol
 	$(BROWSER_GRAPH_COMPILER) --outFile src/archkeel/render/assets/report-graph-protocol.js $(BROWSER_GRAPH_PROTOCOL)
+	cat tools/browser-runtime/protocol-exports.js >> src/archkeel/render/assets/report-graph-protocol.js
+	$(BROWSER_GRAPH_COMPILER) --declaration --emitDeclarationOnly --outFile src/archkeel/render/assets/report-graph-protocol.types.d.ts $(BROWSER_GRAPH_PROTOCOL)
+	cat tools/browser-runtime/protocol-exports.types.d.ts >> src/archkeel/render/assets/report-graph-protocol.types.d.ts
 
-browser-graph-check:
+browser-graph-check: browser-runtime-install
 	$(UV) run --locked mypy --strict tools/browser_graph_protocol.py
 	$(UV) run --locked python -m tools.browser_graph_protocol --check
 	@set -e; browser_graph_stage=$$(mktemp -d); \
 		trap 'rm -rf "$$browser_graph_stage"' EXIT; \
 		$(BROWSER_GRAPH_COMPILER) --outFile "$$browser_graph_stage/protocol.js" $(BROWSER_GRAPH_PROTOCOL); \
-		cmp src/archkeel/render/assets/report-graph-protocol.js "$$browser_graph_stage/protocol.js"
-	$(BROWSER_GRAPH_COMPILER) --allowJs --checkJs --noEmit $(BROWSER_GRAPH_PROTOCOL) src/archkeel/render/assets/report-graph-scene.js tests/browser_graph_scene_target.ts src/archkeel/render/assets/report-atlas-deviations.js
+		cat tools/browser-runtime/protocol-exports.js >> "$$browser_graph_stage/protocol.js"; \
+		cmp src/archkeel/render/assets/report-graph-protocol.js "$$browser_graph_stage/protocol.js"; \
+		$(BROWSER_GRAPH_COMPILER) --declaration --emitDeclarationOnly --outFile "$$browser_graph_stage/protocol.types.d.ts" $(BROWSER_GRAPH_PROTOCOL); \
+		cat tools/browser-runtime/protocol-exports.types.d.ts >> "$$browser_graph_stage/protocol.types.d.ts"; \
+		cmp src/archkeel/render/assets/report-graph-protocol.types.d.ts "$$browser_graph_stage/protocol.types.d.ts"
+	$(BROWSER_GRAPH_COMPILER) --module esnext --moduleResolution node --moduleSuffixes .types, --allowJs --checkJs --noEmit src/archkeel/render/assets/report-graph-scene.js tests/browser_graph_scene_target.ts src/archkeel/render/assets/report-atlas-deviations.js

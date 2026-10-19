@@ -7,6 +7,7 @@ The frozen reference and frontend read the same snapshot and request. Every diff
 classified:
 
 - `equivalent`: the same facts, or a difference that cannot change a verdict;
+- `verified_extension`: an exact native verdict for a formerly rejected symbol contract;
 - `more_conservative`: the oracle resolved or completed what the frontend leaves UNKNOWN;
 - `suspicious`: the oracle left UNKNOWN what the frontend resolves or completes;
 - `defect`: a different resolved target or flag, a dropped edge without a gap, a false verdict.
@@ -33,6 +34,7 @@ from typing import Final, Literal
 from archkeel.analyzer.process import ProcessCollector
 from archkeel.cli.config import load_config
 from archkeel.ir.facts import (
+    SOURCE_SCRIPT_GLOBAL_KIND,
     BuiltinTarget,
     ExternalPackageTarget,
     LocalTarget,
@@ -49,12 +51,47 @@ from fixtures.demo_catalog_support import Variant
 from fixtures.demo_catalog_typescript import VARIANTS
 from fixtures.reproduce_typescript import Outcome, repository, run_variant
 
-Klass = Literal["equivalent", "more_conservative", "suspicious", "defect"]
-ORDER: Final[tuple[Klass, ...]] = ("equivalent", "more_conservative", "suspicious", "defect")
+Klass = Literal["equivalent", "verified_extension", "more_conservative", "suspicious", "defect"]
+ORDER: Final[tuple[Klass, ...]] = (
+    "equivalent",
+    "verified_extension",
+    "more_conservative",
+    "suspicious",
+    "defect",
+)
 FRONTEND: Final = (sys.executable, "-I", "-B", "-m", "archkeel.analyzer.typescript.entry")
 FIXTURES: Final = Path(__file__).resolve().parent
 ALLOWLIST: Final = FIXTURES / "typescript-differential-allowlist.json"
 REFERENCE: Final = FIXTURES / "typescript-reference.json"
+_NATIVE_COMMON = {
+    **dict.fromkeys(
+        (
+            "ASSIGNMENT",
+            "COMPONENT-CYCLES",
+            "DATA-PEERS",
+            "DOMAIN-NO-DATA",
+            "EXTERNAL-COMPLETE",
+            "EXTERNAL-SHOP",
+            "LAYOUT",
+            "MODULE-CYCLES",
+            "REQUIRES",
+        ),
+        "PASS",
+    ),
+    "<declared_rules>": "UNKNOWN",
+    "<diagnostics>": "",
+    "<exit>": "0",
+    "<observation_complete>": "PASS",
+}
+NATIVE_CORE_VERDICTS: Final = {
+    "variant/typescript-unsupported-target-symbol": {**_NATIVE_COMMON, "PROBE": "UNKNOWN"},
+    "variant/typescript-unsupported-symbol-interface": {
+        **_NATIVE_COMMON,
+        "PROBE": "FAIL",
+        "<declared_rules>": "FAIL",
+    },
+    "variant/typescript-unsupported-symbol-requires": {**_NATIVE_COMMON, "REQUIRES": "UNKNOWN"},
+}
 EXPECTED_GROUPS: Final = {
     "variant": 34,
     "hidden-loader": 111,
@@ -106,6 +143,7 @@ class Summary:
     reasons: frozenset[str]
     gap_modules: frozenset[str]
     inputs: dict[str, tuple[str, str]]
+    script_edges: dict[tuple[str, str, str, int, int], Edge] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -124,6 +162,7 @@ class Result:
     rules: tuple[tuple[str, str, str], ...] = ()
     # How many Core statuses were compared, for the report.
     compared: int = 0
+    script_edges: tuple[tuple[tuple[str, str, str, int, int], Edge], ...] = ()
 
     @property
     def klass(self) -> Klass:
@@ -249,8 +288,9 @@ def _variants(workspace: Path) -> list[Case]:
     frozen = json.loads((FIXTURES / "typescript-reference-demos.json").read_text(encoding="utf-8"))
     fixture = workspace / "reference-typescript-demo"
     _write(fixture, frozen["fixtures"]["H-typescript"])
-    for current in VARIANTS:
-        variant = replace(current, fixture=fixture, files=frozen["variants"][current.id])
+    current = {variant.id: variant for variant in VARIANTS}
+    for identifier, files in frozen["variants"].items():
+        variant = replace(current[identifier], fixture=fixture, files=files)
         root = repository(workspace / "variants", variant)
         config = load_config(root)
         request = request_for(
@@ -305,6 +345,7 @@ def summarize(facts: SourceFacts, root: str) -> Summary:
     evidence = {item.id: item for item in facts.evidence}
     targets = {item.import_id: item for item in facts.imports}
     edges: dict[tuple[str, str, str, int, int], Edge] = {}
+    script_edges: dict[tuple[str, str, str, int, int], Edge] = {}
     for section in facts.sections:
         for record in section.records if section.name == "imports" else ():
             target, spot = targets[record.id], evidence[record.evidence_ids[0]]
@@ -319,7 +360,8 @@ def summarize(facts: SourceFacts, root: str) -> Summary:
                 value if isinstance(value := record.data.get(name), bool) else None
                 for name in ("type_only", "reexport", "module_level_import")
             )
-            edges[key] = Edge(
+            destination = script_edges if record.kind == SOURCE_SCRIPT_GLOBAL_KIND else edges
+            destination[key] = Edge(
                 type(target).__name__,
                 target.module if isinstance(target, LocalTarget) else None,
                 target.file if isinstance(target, LocalTarget) else None,
@@ -342,6 +384,7 @@ def summarize(facts: SourceFacts, root: str) -> Summary:
         frozenset(_reason(item.title, root) for item in gaps),
         frozenset(str(item.data.get("module")) for item in gaps),
         {item.path: (item.digest, item.role) for item in facts.inputs},
+        script_edges,
     )
 
 
@@ -513,6 +556,17 @@ def _verdicts(
     old_rules = {rule: status for rule, status in old.items() if not rule.startswith("<")}
     new_rules = {rule: status for rule, status in new.items() if not rule.startswith("<")}
     known_failure = old_rules == new_rules and "FAIL" in old_rules.values()
+    expected = NATIVE_CORE_VERDICTS.get(case.name)
+    native_extension = (
+        expected is not None
+        and new == expected
+        and old
+        == {
+            **dict.fromkeys(expected, "UNKNOWN"),
+            "<diagnostics>": "rule_unsupported_by_profile",
+            "<exit>": "2",
+        }
+    )
     findings, rules = [], []
     for rule in sorted(old.keys() | new.keys()):
         before, after = old.get(rule, "absent"), new.get(rule, "absent")
@@ -539,7 +593,14 @@ def _verdicts(
             klass = "suspicious"
         else:
             klass = "defect"
-        findings.append(Finding(klass, f"Core verdict {rule}", before, after))
+        findings.append(
+            Finding(
+                "verified_extension" if native_extension else klass,
+                f"Core verdict {rule}",
+                before,
+                after,
+            )
+        )
     return findings, rules, len(old.keys() | new.keys())
 
 
@@ -562,7 +623,9 @@ def evaluate(case: Case, workspace: Path) -> Result:
                 Finding("defect", "module identity", case.module, ", ".join(sorted(modules)))
             )
     verdicts, rules, compared = _verdicts(statuses, case, workspace)
-    return Result(case, (*findings, *verdicts), tuple(rules), compared)
+    return Result(
+        case, (*findings, *verdicts), tuple(rules), compared, tuple(new.script_edges.items())
+    )
 
 
 def run(workspace: Path) -> list[Result]:
@@ -607,6 +670,13 @@ def judge(results: list[Result], allowlist: dict[str, dict[str, str]]) -> Verdic
         "counts": {klass: counts.get(klass, 0) for klass in ORDER},
         "allowlist_entries": {klass: len(entries) for klass, entries in sorted(allowlist.items())},
         "core_statuses_compared": sum(result.compared for result in results),
+        # The Node oracle predates global dependencies; their exact corpus expectations
+        # are checked separately rather than erased or treated as old module imports.
+        "native_script_dependencies": {
+            result.case.name: [[list(key), asdict(edge)] for key, edge in result.script_edges]
+            for result in results
+            if result.script_edges
+        },
         "groups": dict(sorted(groups.items())),
         "fail_to_unknown": {
             rule: n for (rule, before), n in sorted(lost.items()) if before == "FAIL"

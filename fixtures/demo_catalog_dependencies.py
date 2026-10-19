@@ -1115,7 +1115,66 @@ _LAYER_ORDER = Variant(
     expected_codes=("rule.violated",),
 )
 
+_CALLER_SOURCE = (FIXTURE_DIR / "shop/app/orders.py").read_text()
+_CALL_OWNER_FORBIDDEN = Variant(
+    id="class-a-call-owner-forbidden",
+    section="class_a",
+    item="call_owner",
+    summary="An allowed import does not authorize the description use case to invoke maintenance.",
+    files={
+        "shop/app/orders.py": _CALLER_SOURCE.replace(
+            "from shop.store import OrderRepository\n",
+            "from shop.store import OrderRepository\n"
+            "from shop.app.maintenance import run_maintenance\n",
+        ).replace(
+            '    return f"connection to {connection.path}"',
+            '    run_maintenance(connection)\n    return f"connection to {connection.path}"',
+        ),
+    },
+    expected_violations=("CALL-DESCRIBE-NO-MAINTENANCE",),
+    expected_codes=("rule.violated",),
+)
+_CALL_OWNER_DISJOINT = Variant(
+    id="class-a-call-owner-disjoint",
+    section="class_a",
+    item="call_owner:disjoint",
+    summary="A bound presentation helper remains allowed in the same call scope.",
+    files={
+        "shop/app/orders.py": _CALLER_SOURCE.replace(
+            '    return f"connection to {connection.path}"',
+            "    return _connection_path(connection)",
+        )
+        + "\n\ndef _connection_path(connection: Connection) -> str:\n"
+        + '    return f"connection to {connection.path}"\n',
+    },
+    expected_violations=(),
+    expected_codes=(),
+)
+
+_CALL_OWNER_UNKNOWN = Variant(
+    id="class-a-call-owner-unknown",
+    section="class_a",
+    item="call_owner:unknown",
+    summary="Replacing the provider binding withholds proof instead of certifying "
+    "its old declaration.",
+    files={
+        **_CALL_OWNER_FORBIDDEN.files,
+        "shop/app/maintenance.py": (FIXTURE_DIR / "shop/app/maintenance.py").read_text()
+        + "\nrun_maintenance = lambda connection: None\n",
+    },
+    expected_violations=(),
+    expected_codes=(),
+    expected_unknowns=(
+        ("call_owner_limit", "shop.app.orders.describe_connection"),
+        ("call_owner_limit", "shop.app.maintenance.run_maintenance"),
+    ),
+    expected_declared_rules="UNKNOWN",
+)
+
 VARIANTS: tuple[Variant, ...] = (
+    _CALL_OWNER_FORBIDDEN,
+    _CALL_OWNER_DISJOINT,
+    _CALL_OWNER_UNKNOWN,
     _LAYER_ORDER,
     _COMPLETE_REQUIRES,
     _COMPLETE_REQUIRES_TYPE_CHECKING,

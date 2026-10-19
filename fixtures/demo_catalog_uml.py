@@ -302,7 +302,6 @@ TS_UML["scopes"] = [
     )
 ]
 TS_CORE_SOURCE = (TS_FIXTURE_DIR / "src/core.ts").read_text()
-TS_MATCH_SOURCE = TS_CORE_SOURCE.replace("return String(value);", "return `${value}`;")
 TS_MISMATCH_SOURCE = TS_CORE_SOURCE.replace(
     "static reset(): void {}",
     "static reset(): number { return 0; }",
@@ -320,7 +319,7 @@ VARIANTS += (
         summary="TypeScript source matches the independently declared classifier contract.",
         files={
             "architecture-contract.json": TS_CLOSED_CONTRACT_JSON,
-            "src/core.ts": TS_MATCH_SOURCE,
+            "src/core.ts": TS_CORE_SOURCE,
         },
         expected_violations=(),
         expected_codes=(),

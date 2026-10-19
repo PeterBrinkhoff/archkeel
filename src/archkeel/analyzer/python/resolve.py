@@ -11,7 +11,8 @@ from __future__ import annotations
 
 import ast
 import builtins
-from collections import defaultdict
+import sys
+from collections import Counter, defaultdict
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
@@ -22,12 +23,15 @@ from .binding_types import BindingKind
 from .receiver_types import (
     ReceiverOrigin,
     ReceiverType,
+    annotation_receiver_type,
     constructor_receiver_type,
     literal_receiver_type,
+    method_element_type,
     method_return_type,
     receiver_call_target,
 )
 from .scopes import LexicalScopes, NameBinding
+from .source import own_scope
 
 _BUILTINS = frozenset(dir(builtins))
 _NO_RECEIVERS: Mapping[str, ReceiverType] = {}
@@ -70,9 +74,11 @@ class SymbolIndex:
     constructor_results: dict[str, bool]
     binding_ids: frozenset[str]
     declaration_names: frozenset[str]
+    binding_declarations: dict[str, RawRecord]
 
 
 def build_symbol_index(symbols: Sequence[RawRecord]) -> SymbolIndex:
+    counts = Counter(item["data"]["qualified_name"] for item in symbols)
     definition_ids = frozenset(
         item["id"] for item in symbols if item["kind"] in {"class", "function", "method"}
     )
@@ -123,6 +129,12 @@ def build_symbol_index(symbols: Sequence[RawRecord]) -> SymbolIndex:
         constructor_results,
         frozenset(item["id"] for item in symbols if item["kind"] == "dynamic_binding"),
         declarations,
+        {
+            item["data"]["qualified_name"]: item
+            for item in symbols
+            if counts[item["data"]["qualified_name"]] == 1
+            and item["kind"] in {"class", "function", "method"}
+        },
     )
 
 
@@ -155,6 +167,47 @@ def _static_receiver_type(
     return literal_receiver_type(node)
 
 
+def _declared_function_result_type(call: ast.Call, scopes: LexicalScopes) -> str | None:
+    if not isinstance(call.func, ast.Name) or scopes.module.binding_names is None:
+        return None
+    binding = scopes.lookup(call.func, call.func.id)
+    if binding.owner is None or binding.kind is not BindingKind.DECLARATION or binding.uncertain:
+        return None
+    definitions = binding.owner.bindings.get(call.func.id, [])
+    if len(definitions) != 1 or not isinstance(definitions[0], ast.FunctionDef):
+        return None
+    definition = definitions[0]
+    if (
+        definition.decorator_list
+        or (sys.version_info >= (3, 12) and definition.type_params)
+        or any(isinstance(node, ast.Yield | ast.YieldFrom) for node in own_scope(definition))
+    ):
+        return None
+    annotation = definition.returns
+    base = annotation.value if isinstance(annotation, ast.Subscript) else annotation
+    if (
+        not isinstance(base, ast.Name)
+        or base.id not in _BUILTINS
+        or scopes.lookup(base, base.id).kind is not BindingKind.UNBOUND
+    ):
+        return None
+    parent = scopes.parents.get(call)
+    if isinstance(parent, ast.Assign | ast.AnnAssign) and parent.value is call:
+        targets = parent.targets if isinstance(parent, ast.Assign) else [parent.target]
+        if len(targets) != 1 or not isinstance(targets[0], ast.Name):
+            return None
+        target = targets[0]
+        assigned = scopes.lookup(target, target.id)
+        # A later helper assignment must not retain another assignment's literal origin.
+        if (
+            assigned.owner is None
+            or assigned.uncertain
+            or assigned.owner.bindings.get(target.id) != [target]
+        ):
+            return None
+    return annotation_receiver_type(base.id)
+
+
 def call_result_type(
     call: ast.Call,
     *,
@@ -163,8 +216,8 @@ def call_result_type(
 ) -> str | None:
     """Name the documented type a call evaluates to, or None (AD-40).
 
-    A method on a typed receiver is looked up by its documented return; anything else must
-    be a callable the import bindings name, so a project's own `Table` never matches Rich's.
+    Methods and imported constructors use documented returns. A unique local function may
+    contribute its declared builtin return type, with runtime behavior still unproven.
     """
     if isinstance(call.func, ast.Attribute):
         receiver = _static_receiver_type(
@@ -172,6 +225,9 @@ def call_result_type(
         )
         if receiver is not None:
             return method_return_type(receiver, call.func.attr)
+    declared = _declared_function_result_type(call, scopes)
+    if declared is not None:
+        return declared
     dotted = dotted_expression(call.func)
     if dotted is None:
         return None
@@ -184,6 +240,18 @@ def call_result_type(
     ):
         return None
     return constructor_receiver_type(".".join([binding.targets[0], *parts[1:]]))
+
+
+def iterated_call_result_type(
+    call: ast.Call,
+    *,
+    receiver_types: Mapping[str, ReceiverType],
+    scopes: LexicalScopes,
+) -> str | None:
+    if not isinstance(call.func, ast.Attribute):
+        return None
+    receiver = _static_receiver_type(call.func.value, receiver_types=receiver_types, scopes=scopes)
+    return method_element_type(receiver, call.func.attr) if receiver is not None else None
 
 
 def _resolve_expression_receiver(
@@ -294,6 +362,13 @@ def _resolve_dotted(
 ) -> tuple[SourceResolution, list[str], str, int]:
     parts = dotted.split(".")
     binding = scopes.lookup(node, parts[0])
+    if binding.kind is BindingKind.UNBOUND and parts == ["dict", "fromkeys"]:
+        return (
+            SourceResolution.PARTIALLY_RESOLVED,
+            ["builtins.dict.fromkeys"],
+            "Python builtin classmethod, unproven at runtime",
+            1,
+        )
     if binding.kind in {BindingKind.MODULE, BindingKind.SYMBOL} and binding.targets:
         targets = tuple(".".join([target, *parts[1:]]) for target in binding.targets)
         return _scoped_binding(
@@ -302,17 +377,20 @@ def _resolve_dotted(
     receiver_result = _resolve_receiver_bound_call(parts, receiver_types)
     if receiver_result:
         return receiver_result
+    candidates = index.by_tail.get(parts[-1], [])
     receiver_class = scopes.receiver_class(binding, parts[0])
     if receiver_class:
         target = f"{receiver_class}.{'.'.join(parts[1:])}"
         if target in index.declaration_names:
             return _named_binding(target, index, "method on current class")
-        return (
-            SourceResolution.PARTIALLY_RESOLVED,
-            [target],
-            "current-class attribute without indexed method target",
-            1,
-        )
+        # A stored receiver's method need not belong to the containing class.
+        if len(parts) == 2 or not candidates:
+            return (
+                SourceResolution.PARTIALLY_RESOLVED,
+                [target],
+                "current-class attribute without indexed method target",
+                1,
+            )
     targets = tuple(
         target
         for root in binding.targets
@@ -321,7 +399,6 @@ def _resolve_dotted(
     )
     if targets:
         return _scoped_binding(binding, targets, index, "class-qualified local method")
-    candidates = index.by_tail.get(parts[-1], [])
     if candidates:
         return (
             SourceResolution.PARTIALLY_RESOLVED,

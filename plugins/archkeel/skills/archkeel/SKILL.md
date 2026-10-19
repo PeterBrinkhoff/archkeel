@@ -1,6 +1,6 @@
 ---
 name: archkeel
-description: Use when setting up or changing architecture rules, or checking architecture before submitting code, in a repository that uses Archkeel.
+description: Use when defining or reviewing architecture, maintaining nested contracts, or checking an Archkeel repository before submitting code.
 ---
 
 # Archkeel
@@ -112,6 +112,14 @@ The generated inventory and a green contract are not evidence that this structur
 - Challenge mixed responsibilities, unclear names, oversized leaf modules, excessive
   nesting, cycles and cross-package coupling even below that threshold. Trace entry points
   and data flow before choosing boundaries; check who owns shared types and public interfaces.
+  Follow one real operation through business logic, state/external effects and its observable
+  result. For each layer, name its invariant, failure mode and what breaks if removed.
+- Review changed APIs against a concrete caller purpose: named operation/type, typed inputs
+  and result, errors, and state/resource/transaction lifetime. Assess test-only helpers and
+  dynamic discovery separately; discovery needs a real caller/protocol, not an invented import.
+  Recommend delete/simplify/keep for redundant wrappers, duplicate knowledge owners, brittle
+  string dispatch and reflection/coercions hiding incorrect models. Candidates are review
+  work, never automatic deletion or a semantic PASS.
 - Propose physical packages around cohesive responsibilities, not arbitrary groups of seven
   or diagram-only clusters. Compare the current and target tree and allowed dependency
   directions. Keep a cohesive larger package when splitting only adds navigation or coupling;
@@ -123,9 +131,19 @@ The generated inventory and a green contract are not evidence that this structur
   architecture-document update, keep the durable record there: reviewed subtree, finding or
   keep-rationale, target change, and enforcement gap. Mark unreviewed subtrees explicitly;
   never present a partial review as a complete assessment.
+  Distinguish declared ownership from semantic cohesion. Give reviewed leaf modules a concrete
+  purpose under their nearest deliberate owner using supported declarations; generic parent
+  prose is insufficient. Link unsupported semantic judgments to source evidence, not a second
+  inventory. Each finding states source location, impact, delete/simplify/keep decision and UNKNOWNs.
   Add `inside` contracts at meaningful independently governed boundaries, not at every folder.
   Encode approved constraints with supported rules. Deeper review remains necessary when
   the installed version cannot enforce nested contracts; do not invent unsupported rules.
+
+Project skills supply domain invariants and deployment facts without copying this process.
+Keep execution/QA scheduling in the execution workflow. Follow the existing decision/delegation
+scope; this review does not add a confirmation per component. When delivering a report, smoke-test
+actual and declared nested navigation and module/source links from its packaged artifact,
+including companion files. Missing declarations and broken navigation are different findings.
 
 ### Interview mode: the architect decides, you ask
 
@@ -245,6 +263,22 @@ or ask the architect for an amendment. The full loop — gating, widening, picki
 backlog and landing a planned interface — is worked end to end on the shop sample in
 https://github.com/rapiddweller/archkeel/blob/main/docs/target-first.md.
 
+## Retiring local dependency gates
+
+Use native dependency policy for proven Python literal loaders as well as static
+imports. Binding mutation, unknown targets and nonempty builtin fromlists retain
+scoped UNKNOWN evidence. A dependency edge does not prove a public value API.
+Before deleting a local scanner, compare its forbidden, allowed and missing-scope
+inputs against the installed release, including aliases and dynamic forms. A source
+checkout or Draft PR is not proof that the installed release supports them.
+
+Use `call_owner` only where its installed observer proves the complete selected
+call scope. Its initial plain-function/annotated-parameter support does not prove
+external, constructed or stored receivers, arguments or guards. Check the rule
+receipt and supported forms before retiring any method-name scanner. New observations
+use wire2.1; older readers must reject them rather than omit the new rule.
+The new reader continues to accept historical1.2/1.3/2.0 observations.
+
 ## Daily loop
 
 Validation reports `responsibility.missing` only for components explicitly marked
@@ -348,6 +382,45 @@ Mounting a contract does not create a standalone `archkeel.toml` for it. Nonempt
 `declarations` fields remain unsupported and are refused. An inner `external_dependency_scope`
 declaration is not compared with ancestor declarations; ancestor rules still evaluate their
 own source scope. A physical folder alone is not a declared contract.
+
+## Maintaining a nested contract
+
+Use the saved architecture projection with `--component <id-or-scope> --full`. Read the owner's
+purpose/exclusions, deliberate API, dependency reasons and ancestor/child `policy_context`.
+Fill missing context from the canonical mounted contracts and source; mark absent evidence.
+Bind the review to the source revision, contract/analyzer identities and installed CLI version.
+Validation catches supported reference, ownership and stale-declaration errors; it does not
+judge whether responsibility prose is good.
+
+For each edit, record affected scopes/declarations, focused/full input bytes, logical edit
+files/sites, and before/after ownership, API and permissions. Edit size is maintenance evidence,
+not an architecture verdict or a pass threshold. Run `validate --against <accepted-ref>` and
+use the existing bound amendment for approved widening; never regenerate intent from imports.
+Native widening diagnostics are conservative checks, not a complete readable semantic diff.
+
+The [checkout fixture](https://github.com/rapiddweller/archkeel/tree/main/fixtures/H-uml-dart)
+has `ordering -> domain -> orders/pricing` boundaries. Try these changes independently:
+
+| Change | Deliberate edit sites | Control |
+| --- | --- | --- |
+| Move `discount_policy` from pricing to orders | Source path; domain owner/public/module intent; ordering's existing domain port references. Keep the root API unchanged. | New owner and Target match; domain-to-adapter import still fails; unapproved widening fails. |
+| Rename persistence API `findById` to `find` | Implementation/caller and the two existing nested signature targets. | Return-type drift fails; changed Target requires its bound amendment. |
+| Remove unused pricing-to-orders permission | The existing nested `requires` entry. | The same import passes before tightening and fails after it. |
+
+Review the resulting owner from the same saved packet:
+
+```bash
+archkeel report --input architecture.json --only architecture --component ordering:domain:orders --full --json
+```
+
+For this example, a project adapter supplies only domain invariants such as "orders own
+lifecycle; adapters own persistence". Trace checkout through the persistence port to the
+observable receipt; keep cohesive larger packages when a split adds only indirection.
+An unused public helper needs a caller justification; a dynamically selected collector entry
+needs its actual process/protocol evidence. Neither import counts nor generic leaf prose settle
+those review judgments. Retire supplemental guards only after equivalent positive, violating
+and missing-scope controls pass on the installed version, including relevant alias, relative,
+type-only, discovery and reexport paths. Unreplaced policy remains a disclosed gap.
 
 ## Rule catalog
 

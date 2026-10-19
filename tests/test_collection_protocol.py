@@ -54,7 +54,155 @@ def test_new_request_is_labeled_v3() -> None:
     assert decode_request(json.dumps(payload).encode()).protocol_version == "3.0.0"
 
 
-@pytest.mark.parametrize("version", ["0.0.0", "4.0.0", None, True])
+@pytest.fixture(scope="module")
+def _request_validator():
+    from pathlib import Path
+
+    from jsonschema import Draft202012Validator
+
+    schema = json.loads(
+        (Path(__file__).parents[1] / "schema/source-facts.schema.json").read_bytes()
+    )
+    return Draft202012Validator(schema)
+
+
+@pytest.mark.parametrize("phase", ["collect", "imports", "providers"])
+def test_v4_python_collection_phase_roundtrips(phase: str, _request_validator) -> None:
+    from dataclasses import replace
+
+    from archkeel.ir.facts_codec import decode_request, encode_request
+    from archkeel.ir.protocol import ProtocolVersion, PythonCollectionPhase, PythonSettings
+
+    request = replace(
+        decode_request(_request()),
+        protocol_version=ProtocolVersion.V4,
+        resolver=PythonSettings(phase=PythonCollectionPhase(phase)),
+    )
+    encoded = encode_request(request)
+    decoded = decode_request(encoded)
+    assert decoded == request
+    assert isinstance(decoded.resolver, PythonSettings)
+    assert decoded.resolver.phase is PythonCollectionPhase(phase)
+    assert json.loads(encoded)["resolver"] == {
+        "language": "python",
+        "provider_sources": [],
+        "phase": phase,
+    }
+    _request_validator.validate(json.loads(encoded))
+
+
+@pytest.mark.parametrize("version", ["1.0.0", "2.0.0", "3.0.0"])
+def test_default_python_phase_preserves_legacy_request_bytes(version: str) -> None:
+    from archkeel.ir.facts_codec import decode_request, encode_request
+    from archkeel.ir.protocol import PythonCollectionPhase, PythonSettings
+
+    expected = json.loads(_request())
+    expected["protocol_version"] = version
+    encoded = json.dumps(expected, sort_keys=True, separators=(",", ":")).encode()
+    request = decode_request(encoded)
+    assert isinstance(request.resolver, PythonSettings)
+    assert request.resolver.phase is PythonCollectionPhase.COLLECT
+    assert encode_request(request) == encoded
+
+
+@pytest.mark.parametrize("version", ["1.0.0", "2.0.0", "3.0.0"])
+def test_legacy_encoder_rejects_python_import_survey(version: str) -> None:
+    from dataclasses import replace
+
+    from archkeel.ir.facts_codec import ProtocolError, decode_request, encode_request
+    from archkeel.ir.protocol import ProtocolVersion, PythonCollectionPhase, PythonSettings
+
+    request = replace(
+        decode_request(_request()),
+        protocol_version=ProtocolVersion(version),
+        resolver=PythonSettings(phase=PythonCollectionPhase.IMPORTS),
+    )
+    with pytest.raises(ProtocolError, match="phase requires collection protocol 4.0.0"):
+        encode_request(request)
+
+
+@pytest.mark.parametrize("version", ["1.0.0", "2.0.0", "3.0.0"])
+@pytest.mark.parametrize("phase", ["collect", "imports", "providers"])
+def test_legacy_requests_reject_python_phase_fields(
+    version: str, phase: str, _request_validator
+) -> None:
+    from jsonschema import ValidationError
+
+    from archkeel.ir.facts_codec import ProtocolError, decode_request
+
+    payload = json.loads(_request())
+    payload["protocol_version"] = version
+    payload["resolver"]["phase"] = phase
+    with pytest.raises(ProtocolError, match="resolver fields"):
+        decode_request(json.dumps(payload).encode())
+    with pytest.raises(ValidationError):
+        _request_validator.validate(payload)
+
+
+@pytest.mark.parametrize(
+    "phase_fields",
+    [{}, {"phase": None}, {"phase": True}, {"phase": []}, {"phase": "future"}],
+    ids=["missing", "null", "boolean", "array", "unknown"],
+)
+def test_v4_requests_reject_missing_or_invalid_python_phase(
+    phase_fields: dict, _request_validator
+) -> None:
+    from jsonschema import ValidationError
+
+    from archkeel.ir.facts_codec import ProtocolError, decode_request
+
+    payload = json.loads(_request())
+    payload["protocol_version"] = "4.0.0"
+    payload["resolver"].update(provider_sources=[], **phase_fields)
+    with pytest.raises(ProtocolError, match="phase|resolver fields"):
+        decode_request(json.dumps(payload).encode())
+    with pytest.raises(ValidationError):
+        _request_validator.validate(payload)
+
+
+def test_import_survey_rejects_provider_sources_and_keeps_positional_settings(
+    _request_validator,
+) -> None:
+    import hashlib
+    from dataclasses import replace
+
+    from jsonschema import ValidationError
+
+    from archkeel.ir.facts import Language
+    from archkeel.ir.facts_codec import ProtocolError, decode_request, encode_request
+    from archkeel.ir.protocol import (
+        ProtocolVersion,
+        PythonCollectionPhase,
+        PythonProviderSource,
+        PythonSettings,
+    )
+
+    source = "def convert(): pass\n"
+    provider = PythonProviderSource(
+        "vendor",
+        ".archkeel-providers/vendor.py",
+        source,
+        hashlib.sha256(source.encode()).hexdigest(),
+    )
+    settings = PythonSettings(Language.PYTHON, (provider,))
+    assert settings.phase is PythonCollectionPhase.COLLECT
+    request = replace(
+        decode_request(_request()), protocol_version=ProtocolVersion.V4, resolver=settings
+    )
+    payload = json.loads(encode_request(request))
+    _request_validator.validate(payload)
+    payload["resolver"]["phase"] = "imports"
+    with pytest.raises(ProtocolError, match="import survey cannot include provider sources"):
+        decode_request(json.dumps(payload).encode())
+    with pytest.raises(ProtocolError, match="import survey cannot include provider sources"):
+        encode_request(
+            replace(request, resolver=replace(settings, phase=PythonCollectionPhase.IMPORTS))
+        )
+    with pytest.raises(ValidationError):
+        _request_validator.validate(payload)
+
+
+@pytest.mark.parametrize("version", ["0.0.0", "5.0.0", None, True])
 def test_collection_request_rejects_incompatible_version(version: object) -> None:
     from archkeel.ir.facts_codec import ProtocolError, decode_request
 
@@ -175,6 +323,52 @@ def _response() -> dict:
     }
 
 
+def test_collection_json_keeps_sorted_nested_object_order() -> None:
+    from archkeel.ir.facts_codec import _decode
+
+    raw = _response()
+    raw["facts"]["sections"][0]["records"][0]["data"]["codec_order"] = {
+        "z": {"ä": 2, "a": 1},
+        "a": [],
+    }
+    decoded = _decode(json.dumps(raw, ensure_ascii=False).encode())
+    assert list(decoded) == ["facts", "protocol_version"]
+    facts = decoded["facts"]
+    assert list(facts) == sorted(raw["facts"])
+    nested = facts["sections"][0]["records"][0]["data"]["codec_order"]
+    assert list(nested) == ["a", "z"]
+    assert list(nested["z"]) == ["a", "ä"]
+
+
+@pytest.mark.parametrize("token", ["NaN", "Infinity", "-Infinity", "1e400", "-1e400"])
+def test_collection_json_rejects_nested_nonfinite_numbers(token: str) -> None:
+    from archkeel.ir.facts_codec import ProtocolError, decode_response
+
+    raw = _response()
+    raw["facts"]["sections"][0]["records"][0]["data"]["codec_number"] = ["CODEC_NUMBER"]
+    payload = json.dumps(raw).encode().replace(b'"CODEC_NUMBER"', token.encode())
+    with pytest.raises(ProtocolError, match="JSON numbers must be finite"):
+        decode_response(payload)
+
+
+@pytest.mark.parametrize(
+    "payload,reason",
+    [
+        (b'{"value":NaN,"value":0}', "duplicate field value"),
+        (b'{"outer":{"value":1e400,"value":0}}', "duplicate field value"),
+        (b'{"value":NaN} trailing', "Extra data"),
+        (b'{"value":1e400,}', "Expecting property name"),
+        (b'{"value":-NaN}', "Expecting value"),
+    ],
+)
+def test_collection_json_reports_duplicate_or_syntax_errors_before_nonfinite(payload, reason):
+    from archkeel.ir.facts_codec import ProtocolError, decode_request, decode_response
+
+    for decoder in (decode_request, decode_response):
+        with pytest.raises(ProtocolError, match=reason):
+            decoder(payload)
+
+
 def test_source_response_is_immutable_and_preserves_alternate_parser_identity() -> None:
     from dataclasses import FrozenInstanceError
 
@@ -246,12 +440,12 @@ def test_encoders_reject_unsupported_versions(tmp_path) -> None:
         SnapshotInput("/source-project", "a" * 40, False),
         SourceScope(("src",), "project"),
         PythonSettings(),
-        "4.0.0",
+        "5.0.0",
     )
     with pytest.raises(ProtocolError, match="version"):
         encode_request(request)
     with pytest.raises(ProtocolError, match="version"):
-        encode_response(CollectionResponse(_facts(tmp_path), "4.0.0"))
+        encode_response(CollectionResponse(_facts(tmp_path), "5.0.0"))
 
 
 def test_legacy_encoder_rejects_nondefault_runtime_state(tmp_path) -> None:

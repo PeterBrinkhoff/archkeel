@@ -52,7 +52,7 @@ def test_init_reports_the_dependency_rule_count_from_its_draft(
     dependency_kinds = {"allowed_dependency", "forbidden_dependency"}
     rule_count = sum(
         rule["kind"] in dependency_kinds
-        for rule in json.loads(files["architecture-contract.json"])["rules"]
+        for rule in json.loads(dict(files.entries)["architecture-contract.json"])["rules"]
     )
     assert rule_count == 0
     assert f"{rule_count} dependency rules" in steps[0].detail[1]

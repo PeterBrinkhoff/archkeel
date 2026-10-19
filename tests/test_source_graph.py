@@ -45,6 +45,22 @@ def _graph(observation) -> ArchitectureGraph:
     return graph
 
 
+@pytest.mark.parametrize("change", ["missing", "owner", "kind"])
+def test_inventory_projection_rejects_lost_or_misplaced_members(observation, change):
+    from archkeel.ir.source_graph import _member_inventory_coverage
+
+    entities = list(_graph(observation).entities)
+    member = next(item for item in entities if item.qualified_name == "sample.service.Client.count")
+    assert _member_inventory_coverage(observation, entities)
+    entities.remove(member)
+    if change == "owner":
+        entities.append(replace(member, parent_id="different-owner"))
+    elif change == "kind":
+        entities.append(replace(member, kind="function"))
+    with pytest.raises(ValueError, match="member inventory identities disagree"):
+        _member_inventory_coverage(observation, entities)
+
+
 def _graph_from_source_facts(facts, roots: tuple[str, ...]) -> ArchitectureGraph:
     from archkeel.ir.model import (
         AnalyzerInfo,
@@ -154,6 +170,40 @@ def test_cross_module_calls_and_references_keep_each_site_and_kind(observation) 
     projected = {edge.id for edge in graph.relationships if edge.kind in {"calls", "references"}}
     assert projected == expected
     assert all(edge.evidence_ids for edge in helper_sites)
+
+
+def test_script_global_dependency_is_a_reference_not_a_lexical_import(observation) -> None:
+    dependency = next(
+        item
+        for item in observation.records("imports")
+        if item.data.get("source_module") == "sample.app"
+    )
+    observation = replace(
+        observation,
+        sections=tuple(
+            replace(
+                section,
+                records=tuple(
+                    replace(item, kind="script_global") if item.id == dependency.id else item
+                    for item in section.records
+                ),
+            )
+            if section.name == "imports"
+            else section
+            for section in observation.sections
+        ),
+    )
+    graph = _graph(observation)
+    edge = next(item for item in graph.relationships if item.id == dependency.id)
+    assert edge.kind == "references"
+    assert edge.resolution == "resolved"
+    assert edge.evidence_ids == dependency.evidence_ids
+    assert edge.record_ids == (dependency.id,)
+    assert all(
+        item.status != "complete"
+        for item in graph.coverage
+        if item.scope_id == edge.source_id and "references" in item.relationship_kinds
+    )
 
 
 def test_unresolved_call_keeps_expression_source_and_evidence(observation) -> None:

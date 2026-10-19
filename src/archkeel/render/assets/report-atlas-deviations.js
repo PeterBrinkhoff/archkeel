@@ -1,6 +1,6 @@
+import { ArchkeelGraphProtocol, ArchkeelGraphSceneProtocol } from "./report-graph-protocol.js";
 "use strict";
 // Own the recorded deviation rows and their actual level/pair classification.
-var ArchkeelAtlasDeviations = (function () {
   const G = ArchkeelGraphProtocol;
   const P = ArchkeelGraphSceneProtocol;
   /** @param {string} source @param {string} target */
@@ -28,5 +28,7 @@ var ArchkeelAtlasDeviations = (function () {
     }
     return { isUndeclared, unused };
   }
-  return { create };
-})();
+
+export { create };
+
+window.ArchkeelAtlasDeviations = { create };

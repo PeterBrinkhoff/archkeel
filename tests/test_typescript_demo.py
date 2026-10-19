@@ -279,7 +279,7 @@ def _decoded_validator():
     registry = Registry().with_resources(
         (schema["$id"], Resource.from_contents(schema)) for schema in schemas
     )
-    schema = json.loads((root / "schema/architecture-ir-decoded.schema.json").read_bytes())
+    schema = json.loads((root / "schema/architecture-ir-decoded-2.1.schema.json").read_bytes())
     return Draft202012Validator(schema, registry=registry)
 
 
@@ -341,17 +341,29 @@ def test_unobserved_loader_preserves_unknown(outcomes: dict[str, Outcome], case:
     ("case", "rule"),
     (("unsupported-symbol-interface", "PROBE"), ("unsupported-symbol-requires", "REQUIRES")),
 )
-def test_unsupported_symbol_declaration_does_not_prove_a_violation(
+def test_unproven_named_route_remains_undecided_beside_module_violations(
     outcomes: dict[str, Outcome],
     case: str,
     rule: str,
 ) -> None:
     outcome = outcomes[f"typescript-{case}"]
-    assert outcome.report.exit_code == 2
-    if outcome.observation is not None:
-        assert not any(
-            rule in record.rule_ids for record in trace_valid_violations(outcome.observation)
-        )
+    assert outcome.report.exit_code == 0
+    assert outcome.observation is not None
+    assessment = next(item for item in outcome.report.rule_assessments if item.id == rule)
+    assert assessment.undecided == 1
+    violations = [
+        record for record in trace_valid_violations(outcome.observation) if rule in record.rule_ids
+    ]
+    if case == "unsupported-symbol-interface":
+        assert assessment.status == "FAIL" and assessment.count == 2
+        assert sorted(record.title for record in violations) == [
+            f"shop.src.data.{name}_x2e_ts reaches "
+            "shop.src.domain.repository_x2e_ts.OrderRepository outside its declared interface"
+            for name in ("local", "remote")
+        ]
+    else:
+        assert assessment.status == "UNKNOWN" and assessment.count == 0
+        assert not violations
 
 
 def test_demo_retains_normal_artifacts(tmp_path: Path) -> None:
@@ -632,3 +644,68 @@ def test_committed_js_only_revision_check(tmp_path: Path) -> None:
     assert json.loads((output / "revisions-check.stdout.json").read_bytes()) == json.loads(
         (output / "revisions-repeat.stdout.json").read_bytes()
     )
+
+
+@pytest.mark.parametrize("kind", ["forbidden_dependency", "interface_boundary"])
+@pytest.mark.parametrize("route", ["allowed", "forbidden", "type-only", "reexport"])
+def test_runtime_named_port_requires_direct_export_evidence(tmp_path, kind, route):
+    from dataclasses import replace
+
+    from fixtures.demo_catalog_typescript import _interfaces, contract
+
+    value = _interfaces() if kind == "interface_boundary" else contract()
+    source = "shop.src.presentation.probe_x2e_ts"
+    target = "shop.src.domain.probe_x2e_ts"
+    if kind == "forbidden_dependency":
+        value["rules"].append(
+            {
+                "id": "PROBE",
+                "kind": kind,
+                "source": source,
+                "target": target,
+                "target_symbol": "probe" if route == "forbidden" else "other",
+                "include_type_checking": True,
+                "decided_by": "architect",
+                "rationale": "Exercise the exact runtime export boundary.",
+                "provenance": ["docs/architecture/shop.md"],
+            }
+        )
+    else:
+        domain = next(row for row in value["components"] if row["label"] == "domain")
+        name = "probe" if route == "allowed" else "other"
+        domain["public"].append(f"{target}:{name}")
+    files = {
+        "architecture-contract.json": json.dumps(value),
+        "src/domain/probe.ts": "export function probe() { return 1; }\n",
+        "src/presentation/probe.ts": (
+            'import { probe as localProbe } from "../domain/probe";\nlocalProbe();\n'
+        ),
+    }
+    if route == "type-only":
+        files["src/presentation/probe.ts"] = (
+            'import type { probe } from "../domain/probe";\nexport type Probe = typeof probe;\n'
+        )
+    elif route == "reexport":
+        files["src/domain/probe.ts"] = 'export { probe } from "./implementation";\n'
+        files["src/domain/implementation.ts"] = "export function probe() { return 1; }\n"
+    variant = replace(VARIANTS[0], id=f"typescript-{kind}-{route}", files=files)
+    outcome = run_variant(tmp_path, variant)
+    assert outcome.observation is not None
+    imported = next(
+        row
+        for row in outcome.observation.records("imports")
+        if row.data.get("source_module") == source and row.data.get("target_module") == target
+    )
+    known = route in {"allowed", "forbidden"}
+    assert imported.data.get("symbols_known") is known
+    if known:
+        assert any(row.id in imported.fact_ids for row in outcome.observation.records("bindings"))
+    assessment = next(item for item in outcome.report.rule_assessments if item.id == "PROBE")
+    expected = "PASS" if route == "allowed" else "FAIL" if route == "forbidden" else "UNKNOWN"
+    assert assessment.status == expected
+    violations = [
+        row for row in trace_valid_violations(outcome.observation) if "PROBE" in row.rule_ids
+    ]
+    assert bool(violations) is (route == "forbidden")
+    if route in {"type-only", "reexport"}:
+        assert assessment.undecided > 0

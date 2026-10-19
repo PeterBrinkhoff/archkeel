@@ -140,7 +140,8 @@ def test_untracked_typescript_init_uses_physical_directories_and_path_identity(
     )
     assert domain != data
     assert f"{prefix}.domain.index_x2e_ts" in (domain.public or ())
-    assert f"{prefix}.data_x2d_api.client_x2e_ts" in (data.public or ())
+    client_port = f"{prefix}.data_x2d_api.client_x2e_ts:client"
+    assert data.public == (client_port,)
     expected = {
         f"{prefix}.domain.order_x2d_item_x2e_ts",
         f"{prefix}.domain.index_x2e_ts",
@@ -162,9 +163,12 @@ def test_untracked_typescript_init_uses_physical_directories_and_path_identity(
     assert sizes[domain.label] == 3
     assert sizes[data.label] == 1
     assert sum(sizes.values()) == 6
-    assert all(
-        ":" not in entry for component in draft.components for entry in component.public or ()
-    )
+    assert {
+        (component.label, entry)
+        for component in draft.components
+        for entry in component.public or ()
+        if ":" in entry
+    } == {(data.label, client_port)}
     assert all(
         rule.kind not in {"allowed_dependency", "forbidden_dependency"} for rule in draft.rules
     )

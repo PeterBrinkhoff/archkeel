@@ -56,6 +56,24 @@ not globs. Optional `language` selects Python (default), Dart or TypeScript.
 TypeScript also uses `tsconfig`; roots may be files or directories. Python/Dart
 roots are directories. Inputs must exist inside `--root`.
 
+For supported UMD vendors, the `tsconfig` extension `archkeel` declares
+`scriptHost: "classic-browser"` and `scriptProviders`, each with `source` and
+`provenance` paths relative to `--root`. See the
+[provenance example](../src/archkeel/render/assets/ELKJS-LICENSE.md).
+Provenance records the package, version, bundle SHA-256 and license; the hash binds
+the exact bundle bytes. Publication identity does not bound factory effects: unproved
+calls or constructors leave standard-global and vendor dependencies UNKNOWN.
+Missing, invalid or competing evidence stays UNKNOWN.
+
+Named ES imports can prove exact local ports when the destination has one witnessed
+runtime declaration and a direct or same-name export. Import aliases retain that
+source identity. Defaults, namespaces, re-exports and ambiguous/missing bindings
+remain unproved for exact ports. Global reads in modules retain UNKNOWN when their
+binding cannot be established. This establishes a source dependency, not runtime
+immutability or dispatch. ArchKeel's [browser configuration](architecture/browser.tsconfig.json)
+uses these explicit ports; [AD-242](architecture/decisions/ad-242-explicit-browser-module-ports.md)
+describes its offline publication checks.
+
 `report` and `validate --config PATH` select a root-relative file. `check` uses
 only `archkeel.toml`, bound by its accepted lock. Give separate scopes separate
 report outputs. Default report JSON is `test-artifacts/architecture/architecture.json`.
@@ -81,12 +99,38 @@ limit for initialization and saves it in the generated config. `report`, `valida
 and `check` use the configured limit; `check` binds it to the accepted config like
 the other scan inputs. See [AD-224](architecture/decisions/ad-224-configurable-collector-output-limit.md).
 
-SourceFacts 3.0.0 adds neutral list type syntax for explicit callback arguments.
-Readers retain byte-compatible 1.0.0/2.0.0 packets; those versions reject the new
-list vocabulary, including nested shapes. Runtime `requirement_state` remains
-required from SourceFacts 2.0.0 onward. ArchitectureIR/Delta stay 2.0.0;
-command-result uses 8.0.0. New requests name protocol 3.0.0; pin collectors,
-Core and strict schemas together. See [AD-223](architecture/decisions/ad-223-explicit-callable-boundaries.md).
+SourceFacts 3.0.0 introduced neutral list type syntax for explicit callback arguments.
+Readers retain 1.0.0/2.0.0 packets; those versions reject that list vocabulary,
+including nested shapes. Runtime `requirement_state` is required from SourceFacts
+2.0.0 onward. At that migration, ArchitectureIR/Delta remained 2.0.0 and
+command-result used 8.0.0. See [AD-223](architecture/decisions/ad-223-explicit-callable-boundaries.md).
+
+### Current wire formats
+
+The bundled Python provider collector uses **SourceFacts/protocol 4.0.0** for its
+provider-source survey and collections enriched with captured providers. This
+carries `provider_sources`, source-bound `provider_bindings` and supported
+context-manager signatures. Source bytes, digests and inputs are checked across
+passes within one collector deadline; project modules are parsed, not imported.
+The generic request default remains **3.0.0**. Known legacy 1/2/3 packets remain
+readable; a legacy packet cannot carry the new provider or signature payloads.
+
+New **ArchitectureIR 2.1.0** Python call records require `call_binding`: a validated
+binding object or explicit JSON null when unproved. Omission is invalid. Existing
+call-graph candidates remain separate from this ownership evidence. Strict command
+consumers need **command-result 9.0.0**, which also accepts supported historical
+observations. Command schemas 6/7/8 reject 2.1 observations; older reports remain
+readable under their supported profiles. Delta remains **2.0.0** and still requires
+comparable observations.
+
+These evidence/protocol changes require a new package major under the compatibility
+policy above. Pin CLI, collectors and schemas together, and re-observe both revisions
+before comparing them. Historical reports do not acquire missing proofs on replay.
+
+The internal `FilesToWrite` port now stores immutable ordered
+`entries: tuple[tuple[str, bytes], ...]`, replacing its Mapping interface. Construct
+`FilesToWrite(entries=(("path", content),))` and iterate `files.entries`; the caller
+still owns writes. Documented `archkeel.api` exports retain their interfaces.
 
 
 ## Results
@@ -123,9 +167,11 @@ instead of 0. Agent drafts and components without explicit architect attribution
 remain accepted; rule verdicts and rationale validation are unchanged.
 
 JSON null means unavailable/inapplicable; an empty list means measured empty.
-Pin CLI and [command schema](../schema/command-result-8.0.schema.json) together.
-Version 8 retains version 6/7 readers and permits an incomplete report to preserve
-a traceable FAIL assessment while coverage stays UNKNOWN/FAIL; it cannot claim PASS.
+Pin CLI and [command schema](../schema/command-result-9.0.schema.json) together.
+Version 9 accepts ArchitectureIR 2.1 observations with strict call-binding shapes
+and retains supported version 6/7/8 results. Incomplete reports may preserve a
+traceable FAIL while
+coverage stays UNKNOWN/FAIL; they cannot claim PASS.
 Ignore unknown result properties; required fields and enum meanings remain strict.
 Schema shape validation proves neither authenticity nor conformance.
 `report`/`check --output` also write `.report.html`/`.check.html` companions.
@@ -262,5 +308,8 @@ Trusted host receipts are required. Local/synthetic replays do not prove authent
 GitHub event history alone cannot prove first publication. [Protocol tests](../tests/test_git_lock.py)
 and [host evidence boundaries](architecture/archkeel.md#host-evidence) define supported evidence.
 
-Plugins reuse the CLI skill. See [plugin instructions](../plugins/archkeel/README.md)
-for installation; listing and publication remain separate acceptance steps.
+Plugins reuse the CLI skill. New [GitHub releases](https://github.com/rapiddweller/archkeel/releases)
+include `archkeel-plugin-<version>.zip` and its SHA-256 checksum. The ZIP contains
+both plugin manifests and the canonical skill; install the CLI separately.
+See [plugin instructions](../plugins/archkeel/README.md); directory listing and
+host activation remain separate acceptance steps.

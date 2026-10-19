@@ -12,8 +12,9 @@ from archkeel.ir.architecture_projection import ArchitectureProjection
 from archkeel.ir.codec_contract import _rule_payload
 from archkeel.ir.codec_delta import delta_payload
 from archkeel.ir.codec_observation import _coverage_payload, observation_payload
-from archkeel.ir.codec_wire import _raw_object, _record_payload, canonical_json_bytes
+from archkeel.ir.codec_wire import _raw_object, canonical_json_bytes
 from archkeel.ir.command_view import ArchitectureComponentView, architecture_command_envelope
+from archkeel.ir.facts_codec import record_payload as _record_payload
 from archkeel.ir.model import Command as _Command
 from archkeel.ir.model import FilteredViolation, OpenDecision, ReportFilter, RunResult
 from archkeel.ir.model import RawJson as RawJson
@@ -220,7 +221,7 @@ def _filtered_violation_payload(
     gaps: Mapping[str, tuple[str, ...]],
     remedy: str | None,
 ) -> dict[str, RawJson]:
-    row = {
+    row: dict[str, RawJson] = {
         **_record_payload(item.record),
         "locations": [_raw_object(asdict(location)) for location in item.locations],
     }

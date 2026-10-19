@@ -6,11 +6,10 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
-from dataclasses import asdict
+from collections.abc import Iterable, Mapping
 from typing import Any
 
-from archkeel.ir.model import JsonValue, Record, RecordData
+from archkeel.ir.model import JsonValue, RecordData
 from archkeel.ir.model import RawJson as RawJson
 
 
@@ -20,7 +19,7 @@ def _object(raw: object, label: str) -> dict[str, RawJson]:
     return raw
 
 
-def _has_field(item: Mapping[str, RawJson], name: str) -> bool:
+def _has_field(item: Iterable[str], name: str) -> bool:
     """Apply open field grammar while distinguishing absence from explicit null."""
     return name in item
 
@@ -94,9 +93,3 @@ def _count(value: object, label: str) -> int:
     if not isinstance(value, int) or isinstance(value, bool) or value < 0:
         raise ValueError(f"{label} must be a non-negative integer")
     return value
-
-
-def _record_payload(value: Record) -> dict[str, RawJson]:
-    result = _raw_object(asdict(value))
-    result["data"] = _raw_value(value.data)
-    return result

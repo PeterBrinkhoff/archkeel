@@ -307,6 +307,6 @@ def test_native_iterable_permission_against_base_requires_bound_amendment(tmp_pa
         rationale="Accept exactly one native iterable element.",
     )
     assert written.exit_code == 0, written.failures
-    amendment.write_bytes(files[str(amendment)])
+    amendment.write_bytes(dict(files.entries)[str(amendment)])
     accepted, _ = run_validate(tmp_path, config, observe, against=base, amendment=amendment)
     assert accepted.exit_code == 0 and accepted.failures == ()

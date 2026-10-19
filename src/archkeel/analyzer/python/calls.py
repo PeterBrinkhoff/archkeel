@@ -9,7 +9,7 @@ import ast
 import builtins
 from collections.abc import Sequence
 
-from archkeel.ir.facts import EvidenceClass, SourceResolution, stable_id
+from archkeel.ir.facts import CallBindingOrigin, EvidenceClass, SourceResolution, stable_id
 from archkeel.ir.facts_codec import RawData as RecordData
 from archkeel.ir.facts_codec import RawEvidence, RawRecord, classified
 
@@ -20,17 +20,25 @@ from .receiver_types import (
     annotation_receiver_type,
     literal_receiver_type,
 )
-from .resolve import SymbolIndex, call_result_type, dotted_expression, resolve_name
+from .resolve import (
+    SymbolIndex,
+    call_result_type,
+    dotted_expression,
+    iterated_call_result_type,
+    resolve_name,
+)
 from .scopes import LexicalScopes
 from .source import (
     FunctionNode,
     ParsedModule,
     add_evidence,
     annotation_text,
+    call_id,
     control_flow_contexts,
     definition_id,
     lexical_binding_names,
     location,
+    member_escape_references,
     own_scope,
     stable_direct_module_bindings,
 )
@@ -54,8 +62,8 @@ def _bind_receiver(
     if existing is None or candidate is None or existing.type_name != candidate.type_name:
         receivers[name] = None
         return
-    if existing.origin is ReceiverOrigin.LITERAL or candidate.origin is ReceiverOrigin.LITERAL:
-        receivers[name] = ReceiverType(existing.type_name, ReceiverOrigin.LITERAL)
+    if existing.origin is ReceiverOrigin.LITERAL:
+        receivers[name] = candidate
 
 
 def _void_targets(receivers: dict[str, ReceiverType | None], target: ast.expr) -> None:
@@ -152,7 +160,7 @@ class CallCollector(ast.NodeVisitor):
         self.symbol_evidence = index.evidence
         self.evidence = evidence
         self.items: list[RawRecord] = []
-        self.scopes = LexicalScopes(module)
+        self.scopes = LexicalScopes.for_module(module)
         self.receivers = {
             node: _local_receiver_types(node, self.scopes)
             for node in ast.walk(module.tree)
@@ -164,6 +172,13 @@ class CallCollector(ast.NodeVisitor):
             for child in ast.iter_child_nodes(parent)
         }
         self.stable_bindings = stable_direct_module_bindings(module)
+        self.escaped_bindings = {
+            (binding.owner.node, reference.id)
+            for reference in member_escape_references(
+                module, module.all_nodes, member_surface=True, owner_exposure_only=True
+            )
+            if (binding := self.scopes.lookup(reference, reference.id)).owner is not None
+        }
         self.scope_bindings = {
             node: lexical_binding_names(node)
             for node in ast.walk(module.tree)
@@ -259,19 +274,129 @@ class CallCollector(ast.NodeVisitor):
             )
         return result
 
+    def _receiver(self, expression: ast.expr, name: str) -> ReceiverType | None:
+        owner = self.scopes.lookup(expression, name).owner
+        if owner is None:
+            return None
+        if isinstance(owner.node, ast.FunctionDef | ast.AsyncFunctionDef):
+            return self.receivers.get(owner.node, {}).get(name)
+        if not isinstance(owner.node, ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp):
+            return None
+        if len(owner.node.generators) != 1:
+            return None
+        generator = owner.node.generators[0]
+        if (
+            generator.is_async
+            or not isinstance(generator.target, ast.Name)
+            or generator.target.id != name
+            or owner.bindings.get(name) != [generator.target]
+            or not isinstance(generator.iter, ast.Call)
+        ):
+            return None
+        receivers: dict[str, ReceiverType] = {}
+        for child in ast.walk(generator.iter.func):
+            if not isinstance(child, ast.Name):
+                continue
+            receiver = self._receiver(child, child.id)
+            if receiver is not None:
+                receivers[child.id] = receiver
+        if any(value.origin is ReceiverOrigin.ANNOTATION for value in receivers.values()) and (
+            self.scopes.lookup(generator.iter, "str").kind is not BindingKind.UNBOUND
+        ):
+            return None
+        element = iterated_call_result_type(
+            generator.iter, receiver_types=receivers, scopes=self.scopes
+        )
+        return ReceiverType(element, ReceiverOrigin.DOCUMENTED) if element is not None else None
+
+    def _call_binding(
+        self, node: ast.Call, status: SourceResolution, targets: list[str], evidence_id: str
+    ) -> RecordData | None:
+        if (
+            isinstance(node.func, ast.Name)
+            and status is SourceResolution.RESOLVED
+            and len(targets) == 1
+        ):
+            declaration = self.index.binding_declarations.get(targets[0])
+            if declaration is None:
+                return None
+            declaration_data: dict[str, object] = declaration["data"]
+            if (
+                declaration["kind"] != "function"
+                or declaration_data.get("source_binding_unique") is not True
+                or declaration_data.get("source_binding_static") is not True
+                or declaration_data.get("decorators")
+            ):
+                return None
+            binding = self.scopes.lookup(node.func, node.func.id)
+            if (
+                not binding.uncertain
+                and binding.owner is not None
+                and (
+                    binding.owner is not self.scopes.root
+                    or binding.kind is BindingKind.UNBOUND
+                    or node.func.id in self.stable_bindings
+                )
+            ):
+                return {
+                    "origin": CallBindingOrigin.DIRECT,
+                    "target": targets[0],
+                    "evidence_ids": sorted(
+                        {evidence_id, *self.symbol_evidence.get(targets[0], ())}
+                    ),
+                }
+        if not isinstance(node.func, ast.Attribute) or not isinstance(node.func.value, ast.Name):
+            return None
+        receiver = node.func.value
+        binding = self.scopes.lookup(receiver, receiver.id)
+        if (
+            binding.owner is None
+            or binding.uncertain
+            or (binding.owner.node, receiver.id) in self.escaped_bindings
+        ):
+            return None
+        sites = binding.owner.bindings.get(receiver.id, ())
+        if len(sites) != 1 or not isinstance(sites[0], ast.arg):
+            return None
+        annotation = sites[0].annotation
+        if not isinstance(annotation, ast.Name | ast.Attribute):
+            return None
+        verdict, owners, _, _ = resolve_name(annotation, index=self.index, scopes=self.scopes)
+        if verdict is not SourceResolution.RESOLVED or len(owners) != 1:
+            return None
+        target = f"{owners[0]}.{node.func.attr}"
+        owner = self.index.binding_declarations.get(owners[0])
+        member = self.index.binding_declarations.get(target)
+        if owner is None or member is None:
+            return None
+        owner_data: dict[str, object] = owner["data"]
+        member_data: dict[str, object] = member["data"]
+        if (
+            owner["kind"] != "class"
+            or owner_data.get("source_binding_unique") is not True
+            or owner_data.get("source_member_binding_static") is not True
+            or member["kind"] != "method"
+            or member_data.get("parent") != owners[0]
+            or member_data.get("decorators")
+            or target not in targets
+        ):
+            return None
+        annotation_evidence = add_evidence(self.evidence, self.module, annotation)
+        return {
+            "origin": CallBindingOrigin.DECLARED_RECEIVER,
+            "target": target,
+            "evidence_ids": sorted(
+                {evidence_id, annotation_evidence, *owner["evidence_ids"], *member["evidence_ids"]}
+            ),
+        }
+
     def visit_Call(self, node: ast.Call) -> None:
         scope = self.scopes.by_node[node]
-        receivers = {}
-        for name in {child.id for child in ast.walk(node.func) if isinstance(child, ast.Name)}:
-            owner = self.scopes.lookup(node.func, name).owner
-            receiver = (
-                self.receivers.get(owner.node, {}).get(name)
-                if owner is not None
-                and isinstance(owner.node, ast.FunctionDef | ast.AsyncFunctionDef)
-                else None
-            )
-            if receiver is not None:
-                receivers[name] = receiver
+        receivers = {
+            name: receiver
+            for name in {child.id for child in ast.walk(node.func) if isinstance(child, ast.Name)}
+            if (receiver := self._receiver(node.func, name)) is not None
+        }
         expression = annotation_text(node.func) or "<unparseable>"
         status, targets, reason, candidate_count = resolve_name(
             node.func,
@@ -287,14 +412,7 @@ class CallCollector(ast.NodeVisitor):
             }
         )
         evidence_id = add_evidence(self.evidence, self.module, node)
-        line, _, column = location(node)
-        item_id = stable_id(
-            "CALL",
-            self.module.rel_path,
-            line,
-            column,
-            expression,
-        )
+        item_id = call_id(self.module, node, expression)
         self.items.append(
             classified(
                 item_id=item_id,
@@ -321,6 +439,7 @@ class CallCollector(ast.NodeVisitor):
                     "construction": self._construction(
                         node, expression, status, targets, candidate_count > len(targets)
                     ),
+                    "call_binding": self._call_binding(node, status, targets, evidence_id),
                 },
             )
         )

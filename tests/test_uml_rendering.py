@@ -5,6 +5,7 @@
 
 import json
 from dataclasses import asdict
+from unittest.mock import Mock
 
 import pytest
 from browser_report_support import _browser_page, _open_details
@@ -24,7 +25,7 @@ from archkeel.ir.architecture_graph import (
 )
 from archkeel.ir.codec import decode_canonical_model, parse_observation
 from archkeel.ir.graph_codec import parse_comparison, parse_graph
-from archkeel.render.html import render_html
+from archkeel.render.html import _asset, render_html
 
 
 def _uml_report(
@@ -289,25 +290,31 @@ def test_report_embeds_the_standard_graph_schema_with_independent_target(tmp_pat
 def test_standard_uml_inlines_pinned_elk_before_flow_under_offline_csp(tmp_path):
     html, _ = _uml_report(tmp_path)
 
-    elk = html.index('<script data-elkjs-version="0.12.0">')
-    flow = html.index('<script>"use strict";')
+    assert _asset("explorer.runtime.js").decode() in html
+    vendor = '<script data-elkjs-version="0.12.0">'
+    explorer = '<script data-report-asset="explorer">'
+    assert html.count(vendor) == html.count(explorer) == 1
+    assert html.index(vendor) < html.index(explorer)
     csp = html.split('http-equiv="Content-Security-Policy"', 1)[1].split(">", 1)[0]
 
-    assert (
-        elk
-        < html.index('<script data-report-asset="scene">')
-        < html.index('<script data-report-asset="layout">')
-        < flow
-    )
     assert "worker-src" not in csp
     assert "<script src=" not in html
+
+
+def _intercept_elk_publication(html, hook):
+    vendor = '<script data-elkjs-version="0.12.0">'
+    explorer = '<script data-report-asset="explorer">'
+    assert html.count(vendor) == html.count(explorer) == 1
+    assert html.index(vendor) < html.index(explorer)
+    assert _asset("explorer.runtime.js").decode() in html
+    # Install the fault before Flow starts its first layout, after the real vendor loads.
+    intercept = f"<script>{hook}\nwindow.__elkHookInstalled = true;</script>\n"
+    return html.replace(explorer, intercept + explorer, 1)
 
 
 def test_standard_uml_ignores_stale_layout_and_retries_rejected_layout(tmp_path):
     api = pytest.importorskip("playwright.sync_api")
     html, _ = _uml_report(tmp_path)
-    marker = '<script>"use strict";'
-    assert marker in html
     hook = """window.__originalUmlLayout = ELK.prototype.layout;
 window.__umlLayoutCalls = 0;
 ELK.prototype.layout = function(graph) {
@@ -325,15 +332,11 @@ ELK.prototype.layout = function(graph) {
   });
   return window.__originalUmlLayout.call(this, graph);
 };"""
-    flow_index = html.rindex(marker)
-    html = (
-        html[:flow_index]
-        + f"<script>{hook}</script>\n      {marker}"
-        + html[flow_index + len(marker) :]
-    )
+    html = _intercept_elk_publication(html, hook)
     errors = []
     playwright, browser, page = _browser_page(api, html, errors=errors)
     try:
+        assert page.evaluate("window.__elkHookInstalled === true")
         page.locator('[data-flow-view="target"]').click()
         page.wait_for_function(
             "() => document.querySelectorAll('.flow-nodes .target-node').length > 0"
@@ -369,7 +372,6 @@ ELK.prototype.layout = function(graph) {
 def test_fit_overview_waits_for_ordinary_uml_layout(tmp_path):
     api = pytest.importorskip("playwright.sync_api")
     html, _ = _uml_report(tmp_path)
-    marker = '<script>"use strict";'
     hook = """window.__originalUmlLayout = ELK.prototype.layout;
 ELK.prototype.layout = function(graph) {
   return new Promise(resolve => {
@@ -377,14 +379,10 @@ ELK.prototype.layout = function(graph) {
       await window.__originalUmlLayout.call(this, graph));
   });
 };"""
-    flow_index = html.rindex(marker)
-    html = (
-        html[:flow_index]
-        + f"<script>{hook}</script>\n      {marker}"
-        + html[flow_index + len(marker) :]
-    )
+    html = _intercept_elk_publication(html, hook)
     playwright, browser, page = _browser_page(api, html)
     try:
+        assert page.evaluate("window.__elkHookInstalled === true")
         page.wait_for_function("() => typeof window.__releaseUmlLayout === 'function'")
         page.locator(".flow-fit-overview").click()
         assert page.locator(".flow-zoom-value").inner_text() == "100%"
@@ -401,22 +399,17 @@ ELK.prototype.layout = function(graph) {
 def test_table_views_do_not_wait_for_or_request_uml_layout(tmp_path):
     api = pytest.importorskip("playwright.sync_api")
     html, _ = _uml_report(tmp_path)
-    marker = '<script>"use strict";'
     hook = """window.__umlLayoutCalls = 0;
 window.__originalUmlLayout = ELK.prototype.layout;
 ELK.prototype.layout = function(graph) {
   window.__umlLayoutCalls += 1;
   return window.__originalUmlLayout.call(this, graph);
 };"""
-    flow_index = html.rindex(marker)
-    html = (
-        html[:flow_index]
-        + f"<script>{hook}</script>\n      {marker}"
-        + html[flow_index + len(marker) :]
-    )
+    html = _intercept_elk_publication(html, hook)
     errors = []
     playwright, browser, page = _browser_page(api, html, errors=errors)
     try:
+        assert page.evaluate("window.__elkHookInstalled === true")
         page.wait_for_function(
             "() => document.querySelector('#flow')?.dataset.layoutState === 'ready'"
         )
@@ -1054,10 +1047,39 @@ def _open_module(page, view):
 
 
 def _wait_for_layout(page):
-    page.wait_for_function(
-        "() => ['ready', 'error'].includes(document.querySelector('#flow')?.dataset.layoutState)"
-    )
-    assert page.locator("#flow").get_attribute("data-layout-state") == "ready"
+    try:
+        page.wait_for_function(
+            "() => ['ready', 'error'].includes("
+            "document.querySelector('#flow')?.dataset.layoutState)"
+        )
+        assert page.locator("#flow").get_attribute("data-layout-state") == "ready"
+    except Exception as error:
+        try:
+            snapshot = page.wait_for_function(
+                """() => JSON.stringify({
+                  state: document.querySelector('#flow')?.dataset.layoutState?.slice(0, 32),
+                  breadcrumb: document.querySelector('.flow-breadcrumb')
+                    ?.textContent?.slice(0, 512),
+                  scope: window.ArchkeelFlow?.state()?.scope?.slice(0, 256),
+                  nodes: document.querySelectorAll('.flow-nodes > g').length,
+                  edges: document.querySelectorAll('.flow-edges .edge').length
+                })""",
+                timeout=1000,
+            ).json_value()
+            error.add_note(f"Layout failure snapshot: {snapshot}")
+        except Exception:
+            # A closed or stalled browser must not replace the original test failure.
+            pass
+        raise
+
+
+def test_layout_diagnostics_preserve_failure_when_browser_is_unavailable():
+    original = TimeoutError("original layout deadline")
+    page = Mock()
+    page.wait_for_function.side_effect = [original, RuntimeError("browser closed")]
+    with pytest.raises(TimeoutError) as caught:
+        _wait_for_layout(page)
+    assert caught.value is original
 
 
 @pytest.mark.parametrize("view", ["As-Is", "Target", "Diff"])

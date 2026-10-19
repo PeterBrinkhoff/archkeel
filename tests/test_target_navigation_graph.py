@@ -92,7 +92,7 @@ def test_own_render_contract_enforces_output_direction(tmp_path, backward_import
             root_path / "docs/superpowers/specs/2026-10-16-atlas-deviation-boundary.md"
         ).read_text(),
         "src/archkeel/render/terminal.py": (
-            "from . import summary\n"
+            "from .summary import Summary\n"
             "from archkeel.ir.model import RunResult\n"
             "from archkeel.ir.model import RuleAssessmentStatus as _RuleAssessmentStatus\n"
             + _source_members("src/archkeel/render/terminal.py", {"print_result"})

@@ -1,7 +1,8 @@
+import { flow as F } from "./flow.js";
+import { search as searchScene, sceneToMermaid, decider as DECIDER, perspectives as PERSPECTIVES } from "./report-scene.js";
 "use strict";
 // ArchQ Explorer presents recorded evidence; it never computes verdicts.
 (function () {
-  const F = window.ArchkeelFlow;
   if (!F || !F.root.hasAttribute("data-atlas")) return;
   const query = () => new URLSearchParams(location.search);
 
@@ -97,14 +98,14 @@
   function search(text) {
     if (!A) {
       const nodes = F.state().scene?.nodes || [];
-      return window.ArchkeelReportScene.search(nodes.map((node) => ({
+      return searchScene(nodes.map((node) => ({
         kind: "element", id: node.id, label: node.label, sub: node.kind,
         text: `${node.label} ${node.id} ${node.kind}`.toLowerCase(),
       })), text, nodes.map((node) => node.id));
     }
     const view = F.state().viewMode;
     if (!indexes.has(view)) indexes.set(view, F.reportScene.searchIndex(view));
-    return window.ArchkeelReportScene.search(indexes.get(view), text,
+    return searchScene(indexes.get(view), text,
       (F.state().scene?.nodes || []).map((node) => node.id));
   }
   function openResult(row) {
@@ -245,7 +246,6 @@
   }
 
   // ---------- perspectives from recorded evidence ----------
-  const { decider: DECIDER, perspectives: PERSPECTIVES } = window.ArchkeelReportScene;
   const PALETTE = ["#2563eb", "#e8590c", "#0ca678", "#ae3ec9", "#f59f00", "#1098ad", "#e64980", "#5c7cfa"];
   const categorical = {};
   for (const [key, perspective] of Object.entries(PERSPECTIVES)) {
@@ -408,7 +408,7 @@
     try { await navigator.clipboard.writeText(text); toast(done); }
     catch { const area = h("textarea", { readonly: true }, text); modal([h("h2", {}, "Copy manually"), area]); area.select(); }
   }
-  const mermaid = () => window.ArchkeelReportScene.sceneToMermaid(F.state().scene);
+  const mermaid = () => sceneToMermaid(F.state().scene);
   function downloadSvg() {
     const clone = F.svg.cloneNode(true);
     // Computed styles survive without report ancestors, classes or theme variables.

@@ -289,3 +289,35 @@ def test_language_uml_demo_uses_shared_browser_acceptance(tmp_path, capsys, vari
             assert not errors
         finally:
             browser.close()
+
+
+def test_typescript_uml_demo_rejects_omitted_standard_global_reference(
+    tmp_path, capsys, monkeypatch
+):
+    from fixtures import architecture_demo
+
+    variant = next(row for row in CATALOG if row.id == "uml-typescript")
+    contract = json.loads((variant.fixture / "architecture-contract.json").read_text())
+    relationships = contract["declarations"]["uml"]["relationships"]
+    relationships.remove(next(row for row in relationships if row["id"] == "core-string-reference"))
+    changed = replace(
+        variant,
+        files={**variant.files, "architecture-contract.json": json.dumps(contract)},
+    )
+    monkeypatch.setattr(architecture_demo, "CATALOG", (changed,))
+    output = tmp_path / "architecture.json"
+    assert replay("uml-typescript", output) == 2
+    capsys.readouterr()
+    report = _demo_report(output)
+    names = {entity.id: entity.qualified_name for entity in report.observed.entities}
+    reference = next(
+        row
+        for row in report.observed.relationships
+        if row.kind == "references"
+        and names[row.source_id] == "demo.src.core_x2e_ts"
+        and names.get(row.target_id) == "String"
+    )
+    assert any(
+        row.status == "FAIL" and row.aspect == "completeness" and reference.id in row.observed_ids
+        for row in report.comparison.assessments
+    )

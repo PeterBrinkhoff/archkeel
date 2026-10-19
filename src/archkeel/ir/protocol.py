@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Final, Literal, TypeAlias
 
-from .facts import Language, SourceFacts
+from .facts import Language, SourceFacts, SourceSectionName
 
 PROTOCOL_VERSION: Final = "3.0.0"
 
@@ -16,6 +16,7 @@ class ProtocolVersion(StrEnum):
     V1 = "1.0.0"
     V2 = "2.0.0"
     V3 = PROTOCOL_VERSION
+    V4 = "4.0.0"
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,8 +33,30 @@ class SourceScope:
 
 
 @dataclass(frozen=True, slots=True)
+class PythonProviderSource:
+    module: str
+    path: str
+    source: str
+    digest: str
+
+
+class PythonCollectionPhase(StrEnum):
+    COLLECT = "collect"
+    IMPORTS = "imports"
+    PROVIDERS = "providers"
+
+
+PYTHON_IMPORT_SURVEY_SECTIONS: Final[tuple[SourceSectionName, ...]] = (
+    SourceSectionName.IMPORTS,
+    SourceSectionName.UNKNOWNS,
+)
+
+
+@dataclass(frozen=True, slots=True)
 class PythonSettings:
     language: Literal[Language.PYTHON] = Language.PYTHON
+    provider_sources: tuple[PythonProviderSource, ...] = ()
+    phase: PythonCollectionPhase = PythonCollectionPhase.COLLECT
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,6 +85,7 @@ class CollectionRequest:
 class CollectionResponse:
     facts: SourceFacts
     protocol_version: ProtocolVersion = ProtocolVersion(PROTOCOL_VERSION)
+    provider_sources: tuple[PythonProviderSource, ...] = ()
 
 
 class CollectionErrorKind(StrEnum):

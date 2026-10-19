@@ -58,8 +58,8 @@ from archkeel.ir.structure import StructureLevel, StructureMetric, scope_metrics
 
 from .ports import Analyzer, FilesToWrite, ScanConfig
 from .ratchets import measure_python_ratchets
-from .report import observe_repository
 from .snapshot import SnapshotError
+from .uml import observe_repository
 from .validation import COMPONENT_GRAPH_MARKER, mermaid_edges, observed_component_edges
 
 CONFIG_PATH: Final = "archkeel.toml"
@@ -500,19 +500,17 @@ def run_init(
         if collector_output_limit_bytes is None
         else f"collector_output_limit_bytes = {collector_output_limit_bytes}\n"
     )
-    files = FilesToWrite(
-        {
-            CONFIG_PATH: (
-                f"[scan]\nroots = {json.dumps(roots)}\nnamespace = {json.dumps(namespace)}\n"
-                f"contract = {json.dumps(CONTRACT_PATH)}\n"
-                f"{language_line}{tsconfig_line}{collector_line}{output_limit_line}"
-            ).encode(),
-            CONTRACT_PATH: contract_bytes(contract),
-            DOCUMENT_PATH: architecture_document(
-                namespace, contract, edges, sizes, namespace_file=namespace_file
-            ).encode(),
-        }
-    )
+    files = {
+        CONFIG_PATH: (
+            f"[scan]\nroots = {json.dumps(roots)}\nnamespace = {json.dumps(namespace)}\n"
+            f"contract = {json.dumps(CONTRACT_PATH)}\n"
+            f"{language_line}{tsconfig_line}{collector_line}{output_limit_line}"
+        ).encode(),
+        CONTRACT_PATH: contract_bytes(contract),
+        DOCUMENT_PATH: architecture_document(
+            namespace, contract, edges, sizes, namespace_file=namespace_file
+        ).encode(),
+    }
     # AD-15: init has no dependency rule, so count every undecided pair while showing
     # only observed crossings unless the caller explicitly asks for the full list.
     ownership = _drafted_ownership(contract)
@@ -537,4 +535,4 @@ def run_init(
         draft_sizes=_draft_sizes(sizes),
         measurements=measure_python_ratchets(observed.observation),
     )
-    return result, files
+    return result, FilesToWrite(tuple(files.items()))

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://archkeel.dev/schema/source-facts/3.0.0",
-  "title": "ArchKeel source collection protocol 3.0.0",
+  "$id": "https://archkeel.dev/schema/source-facts/4.0.0",
+  "title": "ArchKeel source collection protocols 1.0.0-4.0.0",
   "description": "Structural wire contract. facts_validation additionally checks section payloads, scope, digests, unique identities, coverage and references. Architecture policy never crosses this port.",
   "$defs": {
     "Record": {
@@ -81,6 +81,9 @@
             "class_header_static": {
               "type": "boolean"
             },
+            "source_class_header_static": {
+              "type": "boolean"
+            },
             "class_body_control_flow": {
               "type": "boolean"
             },
@@ -144,6 +147,22 @@
                 "source_line"
               ],
               "additionalProperties": false
+            },
+            "contextmanager_signature": {
+              "$ref": "#/$defs/ContextManagerSignature"
+            },
+            "call_binding": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/$defs/CallBinding"
+                }
+              ]
+            },
+            "source_binding_static": {
+              "type": "boolean"
             }
           }
         }
@@ -1328,6 +1347,12 @@
           "items": {
             "$ref": "#/$defs/Evidence"
           }
+        },
+        "provider_bindings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ProviderBinding"
+          }
         }
       },
       "required": [
@@ -1356,7 +1381,8 @@
           "enum": [
             "1.0.0",
             "2.0.0",
-            "3.0.0"
+            "3.0.0",
+            "4.0.0"
           ]
         },
         "snapshot": {
@@ -1456,6 +1482,54 @@
                 "tsconfig"
               ],
               "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "language": {
+                  "const": "python"
+                },
+                "provider_sources": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/PythonProviderSource"
+                  }
+                },
+                "phase": {
+                  "enum": [
+                    "collect",
+                    "imports",
+                    "providers"
+                  ]
+                }
+              },
+              "required": [
+                "language",
+                "provider_sources",
+                "phase"
+              ],
+              "additionalProperties": false,
+              "allOf": [
+                {
+                  "if": {
+                    "properties": {
+                      "phase": {
+                        "enum": [
+                          "imports",
+                          "providers"
+                        ]
+                      }
+                    }
+                  },
+                  "then": {
+                    "properties": {
+                      "provider_sources": {
+                        "maxItems": 0
+                      }
+                    }
+                  }
+                }
+              ]
             }
           ]
         }
@@ -1466,7 +1540,46 @@
         "scope",
         "resolver"
       ],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "protocol_version": {
+                "const": "4.0.0"
+              },
+              "resolver": {
+                "properties": {
+                  "language": {
+                    "const": "python"
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "resolver": {
+                "required": [
+                  "provider_sources",
+                  "phase"
+                ]
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "resolver": {
+                "not": {
+                  "required": [
+                    "provider_sources"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ]
     },
     "CollectionResponse": {
       "type": "object",
@@ -1475,11 +1588,18 @@
           "enum": [
             "1.0.0",
             "2.0.0",
-            "3.0.0"
+            "3.0.0",
+            "4.0.0"
           ]
         },
         "facts": {
           "$ref": "#/$defs/SourceFacts"
+        },
+        "provider_sources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PythonProviderSource"
+          }
         }
       },
       "required": [
@@ -1553,6 +1673,83 @@
               }
             }
           }
+        },
+        {
+          "if": {
+            "properties": {
+              "protocol_version": {
+                "const": "4.0.0"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "facts": {
+                "required": [
+                  "provider_bindings"
+                ]
+              }
+            },
+            "required": [
+              "provider_sources"
+            ]
+          },
+          "else": {
+            "properties": {
+              "facts": {
+                "not": {
+                  "required": [
+                    "provider_bindings"
+                  ]
+                }
+              }
+            },
+            "not": {
+              "required": [
+                "provider_sources"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "protocol_version": {
+                "enum": [
+                  "1.0.0",
+                  "2.0.0",
+                  "3.0.0"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "facts": {
+                "properties": {
+                  "sections": {
+                    "items": {
+                      "properties": {
+                        "records": {
+                          "items": {
+                            "properties": {
+                              "data": {
+                                "not": {
+                                  "required": [
+                                    "contextmanager_signature"
+                                  ]
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
       ]
     },
@@ -1599,6 +1796,260 @@
           }
         }
       ]
+    },
+    "PythonProviderSource": {
+      "type": "object",
+      "properties": {
+        "module": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*$"
+        },
+        "path": {
+          "type": "string",
+          "pattern": "^\\.archkeel-providers/[A-Za-z_][A-Za-z0-9_/]*\\.py$"
+        },
+        "source": {
+          "type": "string"
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "module",
+        "path",
+        "source",
+        "digest"
+      ],
+      "additionalProperties": false
+    },
+    "ProviderBinding": {
+      "type": "object",
+      "properties": {
+        "qualified_name": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[^\\u0000]+$"
+        },
+        "kind": {
+          "enum": [
+            "function",
+            "class",
+            "declaration",
+            "module",
+            "alias"
+          ]
+        },
+        "evidence_id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[^\\u0000]+$"
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1
+        },
+        "supporting_evidence_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "qualified_name",
+        "kind",
+        "evidence_id"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "alias"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "target",
+              "supporting_evidence_ids"
+            ]
+          },
+          "else": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "target"
+                  ]
+                },
+                {
+                  "required": [
+                    "supporting_evidence_ids"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "CPythonPartialIntrinsic": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "cpython-partial-v1"
+        },
+        "implementation": {
+          "const": "cpython"
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^3\\.(11|12)\\.[0-9]+$"
+        },
+        "cache_tag": {
+          "enum": [
+            "cpython-311",
+            "cpython-312"
+          ]
+        },
+        "origin": {
+          "const": "built-in"
+        }
+      },
+      "required": [
+        "kind",
+        "implementation",
+        "version",
+        "cache_tag",
+        "origin"
+      ],
+      "additionalProperties": false
+    },
+    "CPythonABCBranch": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "cpython-abc-import-v1"
+        },
+        "module": {
+          "const": "_abc"
+        },
+        "origin": {
+          "const": "built-in"
+        },
+        "members": {
+          "const": [
+            "get_cache_token",
+            "_abc_init",
+            "_abc_register",
+            "_abc_instancecheck",
+            "_abc_subclasscheck",
+            "_get_dump",
+            "_reset_registry",
+            "_reset_caches"
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "module",
+        "origin",
+        "members"
+      ],
+      "additionalProperties": false
+    },
+    "ContextManagerReturn": {
+      "type": "object",
+      "properties": {
+        "wrapper": {
+          "type": "string",
+          "minLength": 1
+        },
+        "payload": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "wrapper",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    "ContextManagerSignature": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "sync-generator-contextmanager-v1"
+        },
+        "factory": {
+          "type": "string",
+          "minLength": 1
+        },
+        "effective_return": {
+          "$ref": "#/$defs/ContextManagerReturn"
+        },
+        "support_evidence_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "partial": {
+          "$ref": "#/$defs/CPythonPartialIntrinsic"
+        },
+        "abc": {
+          "$ref": "#/$defs/CPythonABCBranch"
+        }
+      },
+      "required": [
+        "kind",
+        "factory",
+        "effective_return",
+        "support_evidence_ids",
+        "partial",
+        "abc"
+      ],
+      "additionalProperties": false
+    },
+    "CallBinding": {
+      "type": "object",
+      "required": [
+        "origin",
+        "target",
+        "evidence_ids"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "origin": {
+          "enum": [
+            "direct",
+            "declared_receiver"
+          ]
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
     }
   },
   "oneOf": [

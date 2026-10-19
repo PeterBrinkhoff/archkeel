@@ -14,12 +14,14 @@ from typing import Any, TypeAlias
 
 from archkeel.ir.codec import InsideContractMount
 from archkeel.ir.facts import (
+    CALL_BINDINGS_FEATURE,
     SOURCE_RESOLUTION_GAP_KIND,
     BuiltinTarget,
     ConstructCapability,
     ConstructSupport,
     ExternalPackageTarget,
     ForbiddenConstructKind,
+    ProviderBinding,
     SourceFacts,
     SourceProfile,
     SourceResolution,
@@ -51,7 +53,9 @@ from archkeel.ir.model import (
 from archkeel.ir.profiles import Profile, profile_for
 from archkeel.ir.type_shapes import TypeShapeIndex
 
+from .call_owners import call_owner_results
 from .imports import strip_internal_reexport_facts
+from .rule_support import dynamic_dependency_limits
 from .rules import (
     boundary_type_limits,
     construct_capability_limits,
@@ -300,8 +304,12 @@ def _inside_rule_results(
     type_shapes: TypeShapeIndex,
     construct_capabilities: tuple[ConstructCapability, ...],
     symbols_measured: bool,
+    calls: Sequence[RawRecord],
+    calls_complete: bool,
+    bindings_measured: bool,
     root_contract: ArchitectureContract | None = None,
     imports: Sequence[RawRecord],
+    source_unknowns: Sequence[RawRecord],
     typing_signals: Sequence[RawRecord],
     constructs: Sequence[RawRecord],
     packages: Sequence[RawRecord],
@@ -318,6 +326,7 @@ def _inside_rule_results(
     cycle_scan_roots: tuple[str, ...] = (),
     cycle_namespace: str = "",
     receipt_scan_roots: tuple[str, ...] = (),
+    provider_bindings: tuple[ProviderBinding, ...] = (),
 ) -> InsideRuleResults:
     """Evaluate nested rules with the root scan's facts, limited to each parent's modules."""
     violations: list[RawRecord] = []
@@ -338,6 +347,9 @@ def _inside_rule_results(
         available_by_owner[mount.parent_id] = source_modules
         contract_by_owner[mount.parent_id] = scoped
         failures.extend(scope_failures)
+        unknowns.extend(
+            dynamic_dependency_limits(scoped, source_unknowns, source_modules=source_modules)
+        )
         results = _evaluate_inside_contract(
             parent,
             scoped,
@@ -364,6 +376,7 @@ def _inside_rule_results(
             receipt_scan_roots=receipt_scan_roots,
             type_shapes=type_shapes,
             construct_capabilities=construct_capabilities,
+            provider_bindings=provider_bindings,
         )
         if symbols_measured and profile.complete_api_crossings:
             symbols = _mount_facade_signature_types(
@@ -381,6 +394,20 @@ def _inside_rule_results(
         unknowns.extend(results[1])
         failures.extend(results[2])
         allowances.extend(results[3])
+        call_violations, call_limits, call_receipts = call_owner_results(
+            scoped,
+            scope=mount.parent_id,
+            calls=calls,
+            modules=modules,
+            symbols=symbols,
+            complete=calls_complete,
+            bindings_measured=bindings_measured,
+            blank_modules=blank_modules,
+            source_modules=source_modules,
+        )
+        violations.extend(call_violations)
+        unknowns.extend(call_limits)
+        assessments.extend(call_receipts)
     return _sort_inside_rule_results(
         violations, unknowns, failures, assessments, allowances, symbols
     )
@@ -523,6 +550,7 @@ def _evaluate_inside_contract(
     cycle_scan_roots: tuple[str, ...],
     cycle_namespace: str,
     receipt_scan_roots: tuple[str, ...],
+    provider_bindings: tuple[ProviderBinding, ...],
 ) -> tuple[list[RawRecord], list[RawRecord], list[RawRecord], list[RawRecord]]:
     """Run shared evaluators for one clipped contract over one already-collected scan."""
     failures = rule_subject_failures(
@@ -577,6 +605,7 @@ def _evaluate_inside_contract(
             source_modules,
             ancestor_contracts,
             type_shapes=type_shapes,
+            provider_bindings=provider_bindings,
         )
         if symbols_measured and profile.complete_api_crossings
         else []
@@ -672,7 +701,8 @@ def evaluate_source(
             and features in legacy_features
             and not facts.capabilities.constructs
         )
-        inner_uml = features == inner_uml_features and (
+        script_globals = inner_uml_features | {"script-globals-v1"}
+        inner_uml = features in (inner_uml_features, script_globals) and (
             (declared_sections == inner_uml_sections and not facts.capabilities.constructs)
             or (
                 declared_sections == inner_uml_sections | {SourceSectionName.CONSTRUCTS}
@@ -688,6 +718,8 @@ def evaluate_source(
             raise ProtocolError("duplicate resolution feature")
         if not (legacy or inner_uml):
             raise ProtocolError("source sections or resolution features are not registered")
+        if features == script_globals:
+            profile = replace(profile, dependency_symbols=True)
     elif declared_sections != required:
         raise ProtocolError("source sections do not match the registered profile")
     sections = {
@@ -860,6 +892,8 @@ def evaluate_source(
         receipt_scan_roots=roots if _source_inventory_complete(facts) else (),
         type_shapes=type_shapes,
     )
+    calls_complete = _source_inventory_complete(facts)
+    bindings_measured = CALL_BINDINGS_FEATURE in facts.capabilities.resolution_features
     (
         inside_violations,
         inside_unknowns,
@@ -869,10 +903,15 @@ def evaluate_source(
         symbols,
     ) = _inside_rule_results(
         inside_contracts,
+        provider_bindings=facts.provider_bindings,
         construct_capabilities=facts.capabilities.constructs,
         symbols_measured=symbols_measured,
+        calls=calls,
+        calls_complete=calls_complete,
+        bindings_measured=bindings_measured,
         root_contract=contract,
         imports=imports,
+        source_unknowns=source_unknowns,
         typing_signals=typing_signals,
         constructs=constructs,
         packages=package_facts,
@@ -893,8 +932,34 @@ def evaluate_source(
     )
     violations = sorted([*violations, *inside_violations], key=lambda item: item["id"])
     rule_failures = sorted([*rule_failures, *inside_failures], key=lambda item: item["id"])
+    resolution_inputs = {item.path: item.digest for item in facts.inputs}
     scope_observations = sorted(
-        [*scope_observations, *inside_assessments], key=lambda item: item["id"]
+        [
+            *scope_observations,
+            *inside_assessments,
+            *(
+                classified(
+                    item_id=stable_id(
+                        "PROVIDER-BINDING", binding.qualified_name, binding.evidence_id
+                    ),
+                    evidence_class=EvidenceClass.FACT,
+                    area="source_resolution",
+                    kind="source_provider_binding",
+                    title=f"Source-defined provider binding {binding.qualified_name}",
+                    subjects=[binding.qualified_name],
+                    evidence_ids=[binding.evidence_id, *binding.supporting_evidence_ids],
+                    data={
+                        "qualified_name": binding.qualified_name,
+                        "kind": binding.kind.value,
+                        "source": evidence[binding.evidence_id]["file"],
+                        "digest": resolution_inputs[evidence[binding.evidence_id]["file"]],
+                        **({"target": binding.target} if binding.target is not None else {}),
+                    },
+                )
+                for binding in facts.provider_bindings
+            ),
+        ],
+        key=lambda item: item["id"],
     )
     typing_signals = sorted(
         [*typing_signals, *boundary_allowances, *inside_allowances], key=lambda item: item["id"]
@@ -903,6 +968,7 @@ def evaluate_source(
     unknowns = [
         *(_analysis_limits(calls, declarations, namespace) if is_python else []),
         *source_unknowns,
+        *dynamic_dependency_limits(contract, source_unknowns),
         *symbol_limits(imports, contract, facade_exports),
         *construct_capability_limits(contract, facts.capabilities.constructs, "root"),
         # AD-67: a boundary position the rule could not decide is reported, not silent. It
@@ -919,6 +985,7 @@ def evaluate_source(
                 module_names,
                 stable_bindings_by_module,
                 type_shapes=type_shapes,
+                provider_bindings=facts.provider_bindings,
             )
             if symbols_measured and profile.complete_api_crossings
             else []
@@ -933,6 +1000,33 @@ def evaluate_source(
         *inside_unknowns,
         *failures,
         *rule_failures,
+    ]
+
+    call_violations, call_limits, call_receipts = call_owner_results(
+        contract,
+        scope="root",
+        calls=calls,
+        modules=module_facts,
+        symbols=symbols,
+        complete=calls_complete,
+        bindings_measured=bindings_measured,
+        blank_modules=blank_modules,
+    )
+    violations += call_violations
+    unknowns += call_limits
+    scope_observations += call_receipts
+
+    incomplete_dependencies = {
+        rule_id
+        for item in unknowns
+        if item["kind"] == "dynamic_dependency_limit"
+        for rule_id in item["rule_ids"]
+    }
+    scope_observations = [
+        item
+        for item in scope_observations
+        if item["kind"] != "rule_evaluation"
+        or not incomplete_dependencies.intersection(item["rule_ids"])
     ]
 
     coverage = coverage_payload(

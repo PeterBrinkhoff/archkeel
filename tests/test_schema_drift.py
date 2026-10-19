@@ -5,6 +5,7 @@
 
 import json
 import tomllib
+from copy import deepcopy
 from pathlib import Path
 
 import pytest
@@ -31,6 +32,111 @@ ROOT = Path(__file__).parents[1]
 
 def _schema(name: str) -> dict:
     return json.loads((ROOT / "schema" / name).read_bytes())
+
+
+@pytest.fixture(scope="module")
+def typescript_export_binding(tmp_path_factory):
+    from test_typescript_collect import _facts
+
+    from archkeel.ir.facts_codec import record_payload
+
+    facts = _facts(
+        tmp_path_factory.mktemp("export-binding"),
+        {
+            "src/main.js": "import {port} from './ports.js'; port();",
+            "src/ports.js": "export function port() {}",
+        },
+        options={"allowJs": True, "module": "esnext", "moduleResolution": "node"},
+    )
+    [binding] = [
+        r for section in facts.sections if section.name == "bindings" for r in section.records
+    ]
+    return record_payload(binding)
+
+
+@pytest.mark.parametrize("version", ["2.0.0", "2.1.0"])
+@pytest.mark.parametrize("profile", PROFILES.values(), ids=lambda profile: profile.analyzer)
+def test_direct_export_binding_schema_is_typescript_21_only(
+    typescript_export_binding, profile, version
+):
+    registry = Registry().with_resources(
+        (schema["$id"], Resource.from_contents(schema))
+        for schema in (_schema(path.name) for path in (ROOT / "schema").glob("*.json"))
+    )
+    validator = Draft202012Validator(
+        {"$ref": f"urn:archkeel:architecture-ir:decoded:{version}"}, registry=registry
+    )
+    observation = _model(git_head="a" * 40)
+    observation["schema_version"] = version
+    observation["analyzer"]["name"] = profile.analyzer
+    for section in profile.absent_sections:
+        observation[section] = None
+    assert validator.is_valid(observation)
+    observation["bindings"] = [typescript_export_binding]
+    accepted = version == "2.1.0" and profile.analyzer == "archkeel-typescript-imports"
+    assert validator.is_valid(observation) is accepted
+    if accepted:
+        assert parse_observation(observation).records("bindings")[0].data.get("name") == "port"
+
+
+@pytest.mark.parametrize("field", ["module", "source_module", "source_scope", "name"])
+@pytest.mark.parametrize("mutation", ["missing", "empty", "wrong-type"])
+def test_direct_export_binding_schema_requires_exact_source_fields(
+    typescript_export_binding, field, mutation
+):
+    binding = deepcopy(typescript_export_binding)
+    if mutation == "missing":
+        del binding["data"][field]
+    else:
+        binding["data"][field] = "" if mutation == "empty" else False
+    profile = _schema("architecture-ir-decoded-2.1.schema.json")
+    registry = Registry().with_resources(
+        (schema["$id"], Resource.from_contents(schema))
+        for schema in (_schema(path.name) for path in (ROOT / "schema").glob("*.json"))
+    )
+    validator = Draft202012Validator(profile, registry=registry)
+    observation = _model(git_head="a" * 40)
+    observation["schema_version"] = "2.1.0"
+    observation["analyzer"]["name"] = "archkeel-typescript-imports"
+    observation["typing_signals"] = None
+    observation["bindings"] = [typescript_export_binding]
+    assert validator.is_valid(observation)
+    observation["bindings"] = [binding]
+    assert not validator.is_valid(observation)
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("data", {"unexpected": "field"}),
+        ("evidence_ids", []),
+        ("kind", "import"),
+        ("evidence_class", "UNKNOWN"),
+    ],
+)
+def test_direct_export_binding_schema_rejects_extra_or_unwitnessed_shapes(
+    typescript_export_binding, field, value
+):
+    binding = deepcopy(typescript_export_binding)
+    if field == "data":
+        binding[field].update(value)
+    else:
+        binding[field] = value
+    registry = Registry().with_resources(
+        (schema["$id"], Resource.from_contents(schema))
+        for schema in (_schema(path.name) for path in (ROOT / "schema").glob("*.json"))
+    )
+    validator = Draft202012Validator(
+        _schema("architecture-ir-decoded-2.1.schema.json"), registry=registry
+    )
+    observation = _model(git_head="a" * 40)
+    observation["schema_version"] = "2.1.0"
+    observation["analyzer"]["name"] = "archkeel-typescript-imports"
+    observation["typing_signals"] = None
+    observation["bindings"] = [typescript_export_binding]
+    assert validator.is_valid(observation)
+    observation["bindings"] = [binding]
+    assert not validator.is_valid(observation)
 
 
 @pytest.mark.parametrize(
@@ -274,7 +380,7 @@ def test_amendment_schema_and_parser_reject_malformed_digests(field: str, digest
 
 def test_ir_schemas_accept_the_parsed_self_observation(self_artifact_bytes: bytes) -> None:
     common = _schema("architecture-ir-common.schema.json")
-    profile = _schema("architecture-ir-python-decoded.schema.json")
+    profile = _schema("architecture-ir-python-decoded-2.1.schema.json")
     Draft202012Validator.check_schema(common)
     Draft202012Validator.check_schema(profile)
     registry = Registry().with_resources(
@@ -327,15 +433,17 @@ def test_requirement_state_schema_is_versioned_and_legacy_report_remains_valid()
 
 
 @pytest.mark.parametrize("profile", PROFILES.values(), ids=lambda profile: profile.analyzer)
-def test_shared_observation_schema_preserves_each_profile_and_provenance(profile) -> None:
+@pytest.mark.parametrize("version", ["2.0.0", "2.1.0"])
+def test_shared_observation_schema_preserves_each_profile_and_provenance(profile, version) -> None:
     registry = Registry().with_resources(
         (schema["$id"], Resource.from_contents(schema))
         for schema in (_schema(path.name) for path in (ROOT / "schema").glob("*.json"))
     )
     validator = Draft202012Validator(
-        {"$ref": "urn:archkeel:architecture-ir:decoded:2.0.0"}, registry=registry
+        {"$ref": f"urn:archkeel:architecture-ir:decoded:{version}"}, registry=registry
     )
     observation = _model(git_head="a" * 40)
+    observation["schema_version"] = version
     observation["analyzer"]["name"] = profile.analyzer
     observation["producer"] = dict(observation["analyzer"])
     observation["runtime"] = {"name": "python", "version": "3.11.12"}
@@ -379,15 +487,17 @@ def test_shared_observation_schema_preserves_each_profile_and_provenance(profile
 
 @pytest.mark.parametrize("field", ["runtime", "producer"])
 @pytest.mark.parametrize("value", ["", " ", "unknown", "UNKNOWN", None, False])
-def test_shared_observation_schema_rejects_unknown_provenance(field, value) -> None:
+@pytest.mark.parametrize("version", ["2.0.0", "2.1.0"])
+def test_shared_observation_schema_rejects_unknown_provenance(field, value, version) -> None:
     registry = Registry().with_resources(
         (schema["$id"], Resource.from_contents(schema))
         for schema in (_schema(path.name) for path in (ROOT / "schema").glob("*.json"))
     )
     validator = Draft202012Validator(
-        {"$ref": "urn:archkeel:architecture-ir:decoded:2.0.0"}, registry=registry
+        {"$ref": f"urn:archkeel:architecture-ir:decoded:{version}"}, registry=registry
     )
     observation = _model(git_head="a" * 40)
+    observation["schema_version"] = version
     observation[field] = {"name": "python", "version": "3.11.12"}
     if field == "producer":
         observation[field]["code_digest"] = "b" * 64

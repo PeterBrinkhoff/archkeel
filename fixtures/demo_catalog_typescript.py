@@ -20,6 +20,8 @@ def contract() -> dict:
 
 def with_rule(kind: str, **fields: object) -> str:
     value = contract()
+    if kind == "call_owner":
+        value["schema_version"] = "3.7.0"
     value["rules"].append(
         {
             "id": "PROBE",
@@ -67,6 +69,7 @@ def example(
 
 
 UNSUPPORTED_RULES = {
+    "call_owner": {"source": "shop", "target": "shop.src.main_x2e_ts.main"},
     "forbidden_construct": {"source": "shop", "constructs": ["eval"]},
     "symbol_placement": {
         "source": "shop",
@@ -396,7 +399,7 @@ VARIANTS: tuple[Variant, ...] = (
     example(
         "unsupported-target-symbol",
         "forbidden_dependency:target_symbol",
-        "Import-only facts do not establish symbol usage.",
+        "Type-only reexports do not establish the requested runtime symbol route.",
         {
             "architecture-contract.json": with_rule(
                 "forbidden_dependency",
@@ -406,7 +409,6 @@ VARIANTS: tuple[Variant, ...] = (
                 include_type_checking=True,
             )
         },
-        refused=True,
     ),
     example(
         "mixed-known-and-unknown",
@@ -459,16 +461,15 @@ VARIANTS: tuple[Variant, ...] = (
     example(
         "unsupported-symbol-interface",
         "interface_boundary:symbol",
-        "A whole-module boundary does not prove a named symbol facade.",
+        "Private repository imports fail while the type-only named facade remains undecided.",
         {"architecture-contract.json": _symbol_interface()},
-        refused=True,
+        ("PROBE", "PROBE"),
     ),
     example(
         "unsupported-symbol-requires",
         "complete_requires:symbol",
-        "A declared import route cannot prove which exported symbol was used.",
+        "A type-only reexport does not prove the declared runtime symbol route.",
         {"architecture-contract.json": _symbol_requires()},
-        refused=True,
     ),
     example(
         "unsupported-facade-budget",

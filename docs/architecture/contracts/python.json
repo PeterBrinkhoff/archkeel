@@ -11,13 +11,15 @@
         "archkeel.analyzer.python.collect"
       ],
       "responsibilities": [
-        "Decode the request and run collection once per module."
+        "Orchestrate one Python source pass and assemble the collector response."
       ],
       "forbidden_responsibilities": [
-        "Local IR internals and architecture rules."
+        "Local IR internals and architecture rules.",
+        "Architecture policy and duplicated source parsing."
       ],
       "provenance": [
-        "docs/architecture/language-adapter-target.md"
+        "docs/architecture/language-adapter-target.md",
+        "docs/architecture/target/design.md"
       ],
       "decided_by": "agent",
       "exact_modules": [
@@ -35,7 +37,9 @@
           "decided_by": "agent"
         }
       ],
-      "public": []
+      "public": [
+        "archkeel.analyzer.python.collect:PythonProviderCollector"
+      ]
     },
     {
       "id": "TARGET-SOURCE",
@@ -46,16 +50,19 @@
         "archkeel.analyzer.python.resolve",
         "archkeel.analyzer.python.receiver_types",
         "archkeel.analyzer.python.scopes",
-        "archkeel.analyzer.python.binding_types"
+        "archkeel.analyzer.python.binding_types",
+        "archkeel.analyzer.python.callable_signatures"
       ],
       "responsibilities": [
-        "Own Python AST/local IR and resolution helpers."
+        "Own AST ingress, lexical identity and binding/member proof foundations."
       ],
       "forbidden_responsibilities": [
-        "Collector order and governance policy."
+        "Collector order and governance policy.",
+        "Depending on fact collectors or applying architecture policy."
       ],
       "provenance": [
-        "docs/architecture/language-adapter-target.md"
+        "docs/architecture/language-adapter-target.md",
+        "docs/architecture/target/design.md"
       ],
       "decided_by": "agent",
       "public": [
@@ -67,7 +74,10 @@
         "archkeel.analyzer.python.scopes",
         "archkeel.analyzer.python.binding_types:AliasBinding",
         "archkeel.analyzer.python.binding_types:ImportKind",
-        "archkeel.analyzer.python.binding_types:BindingKind"
+        "archkeel.analyzer.python.binding_types:BindingKind",
+        "archkeel.analyzer.python.callable_signatures:contextmanager_signatures",
+        "archkeel.analyzer.python.callable_signatures:contextmanager_dependency_bindings",
+        "archkeel.analyzer.python.source:provider_source_eligible"
       ]
     },
     {
@@ -87,13 +97,15 @@
         "archkeel.analyzer.python.typing_signals"
       ],
       "responsibilities": [
-        "Collect independent Python source facts and derive language-specific type and state evidence."
+        "Emit specialized Python call, binding, state and type facts from shared source evidence."
       ],
       "forbidden_responsibilities": [
-        "Importing peer collectors, importing Core policy, or evaluating architecture rules."
+        "Importing peer collectors, importing Core policy, or evaluating architecture rules.",
+        "Reparsing source and duplicating lexical identity or policy evaluation."
       ],
       "provenance": [
-        "docs/architecture/language-adapter-target.md"
+        "docs/architecture/language-adapter-target.md",
+        "docs/architecture/target/design.md"
       ],
       "decided_by": "agent",
       "requires": [
@@ -202,7 +214,7 @@
       },
       {
         "path": "src/archkeel/analyzer/python/source.py",
-        "responsibility": "Own ParsedModule and AST parsing."
+        "responsibility": "Own ParsedModule, AST parsing and the shared typed definition/control-flow contexts."
       },
       {
         "path": "src/archkeel/analyzer/python/resolve.py",
@@ -225,12 +237,8 @@
         "responsibility": "Collect constructs source facts."
       },
       {
-        "path": "src/archkeel/analyzer/python/contexts.py",
-        "responsibility": "Collect contexts source facts."
-      },
-      {
         "path": "src/archkeel/analyzer/python/imports.py",
-        "responsibility": "Collect imports source facts."
+        "responsibility": "Observe static and proven literal loader dependencies, with explicit binding uncertainty."
       },
       {
         "path": "src/archkeel/analyzer/python/references.py",
@@ -238,7 +246,7 @@
       },
       {
         "path": "src/archkeel/analyzer/python/symbols.py",
-        "responsibility": "Collect symbols source facts."
+        "responsibility": "Collect symbols and attach source-owned definition contexts as evidence."
       },
       {
         "path": "src/archkeel/analyzer/python/typing_signals.py",
@@ -247,6 +255,10 @@
       {
         "path": "src/archkeel/analyzer/python/binding_types.py",
         "responsibility": "Own nominal import and lexical binding kinds and classify external compiler scope types."
+      },
+      {
+        "path": "src/archkeel/analyzer/python/callable_signatures.py",
+        "responsibility": "Prove effective callable signatures from captured source and closed native witnesses."
       }
     ],
     "uml": {
@@ -922,6 +934,148 @@
               }
             ],
             "returns": "list[RawRecord]"
+          }
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "id": "PYTHON-PROVIDERS-MODULE",
+          "kind": "module",
+          "qualified_name": "archkeel.analyzer.python.collect",
+          "parent_id": "TARGET-ENTRY",
+          "responsibilities": [
+            "Assemble Python facts and bind external resolution source snapshots."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "id": "PYTHON-PROVIDERS-COLLECTOR",
+          "kind": "class",
+          "qualified_name": "archkeel.analyzer.python.collect.PythonProviderCollector",
+          "parent_id": "PYTHON-PROVIDERS-MODULE",
+          "responsibilities": [
+            "Acquire provider bytes from validated import facts; keep project parsing in bounded processes under one shared deadline. Preserve governed scope; export identity does not prove member behavior."
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          }
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "id": "PYTHON-PROVIDERS-PROCESS",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.python.collect.PythonProviderCollector.collector",
+          "parent_id": "PYTHON-PROVIDERS-COLLECTOR",
+          "annotation": "ProcessCollector",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "responsibilities": [
+            "Delegate transport, response authentication and process cleanup to the existing process collector."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "id": "PYTHON-PROVIDERS-COLLECT",
+          "kind": "method",
+          "qualified_name": "archkeel.analyzer.python.collect.PythonProviderCollector.collect",
+          "parent_id": "PYTHON-PROVIDERS-COLLECTOR",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "responsibilities": [
+            "Use a bounded import survey to bind provider bytes to final collection under one deadline. Return complete facts or a typed error; reject changed inputs or producer identities and preserve custom collector wiring."
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "self",
+                "kind": "positional",
+                "default_known": true
+              },
+              {
+                "name": "request",
+                "annotation": "CollectionRequest",
+                "kind": "positional",
+                "default_known": true
+              }
+            ],
+            "returns": "SourceFacts | CollectionError"
+          }
+        },
+        {
+          "id": "PYTHON-CALLABLE-SIGNATURES",
+          "kind": "module",
+          "qualified_name": "archkeel.analyzer.python.callable_signatures",
+          "language": "python",
+          "parent_id": "TARGET-SOURCE",
+          "presence": "planned",
+          "responsibilities": [
+            "Prove supported source-bound signature transformations."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ]
+        },
+        {
+          "id": "COMPACT-PYTHON-LEXICAL-SCOPES",
+          "kind": "class",
+          "qualified_name": "archkeel.analyzer.python.scopes.LexicalScopes",
+          "language": "python",
+          "parent_id": "PYTHON-BINDING-SCOPES",
+          "presence": "planned",
+          "responsibilities": [
+            "Own compiler scope structure for one parsed source snapshot; resolve current import aliases at lookup."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ]
+        },
+        {
+          "id": "COMPACT-PYTHON-LEXICAL-INDEX",
+          "kind": "method",
+          "qualified_name": "archkeel.analyzer.python.scopes.LexicalScopes.for_module",
+          "language": "python",
+          "parent_id": "COMPACT-PYTHON-LEXICAL-SCOPES",
+          "presence": "planned",
+          "modifiers": [
+            "static"
+          ],
+          "responsibilities": [
+            "Reuse only a checked LexicalScopes index for the exact AST identity, source text, relative path and module name. Rebuild changed inputs or another AST visitor without caching binding proofs; failed construction publishes nothing."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "module",
+                "annotation": "ParsedModule",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              }
+            ],
+            "returns": "LexicalScopes"
           }
         }
       ],

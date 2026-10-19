@@ -17,7 +17,7 @@ from archkeel.ir.codec import (
     load_inside_contract_tree,
     parse_observation,
 )
-from archkeel.ir.decisions import dependency_binding_id
+from archkeel.ir.decisions import dependency_binding_id, rule_evaluation_binding_id
 from archkeel.ir.digest import package_digest
 from archkeel.ir.facts import ResolutionRole as _ResolutionRole
 from archkeel.ir.facts import (
@@ -53,10 +53,11 @@ from archkeel.ir.profiles import PROFILES, Language, Profile, UnmeasurableScalar
 
 from .declarations import load_contract, project_declarations, project_inside_declarations
 from .evaluation.evaluate import ScanResult, evaluate_source
+from .evaluation.rules import public_api_exposed_types
 from .ports import SourceCollector
 from .runtime import has_invalid_python_requirement, runtime_diagnostic
 
-OBSERVATION_VERSION = "0.74.0"
+OBSERVATION_VERSION = "0.75.0"
 
 DEFAULT_CONTRACT = Path("docs/architecture/architecture-contract.json")
 
@@ -468,20 +469,25 @@ def _declaration_records(
     module_scope: tuple[tuple[str, ...], str],
     language: Language,
 ) -> list[RawRecord]:
-    """`project_declarations` needs `scan`'s own `symbols`/`imports`/`modules` to resolve
-    `declared_public_api`'s `types` (AD-70); kept out of `analyze_snapshot`'s own body only to
-    keep that call a single line there.
-    """
-    records = [
-        *project_declarations(
-            contract,
+    """Bind public-type evidence before projecting declarations (AD-70)."""
+    types_by_entry = (
+        public_api_exposed_types(
+            contract.declarations.public_api if contract.declarations is not None else (),
             scan.symbols,
             scan.imports,
             scan.modules,
-            contract_path,
+            contract,
             unknowns=scan.unknowns,
             type_shapes=scan.type_shapes,
-            measured_types=SourceSectionName.SYMBOLS in scan.observed_sections,
+        )
+        if SourceSectionName.SYMBOLS in scan.observed_sections
+        else {}
+    )
+    records = [
+        *project_declarations(
+            contract,
+            contract_path,
+            types_by_entry=types_by_entry,
         ),
         *inside_records,
     ]
@@ -664,7 +670,9 @@ def _layer_order_evidence(
     scan.evidence = sorted(evidence.values(), key=lambda item: item["id"])
 
 
-def _dependency_binding_id(scan: ScanResult, declarations: list[RawRecord]) -> str:
+def _dependency_binding_id(
+    scan: ScanResult, declarations: list[RawRecord], *, include_calls: bool = False
+) -> str:
     return dependency_binding_id(
         (
             Section(name, tuple(parse_record(item) for item in records))
@@ -672,12 +680,42 @@ def _dependency_binding_id(scan: ScanResult, declarations: list[RawRecord]) -> s
                 ("modules", scan.modules),
                 ("imports", scan.imports),
                 ("symbols", scan.symbols),
+                ("references", scan.references),
+                ("calls", scan.calls),
                 ("declarations", declarations),
             )
         ),
         (parse_record(item) for item in scan.coverage["failures"]),
         (parse_evidence(item) for item in scan.evidence),
+        include_calls=include_calls,
     )
+
+
+def _certify_call_owner_scopes(
+    scan: ScanResult, facts: SourceFacts, contract_digest: str, declarations: list[RawRecord]
+) -> None:
+    rules = {r["id"] for r in declarations if r["kind"] == "call_owner"}
+    receipts = [
+        r
+        for r in scan.scope_observations
+        if r["kind"] == "rule_evaluation" and len(r["rule_ids"]) == 1 and r["rule_ids"][0] in rules
+    ]
+    if not receipts:
+        return
+    proof = {
+        "source_digest": facts.source.source_digest,
+        "source_scope": list(facts.source.scope),
+        "contract_digest": contract_digest,
+        "selected_files": list(facts.coverage.selected_files),
+    }
+    inventory_binding_id = _dependency_binding_id(scan, declarations, include_calls=True)
+    for receipt in receipts:
+        receipt["data"]["call_scope_proof"] = {
+            **proof,
+            "binding_id": rule_evaluation_binding_id(
+                inventory_binding_id, parse_record(receipt), SCHEMA_VERSION
+            ),
+        }
 
 
 def _certify_dependency_scopes(
@@ -708,7 +746,7 @@ def _certify_dependency_scopes(
         return
     records = {
         record["id"]: parse_record(record)
-        for values in (scan.modules, scan.symbols, scan.imports, scan.unknowns)
+        for values in (scan.modules, scan.symbols, scan.imports, scan.references, scan.unknowns)
         for record in values
     }
     evidence = {item["id"]: parse_evidence(item) for item in scan.evidence}
@@ -725,6 +763,7 @@ def _certify_dependency_scopes(
             import_ids=(),
             selected_inputs=selected,
             source_records=records,
+            allow_script_effects=facts.profile == PROFILES[Language.TYPESCRIPT].analyzer,
         )
     except ValueError:
         return
@@ -789,6 +828,7 @@ def assemble_observation(
         contract, scan, inside_records, contract_reference, scope, language
     )
     _certify_dependency_scopes(scan, facts, full_contract_digest, declarations)
+    _certify_call_owner_scopes(scan, facts, full_contract_digest, declarations)
     model: dict[str, object] = {
         "schema_version": SCHEMA_VERSION,
         "analyzer": {

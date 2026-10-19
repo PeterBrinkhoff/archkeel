@@ -79,7 +79,7 @@ def _repository(workspace: Path) -> Path:
 def _draft(root: Path, source: str, namespace: str) -> tuple[int, int, int, int, tuple[str, ...]]:
     """Run `init` at one scope and report what it drafted, without writing anything."""
     result, files = run_init(root, source=source, namespace=namespace, force=True, analyzer=observe)
-    contract = json.loads(files["architecture-contract.json"])
+    contract = json.loads(dict(files.entries)["architecture-contract.json"])
     labels = tuple(sorted(item["label"] for item in contract["components"]))
     dependency_kinds = {"allowed_dependency", "forbidden_dependency"}
     dependency_rules = sum(rule["kind"] in dependency_kinds for rule in contract["rules"])
@@ -121,10 +121,12 @@ def _refuses_the_draft(root: Path) -> Step:
     _, files = run_init(root, source="shop", namespace="shop", force=True, analyzer=observe)
     shutil.copytree(root / "shop", drafted / "shop")
     shutil.copyfile(root / "pyproject.toml", drafted / "pyproject.toml")
-    (drafted / "architecture-contract.json").write_bytes(files["architecture-contract.json"])
+    (drafted / "architecture-contract.json").write_bytes(
+        dict(files.entries)["architecture-contract.json"]
+    )
     (drafted / "docs/architecture").mkdir(parents=True)
     (drafted / "docs/architecture/architecture.md").write_bytes(
-        files["docs/architecture/architecture.md"]
+        dict(files.entries)["docs/architecture/architecture.md"]
     )
     result, _ = run_validate(drafted, SHOP, observe)
     open_decisions = [item for item in result.diagnostics if item.code == "decision.open"]

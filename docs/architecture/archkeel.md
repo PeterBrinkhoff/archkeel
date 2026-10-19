@@ -3,6 +3,9 @@
 The [contract](../../architecture-contract.json) owns boundaries, interfaces and permissions.
 [Source](../../src/archkeel) and [tests](../../tests/test_self.py) show the implementation.
 
+The [compact target](target/design.md) records responsibilities, ports and the
+bounded refactoring included in PR #604.
+
 ## Layers
 
 The CLI injects adapters and runs workflows. Core assembles and evaluates evidence;
@@ -107,3 +110,4 @@ Proposed contract extensions are tracked in [#356](https://github.com/rapiddwell
 | [AD-236](decisions/ad-236-demand-driven-report-exploration.md) | Build the module matrix on Health check open and module links on native list expansion. |
 | [AD-239](decisions/ad-239-codec-format-owners.md) | Keep the codec facade while separate format owners preserve parsing and wire bytes. |
 | [AD-238](decisions/ad-238-command-view-preparation.md) | Prepare compact command views in a focused governance module while retaining legacy imports and wire output. |
+| [AD-242](decisions/ad-242-explicit-browser-module-ports.md) | Check named browser module ports and publish one verified offline bundle. |

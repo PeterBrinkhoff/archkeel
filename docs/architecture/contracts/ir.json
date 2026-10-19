@@ -15,13 +15,15 @@
         "archkeel.ir.source_records"
       ],
       "responsibilities": [
-        "Own immutable source facts, language identity, source record builders and their typed values."
+        "Own language-neutral source facts, evidence identities, state and type values."
       ],
       "forbidden_responsibilities": [
-        "Language ASTs, protocol envelopes, I/O and architecture verdicts."
+        "Language ASTs, protocol envelopes, I/O and architecture verdicts.",
+        "Contract permissions, wire decoding and runtime acquisition."
       ],
       "provenance": [
-        "docs/architecture/language-adapter-target.md"
+        "docs/architecture/language-adapter-target.md",
+        "docs/architecture/target/design.md"
       ],
       "decided_by": "agent",
       "public": [
@@ -41,13 +43,15 @@
         "archkeel.ir.protocol"
       ],
       "responsibilities": [
-        "Own typed process request/response envelopes."
+        "Own typed request and response envelopes for collector processes."
       ],
       "forbidden_responsibilities": [
-        "Policy and I/O."
+        "Policy and I/O.",
+        "Collector execution and language parsing."
       ],
       "provenance": [
-        "docs/architecture/language-adapter-target.md"
+        "docs/architecture/language-adapter-target.md",
+        "docs/architecture/target/design.md"
       ],
       "decided_by": "agent",
       "requires": [
@@ -71,13 +75,15 @@
         "archkeel.ir.state_codec"
       ],
       "responsibilities": [
-        "Validate and serialize process messages."
+        "Strictly decode, validate and encode source facts and process envelopes."
       ],
       "forbidden_responsibilities": [
-        "Policy and I/O."
+        "Policy and I/O.",
+        "Deriving architecture verdicts or acquiring inputs."
       ],
       "provenance": [
-        "docs/architecture/language-adapter-target.md"
+        "docs/architecture/language-adapter-target.md",
+        "docs/architecture/target/design.md"
       ],
       "decided_by": "agent",
       "requires": [
@@ -106,13 +112,15 @@
         "archkeel.ir.profiles"
       ],
       "responsibilities": [
-        "Own per-language capability and rule-availability policy."
+        "Describe language capabilities, source requirements and comparable measurements."
       ],
       "forbidden_responsibilities": [
-        "Source parsing and metric evaluation."
+        "Source parsing and metric evaluation.",
+        "Collecting facts and granting dependency permissions."
       ],
       "provenance": [
-        "docs/architecture/language-adapter-target.md"
+        "docs/architecture/language-adapter-target.md",
+        "docs/architecture/target/design.md"
       ],
       "decided_by": "agent",
       "requires": [
@@ -176,14 +184,15 @@
         "archkeel.ir.amendment_codec"
       ],
       "responsibilities": [
-        "Own governance models, codecs, policy metrics and pure derivations.",
-        "Own the shared UML graph, strict codecs and pure source/Target projections; no AST parsing or verdicts."
+        "Own contract/result values, strict wire conversion and pure graph, metric and projection derivation."
       ],
       "forbidden_responsibilities": [
-        "Parsing, process I/O and workflow orchestration."
+        "Parsing, process I/O and workflow orchestration.",
+        "I/O, command orchestration and wire codecs invoking projection policy."
       ],
       "provenance": [
-        "docs/architecture/language-adapter-target.md"
+        "docs/architecture/language-adapter-target.md",
+        "docs/architecture/target/design.md"
       ],
       "decided_by": "agent",
       "exact_modules": [
@@ -308,14 +317,15 @@
         }
       ],
       "responsibilities": [
-        "Own the closed dependency selector vocabulary and immutable selections.",
-        "Apply module and component ownership selection consistently for evaluators and projections."
+        "Match owned dependency selectors and exact import-port permissions."
       ],
       "forbidden_responsibilities": [
-        "Wire decoding, source collection, receipt issuance, verdicts and report rendering."
+        "Wire decoding, source collection, receipt issuance, verdicts and report rendering.",
+        "Source acquisition and presentation decisions."
       ],
       "provenance": [
-        "docs/architecture/archkeel.md"
+        "docs/architecture/archkeel.md",
+        "docs/architecture/target/design.md"
       ],
       "decided_by": "architect"
     },
@@ -333,14 +343,16 @@
         "archkeel.ir.contract_version:supports_feature"
       ],
       "responsibilities": [
-        "Own supported contract schema identities and the single feature-introduction policy shared by reading and writing."
+        "Own contract versions and the features available in each version."
       ],
       "forbidden_responsibilities": [
-        "Raw JSON field parsing, source observation, rule evaluation and repository-dependent decisions."
+        "Raw JSON field parsing, source observation, rule evaluation and repository-dependent decisions.",
+        "Source analysis and silently accepting unsupported grammar."
       ],
       "requires": [],
       "provenance": [
-        "docs/architecture/contract-version-types.md"
+        "docs/architecture/contract-version-types.md",
+        "docs/architecture/target/design.md"
       ],
       "decided_by": "architect"
     }
@@ -4208,6 +4220,25 @@
           ],
           "provenance": [
             "docs/architecture/language-adapter-target.md"
+          ]
+        },
+        {
+          "id": "source-facts.provider_bindings",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.facts.SourceFacts.provider_bindings",
+          "language": "python",
+          "parent_id": "source-facts",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "annotation": "tuple[ProviderBinding, ...]",
+          "presence": "planned",
+          "responsibilities": [
+            "Bind direct provider exports to captured resolution evidence without claiming member shape or effects."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
           ]
         },
         {
@@ -11800,6 +11831,981 @@
           "responsibilities": [
             "Keep added/removed directions nominal without broadening the existing two-value domain."
           ]
+        },
+        {
+          "id": "COMPACT-IR-RENAMES",
+          "kind": "module",
+          "qualified_name": "archkeel.ir.renames",
+          "language": "python",
+          "presence": "planned",
+          "parent_id": "TARGET-GOVERNANCE",
+          "responsibilities": [
+            "Apply declared module renames to native contracts without changing their policy meaning."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ]
+        },
+        {
+          "id": "COMPACT-IR-RENAMED-CONTRACT",
+          "kind": "function",
+          "qualified_name": "archkeel.ir.renames.renamed_contract",
+          "language": "python",
+          "presence": "planned",
+          "parent_id": "COMPACT-IR-RENAMES",
+          "responsibilities": [
+            "Normalize historical contract references for the against comparison; preserve canonical parsing and ValueError for invalid results."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "contract",
+                "annotation": "ArchitectureContract",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "renames",
+                "annotation": "Mapping[str, str]",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              }
+            ],
+            "returns": "ArchitectureContract"
+          }
+        },
+        {
+          "id": "provider-binding",
+          "kind": "class",
+          "qualified_name": "archkeel.ir.facts.ProviderBinding",
+          "parent_id": "archkeel.ir.facts",
+          "language": "python",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/collector-wire-vocabulary.md"
+          ],
+          "responsibilities": [
+            "Carry source identity and explicit provider alias evidence without claiming runtime effects."
+          ]
+        },
+        {
+          "id": "provider-binding.qualified_name",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.facts.ProviderBinding.qualified_name",
+          "parent_id": "provider-binding",
+          "language": "python",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/collector-wire-vocabulary.md"
+          ],
+          "annotation": "str",
+          "responsibilities": [
+            "Identify the source binding."
+          ]
+        },
+        {
+          "id": "provider-binding.kind",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.facts.ProviderBinding.kind",
+          "parent_id": "provider-binding",
+          "language": "python",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/collector-wire-vocabulary.md"
+          ],
+          "annotation": "ProviderBindingKind",
+          "responsibilities": [
+            "Distinguish declarations, modules and alias relations."
+          ]
+        },
+        {
+          "id": "provider-binding.evidence_id",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.facts.ProviderBinding.evidence_id",
+          "parent_id": "provider-binding",
+          "language": "python",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/collector-wire-vocabulary.md"
+          ],
+          "annotation": "str",
+          "responsibilities": [
+            "Locate the publishing declaration or import."
+          ]
+        },
+        {
+          "id": "provider-binding.target",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.facts.ProviderBinding.target",
+          "parent_id": "provider-binding",
+          "language": "python",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/collector-wire-vocabulary.md"
+          ],
+          "annotation": "str | None",
+          "responsibilities": [
+            "Retain the alias target separately from the publishing binding."
+          ]
+        },
+        {
+          "id": "provider-binding.supporting_evidence_ids",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.facts.ProviderBinding.supporting_evidence_ids",
+          "parent_id": "provider-binding",
+          "language": "python",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/collector-wire-vocabulary.md"
+          ],
+          "annotation": "tuple[str, ...]",
+          "responsibilities": [
+            "Bind closed export witnesses to captured source evidence."
+          ]
+        },
+        {
+          "id": "IR-CONTEXTMANAGER-CPythonPartialIntrinsic",
+          "kind": "class",
+          "qualified_name": "archkeel.ir.facts.CPythonPartialIntrinsic",
+          "language": "python",
+          "parent_id": "archkeel.ir.facts",
+          "presence": "planned",
+          "modifiers": [
+            "frozen"
+          ],
+          "responsibilities": [
+            "Retain source signature evidence separately from runtime effects."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ]
+        },
+        {
+          "id": "IR-CONTEXTMANAGER-CPythonPartialIntrinsic.kind",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.facts.CPythonPartialIntrinsic.kind",
+          "language": "python",
+          "parent_id": "IR-CONTEXTMANAGER-CPythonPartialIntrinsic",
+          "presence": "planned",
+          "annotation": "NativeSignatureKind",
+          "responsibilities": [
+            "Retain the typed kind witness."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ]
+        },
+        {
+          "id": "IR-CONTEXTMANAGER-CPythonPartialIntrinsic.implementation",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.facts.CPythonPartialIntrinsic.implementation",
+          "language": "python",
+          "parent_id": "IR-CONTEXTMANAGER-CPythonPartialIntrinsic",
+          "presence": "planned",
+          "annotation": "NativeImplementation",
+          "responsibilities": [
+            "Retain the typed implementation witness."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ]
+        },
+        {
+          "id": "IR-CONTEXTMANAGER-CPythonPartialIntrinsic.version",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.facts.CPythonPartialIntrinsic.version",
+          "language": "python",
+          "parent_id": "IR-CONTEXTMANAGER-CPythonPartialIntrinsic",
+          "presence": "planned",
+          "annotation": "str",
+          "responsibilities": [
+            "Retain the typed version witness."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ]
+        },
+        {
+          "id": "IR-CONTEXTMANAGER-CPythonPartialIntrinsic.cache_tag",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.facts.CPythonPartialIntrinsic.cache_tag",
+          "language": "python",
+          "parent_id": "IR-CONTEXTMANAGER-CPythonPartialIntrinsic",
+          "presence": "planned",
+          "annotation": "str",
+          "responsibilities": [
+            "Retain the typed cache_tag witness."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ]
+        },
+        {
+          "id": "IR-CONTEXTMANAGER-CPythonPartialIntrinsic.origin",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.facts.CPythonPartialIntrinsic.origin",
+          "language": "python",
+          "parent_id": "IR-CONTEXTMANAGER-CPythonPartialIntrinsic",
+          "presence": "planned",
+          "annotation": "NativeOrigin",
+          "responsibilities": [
+            "Retain the typed origin witness."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ]
+        },
+        {
+          "id": "IR-CONTEXTMANAGER-ContextManagerReturn",
+          "kind": "class",
+          "qualified_name": "archkeel.ir.facts.ContextManagerReturn",
+          "language": "python",
+          "parent_id": "archkeel.ir.facts",
+          "presence": "planned",
+          "modifiers": [
+            "frozen"
+          ],
+          "responsibilities": [
+            "Retain source signature evidence separately from runtime effects."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ]
+        },
+        {
+          "id": "IR-CONTEXTMANAGER-ContextManagerReturn.wrapper",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.facts.ContextManagerReturn.wrapper",
+          "language": "python",
+          "parent_id": "IR-CONTEXTMANAGER-ContextManagerReturn",
+          "presence": "planned",
+          "annotation": "str",
+          "responsibilities": [
+            "Retain the typed wrapper witness."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ]
+        },
+        {
+          "id": "IR-CONTEXTMANAGER-ContextManagerReturn.payload",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.facts.ContextManagerReturn.payload",
+          "language": "python",
+          "parent_id": "IR-CONTEXTMANAGER-ContextManagerReturn",
+          "presence": "planned",
+          "annotation": "str",
+          "responsibilities": [
+            "Retain the typed payload witness."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ]
+        },
+        {
+          "id": "IR-CONTEXTMANAGER-CPythonABCBranch",
+          "kind": "class",
+          "qualified_name": "archkeel.ir.facts.CPythonABCBranch",
+          "language": "python",
+          "parent_id": "archkeel.ir.facts",
+          "presence": "planned",
+          "modifiers": [
+            "frozen"
+          ],
+          "responsibilities": [
+            "Retain source signature evidence separately from runtime effects."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ]
+        },
+        {
+          "id": "IR-CONTEXTMANAGER-CPythonABCBranch.kind",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.facts.CPythonABCBranch.kind",
+          "language": "python",
+          "parent_id": "IR-CONTEXTMANAGER-CPythonABCBranch",
+          "presence": "planned",
+          "annotation": "NativeSignatureKind",
+          "responsibilities": [
+            "Retain the typed kind witness."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ]
+        },
+        {
+          "id": "IR-CONTEXTMANAGER-CPythonABCBranch.module",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.facts.CPythonABCBranch.module",
+          "language": "python",
+          "parent_id": "IR-CONTEXTMANAGER-CPythonABCBranch",
+          "presence": "planned",
+          "annotation": "NativeABCModule",
+          "responsibilities": [
+            "Retain the typed module witness."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ]
+        },
+        {
+          "id": "IR-CONTEXTMANAGER-CPythonABCBranch.origin",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.facts.CPythonABCBranch.origin",
+          "language": "python",
+          "parent_id": "IR-CONTEXTMANAGER-CPythonABCBranch",
+          "presence": "planned",
+          "annotation": "NativeOrigin",
+          "responsibilities": [
+            "Retain the typed origin witness."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ]
+        },
+        {
+          "id": "IR-CONTEXTMANAGER-CPythonABCBranch.members",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.facts.CPythonABCBranch.members",
+          "language": "python",
+          "parent_id": "IR-CONTEXTMANAGER-CPythonABCBranch",
+          "presence": "planned",
+          "annotation": "tuple[str, ...]",
+          "responsibilities": [
+            "Retain the typed members witness."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ]
+        },
+        {
+          "id": "IR-CONTEXTMANAGER-ContextManagerSignature",
+          "kind": "class",
+          "qualified_name": "archkeel.ir.facts.ContextManagerSignature",
+          "language": "python",
+          "parent_id": "archkeel.ir.facts",
+          "presence": "planned",
+          "modifiers": [
+            "frozen"
+          ],
+          "responsibilities": [
+            "Retain source signature evidence separately from runtime effects."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ]
+        },
+        {
+          "id": "IR-CONTEXTMANAGER-ContextManagerSignature.kind",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.facts.ContextManagerSignature.kind",
+          "language": "python",
+          "parent_id": "IR-CONTEXTMANAGER-ContextManagerSignature",
+          "presence": "planned",
+          "annotation": "NativeSignatureKind",
+          "responsibilities": [
+            "Retain the typed kind witness."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ]
+        },
+        {
+          "id": "IR-CONTEXTMANAGER-ContextManagerSignature.factory",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.facts.ContextManagerSignature.factory",
+          "language": "python",
+          "parent_id": "IR-CONTEXTMANAGER-ContextManagerSignature",
+          "presence": "planned",
+          "annotation": "str",
+          "responsibilities": [
+            "Retain the typed factory witness."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ]
+        },
+        {
+          "id": "IR-CONTEXTMANAGER-ContextManagerSignature.effective_return",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.facts.ContextManagerSignature.effective_return",
+          "language": "python",
+          "parent_id": "IR-CONTEXTMANAGER-ContextManagerSignature",
+          "presence": "planned",
+          "annotation": "ContextManagerReturn",
+          "responsibilities": [
+            "Retain the typed effective_return witness."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ]
+        },
+        {
+          "id": "IR-CONTEXTMANAGER-ContextManagerSignature.support_evidence_ids",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.facts.ContextManagerSignature.support_evidence_ids",
+          "language": "python",
+          "parent_id": "IR-CONTEXTMANAGER-ContextManagerSignature",
+          "presence": "planned",
+          "annotation": "tuple[str, ...]",
+          "responsibilities": [
+            "Retain the typed support_evidence_ids witness."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ]
+        },
+        {
+          "id": "IR-CONTEXTMANAGER-ContextManagerSignature.partial",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.facts.ContextManagerSignature.partial",
+          "language": "python",
+          "parent_id": "IR-CONTEXTMANAGER-ContextManagerSignature",
+          "presence": "planned",
+          "annotation": "CPythonPartialIntrinsic",
+          "responsibilities": [
+            "Retain the typed partial witness."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ]
+        },
+        {
+          "id": "IR-CONTEXTMANAGER-ContextManagerSignature.abc",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.facts.ContextManagerSignature.abc",
+          "language": "python",
+          "parent_id": "IR-CONTEXTMANAGER-ContextManagerSignature",
+          "presence": "planned",
+          "annotation": "CPythonABCBranch",
+          "responsibilities": [
+            "Retain the typed abc witness."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ]
+        },
+        {
+          "id": "IR-CONTEXTMANAGER-NativeSignatureKind",
+          "kind": "enum",
+          "qualified_name": "archkeel.ir.facts.NativeSignatureKind",
+          "language": "python",
+          "parent_id": "archkeel.ir.facts",
+          "presence": "planned",
+          "responsibilities": [
+            "Own closed native signature vocabulary."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ]
+        },
+        {
+          "id": "IR-CONTEXTMANAGER-NativeImplementation",
+          "kind": "enum",
+          "qualified_name": "archkeel.ir.facts.NativeImplementation",
+          "language": "python",
+          "parent_id": "archkeel.ir.facts",
+          "presence": "planned",
+          "responsibilities": [
+            "Own closed native signature vocabulary."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ]
+        },
+        {
+          "id": "IR-CONTEXTMANAGER-NativeOrigin",
+          "kind": "enum",
+          "qualified_name": "archkeel.ir.facts.NativeOrigin",
+          "language": "python",
+          "parent_id": "archkeel.ir.facts",
+          "presence": "planned",
+          "responsibilities": [
+            "Own closed native signature vocabulary."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ]
+        },
+        {
+          "id": "IR-CONTEXTMANAGER-NativeABCModule",
+          "kind": "enum",
+          "qualified_name": "archkeel.ir.facts.NativeABCModule",
+          "language": "python",
+          "parent_id": "archkeel.ir.facts",
+          "presence": "planned",
+          "responsibilities": [
+            "Own closed native signature vocabulary."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ]
+        },
+        {
+          "id": "IR-CONTEXTMANAGER-NativeSignatureKind.PARTIAL",
+          "kind": "enum_literal",
+          "qualified_name": "archkeel.ir.facts.NativeSignatureKind.PARTIAL",
+          "language": "python",
+          "parent_id": "IR-CONTEXTMANAGER-NativeSignatureKind",
+          "presence": "planned",
+          "responsibilities": [
+            "Name a supported native signature witness."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ]
+        },
+        {
+          "id": "IR-CONTEXTMANAGER-NativeSignatureKind.ABC",
+          "kind": "enum_literal",
+          "qualified_name": "archkeel.ir.facts.NativeSignatureKind.ABC",
+          "language": "python",
+          "parent_id": "IR-CONTEXTMANAGER-NativeSignatureKind",
+          "presence": "planned",
+          "responsibilities": [
+            "Name a supported native signature witness."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ]
+        },
+        {
+          "id": "IR-CONTEXTMANAGER-NativeSignatureKind.CONTEXTMANAGER",
+          "kind": "enum_literal",
+          "qualified_name": "archkeel.ir.facts.NativeSignatureKind.CONTEXTMANAGER",
+          "language": "python",
+          "parent_id": "IR-CONTEXTMANAGER-NativeSignatureKind",
+          "presence": "planned",
+          "responsibilities": [
+            "Name a supported native signature witness."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ]
+        },
+        {
+          "id": "IR-CONTEXTMANAGER-NativeImplementation.CPYTHON",
+          "kind": "enum_literal",
+          "qualified_name": "archkeel.ir.facts.NativeImplementation.CPYTHON",
+          "language": "python",
+          "parent_id": "IR-CONTEXTMANAGER-NativeImplementation",
+          "presence": "planned",
+          "responsibilities": [
+            "Name a supported native signature witness."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ]
+        },
+        {
+          "id": "IR-CONTEXTMANAGER-NativeOrigin.BUILTIN",
+          "kind": "enum_literal",
+          "qualified_name": "archkeel.ir.facts.NativeOrigin.BUILTIN",
+          "language": "python",
+          "parent_id": "IR-CONTEXTMANAGER-NativeOrigin",
+          "presence": "planned",
+          "responsibilities": [
+            "Name a supported native signature witness."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ]
+        },
+        {
+          "id": "IR-CONTEXTMANAGER-NativeABCModule.ABC",
+          "kind": "enum_literal",
+          "qualified_name": "archkeel.ir.facts.NativeABCModule.ABC",
+          "language": "python",
+          "parent_id": "IR-CONTEXTMANAGER-NativeABCModule",
+          "presence": "planned",
+          "responsibilities": [
+            "Name a supported native signature witness."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ]
+        },
+        {
+          "id": "response.provider_sources",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.protocol.CollectionResponse.provider_sources",
+          "language": "python",
+          "parent_id": "response",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "annotation": "tuple[PythonProviderSource, ...]",
+          "presence": "planned",
+          "responsibilities": [
+            "Carry V4 provider bytes captured under the child deadline and output bound."
+          ],
+          "provenance": [
+            "docs/architecture/language-adapter-target.md"
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/decisions/ad-241-call-ownership-policy.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-CALL-OWNER-RULE",
+          "kind": "class",
+          "qualified_name": "archkeel.ir.model.CallOwnerRule",
+          "parent_id": "IR-DEPENDENCY-model",
+          "responsibilities": [
+            "Keep call ownership policy immutable and separate from observed source facts."
+          ],
+          "modifiers": [
+            "frozen"
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/decisions/ad-241-call-ownership-policy.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-CALL-OWNER-RULE-id",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.model.CallOwnerRule.id",
+          "parent_id": "IR-CALL-OWNER-RULE",
+          "responsibilities": [
+            "Identify one attributable ownership decision."
+          ],
+          "annotation": "str"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/decisions/ad-241-call-ownership-policy.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-CALL-OWNER-RULE-kind",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.model.CallOwnerRule.kind",
+          "parent_id": "IR-CALL-OWNER-RULE",
+          "responsibilities": [
+            "Fix the call-owner variant in the shared rule vocabulary."
+          ],
+          "annotation": "Literal[ArchitectureRuleKind.CALL_OWNER]"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/decisions/ad-241-call-ownership-policy.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-CALL-OWNER-RULE-source",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.model.CallOwnerRule.source",
+          "parent_id": "IR-CALL-OWNER-RULE",
+          "responsibilities": [
+            "Select the observed module or function scope whose calls require proof."
+          ],
+          "annotation": "str"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/decisions/ad-241-call-ownership-policy.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-CALL-OWNER-RULE-target",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.model.CallOwnerRule.target",
+          "parent_id": "IR-CALL-OWNER-RULE",
+          "responsibilities": [
+            "Name one canonical scanned callee without method-name guessing."
+          ],
+          "annotation": "str"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/decisions/ad-241-call-ownership-policy.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-CALL-OWNER-RULE-rationale",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.model.CallOwnerRule.rationale",
+          "parent_id": "IR-CALL-OWNER-RULE",
+          "responsibilities": [
+            "Explain the ownership restriction."
+          ],
+          "annotation": "str"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/decisions/ad-241-call-ownership-policy.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-CALL-OWNER-RULE-provenance",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.model.CallOwnerRule.provenance",
+          "parent_id": "IR-CALL-OWNER-RULE",
+          "responsibilities": [
+            "Bind the restriction to its recorded decision."
+          ],
+          "annotation": "tuple[str, ...]"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/decisions/ad-241-call-ownership-policy.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-CALL-OWNER-RULE-decided_by",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.model.CallOwnerRule.decided_by",
+          "parent_id": "IR-CALL-OWNER-RULE",
+          "responsibilities": [
+            "Attribute the rule to the shared decision-maker type."
+          ],
+          "annotation": "DecisionMaker"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/decisions/ad-241-call-ownership-policy.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-CALL-OWNER-RULE-allowed_sources",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.model.CallOwnerRule.allowed_sources",
+          "parent_id": "IR-CALL-OWNER-RULE",
+          "responsibilities": [
+            "Declare the permitted caller prefixes."
+          ],
+          "annotation": "tuple[str, ...]"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/decisions/ad-241-call-ownership-policy.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-CALL-OWNER-RULE-exact_sources",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.model.CallOwnerRule.exact_sources",
+          "parent_id": "IR-CALL-OWNER-RULE",
+          "responsibilities": [
+            "Declare caller scopes without granting their descendants."
+          ],
+          "annotation": "tuple[str, ...]"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/decisions/ad-241-call-ownership-policy.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-CALL-BINDING",
+          "kind": "class",
+          "qualified_name": "archkeel.ir.facts.CallBinding",
+          "parent_id": "archkeel.ir.facts",
+          "responsibilities": [
+            "Retain one validated static call identity with its source evidence; carry no policy verdict."
+          ],
+          "modifiers": [
+            "frozen"
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/decisions/ad-241-call-ownership-policy.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-CALL-BINDING-origin",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.facts.CallBinding.origin",
+          "parent_id": "IR-CALL-BINDING",
+          "responsibilities": [
+            "Distinguish lexical function binding from a declared receiver boundary."
+          ],
+          "annotation": "CallBindingOrigin"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/decisions/ad-241-call-ownership-policy.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-CALL-BINDING-target",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.facts.CallBinding.target",
+          "parent_id": "IR-CALL-BINDING",
+          "responsibilities": [
+            "Name the canonical declaration established by the observer."
+          ],
+          "annotation": "str"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/decisions/ad-241-call-ownership-policy.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-CALL-BINDING-evidence_ids",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.facts.CallBinding.evidence_ids",
+          "parent_id": "IR-CALL-BINDING",
+          "responsibilities": [
+            "Link the invocation and its declaration to measured source evidence."
+          ],
+          "annotation": "tuple[str, ...]"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/decisions/ad-241-call-ownership-policy.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-CALL-BINDING-ORIGIN",
+          "kind": "enum",
+          "qualified_name": "archkeel.ir.facts.CallBindingOrigin",
+          "parent_id": "archkeel.ir.facts",
+          "responsibilities": [
+            "Own the closed vocabulary of supported static call-binding origins."
+          ]
+        },
+        {
+          "id": "COMPACT-IR-RULE-EVALUATION-BINDING",
+          "kind": "function",
+          "qualified_name": "archkeel.ir.decisions.rule_evaluation_binding_id",
+          "language": "python",
+          "presence": "planned",
+          "parent_id": "IR-COMPARISON-decisions",
+          "responsibilities": [
+            "Derive one deterministic consistency identity from the inventory, complete typed evaluation claim and observation schema version. Exclude the proof itself to avoid recursion. Producer and saved reader share this pure operation; it owns no mutable state or IO and does not authenticate artifacts."
+          ],
+          "provenance": [
+            "docs/architecture/decisions/ad-241-call-ownership-policy.md",
+            "docs/architecture/target/design.md"
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "inventory_binding_id",
+                "annotation": "str",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "receipt",
+                "annotation": "Record",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "observation_schema_version",
+                "annotation": "str",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              }
+            ],
+            "returns": "str"
+          },
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          }
         }
       ],
       "relationships": [
@@ -12276,6 +13282,30 @@
           "rationale": "The source-only envelope has no architecture policy or report fields.",
           "provenance": [
             "docs/architecture/language-adapter-target.md"
+          ],
+          "entity_kinds": [
+            "attribute"
+          ],
+          "relationship_kinds": []
+        },
+        {
+          "scope_id": "IR-CALL-OWNER-RULE",
+          "mode": "closed",
+          "rationale": "Every source field belongs to the declared immutable API.",
+          "provenance": [
+            "docs/architecture/decisions/ad-241-call-ownership-policy.md"
+          ],
+          "entity_kinds": [
+            "attribute"
+          ],
+          "relationship_kinds": []
+        },
+        {
+          "scope_id": "IR-CALL-BINDING",
+          "mode": "closed",
+          "rationale": "Every source field belongs to the declared immutable API.",
+          "provenance": [
+            "docs/architecture/decisions/ad-241-call-ownership-policy.md"
           ],
           "entity_kinds": [
             "attribute"

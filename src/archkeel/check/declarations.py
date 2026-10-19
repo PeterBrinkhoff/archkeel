@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import assert_never
 
@@ -23,6 +23,7 @@ from archkeel.ir.model import (
     ArchitectureContract,
     ArchitectureRule,
     BoundaryTypesRule,
+    CallOwnerRule,
     CompatibilityLifetime,
     CompleteAssignmentRule,
     CompleteExternalScopeRule,
@@ -45,9 +46,6 @@ from archkeel.ir.model import (
     public_api_id,
     stable_id,
 )
-from archkeel.ir.type_shapes import TypeShapeIndex
-
-from .evaluation.rules import public_api_exposed_types
 
 
 class ContractError(ValueError):
@@ -73,7 +71,20 @@ def load_contract(path: Path) -> tuple[ArchitectureContract, str]:
 def project_rule_declaration(rule: ArchitectureRule) -> RawRecord:
     subjects: list[str]
     data: RecordData
-    if isinstance(rule, ForbiddenDependencyRule):
+    if isinstance(rule, CallOwnerRule):
+        area, title, subjects = (
+            "calls",
+            f"Only declared callers invoke {rule.target}",
+            [rule.source, rule.target],
+        )
+        data = {
+            "source": rule.source,
+            "target": rule.target,
+            "allowed_sources": sorted(rule.allowed_sources),
+            "exact_sources": sorted(rule.exact_sources),
+            "rationale": rule.rationale,
+        }
+    elif isinstance(rule, ForbiddenDependencyRule):
         target = ".".join(filter(None, (rule.target, rule.target_symbol)))
         area, title, subjects = (
             "dependency_violations",
@@ -455,36 +466,13 @@ def project_inside_declarations(
 
 def project_declarations(
     contract: ArchitectureContract,
-    symbols: Sequence[RawRecord],
-    imports: Sequence[RawRecord],
-    modules: Sequence[RawRecord],
     contract_path: str,
     *,
-    type_shapes: TypeShapeIndex,
-    unknowns: list[RawRecord],
-    measured_types: bool = True,
+    types_by_entry: Mapping[str, list[str]],
 ) -> list[RawRecord]:
-    """Project the contract into classified records consumed by JSON and HTML.
-
-    `symbols`/`imports`/`modules` serve one entry alone -- `declared_public_api` -- whose
-    `types` field `public_api_exposed_types` (AD-70) resolves them for; every other declaration
-    here is a pure projection of `contract` and reads none of them.
-    """
+    """Project intent using public-type evidence already derived by observation."""
     declarations = contract.declarations or ContractDeclarations()
     items: list[RawRecord] = []
-    types_by_entry = (
-        public_api_exposed_types(
-            declarations.public_api,
-            symbols,
-            imports,
-            modules,
-            contract,
-            unknowns=unknowns,
-            type_shapes=type_shapes,
-        )
-        if measured_types
-        else {}
-    )
     items.extend(_module_target_records(contract_path, contract_path, declarations.modules))
     for capability in declarations.capabilities:
         items.append(
@@ -566,7 +554,7 @@ def project_declarations(
                 title=path.label,
                 subjects=list(path.steps),
                 provenance=list(path.provenance),
-                data={"steps": path.steps},
+                data={"steps": list(path.steps)},
             )
         )
     for budget in sorted(declarations.measurement_budgets, key=lambda item: item.name):

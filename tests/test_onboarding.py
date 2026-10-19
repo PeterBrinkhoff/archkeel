@@ -4,7 +4,8 @@
 import json
 import subprocess
 from collections import Counter
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
+from dataclasses import FrozenInstanceError
 from pathlib import Path
 from typing import get_args, get_origin, get_type_hints
 
@@ -17,7 +18,7 @@ from archkeel.check.onboarding import (
     interface_entries,
     run_init,
 )
-from archkeel.check.ports import ScanConfig
+from archkeel.check.ports import FilesToWrite, ScanConfig
 from archkeel.check.report import run_report
 from archkeel.cli import main
 from archkeel.cli.observe import observe
@@ -35,6 +36,20 @@ from archkeel.ir.model import (
 )
 
 _REAL_RATIONALE = "The owners decided this on purpose."
+
+
+def test_files_to_write_is_an_ordered_immutable_value() -> None:
+    entries = (("second.bin", b"\x00\xff"), ("first.txt", b"first\n"))
+    files = FilesToWrite(entries)
+
+    assert FilesToWrite().entries == ()
+    assert files.entries == entries
+    assert list(dict(files.entries)) == ["second.bin", "first.txt"]
+    assert not isinstance(files, Mapping)
+    with pytest.raises(FrozenInstanceError):
+        files.entries = ()  # type: ignore[misc]
+    with pytest.raises(TypeError):
+        iter(files)
 
 
 def _contract(path: Path) -> ArchitectureContract:
@@ -83,20 +98,6 @@ def _init(root: Path, capsys: pytest.CaptureFixture) -> dict:
     return json.loads(capsys.readouterr().out)
 
 
-def _as_path_bytes(files: object) -> dict[str, bytes]:
-    """Normalize `run_init`'s written-files result into path -> bytes.
-
-    Works whether that value is the bare `dict[str, bytes]` AD-68's Limit flags (issue #59),
-    or the typed model that replaces it: the pin below is about which paths a run writes and
-    what bytes it writes into them, not about the container shape carrying that answer.
-    """
-    if isinstance(files, dict):
-        return files
-    if hasattr(files, "items"):
-        return dict(files.items())
-    return dict(files)  # type: ignore[call-overload]
-
-
 def _second_return_type(func: Callable[..., object]) -> type:
     """The declared type of a 2-tuple return's second element, as CHECK-TYPES-DECLARED reads it.
 
@@ -130,7 +131,7 @@ def test_run_init_declares_a_files_type_that_is_not_a_bare_dict(
     result, files = run_init(root, source=None, namespace=None, force=True, analyzer=observe)
 
     assert result.exit_code == 0
-    assert _as_path_bytes(files) == on_disk
+    assert files.entries == tuple(on_disk.items())
 
 
 def test_init_drafts_no_dependency_rule_but_still_drafts_structural_rules(

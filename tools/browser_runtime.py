@@ -1,11 +1,12 @@
 # Archkeel
 # Copyright (c) 2026 Rapiddweller Asia Co., Ltd.
 # SPDX-License-Identifier: MIT
-"""Publish the one authored Flow program without optimization or name changes."""
+"""Verify the Flow derivative and publish the offline browser module bundle."""
 
 from __future__ import annotations
 
 import argparse
+import json
 import shutil
 import subprocess
 from hashlib import sha256
@@ -18,6 +19,7 @@ _OUTPUT = _ASSETS / "flow.runtime.js"
 _TOOLS = _ROOT / "tools/browser-runtime"
 _COMPILER = _TOOLS / "node_modules/terser/bin/terser"
 _OPTIONS = _TOOLS / "options.json"
+_BUNDLE = _ASSETS / "explorer.runtime.js"
 
 
 def runtime_bytes() -> bytes:
@@ -38,24 +40,70 @@ def runtime_bytes() -> bytes:
     return result.stdout + b"\n" + provenance.encode("utf-8")
 
 
+def prepare_dependencies() -> None:
+    """Expose the genuine locked dependency to the native ancestor-node_modules resolver."""
+    package = _TOOLS / "node_modules/elkjs"
+    manifest = json.loads((package / "package.json").read_bytes())
+    if manifest["name"] != "elkjs" or manifest["version"] != "0.12.0":
+        raise SystemExit("ELK package identity differs from the pinned browser dependency")
+    canonical = _ASSETS / "elkjs-0.12.0.bundled.js"
+    expected = (_ASSETS / "ELKJS-LICENSE.md").read_text(encoding="utf-8").splitlines()[3]
+    if expected != f"Bundle SHA-256: `{sha256(canonical.read_bytes()).hexdigest()}`.":
+        raise SystemExit("Canonical ELK bytes differ from the recorded license provenance")
+    if (package / "lib/elk.bundled.js").read_bytes() != canonical.read_bytes():
+        raise SystemExit("Installed ELK differs from the canonical vendored bundle")
+    target = _ROOT / "node_modules/elkjs"
+    if target.exists():
+        expected_files = {
+            path.relative_to(package) for path in package.rglob("*") if path.is_file()
+        }
+        actual_files = {path.relative_to(target) for path in target.rglob("*") if path.is_file()}
+        if expected_files != actual_files or any(
+            (package / name).read_bytes() != (target / name).read_bytes() for name in expected_files
+        ):
+            raise SystemExit("Existing root ELK dependency differs; refusing to overwrite it")
+        return
+    shutil.copytree(package, target)
+
+
+def bundle_bytes() -> bytes:
+    node = shutil.which("node")
+    if node is None:
+        raise SystemExit("Browser publication requires Node; installed reports do not.")
+    published = subprocess.run(
+        [node, str(_TOOLS / "bundle.cjs")], capture_output=True, check=True
+    ).stdout
+    witness = (
+        f"// Generated from flow.js; source-sha256={sha256(_SOURCE.read_bytes()).hexdigest()}\n"
+    )
+    return published + b"\n// Includes the verified Flow derivative.\n" + witness.encode()
+
+
 def check() -> None:
     if _OUTPUT.read_bytes() != runtime_bytes():
         raise SystemExit("Flow runtime is stale; run make browser-runtime-generate.")
+    if _BUNDLE.read_bytes() != bundle_bytes():
+        raise SystemExit("Explorer bundle is stale; run make browser-runtime-generate.")
 
 
 def generate() -> None:
     _OUTPUT.write_bytes(runtime_bytes())
+    _BUNDLE.write_bytes(bundle_bytes())
 
 
 class _Arguments(argparse.Namespace):
     check: bool = False
+    prepare_dependencies: bool = False
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true")
+    parser.add_argument("--prepare-dependencies", action="store_true")
     arguments = parser.parse_args(namespace=_Arguments())
-    if arguments.check:
+    if arguments.prepare_dependencies:
+        prepare_dependencies()
+    elif arguments.check:
         check()
     else:
         generate()

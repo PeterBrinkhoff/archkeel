@@ -15,22 +15,26 @@
         {
           "component": "ir",
           "through": [
-            "archkeel.ir.baseline",
-            "archkeel.ir.codec",
-            "archkeel.ir.model"
+            "archkeel.ir.baseline:ViolationFingerprint",
+            "archkeel.ir.baseline:ViolationRow",
+            "archkeel.ir.baseline:violation_rows",
+            "archkeel.ir.codec:decode_canonical_model",
+            "archkeel.ir.codec:decode_json",
+            "archkeel.ir.codec:parse_observation"
           ],
           "rationale": "Read one architecture.json report from disk and hand its bytes to ir's codec and baseline derivations; api decodes nothing itself."
         }
       ],
       "responsibilities": [
-        "The declared external contract: the named surface a consumer outside this repository may import, and the one place that reads its bytes.",
-        "Quality goal: stable across every internal refactor of ir."
+        "Read saved reports through the stable external Python API."
       ],
       "forbidden_responsibilities": [
-        "Decoding IR bytes into typed values, which ir.codec still owns."
+        "Decoding IR bytes into typed values, which ir.codec still owns.",
+        "Rule evaluation and duplicate IR decoding."
       ],
       "provenance": [
-        "docs/architecture/archkeel.md"
+        "docs/architecture/archkeel.md",
+        "docs/architecture/target/design.md"
       ],
       "decided_by": "architect",
       "public": [],
@@ -85,6 +89,7 @@
         "archkeel.ir.renames:Renamed",
         "archkeel.ir.renames:module_layouts",
         "archkeel.ir.renames:observed_names",
+        "archkeel.ir.renames:renamed_contract",
         "archkeel.ir.renames:renames_since",
         "archkeel.ir.source_graph",
         "archkeel.ir.structure",
@@ -164,16 +169,21 @@
         "archkeel.ir.amendment:Amendment",
         "archkeel.ir.amendment:verify_amendment",
         "archkeel.ir.architecture_graph:RuleAssessmentStatus",
-        "archkeel.ir.architecture_projection:PermissionStatus"
+        "archkeel.ir.architecture_projection:PermissionStatus",
+        "archkeel.ir.contract_version:ContractFeature",
+        "archkeel.ir.contract_version:ContractVersion",
+        "archkeel.ir.contract_version:supports_feature"
       ],
       "responsibilities": [
-        "Own immutable source facts, protocol values, governance models and pure derivations."
+        "Own typed values, strict codecs and pure evidence derivations."
       ],
       "forbidden_responsibilities": [
-        "Source parsing, process or filesystem I/O, and workflow orchestration."
+        "Source parsing, process or filesystem I/O, and workflow orchestration.",
+        "Repository, process or network I/O except the checker-source identity boundary."
       ],
       "provenance": [
-        "docs/architecture/archkeel.md"
+        "docs/architecture/archkeel.md",
+        "docs/architecture/target/design.md"
       ],
       "decided_by": "architect",
       "inside": "docs/architecture/contracts/ir.json",
@@ -214,13 +224,15 @@
         "archkeel.check.observation:analyze_source_snapshot"
       ],
       "responsibilities": [
-        "Own source-fact validation, observation assembly, architecture rule evaluation and report/check workflows."
+        "Authenticate inputs, assemble observations and apply declared architecture rules."
       ],
       "forbidden_responsibilities": [
-        "Source parsing, process execution, or importing language adapters."
+        "Source parsing, process execution, or importing language adapters.",
+        "Rendering and selecting concrete language or forge adapters."
       ],
       "provenance": [
-        "docs/architecture/archkeel.md"
+        "docs/architecture/archkeel.md",
+        "docs/architecture/target/design.md"
       ],
       "decided_by": "architect",
       "layer": "Core"
@@ -261,11 +273,14 @@
         }
       ],
       "responsibilities": [
-        "Command arguments and configuration; compose the process collector with Core workflows."
+        "Decode arguments and configuration, inject adapters and publish returned files."
       ],
-      "forbidden_responsibilities": [],
+      "forbidden_responsibilities": [
+        "Source parsing, rule evaluation and duplicated command workflows."
+      ],
       "provenance": [
-        "docs/architecture/archkeel.md"
+        "docs/architecture/archkeel.md",
+        "docs/architecture/target/design.md"
       ],
       "decided_by": "architect",
       "public": [],
@@ -291,12 +306,14 @@
         "archkeel.host.gitlab"
       ],
       "responsibilities": [
-        "GitLab host records with SHA, event and timestamp.",
-        "Quality goal: replaceable."
+        "Acquire forge records with explicit authentication and ordering evidence."
       ],
-      "forbidden_responsibilities": [],
+      "forbidden_responsibilities": [
+        "Architecture verdicts and acceptance policy."
+      ],
       "provenance": [
-        "docs/architecture/archkeel.md"
+        "docs/architecture/archkeel.md",
+        "docs/architecture/target/design.md"
       ],
       "decided_by": "architect",
       "layer": "Adapters"
@@ -328,16 +345,19 @@
       ],
       "inside": "docs/architecture/contracts/analyzer.json",
       "public": [
-        "archkeel.analyzer.process:ProcessCollector"
+        "archkeel.analyzer.process:ProcessCollector",
+        "archkeel.analyzer.python.collect:PythonProviderCollector"
       ],
       "responsibilities": [
-        "Run the configured source collector process and keep language parsing and fact collection behind isolated adapters."
+        "Collect source-only facts through bounded, replaceable language processes."
       ],
       "forbidden_responsibilities": [
-        "Rule evaluation, baselines, ownership, verdicts, and importing sibling language adapters."
+        "Rule evaluation, baselines, ownership, verdicts, and importing sibling language adapters.",
+        "Reading architecture policy or executing the analyzed project."
       ],
       "provenance": [
-        "docs/architecture/archkeel.md"
+        "docs/architecture/archkeel.md",
+        "docs/architecture/target/design.md"
       ],
       "decided_by": "architect",
       "layer": "Adapters"
@@ -369,16 +389,15 @@
         "archkeel.render.summary_badges:BadgeState"
       ],
       "responsibilities": [
-        "Deterministic HTML and terminal projections of typed Archkeel evidence.",
-        "Project As-Is and Target into one render scene and draw their UML notation with one renderer.",
-        "Quality goal: replaceable.",
-        "Publish the shared graph without reconstructing architecture intent from redundant records."
+        "Explain authenticated results through HTML, terminal output and offline scenes."
       ],
       "forbidden_responsibilities": [
-        "Architecture decisions and persistence."
+        "Architecture decisions and persistence.",
+        "Re-evaluating rules or treating display filters as evidence."
       ],
       "provenance": [
-        "docs/architecture/archkeel.md"
+        "docs/architecture/archkeel.md",
+        "docs/architecture/target/design.md"
       ],
       "decided_by": "architect",
       "inside": "docs/architecture/contracts/render.json",
@@ -474,7 +493,7 @@
       {
         "source": "cli",
         "target": "analyzer",
-        "max_names": 1,
+        "max_names": 2,
         "provenance": [
           "docs/architecture/decisions/ad-99-facade-and-coupling-budgets-are-contract-ceilings.md"
         ]
@@ -513,7 +532,54 @@
           "docs/architecture/decisions/ad-99-facade-and-coupling-budgets-are-contract-ceilings.md"
         ]
       }
-    ]
+    ],
+    "uml": {
+      "schema_version": "1.1.0",
+      "entities": [
+        {
+          "id": "COMPACT-API-MODULE",
+          "kind": "module",
+          "qualified_name": "archkeel.api",
+          "language": "python",
+          "presence": "planned",
+          "parent_id": "COMP-API",
+          "responsibilities": [
+            "Own the external report reader; callers retain ownership of the supplied path."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ]
+        },
+        {
+          "id": "COMPACT-API-LOAD-VIOLATIONS",
+          "kind": "function",
+          "qualified_name": "archkeel.api.load_violations",
+          "language": "python",
+          "presence": "planned",
+          "parent_id": "COMPACT-API-MODULE",
+          "responsibilities": [
+            "Return stable violation rows; preserve file and decode exceptions without exposing the internal Observation model."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "path",
+                "annotation": "Path",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              }
+            ],
+            "returns": "tuple[ViolationRow, ...]"
+          }
+        }
+      ],
+      "relationships": [],
+      "scopes": []
+    }
   },
   "rules": [
     {
@@ -862,19 +928,13 @@
       "id": "CHECK-TYPES-DECLARED",
       "kind": "boundary_types",
       "source": "archkeel.check",
-      "rationale": "check's facade takes its ports by type: a caller cannot call run_check without satisfying Analyzer and Host. FilesToWrite receives arbitrary path-to-bytes output, and the host port receives arbitrary environment names; these three exact open-map positions are intentional (AD-123).",
+      "rationale": "check's facade uses declared Analyzer, Host and FilesToWrite types. FilesToWrite carries ordered immutable path/bytes pairs. Only the Host and run_check environment parameters permit arbitrary environment names (AD-123).",
       "provenance": [
         "docs/architecture/archkeel.md",
         "docs/architecture/decisions/ad-123-proven-mappings-are-broad-boundary-types.md"
       ],
       "decided_by": "architect",
       "allowed_positions": [
-        {
-          "qualified_name": "archkeel.check.ports.FilesToWrite.__init__",
-          "position": "files",
-          "field_path": "",
-          "annotation": "Mapping[str, bytes] | None"
-        },
         {
           "qualified_name": "archkeel.check.ports.Host.__call__",
           "position": "environ",

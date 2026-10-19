@@ -378,6 +378,6 @@ def test_nested_permissions_require_and_survive_amendment(tmp_path: Path) -> Non
         rationale="Accept only this nested product envelope.",
     )
     assert written.exit_code == 0, written.diagnostics
-    amendment.write_bytes(files[str(amendment)])
+    amendment.write_bytes(dict(files.entries)[str(amendment)])
     accepted, _ = run_validate(tmp_path, config, observe, against=base, amendment=amendment)
     assert accepted.exit_code == 0 and accepted.failures == ()

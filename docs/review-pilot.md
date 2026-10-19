@@ -14,7 +14,7 @@ IDs. Use fresh destinations and these
   whether to fix code or request a target decision.
 - `class-a-boundary-types-mixed-evidence`: distinguish a confirmed FAIL from
   remaining UNKNOWN evidence.
-- `class-a-boundary-types-ordinary-reexport-chain-unknown`: explain why no
+- `class-a-boundary-types-opaque-map-values-unknown`: explain why no
   violation does not certify the interface.
 - `class-a-recursive-wide-package`: locate the isolated module without claiming
   runtime behavior from absent static edges.

@@ -1,6 +1,6 @@
 {
-  "$schema": "../../../schema/architecture-contract.schema.json",
-  "schema_version": "2.2.0",
+  "$schema": "../../../schema/architecture-contract-3.4.schema.json",
+  "schema_version": "3.4.0",
   "components": [
     {
       "id": "TARGET-WORKFLOWS",
@@ -10,18 +10,18 @@
         "archkeel.check.onboarding",
         "archkeel.check.run",
         "archkeel.check.report",
-        "archkeel.check.validation",
-        "archkeel.check.uml"
+        "archkeel.check.validation"
       ],
       "responsibilities": [
-        "Select immutable inputs, invoke the port and publish the result.",
-        "Authenticate independent UML contract inputs before publishing the graph."
+        "Coordinate report, check, validation and onboarding; return typed results and requested files."
       ],
       "forbidden_responsibilities": [
-        "Parsing and duplicate policy thresholds."
+        "Parsing and duplicate policy thresholds.",
+        "Shared operations hidden in command peers and duplicated rule evaluation."
       ],
       "provenance": [
-        "docs/architecture/language-adapter-target.md"
+        "docs/architecture/language-adapter-target.md",
+        "docs/architecture/target/design.md"
       ],
       "decided_by": "agent",
       "requires": [
@@ -65,16 +65,19 @@
       "role": "component",
       "packages": [
         "archkeel.check.observation",
-        "archkeel.check.observe"
+        "archkeel.check.observe",
+        "archkeel.check.uml"
       ],
       "responsibilities": [
-        "Combine source facts and contract into canonical evidence."
+        "Assemble authenticated source and UML observations once through injected collection and evaluation ports."
       ],
       "forbidden_responsibilities": [
-        "Process or source-file I/O."
+        "Process or source-file I/O.",
+        "Concrete collector selection and permissions inferred from observed imports."
       ],
       "provenance": [
-        "docs/architecture/language-adapter-target.md"
+        "docs/architecture/language-adapter-target.md",
+        "docs/architecture/target/design.md"
       ],
       "decided_by": "agent",
       "requires": [
@@ -91,13 +94,23 @@
         {
           "component": "evaluation",
           "rationale": "Apply Core-owned rules to validated source facts.",
-          "decided_by": "agent"
+          "decided_by": "agent",
+          "through": [
+            "archkeel.check.evaluation.evaluate:ScanResult",
+            "archkeel.check.evaluation.evaluate:evaluate_source",
+            "archkeel.check.evaluation.rules:public_api_exposed_types",
+            "archkeel.check.uml_evaluation:evaluate_uml"
+          ]
         }
       ],
       "public": [
         "archkeel.check.observe:Observer",
         "archkeel.check.observation:analyze_source_snapshot",
-        "archkeel.check.observe:observation_diagnostics"
+        "archkeel.check.observe:observation_diagnostics",
+        "archkeel.check.uml:assemble_uml",
+        "archkeel.check.uml:observe_repository",
+        "archkeel.check.uml:revoke_dependency_proofs",
+        "archkeel.check.uml:validated_member_inventory_result"
       ]
     },
     {
@@ -108,22 +121,18 @@
         "archkeel.check.declarations"
       ],
       "responsibilities": [
-        "Load and project root and inside architecture contracts."
+        "Load, authenticate and project root, nested and UML contract intent."
       ],
       "forbidden_responsibilities": [
-        "Source parsing and rule evaluation."
+        "Source parsing and rule evaluation.",
+        "Source collection and dependence on the rule evaluator."
       ],
       "provenance": [
-        "docs/architecture/language-adapter-target.md"
+        "docs/architecture/language-adapter-target.md",
+        "docs/architecture/target/design.md"
       ],
       "decided_by": "agent",
-      "requires": [
-        {
-          "component": "evaluation",
-          "rationale": "Use the evaluator’s public API type derivation when projecting declarations.",
-          "decided_by": "agent"
-        }
-      ],
+      "requires": [],
       "public": [
         "archkeel.check.declarations:ContractError",
         "archkeel.check.declarations:load_contract",
@@ -142,13 +151,15 @@
         "archkeel.check.uml_evaluation"
       ],
       "responsibilities": [
-        "Own architecture rules and evidence sufficiency in Core."
+        "Apply declared rules and exact allowances, producing PASS, FAIL or UNKNOWN with evidence."
       ],
       "forbidden_responsibilities": [
-        "Source parsing, process execution and baseline persistence."
+        "Source parsing, process execution and baseline persistence.",
+        "Acquiring repository inputs and presenting command output."
       ],
       "provenance": [
-        "docs/architecture/language-adapter-target.md"
+        "docs/architecture/language-adapter-target.md",
+        "docs/architecture/target/design.md"
       ],
       "decided_by": "agent",
       "public": [
@@ -168,13 +179,15 @@
         "archkeel.check.ratchets"
       ],
       "responsibilities": [
-        "Compare recorded observations, expectations and ratchets."
+        "Compare accepted and candidate evidence after checking identities and comparability."
       ],
       "forbidden_responsibilities": [
-        "Parsing sources and running adapters."
+        "Parsing sources and running adapters.",
+        "Source collection through command peers and weakening acceptance thresholds."
       ],
       "provenance": [
-        "docs/architecture/language-adapter-target.md"
+        "docs/architecture/language-adapter-target.md",
+        "docs/architecture/target/design.md"
       ],
       "decided_by": "agent",
       "requires": [
@@ -210,13 +223,15 @@
         "archkeel.check.ordering"
       ],
       "responsibilities": [
-        "Own typed ports, revision inputs and ordering."
+        "Acquire immutable repository, runtime and forge inputs through typed ports."
       ],
       "forbidden_responsibilities": [
-        "Architecture verdicts."
+        "Architecture verdicts.",
+        "Rule evaluation and presentation policy."
       ],
       "provenance": [
-        "docs/architecture/language-adapter-target.md"
+        "docs/architecture/language-adapter-target.md",
+        "docs/architecture/target/design.md"
       ],
       "decided_by": "agent",
       "exact_modules": [
@@ -340,6 +355,20 @@
         "docs/architecture/unresolved-call-change-types.md"
       ],
       "decided_by": "architect"
+    },
+    {
+      "id": "CHECK-ONBOARDING-NO-REPORT-IMPLEMENTATION",
+      "kind": "forbidden_dependency",
+      "source": "archkeel.check.onboarding",
+      "target": "archkeel.check.report",
+      "include_type_checking": true,
+      "rationale": "Onboarding must consume shared observation below commands instead of the report workflow implementation.",
+      "provenance": [
+        "docs/architecture/target/design.md"
+      ],
+      "decided_by": "agent",
+      "source_match": "exact",
+      "target_match": "exact"
     }
   ],
   "declarations": {
@@ -350,11 +379,15 @@
       },
       {
         "path": "src/archkeel/check/evaluation/rules.py",
-        "responsibility": "Evaluate ownership and architecture rules in Core."
+        "responsibility": "Evaluate architecture rules and profile/capability availability without acquiring source inputs."
       },
       {
-        "path": "src/archkeel/check/evaluation/coverage.py",
-        "responsibility": "Map actual evidence and profile capability to rule availability."
+        "path": "src/archkeel/check/evaluation/evaluate.py",
+        "responsibility": "Compose evidence coverage and profile-bound evaluation through the existing rule owners."
+      },
+      {
+        "path": "src/archkeel/check/evaluation/call_owners.py",
+        "responsibility": "Evaluate declared caller permissions over bound call targets; emit violations, uncertainty and scope-bound evaluation receipts."
       },
       {
         "path": "src/archkeel/check/evaluation/topology.py",
@@ -1119,6 +1152,1027 @@
           },
           "responsibilities": [
             "Select collection parameters from carried type syntax while retaining existing name and binding policy."
+          ]
+        },
+        {
+          "id": "COMPACT-CHECK-REPORT",
+          "kind": "module",
+          "qualified_name": "archkeel.check.report",
+          "language": "python",
+          "presence": "planned",
+          "parent_id": "TARGET-WORKFLOWS",
+          "responsibilities": [
+            "Return canonical evidence and typed report views; the caller publishes artifacts."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ]
+        },
+        {
+          "id": "COMPACT-CHECK-RUN",
+          "kind": "module",
+          "qualified_name": "archkeel.check.run",
+          "language": "python",
+          "presence": "planned",
+          "parent_id": "TARGET-WORKFLOWS",
+          "responsibilities": [
+            "Coordinate immutable revision and host evidence; preserve ordering/authentication errors."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ]
+        },
+        {
+          "id": "COMPACT-CHECK-VALIDATION",
+          "kind": "module",
+          "qualified_name": "archkeel.check.validation",
+          "language": "python",
+          "presence": "planned",
+          "parent_id": "TARGET-WORKFLOWS",
+          "responsibilities": [
+            "Return diagnostics and requested files; the caller owns writes and acceptance decisions."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ]
+        },
+        {
+          "id": "COMPACT-CHECK-ONBOARDING",
+          "kind": "module",
+          "qualified_name": "archkeel.check.onboarding",
+          "language": "python",
+          "presence": "planned",
+          "parent_id": "TARGET-WORKFLOWS",
+          "responsibilities": [
+            "Draft onboarding artifacts without overwriting repository files."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ]
+        },
+        {
+          "id": "COMPACT-CHECK-OBSERVE",
+          "kind": "module",
+          "qualified_name": "archkeel.check.observe",
+          "language": "python",
+          "presence": "planned",
+          "parent_id": "TARGET-OBSERVATION",
+          "responsibilities": [
+            "Bind an injected source collector to authenticated observation assembly."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ]
+        },
+        {
+          "id": "COMPACT-CHECK-UML",
+          "kind": "module",
+          "qualified_name": "archkeel.check.uml",
+          "language": "python",
+          "presence": "planned",
+          "parent_id": "TARGET-OBSERVATION",
+          "responsibilities": [
+            "Authenticate declared graph intent and shared repository observation below command consumers."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ]
+        },
+        {
+          "id": "COMPACT-REPORT-RUN-REPORT",
+          "kind": "function",
+          "qualified_name": "archkeel.check.report.run_report",
+          "language": "python",
+          "presence": "planned",
+          "parent_id": "COMPACT-CHECK-REPORT",
+          "responsibilities": [
+            "Observe once and return the canonical bytes and typed result; filters never change judged evidence."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "root",
+                "annotation": "Path",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "config",
+                "annotation": "ScanConfig",
+                "kind": "keyword_only",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "analyzer",
+                "annotation": "Analyzer",
+                "kind": "keyword_only",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "only_violations",
+                "annotation": "bool",
+                "kind": "keyword_only",
+                "default": "False",
+                "default_known": true
+              },
+              {
+                "name": "rule",
+                "annotation": "str | None",
+                "kind": "keyword_only",
+                "default": "None",
+                "default_known": true
+              },
+              {
+                "name": "component",
+                "annotation": "str | None",
+                "kind": "keyword_only",
+                "default": "None",
+                "default_known": true
+              },
+              {
+                "name": "only_calls",
+                "annotation": "bool",
+                "kind": "keyword_only",
+                "default": "False",
+                "default_known": true
+              },
+              {
+                "name": "only_architecture",
+                "annotation": "bool",
+                "kind": "keyword_only",
+                "default": "False",
+                "default_known": true
+              },
+              {
+                "name": "full_architecture",
+                "annotation": "bool",
+                "kind": "keyword_only",
+                "default": "False",
+                "default_known": true
+              },
+              {
+                "name": "baseline",
+                "annotation": "Path | None",
+                "kind": "keyword_only",
+                "default": "None",
+                "default_known": true
+              }
+            ],
+            "returns": "tuple[RunResult, bytes | None]"
+          }
+        },
+        {
+          "id": "COMPACT-REPORT-RUN-SAVED-REPORT",
+          "kind": "function",
+          "qualified_name": "archkeel.check.report.run_saved_report",
+          "language": "python",
+          "presence": "planned",
+          "parent_id": "COMPACT-CHECK-REPORT",
+          "responsibilities": [
+            "Read authenticated recorded evidence without rescanning or writing; invalid input returns an incomplete result."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "path",
+                "annotation": "Path",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "only_violations",
+                "annotation": "bool",
+                "kind": "keyword_only",
+                "default": "False",
+                "default_known": true
+              },
+              {
+                "name": "rule",
+                "annotation": "str | None",
+                "kind": "keyword_only",
+                "default": "None",
+                "default_known": true
+              },
+              {
+                "name": "component",
+                "annotation": "str | None",
+                "kind": "keyword_only",
+                "default": "None",
+                "default_known": true
+              },
+              {
+                "name": "only_calls",
+                "annotation": "bool",
+                "kind": "keyword_only",
+                "default": "False",
+                "default_known": true
+              },
+              {
+                "name": "only_architecture",
+                "annotation": "bool",
+                "kind": "keyword_only",
+                "default": "False",
+                "default_known": true
+              },
+              {
+                "name": "full_architecture",
+                "annotation": "bool",
+                "kind": "keyword_only",
+                "default": "False",
+                "default_known": true
+              }
+            ],
+            "returns": "RunResult"
+          }
+        },
+        {
+          "id": "COMPACT-REPORT-OBSERVE-REPOSITORY",
+          "kind": "function",
+          "qualified_name": "archkeel.check.report.observe_repository",
+          "language": "python",
+          "presence": "planned",
+          "parent_id": "COMPACT-CHECK-REPORT",
+          "responsibilities": [
+            "Preserve the existing public signature while delegating shared observation below workflow peers."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "root",
+                "annotation": "Path",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "config",
+                "annotation": "ScanConfig",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "analyzer",
+                "annotation": "Analyzer",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "contract_root",
+                "annotation": "Path | None",
+                "kind": "keyword_only",
+                "default": "None",
+                "default_known": true
+              }
+            ],
+            "returns": "ObservationResult"
+          }
+        },
+        {
+          "id": "COMPACT-RUN-RUN-CHECK",
+          "kind": "function",
+          "qualified_name": "archkeel.check.run.run_check",
+          "language": "python",
+          "presence": "planned",
+          "parent_id": "COMPACT-CHECK-RUN",
+          "responsibilities": [
+            "Compare immutable accepted/candidate inputs through injected Analyzer and Host; invalid identity/order errors stay visible."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "root",
+                "annotation": "Path",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "config",
+                "annotation": "ScanConfig",
+                "kind": "keyword_only",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "baseline",
+                "annotation": "str",
+                "kind": "keyword_only",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "expectation_commit",
+                "annotation": "str",
+                "kind": "keyword_only",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "head",
+                "annotation": "str",
+                "kind": "keyword_only",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "expected_path",
+                "annotation": "str",
+                "kind": "keyword_only",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "expected_digest",
+                "annotation": "str",
+                "kind": "keyword_only",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "branch",
+                "annotation": "str",
+                "kind": "keyword_only",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "accepted_branch",
+                "annotation": "str",
+                "kind": "keyword_only",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "host_records_path",
+                "annotation": "Path | None",
+                "kind": "keyword_only",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "environ",
+                "annotation": "Mapping[str, str]",
+                "kind": "keyword_only",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "host",
+                "annotation": "Host",
+                "kind": "keyword_only",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "analyzer",
+                "annotation": "Analyzer",
+                "kind": "keyword_only",
+                "default": null,
+                "default_known": true
+              }
+            ],
+            "returns": "RunResult"
+          }
+        },
+        {
+          "id": "COMPACT-VALIDATION-RUN-VALIDATE",
+          "kind": "function",
+          "qualified_name": "archkeel.check.validation.run_validate",
+          "language": "python",
+          "presence": "planned",
+          "parent_id": "COMPACT-CHECK-VALIDATION",
+          "responsibilities": [
+            "Return validation diagnostics and requested FilesToWrite; no write or debt acceptance is implicit."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "root",
+                "annotation": "Path",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "config",
+                "annotation": "ScanConfig",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "analyzer",
+                "annotation": "Analyzer",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "write_graph",
+                "annotation": "bool",
+                "kind": "keyword_only",
+                "default": "False",
+                "default_known": true
+              },
+              {
+                "name": "compact_open_decisions",
+                "annotation": "bool",
+                "kind": "keyword_only",
+                "default": "False",
+                "default_known": true
+              },
+              {
+                "name": "baseline",
+                "annotation": "Path | None",
+                "kind": "keyword_only",
+                "default": "None",
+                "default_known": true
+              },
+              {
+                "name": "write_baseline",
+                "annotation": "bool",
+                "kind": "keyword_only",
+                "default": "False",
+                "default_known": true
+              },
+              {
+                "name": "accept_new",
+                "annotation": "bool",
+                "kind": "keyword_only",
+                "default": "False",
+                "default_known": true
+              },
+              {
+                "name": "against",
+                "annotation": "str | None",
+                "kind": "keyword_only",
+                "default": "None",
+                "default_known": true
+              },
+              {
+                "name": "against_config",
+                "annotation": "ScanConfig | None",
+                "kind": "keyword_only",
+                "default": "None",
+                "default_known": true
+              },
+              {
+                "name": "amendment",
+                "annotation": "Path | None",
+                "kind": "keyword_only",
+                "default": "None",
+                "default_known": true
+              },
+              {
+                "name": "write_amendment",
+                "annotation": "bool",
+                "kind": "keyword_only",
+                "default": "False",
+                "default_known": true
+              },
+              {
+                "name": "decided_by",
+                "annotation": "str | None",
+                "kind": "keyword_only",
+                "default": "None",
+                "default_known": true
+              },
+              {
+                "name": "rationale",
+                "annotation": "str | None",
+                "kind": "keyword_only",
+                "default": "None",
+                "default_known": true
+              }
+            ],
+            "returns": "tuple[RunResult, FilesToWrite]"
+          }
+        },
+        {
+          "id": "COMPACT-VALIDATION-INVALID-RESULT",
+          "kind": "function",
+          "qualified_name": "archkeel.check.validation.invalid_result",
+          "language": "python",
+          "presence": "planned",
+          "parent_id": "COMPACT-CHECK-VALIDATION",
+          "responsibilities": [
+            "Convert boundary input failures into typed diagnostics and an incomplete validation result."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "subject",
+                "annotation": "str",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "error",
+                "annotation": "Exception",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "pointer",
+                "annotation": "str",
+                "kind": "positional",
+                "default": "''",
+                "default_known": true
+              }
+            ],
+            "returns": "RunResult"
+          }
+        },
+        {
+          "id": "COMPACT-ONBOARDING-RUN-INIT",
+          "kind": "function",
+          "qualified_name": "archkeel.check.onboarding.run_init",
+          "language": "python",
+          "presence": "planned",
+          "parent_id": "COMPACT-CHECK-ONBOARDING",
+          "responsibilities": [
+            "Return requested scaffold files; reject existing files unless force is explicit and preserve scope diagnostics."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "root",
+                "annotation": "Path",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "source",
+                "annotation": "str | tuple[str, ...] | None",
+                "kind": "keyword_only",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "namespace",
+                "annotation": "str | None",
+                "kind": "keyword_only",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "force",
+                "annotation": "bool",
+                "kind": "keyword_only",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "full",
+                "annotation": "bool",
+                "kind": "keyword_only",
+                "default": "False",
+                "default_known": true
+              },
+              {
+                "name": "analyzer",
+                "annotation": "Analyzer",
+                "kind": "keyword_only",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "language",
+                "annotation": "Language",
+                "kind": "keyword_only",
+                "default": "Language.PYTHON",
+                "default_known": true
+              },
+              {
+                "name": "tsconfig",
+                "annotation": "str | None",
+                "kind": "keyword_only",
+                "default": "None",
+                "default_known": true
+              },
+              {
+                "name": "collector_argv",
+                "annotation": "tuple[str, ...] | None",
+                "kind": "keyword_only",
+                "default": "None",
+                "default_known": true
+              },
+              {
+                "name": "collector_output_limit_bytes",
+                "annotation": "int | None",
+                "kind": "keyword_only",
+                "default": "None",
+                "default_known": true
+              }
+            ],
+            "returns": "tuple[RunResult, FilesToWrite]"
+          }
+        },
+        {
+          "id": "COMPACT-UML-OBSERVE-REPOSITORY",
+          "kind": "function",
+          "qualified_name": "archkeel.check.uml.observe_repository",
+          "language": "python",
+          "presence": "planned",
+          "parent_id": "COMPACT-CHECK-UML",
+          "responsibilities": [
+            "Bind repository identity and injected Analyzer once, authenticate intent and apply the existing UML evaluator."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "root",
+                "annotation": "Path",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "config",
+                "annotation": "ScanConfig",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "analyzer",
+                "annotation": "Analyzer",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "contract_root",
+                "annotation": "Path | None",
+                "kind": "keyword_only",
+                "default": "None",
+                "default_known": true
+              }
+            ],
+            "returns": "ObservationResult"
+          }
+        },
+        {
+          "id": "COMPACT-PORT-ANALYZER",
+          "kind": "interface",
+          "qualified_name": "archkeel.check.ports.Analyzer",
+          "language": "python",
+          "presence": "planned",
+          "parent_id": "archkeel.check.ports",
+          "responsibilities": [
+            "Observe the supplied immutable scope; the implementation returns diagnostics rather than granting missing evidence."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ]
+        },
+        {
+          "id": "COMPACT-PORT-ANALYZER-CALL",
+          "kind": "method",
+          "qualified_name": "archkeel.check.ports.Analyzer.__call__",
+          "language": "python",
+          "presence": "planned",
+          "parent_id": "COMPACT-PORT-ANALYZER",
+          "responsibilities": [
+            "Observe the supplied immutable scope; the implementation returns diagnostics rather than granting missing evidence."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "self",
+                "annotation": null,
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "source_root",
+                "annotation": "Path",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "roots",
+                "annotation": "tuple[str, ...]",
+                "kind": "keyword_only",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "namespace",
+                "annotation": "str",
+                "kind": "keyword_only",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "contract",
+                "annotation": "str",
+                "kind": "keyword_only",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "git_head",
+                "annotation": "str",
+                "kind": "keyword_only",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "dirty",
+                "annotation": "bool",
+                "kind": "keyword_only",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "contract_root",
+                "annotation": "Path",
+                "kind": "keyword_only",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "language",
+                "annotation": "Language",
+                "kind": "keyword_only",
+                "default": null,
+                "default_known": true
+              }
+            ],
+            "returns": "ObservationResult"
+          }
+        },
+        {
+          "id": "COMPACT-PORT-HOST",
+          "kind": "interface",
+          "qualified_name": "archkeel.check.ports.Host",
+          "language": "python",
+          "presence": "planned",
+          "parent_id": "archkeel.check.ports",
+          "responsibilities": [
+            "Acquire ordering evidence for exact commits; authentication and ordering failures remain explicit errors."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ]
+        },
+        {
+          "id": "COMPACT-PORT-HOST-CALL",
+          "kind": "method",
+          "qualified_name": "archkeel.check.ports.Host.__call__",
+          "language": "python",
+          "presence": "planned",
+          "parent_id": "COMPACT-PORT-HOST",
+          "responsibilities": [
+            "Acquire ordering evidence for exact commits; authentication and ordering failures remain explicit errors."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "self",
+                "annotation": null,
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "root",
+                "annotation": "Path",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "expectation_sha",
+                "annotation": "str",
+                "kind": "keyword_only",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "candidate_sha",
+                "annotation": "str",
+                "kind": "keyword_only",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "environ",
+                "annotation": "Mapping[str, str]",
+                "kind": "keyword_only",
+                "default": null,
+                "default_known": true
+              }
+            ],
+            "returns": "tuple[HostRecord, ...] | InitialPRHeadEvidence"
+          }
+        },
+        {
+          "id": "COMPACT-OBSERVER",
+          "kind": "class",
+          "qualified_name": "archkeel.check.observe.Observer",
+          "language": "python",
+          "presence": "planned",
+          "parent_id": "COMPACT-CHECK-OBSERVE",
+          "responsibilities": [
+            "Own immutable collector/configuration bindings; the collector owns its bounded process and cleanup."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ]
+        },
+        {
+          "id": "COMPACT-OBSERVER-COLLECTOR",
+          "kind": "attribute",
+          "qualified_name": "archkeel.check.observe.Observer.collector",
+          "language": "python",
+          "presence": "planned",
+          "parent_id": "COMPACT-OBSERVER",
+          "responsibilities": [
+            "Retain the injected collector; never select a concrete adapter inside Check."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "annotation": "SourceCollector"
+        },
+        {
+          "id": "COMPACT-OBSERVER-TSCONFIG",
+          "kind": "attribute",
+          "qualified_name": "archkeel.check.observe.Observer.tsconfig",
+          "language": "python",
+          "presence": "planned",
+          "parent_id": "COMPACT-OBSERVER",
+          "responsibilities": [
+            "Retain the TypeScript resolver input path without reading configuration in the port value."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "annotation": "str"
+        },
+        {
+          "id": "COMPACT-OBSERVER-CALL",
+          "kind": "method",
+          "qualified_name": "archkeel.check.observe.Observer.__call__",
+          "language": "python",
+          "presence": "planned",
+          "parent_id": "COMPACT-OBSERVER",
+          "responsibilities": [
+            "Validate selected inputs, collect once and return conservative typed observation/error evidence."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "self",
+                "annotation": null,
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "source_root",
+                "annotation": "Path",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "roots",
+                "annotation": "tuple[str, ...]",
+                "kind": "keyword_only",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "namespace",
+                "annotation": "str",
+                "kind": "keyword_only",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "contract",
+                "annotation": "str",
+                "kind": "keyword_only",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "git_head",
+                "annotation": "str",
+                "kind": "keyword_only",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "dirty",
+                "annotation": "bool",
+                "kind": "keyword_only",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "contract_root",
+                "annotation": "Path",
+                "kind": "keyword_only",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "language",
+                "annotation": "Language",
+                "kind": "keyword_only",
+                "default": "Language.PYTHON",
+                "default_known": true
+              }
+            ],
+            "returns": "ObservationResult"
+          }
+        },
+        {
+          "id": "COMPACT-FILES-TO-WRITE",
+          "kind": "class",
+          "qualified_name": "archkeel.check.ports.FilesToWrite",
+          "language": "python",
+          "parent_id": "archkeel.check.ports",
+          "presence": "planned",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "modifiers": [
+            "frozen"
+          ],
+          "responsibilities": [
+            "Carry ordered output paths and bytes without owning file I/O."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ]
+        },
+        {
+          "id": "COMPACT-FILES-TO-WRITE-ENTRIES",
+          "kind": "attribute",
+          "qualified_name": "archkeel.check.ports.FilesToWrite.entries",
+          "language": "python",
+          "parent_id": "COMPACT-FILES-TO-WRITE",
+          "presence": "planned",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "annotation": "tuple[tuple[str, bytes], ...]",
+          "responsibilities": [
+            "Retain output order and exact bytes in an immutable sequence."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
           ]
         }
       ],

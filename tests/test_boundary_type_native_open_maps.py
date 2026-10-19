@@ -114,7 +114,7 @@ def test_exact_literal_arm_object_leaf_keeps_recursive_unknown_and_other_finding
     after = fixture(tmp_path, "compound", [ARM_SELECTOR, {**ARM_SELECTOR, "container_depth": 2}])
     old = trace_valid_violations(before)
     new = trace_valid_violations(after)
-    assert len(old) == 3 and len(new) == 2
+    assert len(old) == 4 and len(new) == 3
     assert all(r in old for r in new)
     assert [r.data.get("nested_annotation") for r in old if r not in new] == ["object"]
     assert before.records("unknowns") == after.records("unknowns")
@@ -122,10 +122,14 @@ def test_exact_literal_arm_object_leaf_keeps_recursive_unknown_and_other_finding
         r.kind == "boundary_type_position"
         and r.data.get("qualified_name") == Q
         and r.data.get("position") == "return"
-        and r.data.get("reason") == "other"
+        and r.data.get("reason") == "forward_reference"
         for r in after.records("unknowns")
     )
-    assert not any(r.data.get("nested_annotation") == "dict[str, 'JsonValue']" for r in old)
+    assert any(
+        r.data.get("nested_annotation") == "dict[str, 'JsonValue']"
+        and r.data.get("container_depth") == 1
+        for r in new
+    )
     facts = [r for r in after.records("typing_signals") if r.kind == "boundary_type_allowance"]
     assert len(facts) == 2
     leaf = next(r for r in facts if r.data.get("accepted_opacity"))

@@ -518,7 +518,7 @@ def test_a_renamed_baseline_entry_is_not_a_padded_one(tmp_path: Path) -> None:
     root = _prepare_repo(tmp_path, {"shop/render/text.py": violating})
     baseline = root / "known-violations.json"
     _, written = run_validate(root, SHOP_CONFIG, observe, baseline=baseline, write_baseline=True)
-    baseline.write_bytes(written[str(baseline)])
+    baseline.write_bytes(dict(written.entries)[str(baseline)])
     assert b"shop.render.text" in baseline.read_bytes()
     _git(root, "add", "-A")
     _git(root, "commit", "-q", "-m", "known violation")
@@ -545,7 +545,7 @@ def test_renamed_coupling_names_are_not_a_widened_budget(tmp_path: Path) -> None
     root = _prepare_repo(tmp_path, {"architecture-contract.json": contract})
     baseline = root / "known-violations.json"
     _, written = run_validate(root, SHOP_CONFIG, observe, baseline=baseline, write_baseline=True)
-    baseline.write_bytes(written[str(baseline)])
+    baseline.write_bytes(dict(written.entries)[str(baseline)])
     assert b"shop.render.text:render_order" in baseline.read_bytes()
     _git(root, "add", "-A")
     _git(root, "commit", "-q", "-m", "coupling budget")
@@ -762,7 +762,7 @@ def test_a_rename_the_old_contract_cannot_parse_under_stays_amendable(tmp_path: 
         in result.failures
     )
     assert (amended.exit_code, amended.artifact) == (0, str(amendment))
-    assert str(amendment) in files
+    assert str(amendment) in dict(files.entries)
 
 
 def test_validate_without_against_names_no_rename(tmp_path: Path) -> None:

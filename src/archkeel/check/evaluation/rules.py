@@ -31,6 +31,7 @@ from archkeel.ir.model import (
     ArchitectureContract,
     ArchitectureRule,
     BoundaryTypesRule,
+    CallOwnerRule,
     CompleteAssignmentRule,
     CompleteExternalScopeRule,
     CompleteRequiresRule,
@@ -926,6 +927,8 @@ def symbol_limits(
 
 def rule_scopes(rule: ArchitectureRule) -> dict[str, tuple[str, ...]]:
     """Name the module selectors whose absence would make a rule vacuous."""
+    if isinstance(rule, CallOwnerRule):
+        return {}
     if isinstance(rule, ForbiddenDependencyRule | AllowedDependencyRule):
         return {"source": (rule.source,), "target": (rule.target,)}
     if isinstance(rule, ExternalDependencyScopeRule):
@@ -2046,7 +2049,7 @@ def rule_evaluation_facts(
     facts: list[RawRecord] = []
     for rule in contract.rules:
         if rule.kind in profile.unsupported_rules or isinstance(
-            rule, AllowedDependencyRule | BoundaryTypesRule | NoComponentCyclesRule
+            rule, AllowedDependencyRule | BoundaryTypesRule | NoComponentCyclesRule | CallOwnerRule
         ):
             continue
         if isinstance(rule, LayerOrderRule):

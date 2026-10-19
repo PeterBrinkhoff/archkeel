@@ -109,7 +109,7 @@ REPORT_CASES = {
     "wide": ("class-a-recursive-wide-package", 0),
     "deep": ("class-a-recursive-inside-violation", 2),
     "mixed": ("class-a-boundary-types-mixed-evidence", 2),
-    "unknown": ("class-a-boundary-types-ordinary-reexport-chain-unknown", 0),
+    "unknown": ("class-a-boundary-types-opaque-map-values-unknown", 0),
     "known": ("validation-baseline-subject-order", 0),
     "target-present": ("target-module-present", 0),
     "target-absent": ("target-module-absent", 0),
@@ -160,8 +160,8 @@ PROJECT_REPORT_GROUPS = (
         ),
         "target_depth": "Five responsibility areas with closed principal class and method scopes.",
         "evidence_limits": (
-            "All files have AST coverage; 34 class inventories and 13 inheritance "
-            "relationships remain UNKNOWN."
+            "All files have AST coverage; 33 closed declaration inventories pass; the "
+            "AppEnvTypes enum inventory and 13 inheritance relationships remain UNKNOWN."
         ),
         "baseline": "uml-python-realworld-project",
         "variants": (

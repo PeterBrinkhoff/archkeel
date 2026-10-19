@@ -8,14 +8,15 @@
       "role": "component",
       "packages": [],
       "responsibilities": [
-        "Execute the configured collector, validate its protocol response, and record runtime provenance.",
-        "Own direct collector-start classification without invoking language callbacks."
+        "Bound collector execution, validate protocol responses and clean up child processes."
       ],
       "forbidden_responsibilities": [
-        "Parsing sources, importing language collectors, or deciding architecture policy."
+        "Parsing sources, importing language collectors, or deciding architecture policy.",
+        "Language parsing and architecture policy."
       ],
       "provenance": [
-        "docs/architecture/language-adapter-target.md"
+        "docs/architecture/language-adapter-target.md",
+        "docs/architecture/target/design.md"
       ],
       "decided_by": "agent",
       "exact_modules": [
@@ -41,22 +42,32 @@
         "archkeel.analyzer.python"
       ],
       "responsibilities": [
-        "Own Python parsing, resolution and source-fact collection."
+        "Derive Python facts from AST, lexical bindings and source evidence."
       ],
       "forbidden_responsibilities": [
-        "Governance policy and sibling adapter imports."
+        "Governance policy and sibling adapter imports.",
+        "Dart/TypeScript semantics and architecture verdicts."
       ],
       "provenance": [
-        "docs/architecture/language-adapter-target.md"
+        "docs/architecture/language-adapter-target.md",
+        "docs/architecture/target/design.md"
       ],
       "decided_by": "agent",
       "inside": "docs/architecture/contracts/python.json",
       "planned": [],
-      "public": [],
+      "public": [
+        "archkeel.analyzer.python.collect:PythonProviderCollector"
+      ],
       "requires": [
         {
           "component": "process",
-          "rationale": "Use the shared runtime-provenance reader without importing the sibling language adapter."
+          "rationale": "Reuse runtime provenance and bounded process transport for source-bound provider collection without importing sibling adapters.",
+          "through": [
+            "archkeel.analyzer.bootstrap:is_direct_entrypoint",
+            "archkeel.analyzer.runtime:collector_provenance",
+            "archkeel.analyzer.runtime:python_requirement",
+            "archkeel.analyzer.process:ProcessCollector"
+          ]
         }
       ]
     },
@@ -68,13 +79,15 @@
         "archkeel.analyzer.dart"
       ],
       "responsibilities": [
-        "Collect bounded Dart syntax and source-level relationships entirely in Python, without a Dart SDK."
+        "Derive Dart facts through snapshot-bound syntax and resolution."
       ],
       "forbidden_responsibilities": [
-        "Unsupported full-Dart claims, governance policy and sibling adapter imports."
+        "Unsupported full-Dart claims, governance policy and sibling adapter imports.",
+        "Python/TypeScript semantics and architecture verdicts."
       ],
       "provenance": [
-        "docs/architecture/language-adapter-target.md"
+        "docs/architecture/language-adapter-target.md",
+        "docs/architecture/target/design.md"
       ],
       "decided_by": "agent",
       "inside": "docs/architecture/contracts/dart.json",
@@ -83,7 +96,12 @@
       "requires": [
         {
           "component": "process",
-          "rationale": "Use the shared runtime-provenance reader without importing the sibling language adapter."
+          "rationale": "Use the shared runtime-provenance reader without importing the sibling language adapter.",
+          "through": [
+            "archkeel.analyzer.bootstrap:is_direct_entrypoint",
+            "archkeel.analyzer.runtime:collector_provenance",
+            "archkeel.analyzer.runtime:python_requirement"
+          ]
         }
       ]
     },
@@ -95,13 +113,15 @@
         "archkeel.analyzer.typescript"
       ],
       "responsibilities": [
-        "Own TypeScript syntax parsing, module resolution and bounded source-fact collection."
+        "Derive TypeScript facts from immutable inputs and compiler configuration."
       ],
       "forbidden_responsibilities": [
-        "Type-checker semantics, governance policy and sibling adapter imports."
+        "Type-checker semantics, governance policy and sibling adapter imports.",
+        "Python/Dart semantics and architecture verdicts."
       ],
       "provenance": [
-        "docs/architecture/language-adapter-target.md"
+        "docs/architecture/language-adapter-target.md",
+        "docs/architecture/target/design.md"
       ],
       "decided_by": "agent",
       "inside": "docs/architecture/contracts/typescript.json",
@@ -110,7 +130,12 @@
       "requires": [
         {
           "component": "process",
-          "rationale": "Use the shared runtime-provenance reader without importing the sibling language adapter."
+          "rationale": "Use the shared runtime-provenance reader without importing the sibling language adapter.",
+          "through": [
+            "archkeel.analyzer.bootstrap:is_direct_entrypoint",
+            "archkeel.analyzer.runtime:collector_provenance",
+            "archkeel.analyzer.runtime:python_requirement"
+          ]
         }
       ]
     }
@@ -517,6 +542,43 @@
             ],
             "returns": "_ProcessPlatform | None"
           }
+        },
+        {
+          "id": "process.collect_response",
+          "kind": "method",
+          "qualified_name": "archkeel.analyzer.process.ProcessCollector.collect_response",
+          "language": "python",
+          "parent_id": "process",
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "signature": {
+            "parameters": [
+              {
+                "name": "self",
+                "annotation": null,
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "request",
+                "annotation": "CollectionRequest",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              }
+            ],
+            "returns": "CollectionResponse | CollectionError"
+          },
+          "presence": "planned",
+          "responsibilities": [
+            "Return a bounded authenticated response, including captured provider bytes for the native survey."
+          ],
+          "provenance": [
+            "docs/architecture/language-adapter-target.md"
+          ]
         }
       ],
       "relationships": [
@@ -562,6 +624,25 @@
           "id": "PORT-REL-9",
           "kind": "calls",
           "source_id": "process.collect",
+          "target_id": "process.collect_response",
+          "resolution": "not_applicable",
+          "candidate_ids": [],
+          "expression": null,
+          "evidence_ids": [],
+          "provenance": [
+            "docs/architecture/language-adapter-target.md"
+          ],
+          "record_ids": [],
+          "candidate_count": null,
+          "candidates_truncated": false,
+          "reason": "The facts-only API uses the same bounded response runner as provider capture.",
+          "through": [],
+          "decided_by": null
+        },
+        {
+          "id": "PORT-REL-PROVIDER-EXCHANGE",
+          "kind": "calls",
+          "source_id": "process.collect_response",
           "target_id": "process._exchange",
           "resolution": "not_applicable",
           "candidate_ids": [],
@@ -573,7 +654,7 @@
           "record_ids": [],
           "candidate_count": null,
           "candidates_truncated": false,
-          "reason": "Process collection delegates bounded pipe exchange to its private method.",
+          "reason": "The shared response runner owns bounded pipe exchange and cleanup.",
           "through": [],
           "decided_by": null
         }

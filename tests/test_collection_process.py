@@ -9,6 +9,7 @@ import sys
 import time
 from enum import Enum
 from pathlib import Path
+from threading import TIMEOUT_MAX
 from types import SimpleNamespace
 from typing import get_type_hints
 from unittest.mock import patch
@@ -31,6 +32,12 @@ def _collector(code: str, **limits):
     from archkeel.analyzer.process import ProcessCollector
 
     return ProcessCollector((sys.executable, "-B", "-c", code), **limits)
+
+
+@pytest.mark.parametrize("timeout", [float("nan"), float("inf"), float("-inf"), TIMEOUT_MAX * 2])
+def test_unsupported_collector_timeout_is_rejected_before_execution(timeout):
+    with pytest.raises(ValueError, match="collector limits"):
+        _collector("pass", timeout_seconds=timeout)
 
 
 def _assert_process_exited(pid: int) -> None:
@@ -226,6 +233,42 @@ def test_response_revision_must_match_requested_snapshot(tmp_path) -> None:
     assert isinstance(result, CollectionError)
     assert result.kind == "protocol_error"
     assert "snapshot" in result.message
+
+
+@pytest.mark.parametrize(
+    "sections,accepted",
+    [
+        (("imports",), False),
+        (("imports", "unknowns"), True),
+        (("imports", "unknowns", "symbols"), False),
+    ],
+)
+def test_python_survey_response_matches_requested_phase(sections, accepted):
+    from dataclasses import replace
+
+    from archkeel.analyzer.process import _requested_facts
+    from archkeel.ir.facts import FactSection, SourceSectionName
+    from archkeel.ir.facts_codec import ProtocolError
+    from archkeel.ir.protocol import ProtocolVersion, PythonCollectionPhase, PythonSettings
+
+    facts = decode_response(json.dumps(_response()).encode()).facts
+    names = tuple(SourceSectionName(name) for name in sections)
+    records = {section.name: section.records for section in facts.sections}
+    facts = replace(
+        facts,
+        capabilities=replace(facts.capabilities, sections=names),
+        sections=tuple(FactSection(name, records.get(name, ())) for name in names),
+    )
+    request = replace(
+        decode_request(_request()),
+        protocol_version=ProtocolVersion.V4,
+        resolver=PythonSettings(phase=PythonCollectionPhase.IMPORTS),
+    )
+    if accepted:
+        _requested_facts(facts, request)
+    else:
+        with pytest.raises(ProtocolError, match="survey"):
+            _requested_facts(facts, request)
 
 
 @pytest.mark.parametrize("language", ["python", "dart"])
@@ -490,6 +533,7 @@ def _platform_repository(tmp_path, *, changed=None, relocate=False, collect_prob
         "process.output_limit_bytes",
         "process.stderr_limit_bytes",
         "process.collect",
+        "process.collect_response",
         "process.__post_init__",
         "process._exchange",
         "PROCESS-PLATFORM",
@@ -509,7 +553,7 @@ def _platform_repository(tmp_path, *, changed=None, relocate=False, collect_prob
             {
                 "id": _COLLECT_PROBE,
                 "kind": "forbidden_construct",
-                "source": "archkeel.analyzer.process.ProcessCollector.collect",
+                "source": "archkeel.analyzer.process.ProcessCollector.collect_response",
                 "constructs": ["string_literal_compare"],
                 "rationale": "Trace an OS mutation while retaining the real filename grammar.",
                 "provenance": ["docs/architecture/language-adapter-target.md"],
@@ -559,7 +603,7 @@ def test_native_actual_process_target_and_os_control_sites(tmp_path):
     sites = [
         (row.data.get("owner"), excerpt)
         for owner in (
-            "archkeel.analyzer.process.ProcessCollector.collect",
+            "archkeel.analyzer.process.ProcessCollector.collect_response",
             "archkeel.analyzer.process._terminate_process_tree",
             "archkeel.analyzer.process._process_platform",
         )
@@ -576,9 +620,88 @@ def test_native_actual_process_target_and_os_control_sites(tmp_path):
     assert [
         excerpt
         for _, excerpt in _comparison_sites(
-            model, "archkeel.analyzer.process.ProcessCollector.collect"
+            model, "archkeel.analyzer.process.ProcessCollector.collect_response"
         )
     ] == ['if Path(executable).suffix.lower() in {".bat", ".cmd"}:']
+
+
+@pytest.mark.parametrize(
+    "changed,missing,expected",
+    [
+        (None, None, "PASS"),
+        (
+            (
+                "response = self.collect_response(request)",
+                "response = self._exchange(request, b'', [])",
+            ),
+            "PORT-REL-9",
+            "FAIL",
+        ),
+        (
+            (
+                "stdout, stderr = self._exchange(process, payload, workers)",
+                "stdout, stderr = self.collect_response(request)",
+            ),
+            "PORT-REL-PROVIDER-EXCHANGE",
+            "UNKNOWN",
+        ),
+    ],
+    ids=["shared-runner", "missing-response-delegation", "missing-bounded-exchange"],
+)
+def test_required_process_call_path_keeps_both_direct_edges(tmp_path, changed, missing, expected):
+    root, config = _platform_repository(tmp_path, changed=changed)
+    authored = json.loads(
+        (_PROCESS_ROOT / "docs/architecture/contracts/analyzer.json").read_text()
+    )["declarations"]["uml"]["relationships"]
+    required = {
+        "PORT-REL-9": ("process.collect", "process.collect_response"),
+        "PORT-REL-PROVIDER-EXCHANGE": ("process.collect_response", "process._exchange"),
+    }
+    relationships = [row for row in authored if row["id"] in required]
+    assert {row["id"]: (row["source_id"], row["target_id"]) for row in relationships} == required
+    target_path = root / "contract.json"
+    target = json.loads(target_path.read_text())
+    target["declarations"]["uml"]["relationships"] = relationships
+    target_path.write_text(json.dumps(target))
+    intent = target_path.read_bytes()
+    model = _model(root, config)
+    comparison = architecture_report(model).comparison
+    assert comparison is not None and comparison.status == expected
+    violations = trace_valid_violations(model)
+    if missing:
+        [assessment] = [row for row in comparison.assessments if row.subject_id == missing]
+        assert assessment.status == expected
+        if expected == "FAIL":
+            assert any(row.data.get("subject_id") == missing for row in violations)
+        else:
+            assert assessment.reason == "Unresolved source sites may refer to this endpoint."
+            assert assessment.fact_ids and assessment.evidence_ids
+            calls_by_id = {row.id: row for row in model.records("calls")}
+            assert all(
+                calls_by_id[identifier].data.get("status") in {"unresolved", "partially_resolved"}
+                for identifier in assessment.fact_ids
+            )
+            assert not any(
+                row.data.get("source_scope")
+                == "archkeel.analyzer.process.ProcessCollector.collect_response"
+                and row.data.get("targets")
+                == ("archkeel.analyzer.process.ProcessCollector._exchange",)
+                for row in model.records("calls")
+            )
+    else:
+        assert not violations
+        calls = {
+            (row.data.get("source_scope"), row.data.get("targets"))
+            for row in model.records("calls")
+            if row.data.get("expression") in {"self.collect_response", "self._exchange"}
+            and row.data.get("status") == "resolved"
+        }
+        prefix = "archkeel.analyzer.process.ProcessCollector."
+        assert calls == {
+            (prefix + "collect", (prefix + "collect_response",)),
+            (prefix + "collect_response", (prefix + "_exchange",)),
+        }
+    assert target_path.read_bytes() == intent
 
 
 @pytest.mark.parametrize(
@@ -655,7 +778,7 @@ def test_actual_os_comparison_mutations_keep_native_control_trace(tmp_path, old,
         facts = [
             row
             for row, excerpt in _comparison_sites(
-                model, "archkeel.analyzer.process.ProcessCollector.collect"
+                model, "archkeel.analyzer.process.ProcessCollector.collect_response"
             )
             if excerpt == 'if os.name == "nt":'
         ]

@@ -10,6 +10,7 @@ from pathlib import Path
 from archkeel.check.uml_compare import compare_graphs
 from archkeel.ir.codec import parse_contract
 from archkeel.ir.model import Observation
+from archkeel.ir.report_graph import architecture_report
 from archkeel.ir.source_graph import observed_graph
 from archkeel.ir.target_graph import declared_graph
 
@@ -116,13 +117,10 @@ def test_protocol_target_rejects_a_changed_language_discriminator_without_copyin
     assert target.entities == _graphs(self_observation)[1].entities
 
 
-def test_expanded_self_target_retains_exactly_eight_incomplete_member_scopes(
+def test_expanded_self_target_proves_all_formerly_incomplete_member_scopes(
     self_observation: Observation,
 ):
-    unknowns = self_observation.records("unknowns")
-    inventory = tuple(item for item in unknowns if item.kind == "uml_conformance")
-    assert len(inventory) == 8
-    assert {item.data.get("subject_id") for item in inventory} == {
+    ids = {
         "ir:source-facts",
         "ir:coverage",
         "ir:snapshot",
@@ -131,34 +129,18 @@ def test_expanded_self_target_retains_exactly_eight_incomplete_member_scopes(
         "ir:response",
         "ir:error",
         "check:port",
+        "ir:IR-CALL-OWNER-RULE",
+        "ir:IR-CALL-BINDING",
     }
-    assert all(
-        item.data.get("aspect") == "completeness" and item.data.get("status") == "UNKNOWN"
-        for item in inventory
-    )
-    # AD-92 adds twelve alias UNKNOWNs; these eight incomplete UML scopes stay unchanged.
-    from archkeel.check.ratchets import unknown_positions_by_rule
+    comparison = architecture_report(self_observation).comparison
+    assert comparison is not None
+    inventory = {
+        item.subject_id: item.status
+        for item in comparison.assessments
+        if item.aspect == "completeness" and item.subject_id in ids
+    }
+    assert inventory == dict.fromkeys(ids, "PASS")
+    from archkeel.check.ratchets import unknown_positions, unknown_positions_by_rule
 
-    counts = dict(unknown_positions_by_rule(self_observation))
-    assert {rule: count for rule, count in counts.items() if not rule.startswith("UML-TARGET")} == {
-        "RENDER-TYPES-DECLARED": 29,
-        "CHECK-TYPES-DECLARED": 19,
-        "ANALYZER-TYPES-DECLARED": 2,
-    }
-    assert sum(counts.values()) == 58
-    detail_positions = [
-        item
-        for item in unknowns
-        if item.kind == "boundary_type_position"
-        and item.data.get("qualified_name") == "archkeel.render.html.render_architecture_details"
-    ]
-    assert len(detail_positions) == 1
-    assert detail_positions[0].data.get("annotation") == "RunResult"
-    assert detail_positions[0].data.get("position") == "result"
-    # The diagnostic vocabulary is now closed. This same API position remains UNKNOWN
-    # at the recursive JSON payload of a coverage failure; the position count is unchanged.
-    assert detail_positions[0].data.get("path") == "result.coverage.failures.data.entries"
-    assert detail_positions[0].data.get("nested_annotation") == "tuple[tuple[str, JsonValue], ...]"
-    assert detail_positions[0].data.get("reason") == "other"
-    baseline = json.loads((ROOT / "architecture-baseline.json").read_text())
-    assert baseline["budgets"]["unknown_positions"] == 58
+    assert unknown_positions_by_rule(self_observation) == {}
+    assert unknown_positions(self_observation) == 0

@@ -23,6 +23,7 @@ from .bindings import unread_bindings
 from .codec_contract import parse_dependency_selector
 from .duplication import repeated_logic
 from .facts import RuntimeRequirementState as _RuntimeRequirementState
+from .facts import SourceProfile as _SourceProfile
 from .facts_validation import validate_source_bindings
 from .interfaces import component_owners, owner_of
 from .measurements import RatchetError
@@ -762,9 +763,17 @@ def _ownership_blocker_reason(observation: Observation, rule_id: str) -> str | N
     return " ".join(reasons) if reasons else None
 
 
-def _rule_receipt_complete(declaration: Record, receipt: Record | None) -> bool:
+def _rule_receipt_complete(
+    observation: Observation, declaration: Record, receipt: Record | None
+) -> bool:
     if declaration.kind == "no_component_cycles":
         return receipt is not None and receipt.data.get("cycle_scope_complete") is True
+    if declaration.kind == "call_owner":
+        return (
+            receipt is not None
+            and receipt.rule_ids == (declaration.id,)
+            and _call_owner_receipt_complete(observation, receipt)
+        )
     return receipt is not None and receipt.data.get("assessment_complete", True) is True
 
 
@@ -815,7 +824,11 @@ def _dependency_receipt_ownership(
 
 
 def dependency_binding_id(
-    sections: _Iterable[Section], failures: _Iterable[Record], evidence: _Iterable[Evidence]
+    sections: _Iterable[Section],
+    failures: _Iterable[Record],
+    evidence: _Iterable[Evidence],
+    *,
+    include_calls: bool = False,
 ) -> str:
     """Bind dependency proof content identically at issuance and replay (AD-237)."""
     bound = [
@@ -823,13 +836,21 @@ def dependency_binding_id(
         for section in sections
         for record in section.records
         if section.name in {"modules", "imports", "symbols"}
+        or section.name == "references"
+        and record.kind == "script_namespace_effect"
+        or include_calls
+        and section.name == "calls"
         or section.name == "declarations"
-        and record.kind
-        in {
-            "component_responsibility",
-            "inside_component_responsibility",
-            "complete_requires",
-        }
+        and (
+            record.kind
+            in {
+                "component_responsibility",
+                "inside_component_responsibility",
+                "complete_requires",
+            }
+            or include_calls
+            and record.kind == "call_owner"
+        )
     ]
     bound.extend(failures)
     return stable_id(
@@ -840,6 +861,30 @@ def dependency_binding_id(
                 tuple(sorted(evidence, key=lambda item: item.id)),
             )
         ),
+    )
+
+
+def rule_evaluation_binding_id(
+    inventory_binding_id: str, receipt: Record, observation_schema_version: str
+) -> str:
+    """Bind one evaluator claim without recursively including its own proof."""
+    claim = (
+        receipt.id,
+        receipt.evidence_class,
+        receipt.area,
+        receipt.kind,
+        receipt.title,
+        receipt.subjects,
+        receipt.evidence_ids,
+        receipt.rule_ids,
+        receipt.fact_ids,
+        receipt.provenance,
+        tuple(
+            (key, value) for key, value in sorted(receipt.data.entries) if key != "call_scope_proof"
+        ),
+    )
+    return stable_id(
+        "RULE-EVALUATION-PROOF", observation_schema_version, inventory_binding_id, repr(claim)
     )
 
 
@@ -877,6 +922,7 @@ def _dependency_gaps_complete(
             import_ids=(),
             selected_inputs=tuple(str(path) for path in selected),
             source_records=records,
+            allow_script_effects=observation.analyzer.name == _SourceProfile.TYPESCRIPT,
         )
     except ValueError:
         return False
@@ -967,6 +1013,38 @@ def _rule_scope_complete(
     )
 
 
+def _call_owner_receipt_complete(observation: Observation, receipt: Record | None) -> bool:
+    if receipt is None or not isinstance(
+        (proof := receipt.data.get("call_scope_proof")), RecordData
+    ):
+        return False
+    coverage = observation.coverage
+    selected = proof.get("selected_files")
+    return (
+        coverage.status == Verdict.PASS
+        and not coverage.failures
+        and isinstance(selected, tuple)
+        and bool(selected)
+        and coverage.files_discovered
+        == coverage.files_read
+        == coverage.files_parsed
+        == len(selected)
+        and len(set(selected)) == len(selected)
+        and set(selected) == {r.data.get("file") for r in observation.records("modules") or ()}
+        and proof.get("source_digest") == observation.source.source_digest
+        and proof.get("source_scope") == observation.source.scope
+        and proof.get("contract_digest") == observation.contract.digest
+        and proof.get("binding_id")
+        == rule_evaluation_binding_id(
+            dependency_binding_id(
+                observation.sections, coverage.failures, observation.evidence, include_calls=True
+            ),
+            receipt,
+            observation.schema_version,
+        )
+    )
+
+
 def rule_assessments(
     observation: Observation,
     *,
@@ -995,7 +1073,7 @@ def rule_assessments(
         undecided = undecided_by_rule.get(identifier, 0)
         violation_count = violations[identifier]
         receipt = receipts.get(identifier)
-        receipt_complete = _rule_receipt_complete(declaration, receipt)
+        receipt_complete = _rule_receipt_complete(observation, declaration, receipt)
         scope_complete = _rule_scope_complete(observation, declaration, receipt, complete)
         evaluation_proven = scope_complete and receipt_complete
         declared_only = declaration.kind == "allowed_dependency"

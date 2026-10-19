@@ -8,6 +8,34 @@ JSON and TOML field labels remain declarative schema data validated by the exist
 
 The existing v1/v2/v3 collector encodings, strict version rejection, old observation encodings and source dirty unknown spelling remain stable. Native tests observe actual codec source, reject equality, membership, match and Final-string controls, and weaken the real protocol-version annotation against unchanged authored Target intent.
 
+V4 adds source-bound Python provider inputs and an explicit import-survey phase.
+The survey preserves file coverage and parse gaps but cannot satisfy a full Python
+observation. Native composition always follows it with full collection under one
+shared deadline; custom collector wiring keeps its existing behavior. See the
+[native evidence scope](target/design.md#native-evidence-extension) for proof limits.
+Provider kind `declaration` links a lexical declaration to its captured provider
+path, digest and evidence span. It does not assert registry contents, import
+execution, runtime kind, callable signature or value shape.
+
+The V4 `providers` survey discovers only requested source alias routes inside the
+bounded collector. The parent re-reads their exact resolution inputs before full
+collection; ordinary `imports` surveys and legacy protocols retain their scope.
+Provider `alias` carries its publishing import, target and supporting evidence.
+Missing or cyclic targets remain UNKNOWN. Provider facts never enlarge governed
+files, imports or coverage.
+A closed star alias additionally binds a unique literal export inventory. Frozen
+stdlib source is accepted only when the actual stdlib side file matches the
+captured bytes and compiling it matches the native loader code, including typed
+constants and nested code metadata, under the collector interpreter optimization.
+No provider code is executed; missing or changed source remains UNKNOWN.
+
+V4 symbols may carry `contextmanager_signature`: source factory, effective
+wrapper/payload, own function evidence, provider support and closed CPython
+partial/ABC witnesses. Strict decoding binds this metadata to its carrying function,
+original return, runtime and supported provider roles. Tags become owned enums;
+wire spellings and original signature fields remain unchanged. Earlier protocols
+reject this metadata. Unsupported source transformations remain UNKNOWN.
+
 This migration covers the named collector/codec modules. It does not assert that every historical string-controlled branch in the repository has been migrated.
 
 SourceProfile and SourceSectionName are nominal enums decoded at ingress, with exactly the former three profile IDs and eight section names. ObservedSection remains a compatibility name for the shared section identity owner. Its old six-value Literal annotation imposed no runtime validation; only this internal annotation now names the full canonical vocabulary. Registered profile subsets and mandatory imports/unknowns validation remain unchanged and have decoder controls.

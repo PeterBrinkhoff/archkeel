@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Literal
 
 from archkeel.analyzer.process import ProcessCollector
+from archkeel.analyzer.python.collect import PythonProviderCollector
 from archkeel.check.observation import analyze_source_snapshot
 from archkeel.check.observe import Observer
 from archkeel.check.ports import Language, ObservationResult
@@ -21,6 +22,7 @@ def observer_for(
     tsconfig: str = "tsconfig.json",
     output_limit_bytes: int | None = None,
 ) -> Observer:
+    native_python = collector_argv is None and language == Language.PYTHON
     if collector_argv is None:
         collector_argv = (sys.executable, "-I", "-B", "-m", f"archkeel.analyzer.{language}.entry")
     collector = (
@@ -28,7 +30,7 @@ def observer_for(
         if output_limit_bytes is None
         else ProcessCollector(collector_argv, output_limit_bytes=output_limit_bytes)
     )
-    return Observer(collector, tsconfig)
+    return Observer(PythonProviderCollector(collector) if native_python else collector, tsconfig)
 
 
 def observe(

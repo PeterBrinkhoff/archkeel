@@ -18,9 +18,9 @@ from fixtures.demo_catalog_typescript import VARIANTS
 CATALOGS = Path(differential.FIXTURES)
 
 
-def _verdict_findings(monkeypatch, old, new):
+def _verdict_findings(monkeypatch, old, new, name="unit/core-aggregate"):
     case = differential.Case(
-        "unit/core-aggregate",
+        name,
         "variant",
         Path("."),
         differential.request_for(Path("."), ("src",), "app"),
@@ -104,6 +104,55 @@ def test_aggregate_equivalence_does_not_mask_other_metadata_changes(
     }
 
 
+@pytest.mark.parametrize(
+    "case,rule,status,aggregate",
+    [
+        ("unsupported-target-symbol", "PROBE", "UNKNOWN", "UNKNOWN"),
+        ("unsupported-symbol-interface", "PROBE", "FAIL", "FAIL"),
+        ("unsupported-symbol-requires", "REQUIRES", "UNKNOWN", "UNKNOWN"),
+    ],
+)
+def test_native_contract_extension_requires_every_exact_verdict(
+    monkeypatch, case, rule, status, aggregate
+):
+    new = {
+        **dict.fromkeys(
+            [
+                "ASSIGNMENT",
+                "COMPONENT-CYCLES",
+                "DATA-PEERS",
+                "DOMAIN-NO-DATA",
+                "EXTERNAL-COMPLETE",
+                "EXTERNAL-SHOP",
+                "LAYOUT",
+                "MODULE-CYCLES",
+                "REQUIRES",
+            ],
+            "PASS",
+        ),
+        rule: status,
+        "<declared_rules>": aggregate,
+        "<diagnostics>": "",
+        "<exit>": "0",
+        "<observation_complete>": "PASS",
+    }
+    old = {
+        **dict.fromkeys(new, "UNKNOWN"),
+        "<diagnostics>": "rule_unsupported_by_profile",
+        "<exit>": "2",
+    }
+    name = f"variant/typescript-{case}"
+    findings, _, _ = _verdict_findings(monkeypatch, old, new, name)
+    assert findings and {item.klass for item in findings} == {"verified_extension"}
+    for field in new:
+        changed = {**new, field: "FAIL" if new[field] != "FAIL" else "PASS"}
+        findings, _, _ = _verdict_findings(monkeypatch, old, changed, name)
+        assert not any(item.klass == "verified_extension" for item in findings), field
+    for before in ({**old, "<exit>": "0"}, {**old, rule: "PASS"}):
+        findings, _, _ = _verdict_findings(monkeypatch, before, new, name)
+        assert not any(item.klass == "verified_extension" for item in findings)
+
+
 @pytest.fixture(scope="module")
 def judged(tmp_path_factory: pytest.TempPathFactory) -> differential.Verdict:
     results = differential.run(tmp_path_factory.mktemp("differential"))
@@ -123,7 +172,9 @@ def _size(name: str) -> int:
 def test_the_corpus_holds_every_catalog_case(judged: differential.Verdict) -> None:
     groups = judged.report["groups"]
     assert isinstance(groups, dict)
-    assert groups["variant"] == len(VARIANTS) == 34
+    frozen = json.loads((CATALOGS / "typescript-reference-demos.json").read_text())
+    assert groups["variant"] == len(frozen["variants"]) == 34
+    assert set(frozen["variants"]) <= {variant.id for variant in VARIANTS}
     assert groups["hidden-loader"] == _size("typescript-hidden-loaders.json") == 111
     # Each runtime alias runs once as written and once with a hidden dependency.
     assert groups["runtime-alias"] == 2 * _size("typescript-runtime-aliases.json") == 48
@@ -139,7 +190,10 @@ def test_no_case_is_a_defect_or_suspicious_without_proof(judged: differential.Ve
     assert counts["suspicious"] == 0
     groups = judged.report["groups"]
     assert isinstance(groups, dict)
-    assert counts["equivalent"] + counts["more_conservative"] == sum(groups.values())
+    assert counts["verified_extension"] == 3
+    assert sum(
+        counts[kind] for kind in ("equivalent", "more_conservative", "verified_extension")
+    ) == sum(groups.values())
 
 
 def test_core_verdicts_never_gain_a_pass_or_a_fail_the_oracle_lacked(
@@ -151,11 +205,71 @@ def test_core_verdicts_never_gain_a_pass_or_a_fail_the_oracle_lacked(
         item
         for case in cases
         for item in case["findings"]
-        if item["subject"].startswith("Core verdict") and item["class"] != "equivalent"
+        if item["subject"].startswith("Core verdict")
+        and item["class"] not in {"equivalent", "verified_extension"}
     ]
     # Non-equivalent changes only become UNKNOWN; aggregate equivalence requires prior FAIL.
     assert all(item["frontend"] == "UNKNOWN" for item in changed)
     assert judged.report["core_statuses_compared"] > 400
+
+
+def test_native_global_inventory_has_exact_positive_and_unknown_controls(judged):
+    def edge(module, name, line, column, builtin=False):
+        return [
+            [module, "script_global", name, line, column],
+            {
+                "kind": "BuiltinTarget" if builtin else "UnresolvedTarget",
+                "module": None,
+                "file": None,
+                "runtime": None,
+                "declaration": None,
+                "package": name if builtin else None,
+                "flags": (False, False, False),
+            },
+        ]
+
+    expected = {
+        "variant/typescript-indirect-require": [
+            edge("shop.src.main_x2e_ts", "module", 8, 1),
+            edge("shop.src.main_x2e_ts", "module", 8, 21),
+        ],
+        "variant/typescript-syntax-error": [edge("shop.src.domain.order_x2e_ts", "export", 1, 1)],
+        "hidden-loader/export-implicit-type-equals-alias": [
+            edge("app.src.main_x2e_ts", "mod", 1, 13)
+        ],
+        "runtime-alias/relative/first": [edge("app.src.runtime_x2e_js", "Error", 1, 7, True)],
+        "fixture/H-uml-typescript": [edge("demo.src.core_x2e_ts", "String", 19, 56, True)],
+        "scenario/esm-require-and-triple-slash": [
+            edge("app.src.main_x2e_mts", "require", 2, 14),
+            edge("app.src.main_x2e_mts", "require", 2, 23),
+            edge("app.src.main_x2e_mts", "name", 2, 48),
+        ],
+    }
+    for extension in ("js", "mjs"):
+        for state in ("gap", "complete"):
+            expected[f"scenario/explicit-runtime-{extension}-{state}"] = [
+                edge(f"app.src.leaf_x2e_{extension}", "Error", 1, 7, True)
+            ]
+    for module in ("nodenext", "node16"):
+        for route in (
+            "ts-file",
+            "js-extension-for-ts",
+            "extensionless-js",
+            "directory-index",
+            "directory-main",
+            "file-before-directory",
+            "paths-name",
+            "package-main",
+        ):
+            expected[f"matrix/{module}-module/{route}/main.ts-require"] = [
+                edge("app.src.main_x2e_ts", "require", 1, 1)
+            ]
+    actual = judged.report["native_script_dependencies"]
+    assert set(actual) == set(expected)
+    for case, edges in expected.items():
+        assert sorted(actual[case], key=lambda row: row[0]) == sorted(
+            edges, key=lambda row: row[0]
+        ), case
 
 
 def test_the_report_names_every_case_with_its_class(judged: differential.Verdict) -> None:

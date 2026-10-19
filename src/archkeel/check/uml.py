@@ -22,6 +22,7 @@ from archkeel.ir.codec import (
     parse_required_component,
     value_bytes,
 )
+from archkeel.ir.contract_version import ContractFeature, ContractVersion, supports_feature
 from archkeel.ir.model import (
     ARCHITECTURE_TARGET_KIND,
     RULE_KINDS,
@@ -48,6 +49,10 @@ from archkeel.ir.source_graph import MEMBER_INVENTORY_PROOF, validated_member_in
 from archkeel.ir.target_graph import component_permissions, declared_tree_graph
 
 from .declarations import project_rule_declaration
+from .git import git_bytes
+from .ports import Analyzer, ScanConfig
+from .snapshot import resolve_commit
+from .uml_evaluation import evaluate_uml
 
 
 def _read_contract(root: Path, relative: str) -> tuple[bytes, str]:
@@ -390,7 +395,7 @@ def _append_targets(
     )
 
 
-def _revoke_dependency_proofs(result: ObservationResult) -> ObservationResult:
+def revoke_dependency_proofs(result: ObservationResult) -> ObservationResult:
     model = result.observation
     if model is None:
         return result
@@ -418,7 +423,7 @@ def _revoke_dependency_proofs(result: ObservationResult) -> ObservationResult:
     return replace(result, observation=replace(model, sections=sections))
 
 
-def _validated_member_inventory_result(result: ObservationResult) -> ObservationResult:
+def validated_member_inventory_result(result: ObservationResult) -> ObservationResult:
     model = result.observation
     if model is None or not any(
         r.kind == MEMBER_INVENTORY_PROOF for r in model.records("scope_observations") or ()
@@ -439,15 +444,7 @@ def _validated_member_inventory_result(result: ObservationResult) -> Observation
 
 def _has_architecture_declarations(version: str, known: dict[str, Record]) -> bool:
     return version in {
-        "2.2.0",
-        "2.3.0",
-        "3.0.0",
-        "3.1.0",
-        "3.2.0",
-        "3.3.0",
-        "3.4.0",
-        "3.5.0",
-        "3.6.0",
+        v.value for v in ContractVersion if supports_feature(v, ContractFeature.UML)
     } or any(
         record.kind in TARGET_GRAPH_RECORD_KINDS
         or record.kind
@@ -463,12 +460,12 @@ def _has_architecture_declarations(version: str, known: dict[str, Record]) -> bo
 
 
 def assemble_uml(result: ObservationResult, contract_root: Path, path: str) -> ObservationResult:
-    result = _validated_member_inventory_result(result)
+    result = validated_member_inventory_result(result)
     model = result.observation
     if model is None or any(
         item.code == _DiagnosticCode.CONTRACT_INVALID for item in result.diagnostics
     ):
-        return replace(_revoke_dependency_proofs(result), uml_eligibility=UmlEligibility.BLOCKED)
+        return replace(revoke_dependency_proofs(result), uml_eligibility=UmlEligibility.BLOCKED)
     if any(item.kind == "inside_contract_incomplete" for item in model.coverage.failures):
         return replace(result, uml_eligibility=UmlEligibility.BLOCKED)
     known = {record.id: record for section in model.sections for record in section.records}
@@ -504,7 +501,7 @@ def assemble_uml(result: ObservationResult, contract_root: Path, path: str) -> O
         sections = _append_targets(model.sections, projected)
     except (OSError, ValueError) as error:
         return replace(
-            _revoke_dependency_proofs(result),
+            revoke_dependency_proofs(result),
             uml_eligibility=UmlEligibility.BLOCKED,
             diagnostics=(
                 *result.diagnostics,
@@ -530,3 +527,20 @@ def assemble_uml(result: ObservationResult, contract_root: Path, path: str) -> O
     return replace(
         result, observation=replace(model, sections=sections), uml_eligibility=eligibility
     )
+
+
+def observe_repository(
+    root: Path, config: ScanConfig, analyzer: Analyzer, *, contract_root: Path | None = None
+) -> ObservationResult:
+    """Observe the configured working tree through an injected analyzer."""
+    result = analyzer(
+        root,
+        roots=config.roots,
+        namespace=config.namespace,
+        contract=config.contract,
+        git_head=resolve_commit(root, "HEAD"),
+        dirty=bool(git_bytes(root, "status", "--porcelain", "--untracked-files=all")),
+        contract_root=contract_root or root,
+        language=config.language,
+    )
+    return evaluate_uml(assemble_uml(result, contract_root or root, config.contract))

@@ -59,7 +59,7 @@ def _interface_result(
     ],
     ids=["inherited-field", "inherited-constructor"],
 )
-def test_inherited_field_is_candidate_but_constructor_type_is_published(
+def test_inherited_generic_field_and_constructor_keep_candidate_type(
     tmp_path: Path, member: str
 ) -> None:
     diagnostics, observation = _interface_result(
@@ -75,21 +75,21 @@ def test_inherited_field_is_candidate_but_constructor_type_is_published(
         construct=False,
     )
 
-    constructor = member.startswith("def __init__")
-    assert [(item.code, item.subject) for item in diagnostics] == (
-        [("interface.unused", "sample.api:Noise")]
-        if constructor
-        else [
-            ("interface.usage_unknown", "sample.api:Payload"),
-            ("interface.unused", "sample.api:Noise"),
-        ]
-    )
+    assert [(item.code, item.subject) for item in diagnostics] == [
+        ("interface.usage_unknown", "sample.api:Payload"),
+        ("interface.unused", "sample.api:Noise"),
+    ]
     child = next(
         item
         for item in observation.records("symbols") or ()
         if item.data.get("qualified_name") == "sample.api.Child"
     )
-    assert ("sample.api.Payload" in child.data.get("facade_types", ())) is constructor
+    assert "sample.api.Payload" not in child.data.get("facade_types", ())
+    assert child.data.get("source_binding_unique") is True
+    assert child.data.get("source_member_binding_static") is (member == "payload: T")
+    assert child.data.get("facade_type_candidates_by_publisher").get("sample.api") == (
+        "sample.api.Payload",
+    )
 
 
 def test_conditional_override_does_not_publish_base_generic_return(tmp_path: Path) -> None:

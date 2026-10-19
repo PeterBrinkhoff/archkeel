@@ -9,7 +9,7 @@ import json
 import os
 import re
 import sys
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from dataclasses import replace
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
@@ -25,7 +25,7 @@ from ..check.run import run_check
 from ..check.snapshot import resolve_commit
 from ..check.validation import invalid_result, run_validate
 from ..host.gitlab import load_gitlab_records
-from ..render.html import render_architecture_details, render_architecture_html, render_check_html
+from ..render.html import render_architecture_pages, render_check_html
 from ..render.summary import check_summary, init_summary, report_summary
 from ..render.terminal import print_result, progress
 from .arguments import (
@@ -448,7 +448,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     subject = "command-line arguments"
     interactive = sys.stdout.isatty()
     artifacts: list[Path] = []
-    files: Mapping[str, bytes] = {}
+    files: tuple[tuple[str, bytes], ...] = ()
     try:
         args = parser.parse_cli_args(argv)
         if args.command is None:
@@ -478,7 +478,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         with progress(f"archkeel {command}: {activity}"):
             if command is Command.INIT:
                 subject = str(root)
-                result, files = run_init(
+                result, requested_files = run_init(
                     root,
                     source=tuple(args.source) if args.source is not None else None,
                     namespace=args.namespace,
@@ -495,6 +495,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     collector_argv=tuple(args.collector_argv) if args.collector_argv else None,
                     collector_output_limit_bytes=args.collector_output_limit_bytes,
                 )
+                files = requested_files.entries
             elif command is Command.REPORT and args.input is not None:
                 if args.full and args.only is not ReportMode.ARCHITECTURE:
                     parser.error("--full requires --only architecture")
@@ -576,25 +577,19 @@ def main(argv: Sequence[str] | None = None) -> int:
                     )
                     report_html = html_path(artifact, Command.REPORT)
                     repository = project_name(root, config)
-                    details = render_architecture_details(
+                    # A render failure must not publish a partial HTML set.
+                    pages = render_architecture_pages(
                         result,
                         architecture,
                         repository=repository,
                         architecture_href=artifact.name,
                     )
-                    for name, payload in details.items():
+                    for name, payload in pages:
                         detail = artifact.parent / name
                         detail.write_bytes(payload)
-                        artifacts.append(detail)
-                    report_html.write_bytes(
-                        render_architecture_html(
-                            result,
-                            architecture,
-                            repository=repository,
-                            architecture_href=artifact.name,
-                        )
-                    )
-                    if details:
+                        if detail != report_html:
+                            artifacts.append(detail)
+                    if any(name != report_html.name for name, _ in pages):
                         obsolete = (
                             rf"{re.escape(artifact.stem)}\.detail-"
                             r"(?:component-[0-9a-f]{16}|unknown)\.html"
@@ -633,7 +628,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                         except ValueError:
                             # Missing or invalid historical config cannot authorize a rename.
                             against_config = None
-                result, files = run_validate(
+                result, requested_files = run_validate(
                     root,
                     config,
                     observer_for(
@@ -655,6 +650,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     decided_by=args.decided_by,
                     rationale=args.rationale,
                 )
+                files = requested_files.entries
                 result = replace(result, scan_roots=config.roots)
             else:
                 config = load_check_config(root, args.baseline, args.head)
@@ -692,7 +688,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                         )
                     )
                     artifacts.extend((args.output, check_html))
-            for relative, payload in files.items():
+            for relative, payload in files:
                 target = root / relative
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(payload)

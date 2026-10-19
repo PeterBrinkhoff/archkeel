@@ -13,7 +13,7 @@ from test_architecture_demo import CONFIG, _prepare_repo
 from archkeel.check.report import run_report
 from archkeel.cli.observe import observe
 from archkeel.ir.codec import decode_canonical_model, parse_observation
-from archkeel.ir.duplication import MINIMUM_SHAPE_NODES, repeated_logic
+from archkeel.ir.duplication import MINIMUM_SHAPE_NODES, _resolved_calls, repeated_logic
 from archkeel.ir.facts import Record
 from archkeel.ir.facts_codec import freeze_data, thaw_data
 from archkeel.ir.model import Observation, Verdict
@@ -129,6 +129,74 @@ def test_record_order_does_not_change_call_correspondence(
         converter_observation, tuple(reversed(converter_observation.records("calls") or ()))
     )
     assert _pairs(reordered) == _pairs(converter_observation)
+
+
+@pytest.mark.parametrize(
+    "parent,child,excluded",
+    [
+        ("scope", "scope.child", True),
+        ("scope", "scopex.child", False),
+        ("scope", "scope", False),
+        ("a.", "a..child", True),
+        ("a.", "a.child", False),
+        ("a..b", "a..b.child", True),
+        (".a", ".a.child", True),
+        (".a", "a.child", False),
+        ("Ω.🚀", "Ω.🚀.子", True),
+        ("Ω.🚀", "Ω.🚀x.子", False),
+        ("a.b", "a.b.", True),
+        ("a.b", "a.b..", True),
+        ("a.b", "a.bc.child", False),
+        ("scope", "", True),
+    ],
+)
+def test_scope_ancestry_keeps_open_names_and_unresolved_descendants(
+    converter_observation: Observation, parent: str, child: str, excluded: bool
+) -> None:
+    original = f"{_OWNER}.a_first"
+    definition = next(
+        row
+        for row in converter_observation.records("symbols") or ()
+        if row.data.get("qualified_name") == original
+    )
+    definition = replace(
+        definition, data=freeze_data({**thaw_data(definition.data), "qualified_name": parent})
+    )
+    rows = tuple(
+        replace(row, data=freeze_data({**thaw_data(row.data), "source_scope": parent}))
+        for row in converter_observation.records("calls") or ()
+        if row.data.get("source_scope") == original
+    )
+    calls = rows
+    if child != parent:
+        calls += (
+            replace(
+                rows[0],
+                id="CALL-SCOPE-PROBE",
+                data=freeze_data(
+                    {
+                        **thaw_data(rows[0].data),
+                        "source_scope": child,
+                        "status": "unresolved",
+                        "targets": [],
+                        "candidate_count": 0,
+                    }
+                ),
+            ),
+        )
+    sample = _with_calls(converter_observation, calls)
+    sample = replace(
+        sample,
+        coverage=replace(converter_observation.coverage, calls_analyzed=len(calls)),
+        sections=tuple(
+            replace(section, records=(definition,)) if section.name == "symbols" else section
+            for section in sample.sections
+        ),
+    )
+    result = _resolved_calls(sample)
+    assert (parent not in result) is excluded
+    if not excluded:
+        assert result[parent] == _resolved_calls(converter_observation)[original]
 
 
 @pytest.mark.parametrize(

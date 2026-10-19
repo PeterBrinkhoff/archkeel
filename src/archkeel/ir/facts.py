@@ -114,6 +114,7 @@ def source_dirty(value: bool | str) -> bool | Literal["unknown"]:
 
 
 SOURCE_RESOLUTION_GAP_KIND = "source_resolution_gap"
+SOURCE_SCRIPT_GLOBAL_KIND = "script_global"
 
 RECORD_FIELDS = (
     "id",
@@ -196,6 +197,45 @@ class RecordData:
 
 JsonValue: TypeAlias = str | int | float | bool | None | tuple["JsonValue", ...] | RecordData
 RawJson: TypeAlias = str | int | float | bool | None | list["RawJson"] | dict[str, "RawJson"]
+
+
+class CallBindingOrigin(StrEnum):
+    DIRECT = "direct"
+    DECLARED_RECEIVER = "declared_receiver"
+
+
+CALL_BINDINGS_FEATURE = "canonical_call_bindings"
+
+
+@dataclass(frozen=True, slots=True)
+class CallBinding:
+    origin: CallBindingOrigin
+    target: str
+    evidence_ids: tuple[str, ...]
+
+
+def call_binding(value: JsonValue) -> CallBinding | None:
+    if value is None:
+        return None
+    if not isinstance(value, RecordData) or {key for key, _ in value.entries} != {
+        "origin",
+        "target",
+        "evidence_ids",
+    }:
+        raise ValueError("invalid call binding fields")
+    origin, target, evidence = value.get("origin"), value.get("target"), value.get("evidence_ids")
+    if (
+        not isinstance(origin, str)
+        or not isinstance(target, str)
+        or not target
+        or not isinstance(evidence, tuple)
+        or not evidence
+        or any(not isinstance(item, str) or not item for item in evidence)
+    ):
+        raise ValueError("invalid call binding values")
+    return CallBinding(
+        CallBindingOrigin(origin), target, tuple(item for item in evidence if isinstance(item, str))
+    )
 
 
 class PropertyOperation(Enum):
@@ -524,6 +564,167 @@ class ResolutionInput:
     role: ResolutionRole
 
 
+class NativeSignatureKind(StrEnum):
+    PARTIAL = "cpython-partial-v1"
+    ABC = "cpython-abc-import-v1"
+    CONTEXTMANAGER = "sync-generator-contextmanager-v1"
+
+
+class NativeImplementation(StrEnum):
+    CPYTHON = "cpython"
+
+
+class NativeOrigin(StrEnum):
+    BUILTIN = "built-in"
+
+
+class NativeABCModule(StrEnum):
+    ABC = "_abc"
+
+
+@dataclass(frozen=True, slots=True)
+class CPythonPartialIntrinsic:
+    kind: NativeSignatureKind
+    implementation: NativeImplementation
+    version: str
+    cache_tag: str
+    origin: NativeOrigin
+
+
+@dataclass(frozen=True, slots=True)
+class ContextManagerReturn:
+    wrapper: str
+    payload: str
+
+
+@dataclass(frozen=True, slots=True)
+class CPythonABCBranch:
+    kind: NativeSignatureKind
+    module: NativeABCModule
+    origin: NativeOrigin
+    members: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ContextManagerSignature:
+    kind: NativeSignatureKind
+    factory: str
+    effective_return: ContextManagerReturn
+    support_evidence_ids: tuple[str, ...]
+    partial: CPythonPartialIntrinsic
+    abc: CPythonABCBranch
+
+
+def _signature_object(value: JsonValue, fields: set[str]) -> dict[str, JsonValue]:
+    if not isinstance(value, RecordData) or {name for name, _ in value.entries} != fields:
+        raise ValueError("invalid contextmanager signature fields")
+    return dict(value.entries)
+
+
+def _partial_intrinsic(value: JsonValue) -> CPythonPartialIntrinsic:
+    data = _signature_object(value, {"kind", "implementation", "version", "cache_tag", "origin"})
+    version, cache_tag = data["version"], data["cache_tag"]
+    kind, implementation, origin = data["kind"], data["implementation"], data["origin"]
+    if (
+        not isinstance(kind, str)
+        or NativeSignatureKind(kind) is not NativeSignatureKind.PARTIAL
+        or not isinstance(implementation, str)
+        or NativeImplementation(implementation) is not NativeImplementation.CPYTHON
+        or not isinstance(origin, str)
+        or NativeOrigin(origin) is not NativeOrigin.BUILTIN
+        or not isinstance(version, str)
+        or not isinstance(cache_tag, str)
+        or re.fullmatch(r"3\.(11|12)\.[0-9]+", version) is None
+        or cache_tag != "cpython-" + "".join(version.split(".")[:2])
+    ):
+        raise ValueError("invalid CPython partial intrinsic")
+    return CPythonPartialIntrinsic(
+        NativeSignatureKind.PARTIAL,
+        NativeImplementation.CPYTHON,
+        version,
+        cache_tag,
+        NativeOrigin.BUILTIN,
+    )
+
+
+def contextmanager_signature(value: JsonValue) -> ContextManagerSignature:
+    """Decode a source-bound signature transform without interpreting Python source."""
+    data = _signature_object(
+        value, {"kind", "factory", "effective_return", "support_evidence_ids", "partial", "abc"}
+    )
+    effective = _signature_object(data["effective_return"], {"wrapper", "payload"})
+    factory, wrapper, payload = data["factory"], effective["wrapper"], effective["payload"]
+    support = data["support_evidence_ids"]
+    abc = _signature_object(data["abc"], {"kind", "module", "origin", "members"})
+    members = abc["members"]
+    kind, abc_kind, module, origin = data["kind"], abc["kind"], abc["module"], abc["origin"]
+    if (
+        not isinstance(kind, str)
+        or NativeSignatureKind(kind) is not NativeSignatureKind.CONTEXTMANAGER
+        or not isinstance(abc_kind, str)
+        or NativeSignatureKind(abc_kind) is not NativeSignatureKind.ABC
+        or not isinstance(module, str)
+        or NativeABCModule(module) is not NativeABCModule.ABC
+        or not isinstance(origin, str)
+        or NativeOrigin(origin) is not NativeOrigin.BUILTIN
+        or not isinstance(members, tuple)
+        or members
+        != (
+            "get_cache_token",
+            "_abc_init",
+            "_abc_register",
+            "_abc_instancecheck",
+            "_abc_subclasscheck",
+            "_get_dump",
+            "_reset_registry",
+            "_reset_caches",
+        )
+        or not isinstance(factory, str)
+        or not isinstance(wrapper, str)
+        or any(
+            len(parts := name.split(".")) < 2 or not all(part.isidentifier() for part in parts)
+            for name in (factory, wrapper)
+        )
+        or not isinstance(payload, str)
+        or not payload.strip()
+        or payload != payload.strip()
+        or not isinstance(support, tuple)
+        or not support
+        or any(not isinstance(item, str) or not item for item in support)
+        or len(set(support)) != len(support)
+    ):
+        raise ValueError("invalid contextmanager signature")
+    support_ids = tuple(item for item in support if isinstance(item, str))
+    member_names = tuple(item for item in members if isinstance(item, str))
+    return ContextManagerSignature(
+        NativeSignatureKind.CONTEXTMANAGER,
+        factory,
+        ContextManagerReturn(wrapper, payload),
+        support_ids,
+        _partial_intrinsic(data["partial"]),
+        CPythonABCBranch(
+            NativeSignatureKind.ABC, NativeABCModule.ABC, NativeOrigin.BUILTIN, member_names
+        ),
+    )
+
+
+class ProviderBindingKind(StrEnum):
+    FUNCTION = "function"
+    CLASS = "class"
+    DECLARATION = "declaration"
+    MODULE = "module"
+    ALIAS = "alias"
+
+
+@dataclass(frozen=True, slots=True)
+class ProviderBinding:
+    qualified_name: str
+    kind: ProviderBindingKind
+    evidence_id: str
+    target: str | None = None
+    supporting_evidence_ids: tuple[str, ...] = ()
+
+
 @dataclass(frozen=True, slots=True)
 class FileFact:
     id: str
@@ -601,6 +802,7 @@ class SourceFacts:
     type_shapes: tuple[tuple[str, TypeShape], ...] = ()
     state: StateFacts = StateFacts((), ())
     candidate_evidence: tuple[Evidence, ...] = ()
+    provider_bindings: tuple[ProviderBinding, ...] = ()
 
 
 def in_scope(name: str, scope: str) -> bool:

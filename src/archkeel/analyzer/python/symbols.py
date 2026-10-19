@@ -10,6 +10,7 @@ import builtins
 import hashlib
 import json
 import sys
+from collections import Counter
 from collections.abc import Sequence
 from types import EllipsisType
 
@@ -38,23 +39,29 @@ from .source import (
     annotation_text,
     class_definition_expressions,
     class_header_static,
-    class_namespace_static,
     decorator_names,
     definition_id,
     definition_sites,
     location,
     module_scope_bindings,
+    native_dataclass_header_static,
     native_owner_creation_static,
-    own_scope,
     property_bindings,
     quoted_type_expression,
     stable_direct_module_bindings,
+    static_overload_bindings,
     typed_dict_header_static,
     unproven_class_body,
     unproven_member_bindings,
 )
 from .source import (
     binding_may_exist_before as _binding_may_exist_before,
+)
+from .source import (
+    bound_once_before as _bound_once_before,
+)
+from .source import (
+    generic_parameters as _generic_parameters,
 )
 from .source import (
     is_proven_decorator as _is_proven_decorator,
@@ -249,6 +256,7 @@ def _symbol_data(
     node: ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef,
     qualname: str,
     parent: str | None,
+    member_escapes: frozenset[str],
     parent_node: ast.ClassDef | None = None,
     *,
     evidence: dict[str, RawEvidence],
@@ -267,13 +275,22 @@ def _symbol_data(
         "decorators": decorator_names(node),
     }
     if isinstance(node, ast.ClassDef):
-        data.update(_class_symbol_data(module, node, evidence))
+        data.update(_class_symbol_data(module, node, evidence, member_escapes))
         if data["source_binding_unique"] is True and (
             properties := property_bindings(module, node)
         ):
             data["property_members"] = sorted({method.name for method in properties})
     else:
         data.update(_function_signature(node))
+        if parent_node is None:
+            data["source_binding_unique"] = (
+                node in module.tree.body and node.name in stable_direct_module_bindings(module)
+            )
+            data["source_binding_static"] = (
+                data["source_binding_unique"] is True
+                and module.owner_exposed_bindings is not None
+                and node.name not in module.owner_exposed_bindings
+            )
         data["symbol_category"] = "method" if parent_node else "function"
         data["overload_signature"] = any(
             _is_proven_decorator(
@@ -294,7 +311,10 @@ def _symbol_data(
 
 
 def _class_symbol_data(
-    module: ParsedModule, node: ast.ClassDef, evidence: dict[str, RawEvidence]
+    module: ParsedModule,
+    node: ast.ClassDef,
+    evidence: dict[str, RawEvidence],
+    member_escapes: frozenset[str],
 ) -> RecordData:
     attributes = _class_attribute_declarations(node, module, evidence)
     generic_parameters = _generic_parameters(module, node)
@@ -314,7 +334,7 @@ def _class_symbol_data(
         "attribute_declarations": attributes,
         "source_binding_unique": node in module.tree.body
         and node.name in stable_direct_module_bindings(module),
-        "source_member_binding_static": node.name not in unproven_member_bindings(module),
+        "source_member_binding_static": node.name not in member_escapes,
         "class_header_static": class_header_static(node),
         "class_members": _class_member_names(node),
         "class_body_control_flow": any(
@@ -435,107 +455,6 @@ def _annotation_binding_uncertainties(
         if shadowed:
             uncertain[position] = shadowed
     return uncertain
-
-
-def _bound_once_before(statements: Sequence[ast.stmt], stop: ast.AST, name: str) -> bool:
-    """Prove one direct module binding exists before a class definition."""
-    count = 0
-    for statement in statements:
-        if statement is stop:
-            return count == 1
-        if isinstance(statement, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
-            bindings = [statement.name]
-        elif isinstance(statement, ast.Import | ast.ImportFrom):
-            if isinstance(statement, ast.ImportFrom) and any(
-                alias.name == "*" for alias in statement.names
-            ):
-                return False
-            bindings = [
-                alias.asname
-                or (alias.name.split(".")[0] if isinstance(statement, ast.Import) else alias.name)
-                for alias in statement.names
-            ]
-        elif isinstance(statement, ast.Assign | ast.AnnAssign):
-            targets = statement.targets if isinstance(statement, ast.Assign) else [statement.target]
-            bindings = [
-                child.id
-                for target in targets
-                for child in ast.walk(target)
-                if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Store)
-            ]
-        else:
-            if any(
-                isinstance(child, ast.Name)
-                and child.id == name
-                and isinstance(child.ctx, ast.Store | ast.Del)
-                for child in ast.walk(statement)
-            ):
-                return False
-            continue
-        count += bindings.count(name)
-        if count > 1:
-            return False
-    return False
-
-
-def _generic_parameters(module: ParsedModule, node: ast.ClassDef) -> list[str]:
-    """Return verified TypeVars from one explicit ``Generic[...]`` base."""
-    typevars: set[str] = set()
-    for statement in module.tree.body:
-        if not isinstance(statement, ast.Assign | ast.AnnAssign):
-            continue
-        targets = statement.targets if isinstance(statement, ast.Assign) else [statement.target]
-        if len(targets) != 1 or not isinstance(targets[0], ast.Name):
-            continue
-        name = targets[0].id
-        value = statement.value
-        if not isinstance(value, ast.Call):
-            continue
-        typevar_root = (
-            value.func.id
-            if isinstance(value.func, ast.Name)
-            else value.func.value.id
-            if isinstance(value.func, ast.Attribute) and isinstance(value.func.value, ast.Name)
-            else None
-        )
-        if (
-            not isinstance(typevar_root, str)
-            or not _bound_once_before(module.tree.body, statement, typevar_root)
-            or _resolve_static_name(module, value.func)
-            not in {"typing.TypeVar", "typing_extensions.TypeVar"}
-            or not value.args
-            or not isinstance(value.args[0], ast.Constant)
-            or value.args[0].value != name
-            or not _bound_once_before(module.tree.body, node, name)
-        ):
-            continue
-        typevars.add(name)
-
-    generic_bases = [
-        base
-        for base in node.bases
-        if isinstance(base, ast.Subscript)
-        and _resolve_static_name(module, base.value)
-        in {"typing.Generic", "typing_extensions.Generic"}
-    ]
-    if len(generic_bases) != 1:
-        return []
-    root = generic_bases[0].value
-    root_name = (
-        root.id
-        if isinstance(root, ast.Name)
-        else root.value.id
-        if isinstance(root, ast.Attribute) and isinstance(root.value, ast.Name)
-        else None
-    )
-    if not isinstance(root_name, str) or not _bound_once_before(module.tree.body, node, root_name):
-        return []
-    arguments = generic_bases[0].slice
-    values = list(arguments.elts) if isinstance(arguments, ast.Tuple) else [arguments]
-    names = [value.id for value in values if isinstance(value, ast.Name)]
-    if len(names) != len(values) or len(set(names)) != len(names) or not set(names) <= typevars:
-        return []
-    return names
 
 
 def _generic_bases(node: ast.ClassDef) -> list[RecordData]:
@@ -866,6 +785,7 @@ def _assignment_symbol(
     name: str,
     kind: str,
     evidence: dict[str, RawEvidence],
+    member_escapes: frozenset[str],
     **details: object,
 ) -> RawRecord:
     evidence_id = add_evidence(evidence, module, node)
@@ -891,9 +811,20 @@ def _assignment_symbol(
             **(
                 {
                     "source_binding_unique": name in stable_direct_module_bindings(module),
-                    "source_member_binding_static": name not in unproven_member_bindings(module),
+                    "source_member_binding_static": name not in member_escapes,
                 }
                 if kind == "type_alias"
+                else {}
+            ),
+            **(
+                {
+                    "source_binding_unique": name in stable_direct_module_bindings(module),
+                    "annotation": annotation_text(node.annotation),
+                }
+                if kind == "dynamic_binding"
+                and node in module.tree.body
+                and isinstance(node, ast.AnnAssign)
+                and node.value is not None
                 else {}
             ),
             **details,
@@ -931,18 +862,25 @@ def _pep695_alias_symbol(
     node: ast.AST,
     name: str,
     evidence: dict[str, RawEvidence],
+    member_escapes: frozenset[str],
 ) -> RawRecord | None:
     if not (sys.version_info >= (3, 12) and isinstance(node, ast.TypeAlias)):
         return None
     if node in module.tree.body and not node.type_params:
         return _assignment_symbol(
-            module, node, name, "type_alias", evidence, alias=annotation_text(node.value)
+            module,
+            node,
+            name,
+            "type_alias",
+            evidence,
+            member_escapes,
+            alias=annotation_text(node.value),
         )
-    return _assignment_symbol(module, node, name, "dynamic_binding", evidence)
+    return _assignment_symbol(module, node, name, "dynamic_binding", evidence, member_escapes)
 
 
 def _module_assignment_symbols(
-    module: ParsedModule, evidence: dict[str, RawEvidence]
+    module: ParsedModule, evidence: dict[str, RawEvidence], member_escapes: frozenset[str]
 ) -> list[RawRecord]:
     aliases = {
         node.target.id
@@ -962,10 +900,16 @@ def _module_assignment_symbols(
         if (alias_value := admitted_type_alias_value(module, node)) is not None:
             symbols.append(
                 _assignment_symbol(
-                    module, node, name, "type_alias", evidence, alias=annotation_text(alias_value)
+                    module,
+                    node,
+                    name,
+                    "type_alias",
+                    evidence,
+                    member_escapes,
+                    alias=annotation_text(alias_value),
                 )
             )
-        elif symbol := _pep695_alias_symbol(module, node, name, evidence):
+        elif symbol := _pep695_alias_symbol(module, node, name, evidence, member_escapes):
             symbols.append(symbol)
         elif (
             name in direct_names
@@ -980,6 +924,7 @@ def _module_assignment_symbols(
                     name,
                     "static_constant",
                     evidence,
+                    member_escapes,
                     **({"constant": value} if _json_literal(value) else {}),
                 )
             )
@@ -988,7 +933,9 @@ def _module_assignment_symbols(
             or name in direct_names
             and (name[:1].isupper() or name in aliases)
         ):
-            symbols.append(_assignment_symbol(module, node, name, "dynamic_binding", evidence))
+            symbols.append(
+                _assignment_symbol(module, node, name, "dynamic_binding", evidence, member_escapes)
+            )
     return symbols
 
 
@@ -1001,10 +948,35 @@ def _definition_symbol(
     evidence: dict[str, RawEvidence],
     namespace_bound: bool,
     contexts: DefinitionContexts,
+    member_escapes: frozenset[str],
+    overload_bindings: frozenset[str],
 ) -> RawRecord:
     classifier = parent_node if isinstance(parent_node, ast.ClassDef) else None
-    data = _symbol_data(module, node, qualname, parent, classifier, evidence=evidence)
+    data = _symbol_data(
+        module, node, qualname, parent, member_escapes, classifier, evidence=evidence
+    )
     data["namespace_bound"] = namespace_bound
+    if parent_node is None and isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+        data["source_binding_unique"] = (
+            not contexts
+            and node in module.tree.body
+            and (
+                node.name in stable_direct_module_bindings(module) or node.name in overload_bindings
+            )
+        )
+        data["source_member_binding_static"] = node.name not in member_escapes
+        data["signature_decorators_proven"] = not node.decorator_list or (
+            node.name in overload_bindings and data["overload_signature"] is True
+        )
+    elif isinstance(parent_node, ast.FunctionDef | ast.AsyncFunctionDef) and isinstance(
+        node, ast.FunctionDef | ast.AsyncFunctionDef
+    ):
+        data["source_binding_unique"] = (
+            not contexts
+            and node in parent_node.body
+            and module.binding_names is not None
+            and module.bound_names.count(node.name) == 1
+        )
     if isinstance(node, ast.ClassDef):
         data["default_instance_result"] = (
             parent_node is None
@@ -1073,14 +1045,20 @@ def collect_symbols(
     modules: Sequence[ParsedModule],
     evidence: dict[str, RawEvidence],
     *,
-    unsafe_typed_dict_providers: frozenset[str] = frozenset(),
+    unsafe_creation_providers: frozenset[str] = frozenset(),
+    unsafe_source_header_providers: frozenset[str] = frozenset(),
 ) -> tuple[list[RawRecord], dict[str, ast.AST], dict[ast.AST, ParsedModule]]:
     symbols: list[RawRecord] = []
     nodes: dict[str, ast.AST] = {}
     owners: dict[ast.AST, ParsedModule] = {}
     classes: dict[str, ast.ClassDef] = {}
+    # Source headers reject explicit factory escapes; runtime proofs also track opaque effects.
+    unsafe_source_header_providers |= frozenset(module.module for module in modules)
+    unsafe_native_providers = unsafe_creation_providers | unsafe_source_header_providers
 
     for module in modules:
+        member_escapes = unproven_member_bindings(module, unsafe_providers=unsafe_native_providers)
+        overload_bindings = static_overload_bindings(module)
         names: dict[ast.AST, str] = {}
         namespace_bindings: dict[ast.AST, bool] = {}
         for node, parent_node, contexts in definition_sites(module.tree):
@@ -1092,12 +1070,30 @@ def collect_symbols(
             )
             namespace_bindings[node] = bound
             symbol = _definition_symbol(
-                module, node, qualname, parent, parent_node, evidence, bound, contexts
+                module,
+                node,
+                qualname,
+                parent,
+                parent_node,
+                evidence,
+                bound,
+                contexts,
+                member_escapes,
+                overload_bindings,
             )
             if isinstance(node, ast.ClassDef) and typed_dict_header_static(
-                module, node, unsafe_typed_dict_providers
+                module, node, unsafe_native_providers
             ):
                 symbol["data"]["typed_dict_header_static"] = True
+            if (
+                isinstance(node, ast.ClassDef)
+                and symbol["data"].get("source_binding_unique") is True
+                and (
+                    native_dataclass_header_static(module, node, unsafe_source_header_providers)
+                    or native_owner_creation_static(module, node, unsafe_native_providers)
+                )
+            ):
+                symbol["data"]["source_class_header_static"] = True
             symbols.append(symbol)
             if not contexts:
                 nodes[qualname] = node
@@ -1107,7 +1103,7 @@ def collect_symbols(
         definition_ids = {item["id"] for item in symbols}
         symbols.extend(
             item
-            for item in _module_assignment_symbols(module, evidence)
+            for item in _module_assignment_symbols(module, evidence, member_escapes)
             if item["id"] not in definition_ids
         )
 
@@ -1137,54 +1133,56 @@ def _record_member_inventories(
     owners: dict[ast.AST, ParsedModule],
     symbols: Sequence[RawRecord],
 ) -> None:
+    """Bind direct declaration inventories to unique, unconditional lexical owners."""
     by_id = {item["id"]: item for item in symbols}
+    names = Counter(item["data"]["qualified_name"] for item in symbols)
     for identity, node in classes.items():
         data = by_id[identity]["data"]
         module = owners[node]
-        stable = (
-            data["source_binding_unique"]
-            and not data["class_body_control_flow"]
-            and node.name
-            not in unproven_member_bindings(module, include_creation_uncertainty=False)
+        complete = (
+            node in module.tree.body
+            and module.binding_names is not None
+            and module.scope_bound_names.count(node.name) == 1
+            and node.name not in module.global_names
+            and not data["definition_contexts"]
+            and names[data["qualified_name"]] == 1
         )
-        bases = data["base_roots"]
-        plain = (
-            class_header_static(node)
-            and all(
-                base
-                in {"object", "builtins.object", "typing.Protocol", "typing_extensions.Protocol"}
-                for base in bases
+        unmeasured = any(
+            isinstance(
+                child,
+                ast.If
+                | ast.For
+                | ast.AsyncFor
+                | ast.While
+                | ast.With
+                | ast.AsyncWith
+                | ast.Try
+                | ast.TryStar
+                | ast.Match
+                | ast.Import
+                | ast.ImportFrom
+                | ast.Global
+                | ast.Nonlocal
+                | ast.AugAssign,
             )
-            and len(bases) == len(node.bases)
-            and class_namespace_static(module, node)
-            and not any(
-                isinstance(item, ast.Call)
-                for expr in class_definition_expressions(node)
-                for item in ast.walk(expr)
-            )
+            for child in node.body
+        ) or any(
+            isinstance(item, ast.NamedExpr)
+            for expression in class_definition_expressions(node)
+            for item in ast.walk(expression)
         )
-        native = native_owner_creation_static(module, node, frozenset())
-        attribute_complete = (
-            stable
-            and (plain or native)
-            and not any(isinstance(child, ast.Assign) for child in node.body)
-            and not any(
-                isinstance(item, ast.Call)
-                for method in node.body
-                if isinstance(method, ast.FunctionDef | ast.AsyncFunctionDef)
-                for item in own_scope(method)
-            )
-            and not any(
-                isinstance(child, ast.Attribute) and isinstance(child.ctx, ast.Store | ast.Del)
-                for child in ast.walk(node)
-            )
-        )
-        method_complete = stable and plain
+        complete = complete and not unmeasured
         attributes = tuple(item["definition_id"] for item in data["attribute_declarations"])
-        methods = tuple(
-            item["id"]
+        methods = [
+            item
             for item in symbols
             if item["kind"] == "method" and item["data"]["lexical_parent_id"] == identity
+        ]
+        attribute_complete = complete and len(attributes) == len(
+            {item["name"] for item in data["attribute_declarations"]}
+        )
+        method_complete = complete and len(methods) == len(
+            {item["data"]["name"] for item in methods}
         )
         data["member_inventories"] = [
             member_inventory_data(
@@ -1194,17 +1192,17 @@ def _record_member_inventories(
                     attributes,
                     None
                     if attribute_complete
-                    else "class creation, binding or attribute writes remain unmeasured",
+                    else "attribute declaration ownership or collection is incomplete",
                 )
             ),
             member_inventory_data(
                 MemberInventory(
                     MemberKind.METHOD,
                     InventoryStatus.COMPLETE if method_complete else InventoryStatus.PARTIAL,
-                    methods,
+                    tuple(item["id"] for item in methods),
                     None
                     if method_complete
-                    else "class creation, binding or generated methods are not fully represented",
+                    else "method declaration ownership or collection is incomplete",
                 )
             ),
         ]

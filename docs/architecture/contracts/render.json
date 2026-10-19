@@ -14,25 +14,40 @@
         "archkeel.render.html"
       ],
       "responsibilities": [
-        "Compose portable HTML from the standard architecture report and unchanged Core evidence."
+        "Compose offline HTML from authenticated results, Atlas payload and shared summaries."
       ],
       "forbidden_responsibilities": [
-        "Architecture policy, source parsing and persistence."
+        "Architecture policy, source parsing and persistence.",
+        "Rule evaluation and scene/layout policy duplicated in Python composition."
       ],
       "provenance": [
-        "docs/architecture/decisions/ad-179-reports-render-one-graph-boundary.md"
+        "docs/architecture/decisions/ad-179-reports-render-one-graph-boundary.md",
+        "docs/architecture/target/design.md"
       ],
       "decided_by": "agent",
       "requires": [
         {
           "component": "summary",
           "rationale": "Use the shared explanation of Core verdicts.",
-          "decided_by": "agent"
+          "decided_by": "agent",
+          "through": [
+            "archkeel.render.summary:Comparison",
+            "archkeel.render.summary:VerdictRow",
+            "archkeel.render.summary:check_summary",
+            "archkeel.render.summary:report_summary",
+            "archkeel.render.summary:report_violates_rules",
+            "archkeel.render.summary_badges:BadgeState",
+            "archkeel.render.summary_badges:badge"
+          ]
         },
         {
           "component": "atlas-payload",
           "rationale": "Compose HTML from the Atlas payload prepared from authenticated Core values.",
-          "decided_by": "agent"
+          "decided_by": "agent",
+          "through": [
+            "archkeel.render.atlas:atlas_payload",
+            "archkeel.render.atlas:boundary_permissions_payload"
+          ]
         }
       ],
       "packages": []
@@ -50,18 +65,19 @@
         "archkeel.render.atlas:boundary_permissions_payload"
       ],
       "responsibilities": [
-        "Build the compact Atlas payload from authenticated Core report, projection and result values.",
-        "Own deterministic recorded Atlas deviations, their immutable value and wire emission."
+        "Project authenticated report evidence into browser scene inputs."
       ],
       "forbidden_responsibilities": [
-        "Compose HTML, format terminal output or change Core verdicts."
+        "Compose HTML, format terminal output or change Core verdicts.",
+        "Depending on HTML composition and changing evidence or permissions."
       ],
       "provenance": [
         "docs/architecture/decisions/ad-179-reports-render-one-graph-boundary.md",
         "docs/architecture/render-target.md",
         "docs/architecture/decisions/ad-213-renderer-responsibility-boundaries.md",
         "docs/architecture/decisions/ad-219-atlas-boundary-permissions.md",
-        "docs/superpowers/specs/2026-10-16-atlas-deviation-boundary.md"
+        "docs/superpowers/specs/2026-10-16-atlas-deviation-boundary.md",
+        "docs/architecture/target/design.md"
       ],
       "decided_by": "agent",
       "requires": [],
@@ -82,15 +98,16 @@
         "archkeel.render.summary_badges:badge"
       ],
       "responsibilities": [
-        "Explain Core results consistently for HTML and terminal output.",
-        "Own the nominal display Badge and project Core verdicts without redefining their domains."
+        "Explain recorded verdicts and measurements through reusable typed summaries and badges."
       ],
       "forbidden_responsibilities": [
-        "Architecture policy, source parsing and persistence."
+        "Architecture policy, source parsing and persistence.",
+        "Rendering HTML and independently deciding architecture verdicts."
       ],
       "provenance": [
         "docs/architecture/decisions/ad-179-reports-render-one-graph-boundary.md",
-        "docs/architecture/summary-badges.md"
+        "docs/architecture/summary-badges.md",
+        "docs/architecture/target/design.md"
       ],
       "decided_by": "agent",
       "requires": [],
@@ -107,20 +124,28 @@
         "archkeel.render.terminal"
       ],
       "responsibilities": [
-        "Format the shared summary for terminal readers."
+        "Format shared typed summaries for terminal users."
       ],
       "forbidden_responsibilities": [
-        "Architecture policy, source parsing and persistence."
+        "Architecture policy, source parsing and persistence.",
+        "Duplicating summary derivation or evaluating rules."
       ],
       "provenance": [
-        "docs/architecture/decisions/ad-179-reports-render-one-graph-boundary.md"
+        "docs/architecture/decisions/ad-179-reports-render-one-graph-boundary.md",
+        "docs/architecture/target/design.md"
       ],
       "decided_by": "agent",
       "requires": [
         {
           "component": "summary",
           "rationale": "Terminal formatting consumes the shared result explanation.",
-          "decided_by": "agent"
+          "decided_by": "agent",
+          "through": [
+            "archkeel.render.summary:Summary",
+            "archkeel.render.summary_badges:Badge",
+            "archkeel.render.summary_badges:BadgeState",
+            "archkeel.render.summary_badges:badge"
+          ]
         }
       ],
       "packages": []
@@ -334,7 +359,40 @@
           ],
           "provenance": [
             "docs/architecture/render-target.md"
-          ]
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "result",
+                "annotation": "RunResult",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "architecture_json",
+                "annotation": "bytes",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "repository",
+                "annotation": "str",
+                "kind": "keyword_only",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "architecture_href",
+                "annotation": "str",
+                "kind": "keyword_only",
+                "default": null,
+                "default_known": true
+              }
+            ],
+            "returns": "bytes"
+          }
         },
         {
           "id": "RENDER-UML-atlas-document",
@@ -413,7 +471,54 @@
           ],
           "provenance": [
             "docs/architecture/render-target.md"
-          ]
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "model",
+                "annotation": "Observation",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "report",
+                "annotation": "ArchitectureReport",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "projection",
+                "annotation": "ArchitectureProjection",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "result",
+                "annotation": "RunResult",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "repository",
+                "annotation": "str",
+                "kind": "keyword_only",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "architecture_href",
+                "annotation": "str",
+                "kind": "keyword_only",
+                "default": null,
+                "default_known": true
+              }
+            ],
+            "returns": "dict[str, object]"
+          }
         },
         {
           "id": "RENDER-UML-summary",
@@ -445,7 +550,19 @@
           ],
           "provenance": [
             "docs/architecture/render-target.md"
-          ]
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "result",
+                "annotation": "RunResult",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              }
+            ],
+            "returns": "Summary"
+          }
         },
         {
           "id": "RENDER-UML-check-summary",
@@ -463,7 +580,19 @@
           ],
           "provenance": [
             "docs/architecture/render-target.md"
-          ]
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "result",
+                "annotation": "RunResult",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              }
+            ],
+            "returns": "Summary"
+          }
         },
         {
           "id": "RENDER-UML-terminal",
@@ -495,7 +624,40 @@
           ],
           "provenance": [
             "docs/architecture/render-target.md"
-          ]
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "result",
+                "annotation": "RunResult",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "summary",
+                "annotation": "Summary",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "artifacts",
+                "annotation": "tuple[str, ...]",
+                "kind": "keyword_only",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "console",
+                "annotation": "Console | None",
+                "kind": "keyword_only",
+                "default": "None",
+                "default_known": true
+              }
+            ],
+            "returns": "None"
+          }
         },
         {
           "language": "python",
@@ -786,6 +948,210 @@
           "responsibilities": [
             "Derive sorted allowed-unused then undeclared pairs without changing their stable IDs."
           ]
+        },
+        {
+          "id": "COMPACT-RENDER-RENDER-ARCHITECTURE-DETAILS",
+          "kind": "function",
+          "qualified_name": "archkeel.render.html.render_architecture_details",
+          "language": "python",
+          "presence": "planned",
+          "parent_id": "RENDER-UML-html",
+          "responsibilities": [
+            "Return offline detail filenames and bytes; the caller owns publication."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "result",
+                "annotation": "RunResult",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "architecture_json",
+                "annotation": "bytes",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "repository",
+                "annotation": "str",
+                "kind": "keyword_only",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "architecture_href",
+                "annotation": "str",
+                "kind": "keyword_only",
+                "default": null,
+                "default_known": true
+              }
+            ],
+            "returns": "dict[str, bytes]"
+          }
+        },
+        {
+          "id": "COMPACT-RENDER-RENDER-CHECK-HTML",
+          "kind": "function",
+          "qualified_name": "archkeel.render.html.render_check_html",
+          "language": "python",
+          "presence": "planned",
+          "parent_id": "RENDER-UML-html",
+          "responsibilities": [
+            "Compose the recorded check result as HTML bytes without changing verdicts."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "result",
+                "annotation": "RunResult",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "repository",
+                "annotation": "str",
+                "kind": "keyword_only",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "result_href",
+                "annotation": "str",
+                "kind": "keyword_only",
+                "default": null,
+                "default_known": true
+              }
+            ],
+            "returns": "bytes"
+          }
+        },
+        {
+          "id": "COMPACT-RENDER-BOUNDARY-PERMISSIONS-PAYLOAD",
+          "kind": "function",
+          "qualified_name": "archkeel.render.atlas.boundary_permissions_payload",
+          "language": "python",
+          "presence": "planned",
+          "parent_id": "RENDER-UML-atlas",
+          "responsibilities": [
+            "Project authenticated boundary permission context for the browser without granting permissions."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "model",
+                "annotation": "Observation",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "report",
+                "annotation": "ArchitectureReport",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "projection",
+                "annotation": "ArchitectureProjection",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              }
+            ],
+            "returns": "dict[str, object]"
+          }
+        },
+        {
+          "id": "COMPACT-RENDER-INIT-SUMMARY",
+          "kind": "function",
+          "qualified_name": "archkeel.render.summary.init_summary",
+          "language": "python",
+          "presence": "planned",
+          "parent_id": "RENDER-UML-summary",
+          "responsibilities": [
+            "Explain returned onboarding artifacts through the shared Summary."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "result",
+                "annotation": "RunResult",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              }
+            ],
+            "returns": "Summary"
+          }
+        },
+        {
+          "id": "COMPACT-RENDER-ARCHITECTURE-PAGES",
+          "kind": "function",
+          "qualified_name": "archkeel.render.html.render_architecture_pages",
+          "language": "python",
+          "presence": "planned",
+          "parent_id": "RENDER-UML-html",
+          "responsibilities": [
+            "Strictly decode one observation and, for atlas pages, require its matching authenticated Core projection and share one report graph across main and detail pages. Return immutable detail-before-main filename/bytes pairs; callers own publication. Reject malformed observations and mismatched atlas source evidence before returning pages. Filtered or no-projection output preserves legacy rendering behavior and entry points."
+          ],
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "result",
+                "annotation": "RunResult",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "architecture_json",
+                "annotation": "bytes",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "repository",
+                "annotation": "str",
+                "kind": "keyword_only",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "architecture_href",
+                "annotation": "str",
+                "kind": "keyword_only",
+                "default": null,
+                "default_known": true
+              }
+            ],
+            "returns": "tuple[tuple[str, bytes], ...]"
+          },
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          }
         }
       ],
       "relationships": [

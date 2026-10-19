@@ -103,7 +103,13 @@ def test_literal_resolves_exact_static_enum_member_through_signature(
     assert expected_enum in run.data.get("facade_types", ())
 
 
-def test_assignment_alias_to_enum_requires_source_binding_proof(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("replacement", "reason"),
+    [("", None), ("Category = str\n", "ambiguous_binding"), ("del Category\n", "dotted_name")],
+)
+def test_assignment_alias_to_enum_requires_source_binding_proof(
+    tmp_path: Path, replacement: str, reason: str | None
+) -> None:
     _write_app(
         tmp_path,
         {
@@ -117,7 +123,8 @@ def test_assignment_alias_to_enum_requires_source_binding_proof(tmp_path: Path) 
                 "from typing import Annotated, Literal\n"
                 "from sample.app.types import AuthoringReferenceCategory\n"
                 "Category = AuthoringReferenceCategory\n"
-                "def run(category: Annotated[Literal[Category.PRODUCT] | str, Field()]) -> str:\n"
+                + replacement
+                + "def run(category: Annotated[Literal[Category.PRODUCT] | str, Field()]) -> str:\n"
                 "    return str(category)\n"
             ),
         },
@@ -125,9 +132,19 @@ def test_assignment_alias_to_enum_requires_source_binding_proof(tmp_path: Path) 
     result = _observe(tmp_path)
     assert result.observation is not None
     assert trace_valid_violations(result.observation) == ()
-    [unknown] = _unknowns(result)
-    assert unknown.data.get("position") == "category"
-    assert unknown.data.get("reason") == "dotted_name"
+    if replacement:
+        [unknown] = _unknowns(result)
+        assert unknown.data.get("position") == "category"
+        assert unknown.data.get("reason") == reason
+    else:
+        assert _unknowns(result) == []
+        [alias] = [
+            item
+            for item in result.observation.records("symbols")
+            if item.data.get("qualified_name") == "sample.app.facade.Category"
+        ]
+        assert alias.data.get("source_binding_unique") is True
+        assert alias.data.get("source_member_binding_static") is False
 
 
 @pytest.mark.parametrize(

@@ -11,13 +11,15 @@
         "archkeel.analyzer.typescript.collect"
       ],
       "responsibilities": [
-        "Serve the protocol and walk the selected files and the local files their imports reach."
+        "Assemble TypeScript facts from source, configuration and resolution evidence."
       ],
       "forbidden_responsibilities": [
-        "Architecture policy, tree-sitter nodes and filesystem reads outside the snapshot."
+        "Architecture policy, tree-sitter nodes and filesystem reads outside the snapshot.",
+        "Duplicated parsing and architecture policy."
       ],
       "provenance": [
-        "docs/architecture/language-adapter-target.md"
+        "docs/architecture/language-adapter-target.md",
+        "docs/architecture/target/design.md"
       ],
       "decided_by": "agent",
       "exact_modules": [
@@ -56,13 +58,15 @@
         "archkeel.analyzer.typescript.syntax"
       ],
       "responsibilities": [
-        "Own tree-sitter parsing and lexical TypeScript syntax facts; do not select files or resolve imports."
+        "Parse TypeScript declarations and sites into the immutable syntax model."
       ],
       "forbidden_responsibilities": [
-        "Claiming type-checker semantics, resolving what the compiler would not prove, or evaluating architecture policy."
+        "Claiming type-checker semantics, resolving what the compiler would not prove, or evaluating architecture policy.",
+        "Reading project configuration and deciding architecture permissions."
       ],
       "provenance": [
-        "docs/architecture/language-adapter-target.md"
+        "docs/architecture/language-adapter-target.md",
+        "docs/architecture/target/design.md"
       ],
       "decided_by": "agent",
       "public": [
@@ -84,7 +88,15 @@
         "archkeel.analyzer.typescript.syntax:SiteKind",
         "archkeel.analyzer.typescript.syntax:SiteUse",
         "archkeel.analyzer.typescript.syntax:ReceiverKind",
-        "archkeel.analyzer.typescript.syntax:StringComparison"
+        "archkeel.analyzer.typescript.syntax:StringComparison",
+        "archkeel.analyzer.typescript.syntax:ScriptRoot",
+        "archkeel.analyzer.typescript.syntax:ScriptGlobal",
+        "archkeel.analyzer.typescript.syntax:ScriptAlias",
+        "archkeel.analyzer.typescript.syntax:ScriptFactory",
+        "archkeel.analyzer.typescript.syntax:ScriptFactoryMember",
+        "archkeel.analyzer.typescript.syntax:ScriptDestructure",
+        "archkeel.analyzer.typescript.parse:umd_publication",
+        "archkeel.analyzer.typescript.syntax:ScriptNamespace"
       ],
       "requires": [
         {
@@ -102,10 +114,11 @@
         "archkeel.analyzer.typescript.config"
       ],
       "responsibilities": [
-        "Own TSConfig reading, snapshot containment, file selection and conversion into typed compiler options and path grammar."
+        "Decode and resolve compiler settings against authenticated project inputs."
       ],
       "forbidden_responsibilities": [
-        "Resolve imports, interpret source declarations or evaluate architecture policy."
+        "Resolve imports, interpret source declarations or evaluate architecture policy.",
+        "Parsing source declarations and inventing missing configuration evidence."
       ],
       "public": [
         "archkeel.analyzer.typescript.config:Config",
@@ -119,10 +132,15 @@
         "archkeel.analyzer.typescript.config:load_config",
         "archkeel.analyzer.typescript.config:within",
         "archkeel.analyzer.typescript.config:Json",
-        "archkeel.analyzer.typescript.config:has_field"
+        "archkeel.analyzer.typescript.config:has_field",
+        "archkeel.analyzer.typescript.config:StandardLibrary",
+        "archkeel.analyzer.typescript.config:standard_globals",
+        "archkeel.analyzer.typescript.config:ScriptHost",
+        "archkeel.analyzer.typescript.config:ScriptProvider"
       ],
       "provenance": [
-        "docs/architecture/typescript-control-types.md"
+        "docs/architecture/typescript-control-types.md",
+        "docs/architecture/target/design.md"
       ],
       "decided_by": "architect",
       "requires": [
@@ -141,10 +159,11 @@
         "archkeel.analyzer.typescript.resolve"
       ],
       "responsibilities": [
-        "Own bounded import resolution, package protocol decoding, source-kind passes and loading format."
+        "Resolve TypeScript names and module targets using configuration and input identities."
       ],
       "forbidden_responsibilities": [
-        "Read TSConfig independently, parse TypeScript or evaluate architecture policy."
+        "Read TSConfig independently, parse TypeScript or evaluate architecture policy.",
+        "Modifying source and inferring certainty from unproven targets."
       ],
       "public": [
         "archkeel.analyzer.typescript.resolve:Found",
@@ -164,7 +183,8 @@
         }
       ],
       "provenance": [
-        "docs/architecture/typescript-control-types.md"
+        "docs/architecture/typescript-control-types.md",
+        "docs/architecture/target/design.md"
       ],
       "decided_by": "architect"
     },
@@ -176,13 +196,15 @@
         "archkeel.analyzer.typescript.source_input"
       ],
       "responsibilities": [
-        "Own filename/suffix and module-specifier input classification and shared source/format vocabulary, without filesystem or resolution authority."
+        "Own source paths, file formats and specifier classification at input boundaries."
       ],
       "forbidden_responsibilities": [
-        "Reading files, parsing source ASTs, interpreting compiler options or resolving package manifests."
+        "Reading files, parsing source ASTs, interpreting compiler options or resolving package manifests.",
+        "Type interpretation and architecture verdicts."
       ],
       "provenance": [
-        "docs/architecture/typescript-source-input.md"
+        "docs/architecture/typescript-source-input.md",
+        "docs/architecture/target/design.md"
       ],
       "decided_by": "architect",
       "public": [
@@ -1573,6 +1595,1183 @@
           "annotation": "tuple[StringComparison, ...]",
           "responsibilities": [
             "Publish immutable witnessed comparison occurrences without a complete-absence claim."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "TS-SYNTAX-ScriptAlias",
+          "kind": "class",
+          "qualified_name": "archkeel.analyzer.typescript.syntax.ScriptAlias",
+          "parent_id": "TS-SYNTAX-PORT",
+          "modifiers": [
+            "frozen"
+          ],
+          "responsibilities": [
+            "Carry one unique lexical const alias and its source-proven member-call sites."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "TS-SYNTAX-ScriptAlias.name",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.typescript.syntax.ScriptAlias.name",
+          "parent_id": "TS-SYNTAX-ScriptAlias",
+          "annotation": "str",
+          "responsibilities": [
+            "Retain the local alias binding name."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "TS-SYNTAX-ScriptAlias.span",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.typescript.syntax.ScriptAlias.span",
+          "parent_id": "TS-SYNTAX-ScriptAlias",
+          "annotation": "Span",
+          "responsibilities": [
+            "Bind proof to the lexical declaration."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "TS-SYNTAX-ScriptAlias.reference_span",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.typescript.syntax.ScriptAlias.reference_span",
+          "parent_id": "TS-SYNTAX-ScriptAlias",
+          "annotation": "Span",
+          "responsibilities": [
+            "Cite the actual global-object initializer."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "TS-SYNTAX-ScriptAlias.path",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.typescript.syntax.ScriptAlias.path",
+          "parent_id": "TS-SYNTAX-ScriptAlias",
+          "annotation": "tuple[str, ...]",
+          "responsibilities": [
+            "Retain the written browser-global publication path."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "TS-SYNTAX-ScriptAlias.calls",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.typescript.syntax.ScriptAlias.calls",
+          "parent_id": "TS-SYNTAX-ScriptAlias",
+          "annotation": "tuple[Span, ...]",
+          "responsibilities": [
+            "Cite only member-call sites admitted by the alias proof."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "TS-SYNTAX-Syntax.script_aliases",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.typescript.syntax.Syntax.script_aliases",
+          "parent_id": "TS-SYNTAX-Syntax",
+          "annotation": "tuple[ScriptAlias, ...]",
+          "responsibilities": [
+            "Publish immutable lexical alias proofs without granting ambient or factory-result identity."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "TS-TYPED-StandardLibrary",
+          "kind": "enum",
+          "qualified_name": "archkeel.analyzer.typescript.config.StandardLibrary",
+          "parent_id": "TS-TYPED-CONFIG",
+          "responsibilities": [
+            "Name the closed standard-library profiles used for source-global provenance."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "TS-TYPED-Options.libs",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.typescript.config.Options.libs",
+          "parent_id": "TS-TYPED-Options",
+          "annotation": "tuple[StandardLibrary, ...] | None",
+          "responsibilities": [
+            "Retain explicitly declared supported libraries without assuming DOM globals."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "TS-TYPED-Options.no_lib",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.typescript.config.Options.no_lib",
+          "parent_id": "TS-TYPED-Options",
+          "annotation": "bool",
+          "responsibilities": [
+            "Disable standard-global provenance when standard libraries are excluded."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "TS-TYPED-Options.ambient_custom",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.typescript.config.Options.ambient_custom",
+          "parent_id": "TS-TYPED-Options",
+          "annotation": "bool",
+          "responsibilities": [
+            "Keep customized ambient environments outside the closed standard-library proof."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "TS-TYPED-standard_globals",
+          "kind": "function",
+          "qualified_name": "archkeel.analyzer.typescript.config.standard_globals",
+          "parent_id": "TS-TYPED-CONFIG",
+          "signature": {
+            "parameters": [
+              {
+                "name": "options",
+                "annotation": "Options",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              }
+            ],
+            "returns": "frozenset[str]"
+          },
+          "responsibilities": [
+            "Name only standard globals justified by the declared library environment."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "TS-SYNTAX-ScriptGlobal",
+          "kind": "class",
+          "qualified_name": "archkeel.analyzer.typescript.syntax.ScriptGlobal",
+          "parent_id": "TS-SYNTAX-PORT",
+          "modifiers": [
+            "frozen"
+          ],
+          "responsibilities": [
+            "Preserve the distinction between direct source publication and runtime stability."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "TS-SYNTAX-ScriptGlobal.name",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.typescript.syntax.ScriptGlobal.name",
+          "parent_id": "TS-SYNTAX-ScriptGlobal",
+          "annotation": "str",
+          "responsibilities": [
+            "Name the declared binding for source lookup."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "TS-SYNTAX-ScriptGlobal.span",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.typescript.syntax.ScriptGlobal.span",
+          "parent_id": "TS-SYNTAX-ScriptGlobal",
+          "annotation": "Span",
+          "responsibilities": [
+            "Keep the originating declaration location available for evidence."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "TS-SYNTAX-ScriptGlobal.members",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.typescript.syntax.ScriptGlobal.members",
+          "parent_id": "TS-SYNTAX-ScriptGlobal",
+          "annotation": "tuple[tuple[str, str, Span], ...]",
+          "responsibilities": [
+            "Retain the exhaustive surface only for the supported declaration form."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "TS-SYNTAX-ScriptGlobal.stable",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.typescript.syntax.ScriptGlobal.stable",
+          "parent_id": "TS-SYNTAX-ScriptGlobal",
+          "annotation": "bool",
+          "responsibilities": [
+            "Keep runtime stability separate from direct source declaration provenance."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "TS-SYNTAX-ScriptGlobal.source_members",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.typescript.syntax.ScriptGlobal.source_members",
+          "parent_id": "TS-SYNTAX-ScriptGlobal",
+          "annotation": "tuple[tuple[str, str, Span], ...]",
+          "responsibilities": [
+            "Preserve direct declarations when runtime stability is unproved."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "TS-SYNTAX-ScriptFactoryMember",
+          "kind": "class",
+          "qualified_name": "archkeel.analyzer.typescript.syntax.ScriptFactoryMember",
+          "parent_id": "TS-SYNTAX-PORT",
+          "modifiers": [
+            "frozen"
+          ],
+          "responsibilities": [
+            "Bind one direct returned member to its own or forwarded source declaration."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "TS-SYNTAX-ScriptFactoryMember.name",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.typescript.syntax.ScriptFactoryMember.name",
+          "parent_id": "TS-SYNTAX-ScriptFactoryMember",
+          "annotation": "str",
+          "responsibilities": [
+            "Name the declared binding for source lookup."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "TS-SYNTAX-ScriptFactoryMember.span",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.typescript.syntax.ScriptFactoryMember.span",
+          "parent_id": "TS-SYNTAX-ScriptFactoryMember",
+          "annotation": "Span",
+          "responsibilities": [
+            "Keep the originating declaration location available for evidence."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "TS-SYNTAX-ScriptFactoryMember.target",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.typescript.syntax.ScriptFactoryMember.target",
+          "parent_id": "TS-SYNTAX-ScriptFactoryMember",
+          "annotation": "str | None",
+          "responsibilities": [
+            "Name the declared callee without asserting runtime dispatch."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "TS-SYNTAX-ScriptFactoryMember.target_span",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.typescript.syntax.ScriptFactoryMember.target_span",
+          "parent_id": "TS-SYNTAX-ScriptFactoryMember",
+          "annotation": "Span | None",
+          "responsibilities": [
+            "Authenticate the declaration reached by a returned member."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "TS-SYNTAX-ScriptFactoryMember.forwarded_span",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.typescript.syntax.ScriptFactoryMember.forwarded_span",
+          "parent_id": "TS-SYNTAX-ScriptFactoryMember",
+          "annotation": "Span | None",
+          "responsibilities": [
+            "Preserve the factory forwarding step as evidence."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "TS-SYNTAX-ScriptFactoryMember.callable",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.typescript.syntax.ScriptFactoryMember.callable",
+          "parent_id": "TS-SYNTAX-ScriptFactoryMember",
+          "annotation": "bool",
+          "responsibilities": [
+            "Distinguish direct callable declarations from data-only members."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "TS-SYNTAX-ScriptFactory",
+          "kind": "class",
+          "qualified_name": "archkeel.analyzer.typescript.syntax.ScriptFactory",
+          "parent_id": "TS-SYNTAX-PORT",
+          "modifiers": [
+            "frozen"
+          ],
+          "responsibilities": [
+            "Carry only the supported direct object-return declaration surface."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "TS-SYNTAX-ScriptFactory.name",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.typescript.syntax.ScriptFactory.name",
+          "parent_id": "TS-SYNTAX-ScriptFactory",
+          "annotation": "str",
+          "responsibilities": [
+            "Name the declared binding for source lookup."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "TS-SYNTAX-ScriptFactory.span",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.typescript.syntax.ScriptFactory.span",
+          "parent_id": "TS-SYNTAX-ScriptFactory",
+          "annotation": "Span",
+          "responsibilities": [
+            "Keep the originating declaration location available for evidence."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "TS-SYNTAX-ScriptFactory.members",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.typescript.syntax.ScriptFactory.members",
+          "parent_id": "TS-SYNTAX-ScriptFactory",
+          "annotation": "tuple[ScriptFactoryMember, ...]",
+          "responsibilities": [
+            "Retain the exhaustive surface only for the supported declaration form."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "TS-SYNTAX-ScriptDestructure",
+          "kind": "class",
+          "qualified_name": "archkeel.analyzer.typescript.syntax.ScriptDestructure",
+          "parent_id": "TS-SYNTAX-PORT",
+          "modifiers": [
+            "frozen"
+          ],
+          "responsibilities": [
+            "Keep each statically named property read bound to its publication."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "TS-SYNTAX-ScriptDestructure.span",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.typescript.syntax.ScriptDestructure.span",
+          "parent_id": "TS-SYNTAX-ScriptDestructure",
+          "annotation": "Span",
+          "responsibilities": [
+            "Keep the originating declaration location available for evidence."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "TS-SYNTAX-ScriptDestructure.path",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.typescript.syntax.ScriptDestructure.path",
+          "parent_id": "TS-SYNTAX-ScriptDestructure",
+          "annotation": "tuple[str, ...]",
+          "responsibilities": [
+            "Keep a literal publication route for conservative lookup."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "TS-SYNTAX-ScriptDestructure.members",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.typescript.syntax.ScriptDestructure.members",
+          "parent_id": "TS-SYNTAX-ScriptDestructure",
+          "annotation": "tuple[tuple[str, str, Span], ...]",
+          "responsibilities": [
+            "Retain the exhaustive surface only for the supported declaration form."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "TS-SYNTAX-ScriptAlias.factory",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.typescript.syntax.ScriptAlias.factory",
+          "parent_id": "TS-SYNTAX-ScriptAlias",
+          "annotation": "bool",
+          "responsibilities": [
+            "Distinguish an object-return binding from a namespace alias."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "TS-SYNTAX-ScriptAlias.reads",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.typescript.syntax.ScriptAlias.reads",
+          "parent_id": "TS-SYNTAX-ScriptAlias",
+          "annotation": "tuple[Span, ...]",
+          "responsibilities": [
+            "Record the exhaustively supported readonly property accesses."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "TS-SYNTAX-ScriptAlias.escapes",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.typescript.syntax.ScriptAlias.escapes",
+          "parent_id": "TS-SYNTAX-ScriptAlias",
+          "annotation": "tuple[tuple[str, ...], ...]",
+          "responsibilities": [
+            "Retain publication routes so writes in another selected file invalidate provenance."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "TS-SYNTAX-Syntax.script_factories",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.typescript.syntax.Syntax.script_factories",
+          "parent_id": "TS-SYNTAX-Syntax",
+          "annotation": "tuple[ScriptFactory, ...]",
+          "responsibilities": [
+            "Expose supported direct object-return declarations to collection."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "TS-SYNTAX-Syntax.script_source_writes",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.typescript.syntax.Syntax.script_source_writes",
+          "parent_id": "TS-SYNTAX-Syntax",
+          "annotation": "tuple[tuple[str | None, Span], ...]",
+          "responsibilities": [
+            "Keep explicit source rebindings separate from opaque runtime effects."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "TS-SYNTAX-Syntax.script_write_paths",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.typescript.syntax.Syntax.script_write_paths",
+          "parent_id": "TS-SYNTAX-Syntax",
+          "annotation": "tuple[tuple[str, ...], ...]",
+          "responsibilities": [
+            "Support source rebinding checks across selected files."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "TS-SYNTAX-Syntax.script_destructures",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.typescript.syntax.Syntax.script_destructures",
+          "parent_id": "TS-SYNTAX-Syntax",
+          "annotation": "tuple[ScriptDestructure, ...]",
+          "responsibilities": [
+            "Keep named property provenance without promoting runtime values."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "TS-TYPED-ScriptHost",
+          "kind": "enum",
+          "qualified_name": "archkeel.analyzer.typescript.config.ScriptHost",
+          "parent_id": "TS-TYPED-CONFIG",
+          "responsibilities": [
+            "Name the explicit classic-browser host assumption without CommonJS or AMD loaders."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "TS-TYPED-ScriptProvider",
+          "kind": "class",
+          "qualified_name": "archkeel.analyzer.typescript.config.ScriptProvider",
+          "parent_id": "TS-TYPED-CONFIG",
+          "modifiers": [
+            "frozen"
+          ],
+          "responsibilities": [
+            "Bind a vendor source to its existing package and content-hash provenance."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "TS-TYPED-ScriptProvider.source",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.typescript.config.ScriptProvider.source",
+          "parent_id": "TS-TYPED-ScriptProvider",
+          "annotation": "str",
+          "responsibilities": [
+            "Keep the provider source inside the authenticated snapshot."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "TS-TYPED-ScriptProvider.provenance",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.typescript.config.ScriptProvider.provenance",
+          "parent_id": "TS-TYPED-ScriptProvider",
+          "annotation": "str",
+          "responsibilities": [
+            "Bind package identity and bundle digest to declared provenance."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "TS-TYPED-Config",
+          "kind": "class",
+          "qualified_name": "archkeel.analyzer.typescript.config.Config",
+          "parent_id": "TS-TYPED-CONFIG",
+          "modifiers": [
+            "frozen"
+          ],
+          "responsibilities": [
+            "Keep the selected source scope and declared source environment bound to its configuration."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "TS-TYPED-Config.script_host",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.typescript.config.Config.script_host",
+          "parent_id": "TS-TYPED-Config",
+          "annotation": "ScriptHost | None",
+          "responsibilities": [
+            "Make the no-loader browser assumption explicit."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "TS-TYPED-Config.script_providers",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.typescript.config.Config.script_providers",
+          "parent_id": "TS-TYPED-Config",
+          "annotation": "tuple[ScriptProvider, ...]",
+          "responsibilities": [
+            "Name the only unselected vendor inputs eligible for source publication proof."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "TS-TYPED-Resolver.script_provider",
+          "kind": "method",
+          "qualified_name": "archkeel.analyzer.typescript.resolve.Resolver.script_provider",
+          "parent_id": "TS-TYPED-Resolver",
+          "signature": {
+            "parameters": [
+              {
+                "name": "self",
+                "annotation": null,
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "provider",
+                "annotation": "ScriptProvider",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              }
+            ],
+            "returns": "tuple[str, bytes] | None"
+          },
+          "responsibilities": [
+            "Authenticate declared vendor bytes and package provenance without parsing source or executing factories."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "TS-SYNTAX-umd_publication",
+          "kind": "function",
+          "qualified_name": "archkeel.analyzer.typescript.parse.umd_publication",
+          "parent_id": "TS-SYNTAX-PARSER",
+          "signature": {
+            "parameters": [
+              {
+                "name": "rel",
+                "annotation": "str",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "content",
+                "annotation": "bytes",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              }
+            ],
+            "returns": "tuple[str, Span, frozenset[str] | None] | None"
+          },
+          "responsibilities": [
+            "Observe the bounded UMD publication envelope and competing global writes; infer no runtime factory result."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "id": "TS-SYNTAX-PARSER",
+          "kind": "module",
+          "qualified_name": "archkeel.analyzer.typescript.parse",
+          "parent_id": "TARGET-SOURCE",
+          "responsibilities": [
+            "Own raw parser access and emit immutable lexical source witnesses."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "TS-SYNTAX-ScriptAlias.complete",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.typescript.syntax.ScriptAlias.complete",
+          "parent_id": "TS-SYNTAX-ScriptAlias",
+          "annotation": "bool",
+          "responsibilities": [
+            "Require exhaustive static uses before decomposing a source alias."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "TS-SYNTAX-Syntax.script_bindings",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.typescript.syntax.Syntax.script_bindings",
+          "parent_id": "TS-SYNTAX-Syntax",
+          "annotation": "tuple[str, ...]",
+          "responsibilities": [
+            "Retain selected source bindings that can contradict standard or host assumptions."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "TS-SYNTAX-ScriptGlobal.source_origin",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.typescript.syntax.ScriptGlobal.source_origin",
+          "parent_id": "TS-SYNTAX-ScriptGlobal",
+          "annotation": "bool",
+          "responsibilities": [
+            "Distinguish a unique source origin from runtime publication availability."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "TS-SYNTAX-ScriptGlobal.availability",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.typescript.syntax.ScriptGlobal.availability",
+          "parent_id": "TS-SYNTAX-ScriptGlobal",
+          "annotation": "tuple[Span, ...]",
+          "responsibilities": [
+            "Retain runtime guards without inventing guaranteed publication."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "TS-SYNTAX-ScriptNamespace",
+          "kind": "class",
+          "qualified_name": "archkeel.analyzer.typescript.syntax.ScriptNamespace",
+          "parent_id": "TS-SYNTAX-PORT",
+          "modifiers": [
+            "frozen"
+          ],
+          "responsibilities": [
+            "Bind a namespace declaration to its actual initialization without inventing namespace members."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "TS-SYNTAX-ScriptNamespace.name",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.typescript.syntax.ScriptNamespace.name",
+          "parent_id": "TS-SYNTAX-ScriptNamespace",
+          "annotation": "str",
+          "responsibilities": [
+            "Name the declared namespace binding."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "TS-SYNTAX-ScriptNamespace.span",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.typescript.syntax.ScriptNamespace.span",
+          "parent_id": "TS-SYNTAX-ScriptNamespace",
+          "annotation": "Span",
+          "responsibilities": [
+            "Bind the namespace variable to source evidence."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "TS-SYNTAX-ScriptNamespace.initialization",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.typescript.syntax.ScriptNamespace.initialization",
+          "parent_id": "TS-SYNTAX-ScriptNamespace",
+          "annotation": "Span",
+          "responsibilities": [
+            "Bind the supported namespace initialization to its source evidence."
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/target/design.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "TS-SYNTAX-Syntax.script_namespaces",
+          "kind": "attribute",
+          "qualified_name": "archkeel.analyzer.typescript.syntax.Syntax.script_namespaces",
+          "parent_id": "TS-SYNTAX-Syntax",
+          "annotation": "tuple[ScriptNamespace, ...]",
+          "responsibilities": [
+            "Keep supported namespace source bindings separate from member and runtime proof."
           ]
         }
       ],

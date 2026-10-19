@@ -97,7 +97,7 @@ def public_api_id(selector: str) -> str:
     return f"API-{hashlib.sha256(selector.encode()).hexdigest()[:16]}"
 
 
-SCHEMA_VERSION = "2.0.0"
+SCHEMA_VERSION = "2.1.0"
 DELTA_SCHEMA_VERSION = "2.0.0"
 
 
@@ -446,6 +446,19 @@ class CouplingBudget:
 
 
 @dataclass(frozen=True, slots=True)
+class CallOwnerRule(ArchitectureRuleGrammar):
+    id: str
+    kind: Literal[ArchitectureRuleKind.CALL_OWNER]
+    source: str
+    target: str
+    rationale: str
+    provenance: tuple[str, ...]
+    decided_by: DecisionMaker
+    allowed_sources: tuple[str, ...] = ()
+    exact_sources: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class ForbiddenDependencyRule(ArchitectureRuleGrammar):
     id: str
     kind: Literal[ArchitectureRuleKind.FORBIDDEN_DEPENDENCY]
@@ -711,7 +724,8 @@ class BoundaryTypesRule(ArchitectureRuleGrammar):
 
 
 ArchitectureRule: TypeAlias = (
-    ForbiddenDependencyRule
+    CallOwnerRule
+    | ForbiddenDependencyRule
     | AllowedDependencyRule
     | ForbiddenConstructRule
     | ExternalDependencyScopeRule
@@ -981,10 +995,24 @@ def _boundary_allowance_references(
     return references
 
 
+def _call_owner_references(index: int, rule: CallOwnerRule) -> list[ModuleReference]:
+    return _references(
+        f"/rules/{index}",
+        [
+            ("source", (rule.source,), True),
+            ("target", (rule.target,), False),
+            ("allowed_sources", rule.allowed_sources, True),
+            ("exact_sources", rule.exact_sources, True),
+        ],
+    )
+
+
 def _rule_references(
     index: int, rule: ArchitectureRule, external: frozenset[str]
 ) -> list[ModuleReference]:
     """One rule's fields that name a module, a module prefix or a qualified symbol."""
+    if isinstance(rule, CallOwnerRule):
+        return _call_owner_references(index, rule)
     named: list[tuple[str, tuple[str, ...], bool]] = []
     if isinstance(
         rule,

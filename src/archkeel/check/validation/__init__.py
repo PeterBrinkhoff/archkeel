@@ -77,7 +77,13 @@ from archkeel.ir.model import (
     ExpectationOutcome as _ExpectationOutcome,
 )
 from archkeel.ir.model import KnownSemanticChangeKind as _KnownSemanticChangeKind
-from archkeel.ir.renames import Renamed, module_layouts, observed_names, renames_since
+from archkeel.ir.renames import (
+    Renamed,
+    module_layouts,
+    observed_names,
+    renamed_contract,
+    renames_since,
+)
 from archkeel.ir.widening import (
     WideningChange,
     baseline_widening_changes,
@@ -88,9 +94,9 @@ from archkeel.ir.widening import (
 from ..git import GitError, MissingBlobError, read_blob, tracked_paths, working_tree_paths
 from ..ports import Analyzer, FilesToWrite, ScanConfig
 from ..ratchets import measure_python_ratchets, unknown_positions_by_rule, unresolved_call_changes
-from ..report import observe_repository
 from ..run import inspect_observation, observe_revision
 from ..snapshot import SnapshotError
+from ..uml import observe_repository
 from .closed_world import _decided_pairs as _decided_pairs
 from .closed_world import _open_decision_diagnostics as _open_decision_diagnostics
 from .closed_world import _pair_diagnostics as _pair_diagnostics
@@ -594,6 +600,7 @@ class _AgainstContext:
     config: ScanConfig | None
     tree_digest: str | None = None
     baseline_digest: str | None = None
+    inside_tree: InsideContractTree | None = None
 
 
 def _revision_contract_tree(root: Path, revision: str, path: str) -> InsideContractTree:
@@ -658,6 +665,7 @@ def _resolve_against_context(
     against_contract_path = (
         against_config.contract if against_config is not None else config.contract
     )
+    tree: InsideContractTree | None = None
     try:
         tree = _revision_contract_tree(root, against, against_contract_path)
         against_contract: ArchitectureContract | _Introduced = tree.comparison_contract
@@ -692,6 +700,7 @@ def _resolve_against_context(
         against_config,
         before_tree_digest,
         before_baseline_digest,
+        tree,
     )
     return context, amendment_error
 
@@ -822,16 +831,21 @@ def _rename_since(
         observed=observed_names(observation),
         layouts=historical_layouts,
     )
-    return next(
-        (
-            item
-            for item in recognised
-            if not historical_scanned
-            or any(previous.prefixes == item.prefixes for previous in historical_renames)
-            if not any(_left_behind(root, directory) for directory in item.directories)
-        ),
-        None,
-    )
+    for item in recognised:
+        if historical_scanned and not any(
+            previous.prefixes == item.prefixes for previous in historical_renames
+        ):
+            continue
+        if any(_left_behind(root, directory) for directory in item.directories):
+            continue
+        try:
+            if ctx.inside_tree is not None:
+                for mount in ctx.inside_tree.mounts:
+                    renamed_contract(mount.contract, dict(item.prefixes))
+        except ValueError:
+            continue
+        return item
+    return None
 
 
 def _left_behind(root: Path, directory: str) -> bool:
@@ -849,6 +863,43 @@ def _code_file(root: Path, path: Path) -> bool:
     return path.is_file() and "__pycache__" not in relative.parts
 
 
+def _inside_declaration_widenings(
+    before: InsideContractTree | None,
+    after: InsideContractTree | None,
+    rename: Renamed | None,
+) -> tuple[WideningChange, ...]:
+    prefixes = dict(rename.prefixes) if rename is not None else {}
+    previous = (
+        {
+            mount.parent_id: renamed_contract(mount.contract, prefixes)
+            if prefixes
+            else mount.contract
+            for mount in before.mounts
+        }
+        if before
+        else {}
+    )
+    current = {mount.parent_id: mount.contract for mount in after.mounts} if after else {}
+    findings: list[WideningChange] = []
+    contracts: dict[str, ArchitectureContract] = previous | current
+    # Compare each scoped declaration intact; flattening loses per-level UML versions.
+    for scope, contract in contracts.items():
+        old, new = previous.get(scope), current.get(scope)
+        template = replace(contract, components=(), rules=(), declarations=None)
+        findings.extend(
+            replace(
+                finding,
+                subject=f"inside {scope!r}.{finding.subject}",
+                message=f"inside {scope!r}: {finding.message}",
+            )
+            for finding in contract_widening_changes(
+                replace(template, declarations=old.declarations) if old else template,
+                replace(template, declarations=new.declarations) if new else template,
+            )
+        )
+    return tuple(findings)
+
+
 def _widening_failures(
     ctx: _AgainstContext,
     contract: ArchitectureContract,
@@ -861,6 +912,7 @@ def _widening_failures(
     after_policy_digest: str | None,
     *,
     amendment_written: bool,
+    inside_tree: InsideContractTree | None = None,
 ) -> tuple[tuple[str, ...], tuple[WideningFinding, ...], AmendmentStatus | None]:
     """Every unamended widening from `ctx.contract` to `contract` (AD-61, #11).
 
@@ -886,7 +938,10 @@ def _widening_failures(
         if rename is not None:
             before, budgets = rename.contract, rename.budgets
             violations = None if violations is None else rename.violations
-        findings = list(contract_widening_changes(before, contract))
+        findings = [
+            *contract_widening_changes(before, contract),
+            *_inside_declaration_widenings(ctx.inside_tree, inside_tree, rename),
+        ]
         targets = _name_budget_targets(before.declarations or ContractDeclarations())
     if baseline is not None and violations is not None:
         findings += baseline_widening_changes(violations, after_baseline, cycle_rules=cycle_rules)
@@ -1250,6 +1305,7 @@ def run_validate(
         current_tree_digest,
         after_policy_digest,
         amendment_written=amendment_written,
+        inside_tree=inside_tree,
     )
     failures = (
         *baseline_failures,
@@ -1280,4 +1336,6 @@ def run_validate(
     ):
         changes, note = _unresolved_calls_since(root, config, analyzer, against, observation)
         result = replace(result, unresolved_call_changes=changes, unresolved_call_note=note)
-    return (result if artifact is None else replace(result, artifact=artifact)), FilesToWrite(files)
+    return (result if artifact is None else replace(result, artifact=artifact)), FilesToWrite(
+        tuple(files.items())
+    )
