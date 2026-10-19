@@ -1139,14 +1139,30 @@ def test_ordinary_nullable_map_cannot_bypass_union_or_binding_proof(
 @pytest.mark.parametrize(
     "suffix", ["Packet.__args__ = ()\n", "unknown(Packet)\n", "unknown(globals())\n"]
 )
-def test_uncertain_alias_body_is_unknown_not_a_concrete_failure(tmp_path, alias_module, suffix):
+def test_alias_body_separates_source_identity_from_runtime_member_proof(
+    tmp_path, alias_module, suffix
+):
     _fixture(tmp_path, alias_module=alias_module, alias_suffix=suffix, selected=())
     result = _observe(tmp_path)
     assert result.observation is not None and result.diagnostics == ()
-    assert _targets(result.observation) == []
+    [binding] = [
+        item
+        for item in result.observation.records("imports" if alias_module else "symbols") or ()
+        if item.data.get("source_module" if alias_module else "module") == "sample.app.impl"
+        and item.data.get("binding" if alias_module else "name") == "Packet"
+    ]
+    source_identity = suffix == "unknown(Packet)\n"
+    assert binding.data.get("source_binding_unique") is source_identity
+    assert binding.data.get("source_member_binding_static") is False
     assert _facts(result.observation) == []
     positions = {item.data.get("qualified_name") for item in _unknowns(result.observation)}
-    assert {"sample.app.impl.Session.prepare", "sample.app.impl.Session.dispatch"} <= positions
+    targets = {"sample.app.impl.Session.prepare", "sample.app.impl.Session.dispatch"}
+    if source_identity:
+        assert len(_targets(result.observation)) == 4
+        assert not targets & positions
+    else:
+        assert _targets(result.observation) == []
+        assert targets <= positions
     assert any(
         item.data.get("qualified_name") == "sample.app.impl.Session.unrelated"
         for item in trace_valid_violations(result.observation)
@@ -1165,7 +1181,7 @@ def test_literal_outer_and_sibling_survive_uncertain_alias(tmp_path):
     _fixture(
         tmp_path,
         selected=(),
-        alias_suffix="unknown(Packet)\n",
+        alias_suffix="Packet.__args__ = ()\n",
         annotation="dict[str, Packet] | list[object]",
     )
     result = _observe(tmp_path)
@@ -1183,7 +1199,7 @@ def test_uncertain_inner_alias_does_not_erase_exact_literal_outer_map_permission
     annotation = "dict[str, Packet]"
     _fixture(
         tmp_path,
-        alias_suffix="unknown(Packet)\n",
+        alias_suffix="Packet.__args__ = ()\n",
         annotation=annotation,
         change={"annotation": annotation},
         bound=False,
@@ -1204,7 +1220,7 @@ def test_uncertain_inner_alias_does_not_erase_exact_literal_outer_map_permission
 def test_uncertain_alias_ordinary_permission_is_independent_of_union_order(
     tmp_path, annotation, dto
 ):
-    suffix = "unknown(Packet)\n"
+    suffix = "Packet.__args__ = ()\n"
     if dto:
         suffix += f"class Envelope:\n    payload: {annotation}\n"
     _fixture(
