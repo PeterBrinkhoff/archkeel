@@ -575,3 +575,24 @@ def test_callable_source_proof_is_order_independent_and_keeps_safe_sibling(
     assert "Callable[[Safe], Safe]" in protected
     assert "Callable[[Payload], Payload]" in protected
     assert ("Payload" in unproven_member_bindings(provider)) is bool(escape)
+
+
+def test_member_containment_reuses_only_immutable_syntax() -> None:
+    module = _parsed_module(
+        "class Payload: pass\nclass Container:\n"
+        "    def read(self, value: Payload) -> Payload: return value\n",
+        "sample.api",
+        rel_path="sample/api.py",
+    )
+    with patch.object(
+        source, "_protected_type_expressions", wraps=source._protected_type_expressions
+    ) as scans:
+        expected = source._contained_member_roots(module, module.all_nodes)
+        first = scans.call_count
+        assert first
+        assert source._contained_member_roots(module, module.all_nodes) == expected
+        assert scans.call_count == first
+        assert source._contained_member_roots(module, ()) == set()
+        fresh = _parsed_module(module.source, "sample.api", rel_path="sample/api.py")
+        assert source._contained_member_roots(fresh, fresh.all_nodes) == expected
+        assert scans.call_count > first

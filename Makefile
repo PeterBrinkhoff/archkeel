@@ -71,6 +71,7 @@ pr-test:
 		tests/test_onboarding_demo.py tests/test_pypi_description.py tests/test_typescript_onboarding.py \
 		tests/test_unknown_positions.py tests/test_inside_rule_coverage.py tests/test_report_159_160.py \
 		tests/test_target_navigation_graph.py \
+		tests/test_binding_proof_reuse.py tests/test_annotation_carriers.py tests/test_local_inherited_methods.py \
 		tests/test_absent_import_namespace.py tests/test_string_comparison_observation.py tests/test_local_string_comparisons.py tests/test_string_predicate_observation.py tests/test_python_string_predicate_target.py tests/test_typed_host_events.py
 
 pr-report-test:
