@@ -619,8 +619,9 @@ class _Collection:
 
     def _script_vendor_publications(self) -> None:
         publications: dict[str, list[str]] = {}
+        resolver: Resolver = self.resolver
         for provider in self.config.script_providers:
-            resolved = self.resolver.script_provider(provider)
+            resolved = resolver.script_provider(provider)
             if resolved is None:
                 return
             package, content = resolved

@@ -270,9 +270,17 @@ def provider_sources(
     root = Path(request.snapshot.root).resolve()
     imports, discovered_modules = _provider_source_names(facts)
     paths = sysconfig.get_paths()
+    # Overlay environments retain their base dependencies on the active import path.
     search_roots = tuple(
         sorted(
-            {Path(paths[key]).resolve() for key in ("stdlib", "platstdlib", "purelib", "platlib")}
+            {
+                Path(entry).resolve()
+                for entry in (
+                    *(paths[key] for key in ("stdlib", "platstdlib", "purelib", "platlib")),
+                    *sys.path,
+                )
+                if entry
+            }
         )
     )
     sources: dict[str, PythonProviderSource] = {}

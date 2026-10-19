@@ -429,3 +429,35 @@ def test_standard_global_proof_requires_a_closed_declared_provider_inventory(tmp
     else:
         assert isinstance(facts.imports[0], UnresolvedTarget)
         assert any(gap.data.get("resolution_dimension") == "imports" for gap in facts.coverage.gaps)
+
+
+def test_vendor_checkout_preserves_authenticated_bytes_with_autocrlf(tmp_path):
+    import subprocess
+
+    from archkeel.analyzer.typescript.config import Config, Options
+
+    def git(*arguments):
+        subprocess.run(
+            ["git", "-c", "core.autocrlf=true", "-c", "core.safecrlf=false", *arguments],
+            cwd=tmp_path,
+            check=True,
+            capture_output=True,
+        )
+
+    git("init", "-q")
+    (tmp_path / ".gitattributes").write_bytes((ROOT / ".gitattributes").read_bytes())
+    source = (ROOT / BUNDLE).read_bytes()
+    for relative in (BUNDLE, LICENSE):
+        target = tmp_path / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes((ROOT / relative).read_bytes())
+    git("add", "--", ".gitattributes", BUNDLE, LICENSE)
+    (tmp_path / BUNDLE).unlink()
+    (tmp_path / LICENSE).unlink()
+    git("checkout-index", "--force", "--", BUNDLE, LICENSE)
+    assert (tmp_path / BUNDLE).read_bytes() == source
+    provider = ScriptProvider(BUNDLE, LICENSE)
+    config = Config(Options(), (), False, ScriptHost.CLASSIC_BROWSER, (provider,))
+    assert Resolver(Snapshot(str(tmp_path)), config).script_provider(provider) == ("elkjs", source)
+    (tmp_path / BUNDLE).write_bytes(source.replace(b"\n", b"\r\n"))
+    assert Resolver(Snapshot(str(tmp_path)), config).script_provider(provider) is None

@@ -98,3 +98,23 @@ def test_browser_gate_rejects_incomplete_or_unowned_physical_scope(tmp_path, mut
     with pytest.raises(ValueError, match=message):
         main(["--root", str(root), "--output", str(output)])
     assert not output.exists()
+
+
+def test_browser_runner_serializes_windows_config_as_a_posix_port(tmp_path, monkeypatch):
+    from pathlib import PureWindowsPath
+
+    import tools.browser_architecture as browser_tool
+    from archkeel.cli.config import ConfigError, load_config
+
+    root = _repository(tmp_path)
+    configuration = "docs/architecture/browser.toml"
+    with pytest.raises(ConfigError, match="safe POSIX relative path"):
+        load_config(root, str(PureWindowsPath(configuration)))
+
+    def platform_path(value):
+        return PureWindowsPath(value) if value == configuration else Path(value)
+
+    monkeypatch.setattr(browser_tool, "Path", platform_path)
+    output = tmp_path / "windows-config-architecture.json"
+    assert main(["--root", str(root), "--output", str(output)]) == 0
+    assert json.loads(output.with_suffix(".receipt.json").read_bytes())["passed"] is True

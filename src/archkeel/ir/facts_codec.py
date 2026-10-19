@@ -890,6 +890,78 @@ def _runtime_info(value: RawJson, protocol_version: ProtocolVersion) -> RuntimeI
     )
 
 
+def _source_facts(value: RawJson, version: ProtocolVersion) -> SourceFacts:
+    item = _object(
+        value,
+        {
+            "profile",
+            "adapter",
+            "runtime",
+            "source",
+            "capabilities",
+            "inputs",
+            "files",
+            "imports",
+            "sections",
+            "coverage",
+            "evidence",
+            "uncertain_reexports",
+            "type_shapes",
+            "state",
+            "candidate_evidence",
+        }
+        | ({"provider_bindings"} if version is ProtocolVersion.V4 else set()),
+        "facts",
+    )
+    adapter = _object(item["adapter"], {"name", "version", "code_digest"}, "adapter")
+    uncertain: list[tuple[str, tuple[str, ...]]] = []
+    for entry in _array(item["uncertain_reexports"], "uncertain reexports"):
+        pair = _object(entry, {"binding", "origins"}, "uncertain reexport")
+        uncertain.append(
+            (
+                _string(pair["binding"], "reexport binding"),
+                _record_strings(pair["origins"], "reexport origins"),
+            )
+        )
+    shapes: list[tuple[str, TypeShape]] = []
+    for entry in _array(item["type_shapes"], "type shapes"):
+        pair = _object(entry, {"expression", "shape"}, "type shape entry")
+        shapes.append(
+            (_string(pair["expression"], "type expression"), _shape(pair["shape"], version))
+        )
+    facts = SourceFacts(
+        _profile(item["profile"]),
+        AnalyzerInfo(
+            _string(adapter["name"], "adapter.name"),
+            _string(adapter["version"], "adapter.version"),
+            _digest(adapter["code_digest"], "adapter.code_digest"),
+        ),
+        _runtime_info(item["runtime"], version),
+        _source(item["source"]),
+        _capabilities(item["capabilities"]),
+        tuple(_input(entry) for entry in _array(item["inputs"], "inputs")),
+        tuple(_file(entry) for entry in _array(item["files"], "files")),
+        tuple(_target(entry) for entry in _array(item["imports"], "imports")),
+        tuple(_section(entry) for entry in _array(item["sections"], "sections")),
+        _coverage(item["coverage"]),
+        tuple(parse_evidence(entry) for entry in _array(item["evidence"], "evidence")),
+        tuple(uncertain),
+        tuple(shapes),
+        parse_state_data(freeze_data(item["state"])),
+        tuple(
+            parse_evidence(entry)
+            for entry in _array(item["candidate_evidence"], "candidate evidence")
+        ),
+        tuple(
+            _provider_binding(entry)
+            for entry in _array(item.get("provider_bindings", []), "provider bindings")
+        ),
+    )
+    _contextmanager_protocol(facts, version)
+    validate_source_facts(facts)
+    return facts
+
+
 def decode_response(payload: bytes) -> CollectionResponse:
     try:
         decoded = _decode(payload)
@@ -902,74 +974,7 @@ def decode_response(payload: bytes) -> CollectionResponse:
             | ({"provider_sources"} if version is ProtocolVersion.V4 else set()),
             "response",
         )
-        item = _object(
-            raw["facts"],
-            {
-                "profile",
-                "adapter",
-                "runtime",
-                "source",
-                "capabilities",
-                "inputs",
-                "files",
-                "imports",
-                "sections",
-                "coverage",
-                "evidence",
-                "uncertain_reexports",
-                "type_shapes",
-                "state",
-                "candidate_evidence",
-            }
-            | ({"provider_bindings"} if version is ProtocolVersion.V4 else set()),
-            "facts",
-        )
-        adapter = _object(item["adapter"], {"name", "version", "code_digest"}, "adapter")
-        uncertain: list[tuple[str, tuple[str, ...]]] = []
-        for entry in _array(item["uncertain_reexports"], "uncertain reexports"):
-            pair = _object(entry, {"binding", "origins"}, "uncertain reexport")
-            uncertain.append(
-                (
-                    _string(pair["binding"], "reexport binding"),
-                    _record_strings(pair["origins"], "reexport origins"),
-                )
-            )
-        shapes: list[tuple[str, TypeShape]] = []
-        for entry in _array(item["type_shapes"], "type shapes"):
-            pair = _object(entry, {"expression", "shape"}, "type shape entry")
-            shapes.append(
-                (_string(pair["expression"], "type expression"), _shape(pair["shape"], version))
-            )
-        facts = SourceFacts(
-            _profile(item["profile"]),
-            AnalyzerInfo(
-                _string(adapter["name"], "adapter.name"),
-                _string(adapter["version"], "adapter.version"),
-                _digest(adapter["code_digest"], "adapter.code_digest"),
-            ),
-            _runtime_info(item["runtime"], version),
-            _source(item["source"]),
-            _capabilities(item["capabilities"]),
-            tuple(_input(entry) for entry in _array(item["inputs"], "inputs")),
-            tuple(_file(entry) for entry in _array(item["files"], "files")),
-            tuple(_target(entry) for entry in _array(item["imports"], "imports")),
-            tuple(_section(entry) for entry in _array(item["sections"], "sections")),
-            _coverage(item["coverage"]),
-            tuple(parse_evidence(entry) for entry in _array(item["evidence"], "evidence")),
-            tuple(uncertain),
-            tuple(shapes),
-            parse_state_data(freeze_data(item["state"])),
-            tuple(
-                parse_evidence(entry)
-                for entry in _array(item["candidate_evidence"], "candidate evidence")
-            ),
-            tuple(
-                _provider_binding(entry)
-                for entry in _array(item.get("provider_bindings", []), "provider bindings")
-            ),
-        )
-        _contextmanager_protocol(facts, version)
-        validate_source_facts(facts)
+        facts = _source_facts(raw["facts"], version)
         providers = _python_providers(raw.get("provider_sources", []))
         if providers and (
             facts.profile is not SourceProfile.PYTHON
@@ -1050,6 +1055,74 @@ def _contextmanager_protocol(facts: SourceFacts, version: ProtocolVersion) -> No
         raise ProtocolError("contextmanager signatures require collection protocol 4.0.0")
 
 
+def _facts_payload(
+    facts: SourceFacts, version: ProtocolVersion, runtime: dict[str, RawJson]
+) -> dict[str, RawJson]:
+    return {
+        **(
+            {
+                "provider_bindings": [
+                    _provider_binding_payload(entry) for entry in facts.provider_bindings
+                ]
+            }
+            if version is ProtocolVersion.V4
+            else {}
+        ),
+        "state": thaw_data(state_data(facts.state)),
+        "candidate_evidence": [evidence_payload(entry) for entry in facts.candidate_evidence],
+        "profile": facts.profile,
+        "adapter": {
+            "name": facts.adapter.name,
+            "version": facts.adapter.version,
+            "code_digest": facts.adapter.code_digest,
+        },
+        "runtime": runtime,
+        "source": {
+            "git_head": facts.source.git_head,
+            "dirty": facts.source.dirty,
+            "source_digest": facts.source.source_digest,
+            "scope": list(facts.source.scope),
+        },
+        "capabilities": {
+            "sections": list(facts.capabilities.sections),
+            "resolution_features": list(facts.capabilities.resolution_features),
+            "constructs": [
+                {"name": entry.name.value, "status": entry.status.value}
+                for entry in facts.capabilities.constructs
+            ],
+        },
+        "inputs": [
+            {"path": entry.path, "digest": entry.digest, "role": entry.role}
+            for entry in facts.inputs
+        ],
+        "files": [_file_payload(entry) for entry in facts.files],
+        "imports": [_target_payload(target) for target in facts.imports],
+        "sections": [
+            {
+                "name": section.name,
+                "records": [record_payload(record) for record in section.records],
+            }
+            for section in facts.sections
+        ],
+        "coverage": {
+            "selected_files": list(facts.coverage.selected_files),
+            "files_read": facts.coverage.files_read,
+            "files_parsed": facts.coverage.files_parsed,
+            "full_scope": facts.coverage.full_scope,
+            "gaps": [record_payload(record) for record in facts.coverage.gaps],
+        },
+        "evidence": [evidence_payload(entry) for entry in facts.evidence],
+        "uncertain_reexports": [
+            {"binding": binding, "origins": list(origins)}
+            for binding, origins in facts.uncertain_reexports
+        ],
+        "type_shapes": [
+            {"expression": expression, "shape": _shape_payload(shape)}
+            for expression, shape in facts.type_shapes
+        ],
+    }
+
+
 def encode_response(response: CollectionResponse) -> bytes:
     facts = response.facts
     version = _version(response.protocol_version)
@@ -1070,69 +1143,7 @@ def encode_response(response: CollectionResponse) -> bytes:
             if version is ProtocolVersion.V4
             else {}
         ),
-        "facts": {
-            **(
-                {
-                    "provider_bindings": [
-                        _provider_binding_payload(entry) for entry in facts.provider_bindings
-                    ]
-                }
-                if version is ProtocolVersion.V4
-                else {}
-            ),
-            "state": thaw_data(state_data(facts.state)),
-            "candidate_evidence": [evidence_payload(entry) for entry in facts.candidate_evidence],
-            "profile": facts.profile,
-            "adapter": {
-                "name": facts.adapter.name,
-                "version": facts.adapter.version,
-                "code_digest": facts.adapter.code_digest,
-            },
-            "runtime": runtime,
-            "source": {
-                "git_head": facts.source.git_head,
-                "dirty": facts.source.dirty,
-                "source_digest": facts.source.source_digest,
-                "scope": list(facts.source.scope),
-            },
-            "capabilities": {
-                "sections": list(facts.capabilities.sections),
-                "resolution_features": list(facts.capabilities.resolution_features),
-                "constructs": [
-                    {"name": entry.name.value, "status": entry.status.value}
-                    for entry in facts.capabilities.constructs
-                ],
-            },
-            "inputs": [
-                {"path": entry.path, "digest": entry.digest, "role": entry.role}
-                for entry in facts.inputs
-            ],
-            "files": [_file_payload(entry) for entry in facts.files],
-            "imports": [_target_payload(target) for target in facts.imports],
-            "sections": [
-                {
-                    "name": section.name,
-                    "records": [record_payload(record) for record in section.records],
-                }
-                for section in facts.sections
-            ],
-            "coverage": {
-                "selected_files": list(facts.coverage.selected_files),
-                "files_read": facts.coverage.files_read,
-                "files_parsed": facts.coverage.files_parsed,
-                "full_scope": facts.coverage.full_scope,
-                "gaps": [record_payload(record) for record in facts.coverage.gaps],
-            },
-            "evidence": [evidence_payload(entry) for entry in facts.evidence],
-            "uncertain_reexports": [
-                {"binding": binding, "origins": list(origins)}
-                for binding, origins in facts.uncertain_reexports
-            ],
-            "type_shapes": [
-                {"expression": expression, "shape": _shape_payload(shape)}
-                for expression, shape in facts.type_shapes
-            ],
-        },
+        "facts": _facts_payload(facts, version, runtime),
     }
     payload = json.dumps(
         raw, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False

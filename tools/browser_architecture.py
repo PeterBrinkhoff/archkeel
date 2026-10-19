@@ -24,7 +24,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     root = args.root.resolve()
     configuration = Path("docs/architecture/browser.toml")
-    config = load_config(root, str(configuration))
+    config = load_config(root, configuration.as_posix())
     contract = parse_contract(json.loads((root / config.contract).read_bytes()))
     assets = root / "src/archkeel/render/assets"
     # Runtime derivation and vendor publication have separate generation/source witnesses.

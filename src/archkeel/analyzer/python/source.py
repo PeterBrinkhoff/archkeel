@@ -759,17 +759,23 @@ def _class_statement_bindings(
     return [], False, False
 
 
-def unproven_class_body(
-    module: ParsedModule, node: ast.ClassDef, *, inert_values: bool = False
+def _unproven_class_expressions(
+    module: ParsedModule, node: ast.ClassDef, *, inert_values: bool
 ) -> bool:
-    """Keep member binding and class-creation transformations conservative."""
-    if any(
+    return any(
         isinstance(item, ast.NamedExpr)
         and not (inert_values and _inert_creation_operand(item))
         or exposes_dynamic_namespace(module, item, local_namespace=True)
         for expr in class_definition_expressions(node)
         for item in ast.walk(expr)
-    ):
+    )
+
+
+def unproven_class_body(
+    module: ParsedModule, node: ast.ClassDef, *, inert_values: bool = False
+) -> bool:
+    """Keep member binding and class-creation transformations conservative."""
+    if _unproven_class_expressions(module, node, inert_values=inert_values):
         return True
     if any(
         isinstance(
@@ -1709,6 +1715,66 @@ def _native_generic_base_static(
     )
 
 
+def _protected_class_owner_references(
+    module: ParsedModule, unsafe_providers: AbstractSet[str]
+) -> set[ast.AST]:
+    protected: set[ast.AST] = set()
+    plain_classes = {
+        owner.name
+        for owner in module.tree.body
+        if isinstance(owner, ast.ClassDef)
+        and not owner.bases
+        and class_header_static(owner)
+        and owner.name in unique_direct_module_bindings(module)
+        and class_creation_static(
+            module, owner, owner_exposure_only=True, unsafe_providers=frozenset()
+        )
+    }
+    for owner in module.tree.body:
+        if not isinstance(owner, ast.ClassDef):
+            continue
+        parameters = generic_parameters(module, owner)
+        for base in owner.bases:
+            if not isinstance(base, ast.Subscript):
+                continue
+            values = base.slice.elts if isinstance(base.slice, ast.Tuple) else (base.slice,)
+            if all(
+                isinstance(value, ast.Name)
+                and (value.id in plain_classes or value.id in parameters)
+                for value in values
+            ) and _native_generic_base_static(module, base, owner, unsafe_providers):
+                protected |= set(values)
+    for node in module.scope_nodes:
+        if (
+            isinstance(node, ast.Attribute)
+            and isinstance(node.ctx, ast.Store | ast.Del)
+            and node.attr[:2] != "__"
+            and isinstance(node.value, ast.Name)
+            and node.value.id in plain_classes
+        ):
+            protected |= {node.value}
+        elif isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+            protected |= {
+                value
+                for value in (*node.args.defaults, *node.args.kw_defaults)
+                if isinstance(value, ast.Name) and value.id in plain_classes
+            }
+        elif (
+            isinstance(node, ast.Call)
+            and _bare_builtin(module, node.func, {"setattr"})
+            and len(node.args) == 3
+            and not node.keywords
+            and isinstance(node.args[0], ast.Name)
+            and node.args[0].id in plain_classes
+            and isinstance(node.args[1], ast.Constant)
+            and isinstance(node.args[1].value, str)
+            and node.args[1].value[:2] != "__"
+            and (isinstance(node.args[2], ast.Name) or _inert_creation_operand(node.args[2]))
+        ):
+            protected |= {node.args[0]}
+    return protected
+
+
 def _protected_member_references(
     module: ParsedModule,
     nodes: Sequence[ast.AST],
@@ -1762,59 +1828,7 @@ def _protected_member_references(
         )
     }
     if owner_exposure_only:
-        plain_classes = {
-            owner.name
-            for owner in module.tree.body
-            if isinstance(owner, ast.ClassDef)
-            and not owner.bases
-            and class_header_static(owner)
-            and owner.name in unique_direct_module_bindings(module)
-            and class_creation_static(
-                module, owner, owner_exposure_only=True, unsafe_providers=frozenset()
-            )
-        }
-        for owner in module.tree.body:
-            if not isinstance(owner, ast.ClassDef):
-                continue
-            parameters = generic_parameters(module, owner)
-            for base in owner.bases:
-                if not isinstance(base, ast.Subscript):
-                    continue
-                values = base.slice.elts if isinstance(base.slice, ast.Tuple) else (base.slice,)
-                if all(
-                    isinstance(value, ast.Name)
-                    and (value.id in plain_classes or value.id in parameters)
-                    for value in values
-                ) and _native_generic_base_static(module, base, owner, unsafe_providers):
-                    protected |= set(values)
-        for node in module.scope_nodes:
-            if (
-                isinstance(node, ast.Attribute)
-                and isinstance(node.ctx, ast.Store | ast.Del)
-                and node.attr[:2] != "__"
-                and isinstance(node.value, ast.Name)
-                and node.value.id in plain_classes
-            ):
-                protected |= {node.value}
-            elif isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
-                protected |= {
-                    value
-                    for value in (*node.args.defaults, *node.args.kw_defaults)
-                    if isinstance(value, ast.Name) and value.id in plain_classes
-                }
-            elif (
-                isinstance(node, ast.Call)
-                and _bare_builtin(module, node.func, {"setattr"})
-                and len(node.args) == 3
-                and not node.keywords
-                and isinstance(node.args[0], ast.Name)
-                and node.args[0].id in plain_classes
-                and isinstance(node.args[1], ast.Constant)
-                and isinstance(node.args[1].value, str)
-                and node.args[1].value[:2] != "__"
-                and (isinstance(node.args[2], ast.Name) or _inert_creation_operand(node.args[2]))
-            ):
-                protected |= {node.args[0]}
+        protected |= _protected_class_owner_references(module, unsafe_providers)
     if owner_exposure_only:
         protected |= _type_reference_nodes(
             module,

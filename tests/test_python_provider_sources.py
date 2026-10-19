@@ -1456,6 +1456,7 @@ def test_capture_uses_source_files_without_importing_packages_and_rejects_ambigu
 ):
     provider_root = tmp_path / "environment"
     provider_root.mkdir()
+    monkeypatch.setattr(sys, "path", [str(provider_root)])
     (provider_root / "contextlib.py").write_text(
         "raise RuntimeError('must not run')\ndef contextmanager(func): return func\n"
     )
@@ -1481,6 +1482,63 @@ def test_capture_uses_source_files_without_importing_packages_and_rejects_ambigu
         },
     )
     assert not _captured_sources(request)
+
+
+@pytest.mark.parametrize(
+    "state", ["active", "missing", "ambiguous", "selected", "bytecode", "native", "escaped"]
+)
+def test_capture_retains_active_overlay_sources_and_rejects_competing_origins(
+    tmp_path, monkeypatch, state
+):
+    overlay = tmp_path / "overlay"
+    base = tmp_path / "base-site"
+    overlay.mkdir()
+    base.mkdir()
+    source = "raise RuntimeError('capture must not import')\nclass Item: pass\n"
+    (base / "vendor.py").write_text(source)
+    request = _request(tmp_path, imported="vendor", binding="Item")
+    (tmp_path / "src/sample/api.py").write_text(
+        "from vendor import Item\ndef keep(value: str) -> str: return value\n"
+        "__all__ = ['Item', 'keep']\n"
+    )
+    active = [str(base)]
+    if state == "missing":
+        active = []
+    elif state == "selected":
+        (tmp_path / "src/vendor.py").write_text("class Item: pass\n")
+    elif state == "escaped":
+        outside = tmp_path / "elsewhere.py"
+        outside.write_text(source)
+        (base / "vendor.py").unlink()
+        (base / "vendor.py").symlink_to(outside)
+    elif state in {"ambiguous", "bytecode", "native"}:
+        competing = tmp_path / "competing"
+        competing.mkdir()
+        suffix = (
+            ".py"
+            if state == "ambiguous"
+            else ".pyc"
+            if state == "bytecode"
+            else EXTENSION_SUFFIXES[0]
+        )
+        (competing / ("vendor" + suffix)).write_bytes(b"class Item: pass\n")
+        active.append(str(competing))
+    monkeypatch.setattr(sys, "path", active)
+    monkeypatch.setattr(
+        sysconfig,
+        "get_paths",
+        lambda: dict.fromkeys(("stdlib", "platstdlib", "purelib", "platlib"), str(overlay)),
+    )
+    sources = _captured_sources(request)
+    assert bool(sources) is (state == "active")
+    if state == "active":
+        [captured] = sources
+        assert captured.source == source
+        assert captured.digest == hashlib.sha256(source.encode()).hexdigest()
+        facts = _native_facts(replace(request, resolver=PythonSettings(provider_sources=sources)))
+        assert _route_assessment(tmp_path, facts).status == "PASS"
+    else:
+        assert not _native_facts(request).provider_bindings
 
 
 def test_provider_receipt_cannot_borrow_selected_evidence(tmp_path):
