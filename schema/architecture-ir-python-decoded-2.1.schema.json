@@ -100,7 +100,8 @@
                   "candidate_count",
                   "candidates_truncated",
                   "reason",
-                  "target_evidence_ids"
+                  "target_evidence_ids",
+                  "call_binding"
                 ],
                 "additionalProperties": false,
                 "properties": {

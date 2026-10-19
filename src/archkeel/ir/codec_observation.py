@@ -42,7 +42,13 @@ from archkeel.ir.model import (
     identity_is_known,
 )
 from archkeel.ir.model import RawJson as RawJson
-from archkeel.ir.profiles import ObservedSection, Profile, UnmeasurableScalar, profile_for
+from archkeel.ir.profiles import (
+    PYTHON_ANALYZER,
+    ObservedSection,
+    Profile,
+    UnmeasurableScalar,
+    profile_for,
+)
 
 from .facts_codec import parse_evidence as parse_evidence
 from .facts_codec import parse_record as parse_record
@@ -188,6 +194,10 @@ def parse_observation(raw: object) -> Observation:
         for section in sections:
             if section.name == ObservedSection.CALLS:
                 for call in section.records:
+                    if profile.analyzer == PYTHON_ANALYZER and not any(
+                        key == "call_binding" for key, _ in call.data.entries
+                    ):
+                        raise ValueError("Python 2.1.0 calls require explicit call_binding or null")
                     _call_binding(call.data.get("call_binding"))
     return Observation(
         schema_version=schema_version,
