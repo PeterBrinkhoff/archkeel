@@ -18,7 +18,7 @@ from enum import StrEnum
 from importlib.machinery import BuiltinImporter, FrozenImporter
 from pathlib import Path
 from types import CodeType
-from typing import Final, Literal, NamedTuple, Protocol, TypedDict
+from typing import TYPE_CHECKING, Final, Literal, NamedTuple, Protocol, TypedDict
 
 from archkeel.ir.facts import (
     DefinitionBranchKind,
@@ -49,6 +49,9 @@ from archkeel.ir.source_records import is_public_method_name as is_public_method
 
 from .binding_types import AliasBinding as AliasBinding
 from .binding_types import ImportKind
+
+if TYPE_CHECKING:
+    from .scopes import LexicalScopes
 
 
 class _PropertyBinding(TypedDict):
@@ -353,6 +356,10 @@ class ParsedModule:
     _static_containment: frozenset[tuple[str, str]] = field(init=False, repr=False)
     stable_binding_cache: tuple[dict[str, AliasBinding], frozenset[str]] | None = field(
         default=None, init=False, repr=False
+    )
+
+    _lexical_scopes: tuple[ast.Module, str, str, str, LexicalScopes] | None = field(
+        default=None, init=False, repr=False, compare=False
     )
 
     def __post_init__(self) -> None:
