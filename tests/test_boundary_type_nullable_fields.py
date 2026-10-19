@@ -31,6 +31,7 @@ def _fixture(
     route: str = "Result",
     returns: str = "Envelope",
     schema_version: str = "2.1.0",
+    alias_suffix: str = "",
 ) -> Observation:
     _write_app(
         root,
@@ -40,7 +41,9 @@ def _fixture(
             + "\nclass Result(BaseModel):\n"
             + f"    observed_counts: {annotation} = None\n"
             + f"    other_counts: {_NULLABLE} = None\n\n"
-            + "Alias = Result\n\n@dataclass\nclass Envelope:\n"
+            + "Alias = Result\n"
+            + alias_suffix
+            + "\n@dataclass\nclass Envelope:\n"
             + f"    result: {route}\n\n"
             + f"def run() -> {returns}:\n    return Envelope(result=Result())\n"
         ),
@@ -132,12 +135,12 @@ def test_field_allowance_rejects_inexact_declaration_or_selector(
 @pytest.mark.parametrize(
     ("route", "remaining"),
     [
-        ("Alias", []),
-        ("list[Alias | None]", []),
-        ("dict[str, Alias]", ["return.result"]),
+        ("Alias", ["return.result.other_counts"]),
+        ("list[Alias | None]", ["return.result.other_counts"]),
+        ("dict[str, Alias]", ["return.result", "return.result.other_counts"]),
     ],
 )
-def test_nullable_field_allowance_requires_proven_dto_alias_body(
+def test_nullable_field_declaration_survives_dto_alias_and_container(
     tmp_path: Path, route: str, remaining: list[str]
 ) -> None:
     observed = _fixture(tmp_path, route=route)
@@ -145,12 +148,31 @@ def test_nullable_field_allowance_requires_proven_dto_alias_body(
     [alias] = [r for r in observed.records("symbols") or () if r.title == "Alias"]
     assert alias.data.get("source_binding_unique") is True
     assert alias.data.get("source_member_binding_static") is False
-    [unknown] = [
-        r for r in observed.records("unknowns") or () if r.kind == "boundary_type_position"
+    assert not any(r.kind == "boundary_type_position" for r in observed.records("unknowns") or ())
+    [fact] = [
+        r for r in observed.records("typing_signals") or () if r.kind == "boundary_type_allowance"
     ]
-    assert unknown.data.get("path") == "return.result"
-    assert unknown.data.get("nested_annotation") == route
-    assert unknown.data.get("reason") == "other"
+    assert fact.data.get("field_path") == "result.observed_counts"
+    assert fact.data.get("annotation") == _NULLABLE
+    assert fact.data.get("nested_annotation") == "dict[str, int]"
+
+
+@pytest.mark.parametrize("alias_suffix", ["Alias = Result\n", "del Alias\n"])
+@pytest.mark.parametrize(
+    ("route", "remaining"),
+    [("Alias", []), ("list[Alias | None]", []), ("dict[str, Alias]", ["return.result"])],
+)
+def test_unproven_dto_alias_binding_cannot_gain_field_permission(
+    tmp_path: Path, alias_suffix: str, route: str, remaining: list[str]
+) -> None:
+    observed = _fixture(tmp_path, route=route, alias_suffix=alias_suffix)
+    aliases = [r for r in observed.records("symbols") or () if r.title == "Alias"]
+    assert aliases and all(r.data.get("source_binding_unique") is False for r in aliases)
+    assert sorted(r.data.get("path") for r in trace_valid_violations(observed)) == remaining
+    assert any(
+        r.kind == "boundary_type_position" and r.data.get("path") == "return.result"
+        for r in observed.records("unknowns") or ()
+    )
     assert not any(
         r.kind == "boundary_type_allowance" for r in observed.records("typing_signals") or ()
     )
@@ -216,15 +238,11 @@ def test_alias_field_allowance_cannot_pin_an_alias_expansion(
         schema_version=schema_version,
         returns="Envelope" if schema_version == "2.1.0" else "Envelope | None",
     )
-    assert [r.data.get("path") for r in trace_valid_violations(observed)] == [
+    assert {r.data.get("path") for r in trace_valid_violations(observed)} == {
+        "return.result.observed_counts",
         "return.result.other_counts",
-    ]
-    [unknown] = [
-        r for r in observed.records("unknowns") or () if r.kind == "boundary_type_position"
-    ]
-    assert unknown.data.get("path") == "return.result.observed_counts"
-    assert unknown.data.get("nested_annotation") == "Counts"
-    assert unknown.data.get("reason") == "other"
+    }
+    assert not any(r.kind == "boundary_type_position" for r in observed.records("unknowns") or ())
     assert not any(
         r.kind == "boundary_type_allowance" for r in observed.records("typing_signals") or ()
     )
