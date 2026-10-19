@@ -713,12 +713,16 @@ def _flow_section_head(*, atlas: bool = False) -> str:
 
 
 def _explorer_section(payload: str, *, atlas: bool = False) -> str:
-    script = _asset("explorer.runtime.js").decode("utf-8")
+    script_source: bytes = _asset("explorer.runtime.js")
+    vendor_source: bytes = _asset("elkjs-0.12.0.bundled.js")
+    script = script_source.decode("utf-8")
+    vendor = vendor_source.decode("utf-8")
     return (
         _flow_section_head(atlas=atlas)
         + payload
         + "</script>\n"
-        + f'      <script data-elkjs-version="0.12.0">{script}</script>'
+        + f'      <script data-elkjs-version="0.12.0">{vendor}</script>'
+        + f'      <script data-report-asset="explorer">{script}</script>'
         + "\n    </section>"
     )
 

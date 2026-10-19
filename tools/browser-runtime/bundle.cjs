@@ -16,6 +16,14 @@ esbuild.build({
   plugins: [{
     name: "verified-flow-publication",
     setup(build) {
+      build.onResolve({filter: /^elkjs\/lib\/elk\.bundled\.js$/}, args => {
+        if (args.importer === path.join(assets, "report-layout.js")) {
+          return {path: args.path, namespace: "pinned-inline-elk"};
+        }
+      });
+      build.onLoad({filter: /.*/, namespace: "pinned-inline-elk"}, () => ({
+        contents: "export default window.ELK;", loader: "js",
+      }));
       build.onResolve({filter: /^\.\/flow\.js$/}, args => {
         if (args.importer === path.join(assets, "report-canvas.js")) {
           return {path: path.join(assets, "flow.runtime.js")};

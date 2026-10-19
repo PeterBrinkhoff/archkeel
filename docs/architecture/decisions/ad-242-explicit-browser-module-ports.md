@@ -4,7 +4,10 @@ First-party browser dependencies use named ES imports and exports. The existing
 nine source identities, ownership boundaries and exact port restrictions remain.
 Compatibility globals remain for existing callers; internal calls use lexical ports.
 
-A pinned build-time bundler produces one inline offline explorer asset. Terser
+A pinned build-time bundler produces the inline first-party explorer asset after
+the unchanged canonical ELK script. A build-only bridge maps the exact layout
+import to that vendor publication. This avoids expanding already minified vendor
+code while preserving first-party function names and offline loading. Terser
 still verifies Flow publication independently. Generated output must match its
 sources and locked tools before publication; installed reports need no Node or
 network. Standalone report entry points retain their separate behavior.

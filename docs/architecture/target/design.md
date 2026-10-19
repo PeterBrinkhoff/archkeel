@@ -128,6 +128,9 @@ publication witness and the pinned offline bundle. `make browser-graph-check`
 checks protocol/declaration generation and strict graph-scene/deviation consumers.
 It does not typecheck all Explorer JavaScript. Installed reports need no Node or
 network; the locked ELK package must match the existing canonical vendored bytes.
+Those vendor bytes load unchanged before the first-party bundle. Its build-only
+bridge binds the exact layout import to the existing ELK publication; it proves
+no vendor effects. The original 2 MB small-report and 400 KB nonvendor limits remain.
 
 Existing browser controls cover projection/input preservation, duplicate/nonfinite
 layout rejection, async generation ownership, retry, interactions and offline CSP.
@@ -187,8 +190,9 @@ compatibility in their authoritative native entries. These are the required seam
 The paired renderer prepares the entire HTML set before the caller writes it.
 Malformed observations fail before publication; atlas pages additionally require
 a matching authenticated Core projection. Filtered or no-projection output keeps
-legacy behavior. Filesystem writes remain caller-owned. Existing single-page APIs and page bytes
-remain compatible. Alex accepted the exact two-name-to-one migration to
+legacy behavior. Filesystem writes remain caller-owned. Existing single-page APIs
+remain compatible; paired and legacy entry points emit identical bytes for the
+same inputs and assets. Alex accepted the exact two-name-to-one migration to
 `archkeel.render.html:render_architecture_pages`: CLI → Render falls from eight
 accepted names to seven, at the unchanged ceiling seven (AD-99).
 
@@ -377,9 +381,9 @@ Accept only a frozen candidate with complete scope, zero required UNKNOWNs,
 no diagnostics or violations, and passing relevant Core/report/browser,
 packaging and final-head CI checks. Earlier receipts do not validate later code.
 The 120-second report ceiling and 52 typing-position ceiling remain unchanged.
-Earlier native integrations tightened unresolved calls from 837 to 832. The explicit
-browser module implementation adds eight unproved calls. Alex expressly accepts
-840 as the new ceiling, bound by the canonical baseline amendment. All other
+Earlier native integrations tightened unresolved calls from 837 to 832. After
+eight additional Source/browser calls, Alex expressly accepts 840 as the new
+ceiling, bound by the canonical baseline amendment. All other
 debt budgets and rules remain unchanged.
 Microbenchmarks do not establish whole-report acceptance.
 

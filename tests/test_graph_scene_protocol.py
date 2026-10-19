@@ -287,7 +287,10 @@ def test_offline_report_embeds_the_checked_module_bundle():
     from archkeel.render.html import _asset, _explorer_section
 
     page = _explorer_section("{}")
-    assert _asset("explorer.runtime.js").decode() in page
+    vendor = _asset("elkjs-0.12.0.bundled.js").decode()
+    bundle = _asset("explorer.runtime.js").decode()
+    assert vendor in page and bundle in page
+    assert page.index(vendor) < page.index(bundle)
     assert page.count('<script data-elkjs-version="0.12.0">') == 1
     assert "<script src=" not in page
 

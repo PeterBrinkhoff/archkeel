@@ -17,7 +17,7 @@ from test_architecture_demo import _prepare_repo
 from test_module_explore import _sample
 from test_report_filter import CONFIG as TOUR_CONFIG
 from test_report_filter import _tour_root
-from test_uml_rendering import _wait_for_layout
+from test_uml_rendering import _intercept_elk_publication, _wait_for_layout
 
 from archkeel.check.report import run_report
 from archkeel.cli import main
@@ -160,8 +160,8 @@ def test_atlas_inlines_pinned_elk_before_flow_script_under_offline_csp(tmp_path)
 
     elk_script = '<script data-elkjs-version="0.12.0">'
     assert elk_script in page
-    # The bundled module graph initializes ELK and its consumers in dependency order.
     assert page.count(elk_script) == 1
+    assert page.index(elk_script) < page.index('<script data-report-asset="explorer">')
     assert "Generated from flow.js; source-sha256=" in page
     assert "default-src 'none'" in page
     assert "script-src 'unsafe-inline'" in page
@@ -703,8 +703,6 @@ def test_atlas_ignores_stale_layout_and_retries_rejected_layout(tmp_path):
     declared_ids = sorted(module["id"] for module in atlas["declared_modules"])
     level = next(level for level in atlas["levels"] if level["parent_id"] is None)
     observed_ids = sorted(module["id"] for module in level["modules"])
-    marker = '<script>"use strict";'
-    assert marker in html
     hook = """window.__originalAtlasLayout = ELK.prototype.layout;
 window.__atlasLayoutCalls = 0;
 ELK.prototype.layout = function(graph) {
@@ -721,11 +719,11 @@ ELK.prototype.layout = function(graph) {
   });
   return window.__originalAtlasLayout.call(this, graph);
 };"""
-    flow_index = html.rindex(marker)
-    html = html[:flow_index] + f"<script>{hook}</script>\n" + html[flow_index:]
+    html = _intercept_elk_publication(html, hook)
     errors = []
     playwright, browser, page = _browser_page(api, html, errors=errors)
     try:
+        assert page.evaluate("window.__elkHookInstalled === true")
         _wait_for_layout(page)
         page.locator('.atlas-content-choice [data-content="modules"]').click()
         page.wait_for_function("() => typeof window.__resolveOldAtlasLayout === 'function'")

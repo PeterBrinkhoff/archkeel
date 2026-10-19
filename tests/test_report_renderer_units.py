@@ -114,6 +114,7 @@ def _asset_page(api, assets):
     playwright, browser, page = _browser_page(api, "<!doctype html><html><body></body></html>")
     try:
         assert set(assets) <= {"report-scene.js", "report-layout.js", "elkjs-0.12.0.bundled.js"}
+        page.add_script_tag(path=str(ASSET_DIR / "elkjs-0.12.0.bundled.js"))
         page.add_script_tag(path=str(ASSET_DIR / "explorer.runtime.js"))
     except Exception:
         browser.close()
