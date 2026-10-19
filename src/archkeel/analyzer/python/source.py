@@ -105,6 +105,7 @@ _DEFINITION_BRANCHES = {
 
 NATIVE_DATACLASS_DECORATOR: Final = "dataclasses.dataclass"
 NATIVE_TYPED_DICT_BASE: Final = "typing.TypedDict"
+NATIVE_TYPED_DICT_BASES: Final = frozenset({NATIVE_TYPED_DICT_BASE, "typing_extensions.TypedDict"})
 DATACLASS_DECORATORS: Final = frozenset(
     {NATIVE_DATACLASS_DECORATOR, "pydantic.dataclasses.dataclass"}
 )
@@ -1041,7 +1042,7 @@ def typed_dict_header_static(
         or len(node.bases) != 1
         or not (
             not node.keywords
-            and resolve_static_name(module, node.bases[0]) == NATIVE_TYPED_DICT_BASE
+            and resolve_static_name(module, node.bases[0]) in NATIVE_TYPED_DICT_BASES
             or len(node.keywords) == 1
             and node.keywords[0].arg == "total"
             and isinstance(node.keywords[0].value, ast.Constant)
@@ -1055,7 +1056,7 @@ def typed_dict_header_static(
     return (
         isinstance(root, ast.Name)
         and root.id in unique_direct_module_bindings(module)
-        and origin in {"typing.TypedDict", "typing_extensions.TypedDict"}
+        and origin in NATIVE_TYPED_DICT_BASES
         and origin.rpartition(".")[0] not in unsafe_providers
         and root.id not in explicit_provider_escapes(module)
         and is_proven_decorator(module, base, node, None, frozenset({origin}))
@@ -1147,7 +1148,7 @@ def class_creation_static(
 ) -> bool:
     if (
         len(node.bases) == 1
-        and resolve_static_name(module, node.bases[0]) == NATIVE_TYPED_DICT_BASE
+        and resolve_static_name(module, node.bases[0]) in NATIVE_TYPED_DICT_BASES
     ):
         return native_owner_creation_static(module, node, unsafe_providers)
     return (
@@ -1282,7 +1283,7 @@ def native_owner_creation_static(
         return _native_class_body_static(module, node)
     if (
         len(node.bases) == 1
-        and resolve_static_name(module, node.bases[0]) == NATIVE_TYPED_DICT_BASE
+        and resolve_static_name(module, node.bases[0]) in NATIVE_TYPED_DICT_BASES
     ):
         return typed_dict_header_static(module, node, unsafe_providers) and all(
             isinstance(child, ast.Pass)
@@ -1327,7 +1328,7 @@ def native_typed_dict_provider_static(
     return any(
         isinstance(owner, ast.ClassDef)
         and len(owner.bases) == 1
-        and resolve_static_name(module, owner.bases[0]) == NATIVE_TYPED_DICT_BASE
+        and resolve_static_name(module, owner.bases[0]) in NATIVE_TYPED_DICT_BASES
         and any(
             isinstance(node, ast.Name) and node.id == binding for node in ast.walk(owner.bases[0])
         )
@@ -1418,7 +1419,10 @@ def _contained_member_roots(
         (name, target.id)
         for node, name in module_scope_bindings(module)
         if (value := admitted_type_alias_value(module, node)) is not None
-        and value in module._proven_map_union_expressions | module._proven_callable_expressions
+        and value
+        in module._proven_map_union_expressions
+        | module._proven_callable_expressions
+        | module._proven_class_values
         for target in ast.walk(value)
         if isinstance(target, ast.Name) and isinstance(target.ctx, ast.Load)
     }
@@ -2089,8 +2093,10 @@ def _class_value_expressions(module: ParsedModule) -> Iterator[ast.expr]:
 def proven_class_value_candidates(
     modules: Mapping[str, ParsedModule],
     imported_bindings: Mapping[tuple[str, str], tuple[str, str]],
+    *,
+    unsafe_providers: AbstractSet[str] = frozenset(),
 ) -> dict[str, dict[ast.expr, frozenset[tuple[str, str]]]]:
-    """Prove closed literal values, including numeric operators and stable source constants."""
+    """Prove closed values without invoking user-defined value or type operators."""
     definitions = {
         (name, target.id): statement.value
         for name, provider in modules.items()
@@ -2154,6 +2160,94 @@ def proven_class_value_candidates(
                 return operand
         return None
 
+    type_heads = frozenset({"dict", "list", "tuple", "set", "frozenset"})
+    builtin_types = type_heads | {
+        "str",
+        "int",
+        "float",
+        "bool",
+        "bytes",
+        "object",
+        "type",
+        "complex",
+    }
+    builtin_dependencies = frozenset(
+        (name, node.id)
+        for name, provider in modules.items()
+        for node in provider.all_nodes
+        if isinstance(node, ast.Name) and node.id in builtin_types
+    ) | frozenset(
+        (name, binding)
+        for name, provider in modules.items()
+        for binding, imported in provider.aliases.items()
+        if imported.target == "builtins" or imported.target.startswith("builtins.")
+    )
+    type_values_static = not any(
+        exposes_dynamic_namespace(provider, node, member_surface=True)
+        for provider in modules.values()
+        for node in provider.all_nodes
+    )
+    classes: dict[tuple[str, str], ast.ClassDef] = {
+        (name, node.name): node
+        for name, provider in modules.items()
+        for node in provider.tree.body
+        if isinstance(node, ast.ClassDef)
+        and node.name in stable_direct_module_bindings(provider)
+        and node.name in unique_direct_module_bindings(provider)
+    }
+    unsafe = unsafe_providers | frozenset(modules)
+
+    def prove_type(
+        provider: ParsedModule, expression: ast.expr, statement: ast.AST
+    ) -> frozenset[tuple[str, str]] | None:
+        if isinstance(expression, ast.Constant) and expression.value is None:
+            return frozenset()
+        if isinstance(expression, ast.Name):
+            if _bare_builtin(provider, expression, builtin_types):
+                return frozenset()
+            if not bound_once_before(provider.tree.body, statement, expression.id):
+                return None
+            binding = (provider.module, expression.id)
+            origin = imported_bindings.get(binding, binding)
+            definition = classes.get(origin)
+            if definition is None:
+                return None
+            owner = modules[origin[0]]
+            class_dependencies = frozenset({binding, origin})
+            if not definition.bases and class_creation_static(
+                owner, definition, owner_exposure_only=False, unsafe_providers=unsafe
+            ):
+                return class_dependencies
+            if (
+                len(definition.bases) == 1
+                and resolve_static_name(owner, definition.bases[0]) in NATIVE_TYPED_DICT_BASES
+                and native_owner_creation_static(owner, definition, unsafe)
+            ):
+                base = definition.bases[0]
+                root = base.value if isinstance(base, ast.Attribute) else base
+                if isinstance(root, ast.Name):
+                    return class_dependencies | {(owner.module, root.id)}
+            return None
+        if isinstance(expression, ast.Subscript) and _bare_builtin(
+            provider, expression.value, type_heads
+        ):
+            arguments: Sequence[ast.expr] = (
+                expression.slice.elts
+                if isinstance(expression.slice, ast.Tuple)
+                else (expression.slice,)
+            )
+        elif isinstance(expression, ast.BinOp) and isinstance(expression.op, ast.BitOr):
+            arguments = (expression.left, expression.right)
+        else:
+            return None
+        argument_dependencies: set[tuple[str, str]] = set()
+        for argument in arguments:
+            proof = prove_type(provider, argument, statement)
+            if proof is None:
+                return None
+            argument_dependencies |= proof
+        return frozenset(argument_dependencies)
+
     candidates: dict[str, dict[ast.expr, frozenset[tuple[str, str]]]] = {}
     for name, module in modules.items():
         values: dict[ast.expr, frozenset[tuple[str, str]]] = {}
@@ -2161,6 +2255,14 @@ def proven_class_value_candidates(
             proof = prove(module, expression, frozenset())
             if proof is not None:
                 values[expression] = proof[1]
+        if type_values_static:
+            for statement, binding in module_scope_bindings(module):
+                value = admitted_type_alias_value(module, statement)
+                if value is None or binding not in stable_direct_module_bindings(module):
+                    continue
+                type_proof = prove_type(module, value, statement)
+                if type_proof is not None:
+                    values[value] = type_proof | builtin_dependencies | {(name, binding)}
         module._proven_class_values = frozenset(values)
         candidates[name] = values
     return candidates

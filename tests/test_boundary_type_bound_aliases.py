@@ -1275,3 +1275,43 @@ def test_opaque_alias_transfer_keeps_source_identity_without_an_exact_permission
     assert packet.data.get("source_binding_unique") is True
     assert packet.data.get("source_member_binding_static") is False
     assert _facts(result.observation) == []
+
+
+def test_redirected_metadata_class_cannot_grant_an_exact_alias_permission(tmp_path: Path):
+    _fixture(
+        tmp_path,
+        metadata=(
+            "class Redirect(type):\n"
+            "    def __new__(meta, name, bases, namespace):\n"
+            "        if name == 'Metadata': return object\n"
+            "        return super().__new__(meta, name, bases, namespace)\n"
+            "class Base(metaclass=Redirect): pass\n"
+            "class Metadata(Base):\n    label: str\n"
+        ),
+    )
+    runtime = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import builtins,json\nbuiltins.Missing=object\n"
+            "from sample.app.impl import Packet\n"
+            "print(json.dumps(Packet.__args__[0].__args__[1].__args__[2] is object))\n",
+        ],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert json.loads(runtime.stdout) is True
+    observation = _observe(tmp_path).observation
+    assert observation is not None
+    metadata = next(
+        row
+        for row in observation.records("symbols")
+        if row.data.get("qualified_name") == "sample.app.types.Metadata"
+    )
+    assert metadata.data.get("source_binding_unique") is True
+    assert metadata.data.get("source_member_binding_static") is False
+    assert _facts(observation) == []
+    assert len(_targets(observation)) == 4

@@ -1,11 +1,13 @@
 # Archkeel
 # Copyright (c) 2026 Rapiddweller Asia Co., Ltd.
 # SPDX-License-Identifier: MIT
-"""Literal TypedDict headers prove identity without proving member closure."""
+"""TypedDict declarations and exact alias permissions retain separate native proofs."""
 
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -307,7 +309,7 @@ def test_ce_total_false_keeps_unrelated_failures_and_grants_only_selected(
     )
     assert metadata.data.get("typed_dict_header_static") is True
     assert metadata.data.get("class_header_static") is False
-    assert metadata.data.get("source_member_binding_static") is False
+    assert metadata.data.get("source_member_binding_static") is True
 
 
 def _collect(root: Path):
@@ -334,9 +336,7 @@ def _collect(root: Path):
         "import typing_extensions\nclass ExportMetadata(typing_extensions.TypedDict, total=True):",
     ],
 )
-def test_literal_standard_headers_emit_source_proof_and_keep_partial_inventory(
-    tmp_path: Path, header
-):
+def test_literal_standard_headers_prove_complete_declared_member_inventory(tmp_path: Path, header):
     _ce_fixture(
         tmp_path, metadata=header + "\n    target_entity: str\n    selector: str\n    type: str\n"
     )
@@ -350,9 +350,9 @@ def test_literal_standard_headers_emit_source_proof_and_keep_partial_inventory(
     )
     assert metadata.data.get("typed_dict_header_static") is True
     assert metadata.data.get("class_header_static") is False
-    assert metadata.data.get("source_member_binding_static") is False
+    assert metadata.data.get("source_member_binding_static") is True
     inventories = metadata.data.get("member_inventories")
-    assert inventories and all(i.get("status") == "partial" for i in inventories)
+    assert inventories and all(i.get("status") == "complete" for i in inventories)
     observation = _observe(tmp_path).observation
     assert observation is not None and len(_facts(observation)) == 4
 
@@ -498,7 +498,7 @@ def test_source_protocol_rejects_nonboolean_header_proof(tmp_path: Path, flag):
 
 @pytest.mark.parametrize("opaque", ["object", "Missing"])
 def test_typed_dict_member_findings_remain_after_grants(tmp_path: Path, opaque):
-    metadata = _CE_METADATA + f"    opaque: {opaque}\n"
+    metadata = "from __future__ import annotations\n" + _CE_METADATA + f"    opaque: {opaque}\n"
     _ce_fixture(tmp_path, selected=(), metadata=metadata)
     before = _observe(tmp_path).observation
     _ce_fixture(tmp_path, metadata=metadata)
@@ -536,13 +536,14 @@ def test_unresolved_runtime_routes_do_not_claim_future_provider_closure(tmp_path
     else:
         (tmp_path / "sample/app/evil.py").write_text(attacks[route])
     observation = _observe(tmp_path).observation
-    assert observation is not None and len(_facts(observation)) == 4
+    assert observation is not None and _facts(observation) == []
     metadata = next(
         r
         for r in observation.records("symbols")
         if r.data.get("qualified_name") == "sample.app.types.ExportMetadata"
     )
-    assert metadata.data.get("typed_dict_header_static") is True
+    assert metadata.data.get("typed_dict_header_static") is None
+    assert metadata.data.get("source_binding_unique") is True
     assert metadata.data.get("source_member_binding_static") is False
     assert _unknowns(observation)
 
@@ -565,6 +566,13 @@ def test_proven_reexport_provider_escape_rejects_source_proof(tmp_path: Path, pr
 
 
 def test_other_typing_symbols_do_not_prove_header_factory_escape(tmp_path: Path):
+    from archkeel.analyzer.python.imports import (
+        collect_imports,
+        explicit_factory_unsafe_providers,
+        resolve_reexports,
+    )
+    from archkeel.analyzer.python.source import parse_sources
+
     _ce_fixture(tmp_path)
     (tmp_path / "sample/app/annotations.py").write_text(
         "from typing import Annotated, Literal, SupportsInt, SupportsIndex\n"
@@ -572,6 +580,181 @@ def test_other_typing_symbols_do_not_prove_header_factory_escape(tmp_path: Path)
         "Kind = Literal['one', 'two']\n"
         "isinstance(value, str | SupportsInt | SupportsIndex)\n"
     )
+    modules = parse_sources(
+        sorted((tmp_path / "sample").rglob("*.py")), root=tmp_path, namespace="sample"
+    ).modules
+    imports = collect_imports(
+        modules, {module.module for module in modules}, {}, namespace="sample"
+    )
+    resolve_reexports(imports, {module.module: module.all_exports for module in modules}, modules)
+    assert explicit_factory_unsafe_providers(imports, modules) == frozenset()
+    runtime = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import builtins,json,sys\n"
+            "class Redirect(type):\n"
+            "    def __new__(meta,name,bases,namespace,**kwargs):\n"
+            "        return object if name == 'ExportMetadata' else "
+            "super().__new__(meta,name,bases,namespace)\n"
+            "class Base(metaclass=Redirect): pass\n"
+            "def redirect(bases): return (Base,)\n"
+            "def poison():\n"
+            "    caller = sys._getframe(1).f_globals['Annotated']\n"
+            "    sys.modules[caller.__module__].TypedDict.__mro_entries__ = redirect\n"
+            "    return None\n"
+            "builtins.unknown=poison\nbuiltins.value=1\nbuiltins.Missing=object\n"
+            "import sample.app.annotations\n"
+            "from sample.app.types import ExportMetadata\n"
+            "from sample.app.impl import Packet\n"
+            "print(json.dumps([ExportMetadata is object, "
+            "Packet.__args__[0].__args__[1].__args__[2] is object]))\n",
+        ],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert json.loads(runtime.stdout) == [True, True]
     observation = _observe(tmp_path).observation
-    assert observation is not None and len(_facts(observation)) == 4
-    assert _unknowns(observation)
+    assert observation is not None and _facts(observation) == []
+    metadata = next(
+        row
+        for row in observation.records("symbols")
+        if row.data.get("qualified_name") == "sample.app.types.ExportMetadata"
+    )
+    assert metadata.data.get("source_binding_unique") is True
+    assert metadata.data.get("source_member_binding_static") is False
+    assert _targets(observation) or _unknowns(observation)
+
+
+@pytest.mark.parametrize("provider", ["typing", "typing_extensions"])
+@pytest.mark.parametrize(
+    "attack",
+    [
+        "none",
+        "eq",
+        "reverse-eq",
+        "hash",
+        "or",
+        "ror",
+        "shadow",
+        "mutated-head",
+        "alias-escape",
+        "metadata-escape",
+        "factory-escape",
+        "factory-write",
+    ],
+)
+def test_generic_alias_proof_retains_real_operator_and_namespace_transfers(
+    tmp_path: Path, provider, attack
+):
+    _ce_fixture(tmp_path, metadata=_CE_METADATA.replace("typing", provider))
+    implementation = tmp_path / "sample/app/impl.py"
+    metadata = tmp_path / "sample/app/types.py"
+    methods = {"eq": "False", "reverse-eq": "False", "hash": "1", "or": "object", "ror": "object"}
+    if attack in methods:
+        method = "eq" if attack == "reverse-eq" else attack
+        expression = {
+            "eq": "tuple[Probe] | tuple[object, int]",
+            "reverse-eq": "tuple[object, int] | tuple[Probe]",
+            "hash": "tuple[Probe] | tuple[int]",
+            "or": "Probe | int",
+            "ror": "int | Probe",
+        }[attack]
+        (tmp_path / "sample/app/operators.py").write_text(
+            "from .types import ExportMetadata\n"
+            "class Meta(type):\n"
+            f"    def __{method}__(cls, *args):\n"
+            "        unknown(ExportMetadata)\n"
+            f"        return {methods[attack]}\n"
+            "class Probe(metaclass=Meta): pass\n"
+            f"Trigger = {expression}\n" + ("hash(Trigger)\n" if attack == "hash" else "")
+        )
+    elif attack == "none":
+        (tmp_path / "sample/app/operators.py").write_text(
+            "class Probe: pass\nTrigger = tuple[Probe] | tuple[object, int]\n"
+        )
+    elif attack in {"shadow", "mutated-head"}:
+        prefix = (
+            "import builtins\noriginal = builtins.tuple\n"
+            "class Replacement:\n"
+            "    def __class_getitem__(cls, item):\n"
+            "        unknown(ExportMetadata)\n"
+            "        return original[item]\n"
+        )
+        source = implementation.read_text()
+        source = source.replace(
+            "Packet =",
+            prefix
+            + ("tuple = Replacement\n" if attack == "shadow" else "builtins.tuple = Replacement\n")
+            + "Packet =",
+            1,
+        )
+        if attack == "mutated-head":
+            source = source.replace("class Session:", "builtins.tuple = original\nclass Session:")
+        implementation.write_text(source)
+    elif attack == "alias-escape":
+        implementation.write_text(
+            implementation.read_text().replace("class Session:", "unknown(Packet)\nclass Session:")
+        )
+    elif attack == "metadata-escape":
+        metadata.write_text(metadata.read_text() + "unknown(ExportMetadata)\n")
+    else:
+        marker = (
+            "unknown(TypedDict)"
+            if attack == "factory-escape"
+            else ("TypedDict.__mro_entries__ = unknown")
+        )
+        metadata.write_text(
+            metadata.read_text().replace(
+                "class ExportMetadata", marker + "\nclass ExportMetadata", 1
+            )
+        )
+    runtime = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import builtins,json,sys\nseen=[]\n"
+            "class Redirect(type):\n"
+            "    def __new__(meta, name, bases, namespace, **kwargs):\n"
+            "        return object if name == 'ExportMetadata' else "
+            "super().__new__(meta, name, bases, namespace)\n"
+            "class Base(metaclass=Redirect): pass\n"
+            "def redirect(bases):\n    seen.append('factory')\n    return (Base,)\n"
+            "def mutate(value):\n"
+            "    if isinstance(value, tuple): return redirect(value)\n"
+            "    if hasattr(value, '__origin__'):\n"
+            "        value = value.__args__[0].__args__[1].__args__[2]\n"
+            "    elif hasattr(value, '__mro_entries__') and not isinstance(value, type):\n"
+            "        value.__mro_entries__ = redirect\n        return\n"
+            "    seen.append('metadata')\n"
+            "    value.__annotations__['type'] = object\n"
+            "builtins.unknown=mutate\nbuiltins.Missing=object\n"
+            + ("import sample.app.operators\n" if attack in methods or attack == "none" else "")
+            + "from sample.app.impl import Packet\n"
+            "from sample.app.types import ExportMetadata\n"
+            "print(json.dumps([seen, ExportMetadata is object or "
+            "ExportMetadata.__annotations__['type'] is object]))\n",
+        ],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    seen, changed = json.loads(runtime.stdout)
+    assert bool(seen) is (attack != "none")
+    assert changed is (attack != "none")
+    observation = _observe(tmp_path).observation
+    assert observation is not None
+    symbol = next(
+        row
+        for row in observation.records("symbols")
+        if row.data.get("qualified_name") == "sample.app.types.ExportMetadata"
+    )
+    assert symbol.data.get("source_member_binding_static") is (attack == "none")
+    assert len(_facts(observation)) == (4 if attack == "none" else 0)
+    if attack != "none":
+        assert _targets(observation) or _unknowns(observation)

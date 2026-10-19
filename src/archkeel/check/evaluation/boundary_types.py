@@ -1088,6 +1088,7 @@ def _bound_alias_metadata(
         not isinstance(symbol, dict)
         or symbol.get("symbol_category") != "class"
         or symbol.get("source_binding_unique") is not True
+        or symbol.get("source_member_binding_static") is not True
         or (
             symbol.get("class_header_static") is not True
             and symbol.get("typed_dict_header_static") is not True

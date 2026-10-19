@@ -21,7 +21,7 @@ from .binding_types import AliasBinding, ImportKind
 from .source import (
     FRAMEWORK_BASES,
     NATIVE_DATACLASS_DECORATOR,
-    NATIVE_TYPED_DICT_BASE,
+    NATIVE_TYPED_DICT_BASES,
     ParsedModule,
     add_evidence,
     class_creation_static,
@@ -562,7 +562,11 @@ def _type_reference_candidates(
     map_candidates = {
         name: proven_map_union_candidates(module, aliases[name]) for name, module in modules.items()
     }
-    class_values = proven_class_value_candidates(modules, class_value_bindings)
+    class_values = proven_class_value_candidates(
+        modules,
+        class_value_bindings,
+        unsafe_providers=explicit_factory_unsafe_providers(imports, tuple(modules.values())),
+    )
     candidates = {
         name: {
             **map_candidates[name],
@@ -733,7 +737,7 @@ def explicit_factory_unsafe_providers(
 ) -> frozenset[str]:
     modules = {module.module: module for module in parsed}
     explicit_escapes = {name: explicit_provider_escapes(module) for name, module in modules.items()}
-    factories = {NATIVE_DATACLASS_DECORATOR, NATIVE_TYPED_DICT_BASE, "typing_extensions.TypedDict"}
+    factories = {NATIVE_DATACLASS_DECORATOR, *NATIVE_TYPED_DICT_BASES}
     providers: set[str] = set()
     for factory in factories:
         origin: str = factory
@@ -779,7 +783,7 @@ def _unsafe_native_creation_providers(
     exposed_origins: AbstractSet[str], modules: Mapping[str, ParsedModule]
 ) -> set[str]:
     providers: set[str] = set()
-    for native_origin in (NATIVE_DATACLASS_DECORATOR, NATIVE_TYPED_DICT_BASE):
+    for native_origin in (NATIVE_DATACLASS_DECORATOR, *NATIVE_TYPED_DICT_BASES):
         origin: str = native_origin
         providers.add(origin.rpartition(".")[0])
     if any(not any(in_scope(origin, name) for name in modules) for origin in exposed_origins):
@@ -956,7 +960,7 @@ def _opaque_import_member_escapes(
                     owner_exposure_only
                     or native_typed_dict
                     and len(owner.bases) == 1
-                    and resolve_static_name(module, owner.bases[0]) == NATIVE_TYPED_DICT_BASE
+                    and resolve_static_name(module, owner.bases[0]) in NATIVE_TYPED_DICT_BASES
                 )
                 and native_owner_creation_static(module, owner, unsafe_providers)
             ):
