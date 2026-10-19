@@ -232,7 +232,9 @@ def _assert_public_surface(contract: ArchitectureContract, observation: Observat
                 component.label,
                 entry,
             )
-        extra = entries - set(proposed.get(component.label) or ()) - needed
+        # A retained module port remains used through its named exports.
+        used_modules = {entry.partition(":")[0] for entry in needed}
+        extra = entries - set(proposed.get(component.label) or ()) - needed - used_modules
         assert {item.replace(":", ".") for item in extra} <= exposed, (component.label, extra)
 
 
@@ -241,9 +243,13 @@ def test_self_contract_public_matches_drafted_proposal(self_observation: Observa
     _assert_public_surface(_contract(), self_observation)
 
 
-@pytest.mark.parametrize("remove_used", [True, False], ids=["missing-used", "unexposed-extra"])
+@pytest.mark.parametrize(
+    ("remove_used", "extra_public"),
+    [(True, ""), (False, "archkeel.ir.identity:_segments"), (False, "archkeel.ir.unused")],
+    ids=["missing-used", "unexposed-extra", "unused-module"],
+)
 def test_self_public_guard_rejects_unsupported_surface(
-    self_observation: Observation, remove_used: bool
+    self_observation: Observation, remove_used: bool, extra_public: str
 ) -> None:
     contract = _contract()
     public = "archkeel.ir.identity:module_identity"
@@ -254,7 +260,7 @@ def test_self_public_guard_rejects_unsupported_surface(
                 component,
                 public=tuple(entry for entry in component.public or () if entry != public)
                 if remove_used
-                else (*(component.public or ()), "archkeel.ir.identity:_segments"),
+                else (*(component.public or ()), extra_public),
             )
             if component.label == "ir"
             else component
@@ -293,6 +299,7 @@ def test_self_analyzer_inside_covers_its_modules(self_observation: Observation) 
         "archkeel.analyzer.python.binding_types",
         "archkeel.analyzer.python.bindings",
         "archkeel.analyzer.python.calls",
+        "archkeel.analyzer.python.callable_signatures",
         "archkeel.analyzer.python.collect",
         "archkeel.analyzer.python.constructs",
         "archkeel.analyzer.python.entry",

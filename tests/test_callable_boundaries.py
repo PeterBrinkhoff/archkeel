@@ -434,14 +434,18 @@ def test_imported_callback_alias_uses_provider_scope_and_every_hop(
         assert positions[0].data.get("annotation") == "Lookup"
 
 
-def test_unsafe_dto_does_not_taint_safe_callback_or_ordinary_signature(tmp_path: Path) -> None:
+@pytest.mark.parametrize("opaque", [False, True])
+def test_opaque_callback_heads_keep_ordinary_source_signature_decidable(
+    tmp_path: Path, opaque: bool
+) -> None:
     observation = _observe_facade(
         tmp_path,
         public="sample.app.api",
         api=(
             "from typing import Callable\n"
             "class Payload: value: str\nclass Safe: value: str\n"
-            "mutate(Payload)\n__all__ = ['lookup', 'Payload', 'Safe']\n"
+            + ("mutate(Payload)\n" if opaque else "")
+            + "__all__ = ['lookup', 'Payload', 'Safe']\n"
             "def lookup(unsafe: Callable[[Payload], object], safe: Callable[[Safe], int], "
             "ordinary: Payload) -> bool: return True\n"
         ),
@@ -451,10 +455,20 @@ def test_unsafe_dto_does_not_taint_safe_callback_or_ordinary_signature(tmp_path:
         for item in observation.records("unknowns") or ()
         if "APP-TYPES-NOT-DICT" in item.rule_ids and item.kind == "boundary_type_position"
     ]
-    assert len(positions) == 1
-    assert positions[0].data.get("position") == "unsafe"
-    assert "Callable argument[0]" in positions[0].title
-    assert len(trace_valid_violations(observation)) == 1
+    assert {(item.data.get("position"), item.data.get("reason")) for item in positions} == (
+        {("unsafe", "generic"), ("safe", "generic")} if opaque else set()
+    )
+    assert len(positions) == (2 if opaque else 0)
+    findings = trace_valid_violations(observation)
+    assert len(findings) == (0 if opaque else 1)
+    if findings:
+        assert findings[0].data.get("position") == "unsafe"
+        assert "Callable result" in str(findings[0].data.get("reason"))
+    [head] = [
+        item for item in observation.records("imports") if item.data.get("binding") == "Callable"
+    ]
+    assert head.data.get("source_binding_unique") is True
+    assert head.data.get("source_member_binding_static") is (not opaque)
 
 
 @pytest.mark.parametrize("unsafe_hop", [False, True])

@@ -104,6 +104,7 @@ def test_literal_mapping_arm_ce_migration_matrix(
         ("dict[str, object]", 1),
         ("object", 2),
         (ROOT, 0),
+        ("dict[str, 'JsonValue']", 1),
     }
     assert _findings(baseline) == expected
     assert baseline.observation is not None
@@ -228,7 +229,7 @@ def test_literal_mapping_arm_alias_later_collision_keeps_shared_aggregate(
     after = _observe(tmp_path)
     assert baseline.observation is not None and after.observation is not None
     assert after.observation.records("unknowns") == baseline.observation.records("unknowns")
-    assert _findings(after) == set()
+    assert _findings(after) == ({("dict[str, str]", 1)} if resolved else set())
     if resolved:
         aliases = [
             row
@@ -236,13 +237,14 @@ def test_literal_mapping_arm_alias_later_collision_keeps_shared_aggregate(
             if row.kind == "type_alias" and row.data.get("name") == "Rows"
         ]
         assert len(aliases) == 1
+        assert aliases[0].data.get("source_binding_unique") is True
         assert aliases[0].data.get("source_member_binding_static") is False
     facts = [
         item
         for item in after.observation.records("typing_signals") or ()
         if item.kind == "boundary_type_allowance"
     ]
-    assert len(facts) == 1
+    assert len(facts) == (0 if resolved else 1)
 
 
 @pytest.mark.parametrize(
@@ -298,7 +300,7 @@ def test_literal_mapping_arm_ordinary_report_keeps_fail_unknown(
     assert {
         (row.data.get("nested_annotation"), row.data.get("container_depth"))
         for row in trace_valid_violations(model)
-    } == {("object", 2)}
+    } == {("object", 2), ("dict[str, 'JsonValue']", 1)}
     assert model.records("unknowns")
     permissions = _flow_payload(output.with_suffix(".report.html"))["boundary_permissions"]
     assert permissions == _flow_payload(output.with_suffix(".detail.html"))["boundary_permissions"]

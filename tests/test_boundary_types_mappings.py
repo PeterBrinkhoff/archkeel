@@ -701,11 +701,20 @@ def test_mapping_member_allowance_cannot_pin_a_union_alias(tmp_path: Path) -> No
     result = _observe(tmp_path)
 
     assert result.observation is not None
-    assert trace_valid_violations(result.observation) == ()
+    violations = trace_valid_violations(result.observation)
+    assert {row.data.get("nested_annotation") for row in violations} == {
+        "Mapping[str, MissingType]",
+        "Mapping[str, float]",
+        "HiddenType",
+    }
+    assert len(violations) == 3
+    assert all(row.data.get("path") == "return.payload" for row in violations)
+    [alias] = [row for row in result.observation.records("symbols") if row.kind == "type_alias"]
+    assert alias.data.get("source_binding_unique") is True
     [unknown] = _type_unknowns(result)
     assert unknown.data.get("path") == "return.payload"
     assert unknown.data.get("nested_annotation") == "Payload"
-    assert unknown.data.get("reason") == "other"
+    assert unknown.data.get("reason") == "unresolved_name"
     assert not [
         item
         for item in result.observation.records("typing_signals") or ()

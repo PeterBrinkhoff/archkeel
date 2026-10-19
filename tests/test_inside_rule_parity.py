@@ -68,14 +68,14 @@ def test_inside_rule_preserves_top_level_findings(tmp_path: Path, rule: dict[str
     (package / "a.py").write_text(
         "from sample.core.b import _hidden\n"
         "import json\nimport external_probe_library\n"
-        "VALUE = eval('1')\n"
         "class Misplaced:\n    pass\n"
         "def run() -> dict:\n    return {}\n"
     )
     (package / "b.py").write_text(
         "from sample.core.a import run\n_hidden = 1\ndef public() -> str:\n    return 'ok'\n"
     )
-    (package / "extra.py").write_text("VALUE = 1\n")
+    # Keep the construct violation without making the typed facade's namespace opaque.
+    (package / "extra.py").write_text("VALUE = eval('1')\n")
     decision = {
         "id": "PROBE",
         "rationale": "Exercise the same rule at both contract levels.",

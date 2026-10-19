@@ -33,11 +33,11 @@ pr-test:
 		-n 2 --dist=loadfile --max-worker-restart=0 \
 		-q --durations=10 --junitxml=test-artifacts/pytest/pr-core.xml -- \
 		tests/test_workflow_registry.py tests/test_ci_changes.py tests/test_make_gate.py tests/test_publish_release.py tests/test_repository_hygiene.py \
-		tests/test_responsibility_validation.py tests/test_target_architecture.py tests/test_contract_maintenance.py tests/test_skill.py \
+		tests/test_responsibility_validation.py tests/test_target_architecture.py tests/test_self.py tests/test_contract_maintenance.py tests/test_skill.py \
 		tests/test_contract_model.py tests/test_contract_version_types.py tests/test_dependency_selectors.py tests/test_requires_symbol_ports.py tests/test_typed_dependency_api.py tests/test_dependency_api_target.py tests/test_module_object_grants.py tests/test_dependency_typed_control.py tests/test_typed_state_protocol.py tests/test_typed_python_bindings.py tests/test_typed_python_receivers.py tests/test_typed_method_descriptors.py tests/test_typed_graph_vocabulary.py tests/test_typed_diagnostic_owner.py tests/test_state_facts.py tests/test_boundary_type_nested_mapping.py tests/test_typed_dict_bound_aliases.py tests/test_decisions.py tests/test_typed_python_properties.py tests/test_typed_contract_rule_grammar.py tests/test_typed_contract_rule_native.py tests/test_core_command_result.py tests/test_typed_measurement_controls.py tests/test_typed_parameter_kinds.py tests/test_atlas_deviation_target.py tests/test_definition_context_types.py tests/test_permission_status_types.py tests/test_snapshot_language_types.py tests/test_source_resolution_types.py tests/test_known_delta_action_types.py tests/test_typed_symbol_class_kinds.py tests/test_source_name_visibility.py tests/test_git_blob_types.py tests/test_typed_structure_levels.py tests/test_classifier_projections.py tests/test_unresolved_call_change_types.py \
 		tests/test_target_graph.py::test_contract_corpus_preserves_version_and_uml_presence \
 		tests/test_collection_protocol.py tests/test_typed_collector_protocol.py tests/test_typed_collector_native.py tests/test_source_trust_boundary.py tests/test_shared_runtime_bootstrap.py \
-		tests/test_python_class_value_proofs.py tests/test_local_inherited_methods.py tests/test_python_provider_sources.py tests/test_python_contextmanager_signatures.py tests/test_boundary_types_contextmanager.py \
+		tests/test_python_class_value_proofs.py tests/test_local_inherited_methods.py tests/test_inherited_generic_facade_negative.py tests/test_python_provider_sources.py tests/test_python_contextmanager_signatures.py tests/test_boundary_types_contextmanager.py \
 		'tests/test_architecture_demo.py::test_variant_produces_the_catalogued_findings[class-a-inherited-generic-return]' \
 		'tests/test_architecture_demo.py::test_variant_produces_the_catalogued_findings[class-a-inherited-generic-undeclared-return]' \
 		'tests/test_architecture_demo.py::test_variant_produces_the_catalogued_findings[class-a-inherited-generic-undeclared-batch]' \
@@ -48,6 +48,7 @@ pr-test:
 		tests/test_report_159_160_e2e_oracle.py::test_unknown_position_is_associated_with_its_rule_not_every_boundary_rule \
 		tests/test_typescript_script_globals.py tests/test_typescript_standard_globals.py tests/test_typescript_umd_providers.py tests/test_browser_architecture.py tests/test_source_graph.py tests/test_binding_proof_reuse.py tests/test_shared_lexical_index.py tests/test_namespace_scan_cost.py \
 		tests/test_boundary_types_chain_proof.py tests/test_boundary_types_reexport_proofs.py tests/test_boundary_types_facades.py tests/test_boundary_types_aliases.py tests/test_boundary_type_recursive_aliases.py \
+		tests/test_callable_boundaries.py tests/test_boundary_type_literal_mapping_arms.py tests/test_boundary_type_native_payloads.py tests/test_boundary_types_mappings.py tests/test_boundary_type_native_open_maps.py tests/test_boundary_type_enum_literals.py \
 		tests/test_boundary_type_bound_aliases.py::test_opaque_alias_transfer_keeps_source_identity_without_an_exact_permission \
 		tests/test_boundary_type_bound_aliases.py::test_redirected_metadata_class_cannot_grant_an_exact_alias_permission \
 		tests/test_boundary_type_bound_aliases.py::test_alias_body_separates_source_identity_from_runtime_member_proof \
@@ -55,12 +56,12 @@ pr-test:
 		tests/test_boundary_type_bound_aliases.py::test_uncertain_inner_alias_does_not_erase_exact_literal_outer_map_permission \
 		tests/test_boundary_type_bound_aliases.py::test_uncertain_alias_ordinary_permission_is_independent_of_union_order \
 		tests/test_typescript_owned_types.py tests/test_typescript_syntax_types.py tests/test_typescript_syntax_compatibility.py tests/test_typescript_json_fields.py tests/test_typescript_control_target.py tests/test_typescript_source_input.py tests/test_typescript_string_constructs.py \
-		tests/test_python_source_evidence_lines.py tests/test_analyzer.py tests/test_typescript_config.py tests/test_typescript_resolve.py tests/test_type_shapes.py \
+		tests/test_python_source_evidence_lines.py tests/test_definition_source_owners.py tests/test_analyzer.py tests/test_typescript_config.py tests/test_typescript_resolve.py tests/test_type_shapes.py \
 		tests/test_typescript_array_constants.py \
 		tests/test_typescript_decorated_inventory.py \
 		tests/test_typescript_parameter_properties.py \
 		tests/test_typescript_differential.py \
-		tests/test_uml_comparison.py tests/test_saved_report.py tests/test_cli.py tests/test_cli_typed_inputs.py tests/test_cli_input_target.py \
+		tests/test_uml_comparison.py tests/test_saved_report.py tests/test_architecture_projection.py tests/test_cli.py tests/test_cli_typed_inputs.py tests/test_cli_input_target.py \
 		tests/test_member_inventory.py tests/test_partial_member_inventory.py \
 		tests/test_report_recorded_unknowns.py \
 		tests/test_report_agent_json.py \
@@ -88,7 +89,7 @@ pr-test:
 		tests/test_references.py tests/test_levels.py tests/test_recursive_inside_contracts.py tests/test_widening.py tests/test_measurement_budgets.py tests/test_typed_amendment_artifact.py \
 		tests/test_onboarding.py tests/test_terminal.py tests/test_summary_badge_types.py tests/test_summary_badge_target.py \
 		tests/test_onboarding_demo.py tests/test_pypi_description.py tests/test_typescript_onboarding.py \
-		tests/test_unknown_positions.py tests/test_inside_rule_coverage.py tests/test_report_159_160.py \
+		tests/test_unknown_positions.py tests/test_inside_rule_coverage.py tests/test_inside_rule_parity.py tests/test_report_159_160.py \
 		tests/test_target_navigation_graph.py \
 		tests/test_annotation_carriers.py \
 		tests/test_absent_import_namespace.py tests/test_dynamic_dependency_policy.py tests/test_string_comparison_observation.py tests/test_local_string_comparisons.py tests/test_string_predicate_observation.py tests/test_python_string_predicate_target.py tests/test_typed_host_events.py

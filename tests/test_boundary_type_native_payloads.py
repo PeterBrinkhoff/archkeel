@@ -624,7 +624,7 @@ def test_a_reached_dto_applies_its_own_class_scope_uncertainty(tmp_path: Path) -
     )
 
 
-def test_class_scope_and_unproven_module_alias_remain_unknown(tmp_path: Path) -> None:
+def test_class_scope_unknown_preserves_proven_module_alias_failure(tmp_path: Path) -> None:
     _write_app(
         tmp_path,
         implementation=(
@@ -639,7 +639,14 @@ def test_class_scope_and_unproven_module_alias_remain_unknown(tmp_path: Path) ->
     result = _observe(tmp_path)
 
     assert result.observation is not None
-    assert trace_valid_violations(result.observation) == ()
+    [violation] = trace_valid_violations(result.observation)
+    assert violation.data.get("qualified_name") == "sample.app.impl.Converter.convert"
+    assert violation.data.get("position") == "value"
+    assert violation.data.get("nested_annotation") == "Payload"
+    assert violation.data.get("container_depth") == 1
+    [alias] = [row for row in result.observation.records("symbols") if row.kind == "type_alias"]
+    assert alias.data.get("source_binding_unique") is True
+    assert alias.data.get("alias") == "object"
     [unknown] = [
         item
         for item in result.observation.records("unknowns") or ()

@@ -86,8 +86,20 @@ def test_native_reexported_assessment_requires_its_physical_public_owner(tmp_pat
             "decided_by": "architect",
         }
     ]
-    for public, expected in (([], "FAIL"), (["sample.store:RuleAssessment"], "UNKNOWN")):
+    cases = (
+        ([], False, "FAIL", 2, 0),
+        (["sample.store:Other"], False, "FAIL", 2, 0),
+        (["sample.store:RuleAssessment"], False, "PASS", 0, 0),
+        (["sample.store:RuleAssessment"], True, "UNKNOWN", 0, 4),
+    )
+    for public, missing, expected, count, undecided in cases:
         contract["components"][1]["public"] = public
+        contract["components"][2]["public"] = ["sample.other:RuleAssessment"]
+        (root / "sample/other.py").write_text(
+            ("if enabled:\n    " if missing else "")
+            + "from .store import RuleAssessment as RuleAssessment\n"
+            + '__all__ = ["RuleAssessment"]\n'
+        )
         path.write_text(json.dumps(contract))
         result, architecture = run_report(
             root, config=config, analyzer=observe, only_architecture=True
@@ -95,15 +107,38 @@ def test_native_reexported_assessment_requires_its_physical_public_owner(tmp_pat
         (assessment,) = result.rule_assessments
         assert assessment.status == expected
         assert assessment.evaluation_proven
-        assert assessment.count == (0 if public else 2)
-        if public:
-            assert assessment.undecided == 2
-            observed = parse_observation(decode_canonical_model(json.loads(architecture)))
-            assert {
-                item.data.get("path")
-                for item in observed.records("unknowns") or ()
-                if item.kind == "boundary_type_position"
-            } == {"value.status", "return.status"}
+        assert assessment.count == count
+        assert assessment.undecided == undecided
+        observed = parse_observation(decode_canonical_model(json.loads(architecture)))
+        if expected == "PASS":
+            imported = next(
+                item
+                for item in observed.records("imports")
+                if item.data.get("source_module") == "sample.core"
+                and item.data.get("binding") == "RuleAssessment"
+            )
+            assert imported.data.get("origin_definition") == "sample.store.RuleAssessment"
+            assert imported.data.get("source_binding_unique") is True
+            alias = next(
+                item
+                for item in observed.records("symbols")
+                if item.data.get("qualified_name") == "sample.store.RuleAssessmentStatus"
+            )
+            assert alias.kind == "type_alias" and alias.data.get("source_binding_unique") is True
+        unknowns = {
+            (item.data.get("qualified_name"), item.data.get("position"), item.data.get("reason"))
+            for item in observed.records("unknowns") or ()
+            if item.kind == "boundary_type_position"
+        }
+        assert unknowns == (
+            {
+                ("sample.core.run", "value", "ambiguous_binding"),
+                ("sample.core.run", "return", "ambiguous_binding"),
+                ("sample.core.RuleAssessment.__post_init__", "return", "ambiguous_facade"),
+            }
+            if missing
+            else set()
+        )
 
 
 def test_public_rule_assessment_import_preserves_identity_constructor_and_fields():

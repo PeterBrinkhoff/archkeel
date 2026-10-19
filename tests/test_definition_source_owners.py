@@ -61,7 +61,8 @@ def test_same_module_classes_keep_their_own_decorator_aliases(tmp_path: Path, re
     }
 
 
-def test_class_inventory_does_not_borrow_another_module_global(tmp_path: Path):
+@pytest.mark.parametrize("class_name", ["C", "Unique"])
+def test_class_inventory_does_not_borrow_another_module_global(tmp_path: Path, class_name: str):
     _modules(
         tmp_path,
         {
@@ -69,7 +70,7 @@ def test_class_inventory_does_not_borrow_another_module_global(tmp_path: Path):
                 "class C:\n class Nested:\n  global staticmethod\n"
                 "  staticmethod = None\n @staticmethod\n def method(): pass\n"
             ),
-            "sample/m/__init__.py": "class C: pass\n",
+            "sample/m/__init__.py": f"class {class_name}: pass\n",
         },
     )
     facts = collect(
@@ -87,10 +88,21 @@ def test_class_inventory_does_not_borrow_another_module_global(tmp_path: Path):
         for item in section.records
         if item.kind == "class" and evidence[item.evidence_ids[0]].file == "sample/m/__init__.py"
     ]
-    assert [item["status"] for item in thaw_data(empty.data)["member_inventories"]] == [
-        "complete",
-        "complete",
-    ]
+    inventories = thaw_data(empty.data)["member_inventories"]
+    assert [item["status"] for item in inventories] == (
+        ["partial", "partial"] if class_name == "C" else ["complete", "complete"]
+    )
+    assert all(item["definition_ids"] == [] for item in inventories)
+    assert empty.data.get("source_binding_unique") is True
+    assert empty.data.get("source_member_binding_static") is True
+    assert [item["reason"] for item in inventories] == (
+        [
+            f"{kind} declaration ownership or collection is incomplete"
+            for kind in ("attribute", "method")
+        ]
+        if class_name == "C"
+        else [None, None]
+    )
 
 
 def test_conditional_collision_keeps_state_evidence_at_its_definition(tmp_path: Path):
