@@ -278,8 +278,9 @@ their own source facts, evidence, profile and replay digest. Runtime calls stay 
 
 The user approved exactly one additional CLI-to-Analyzer coupling name:
 `archkeel.analyzer.python.collect:PythonProviderCollector`. It keeps Python-specific
-acquisition in its adapter and composition in CLI. Existing budget ceilings never increase;
-proved reductions use the ordinary downward ratchet.
+acquisition in its adapter and composition in CLI. Its declared coupling ceiling is
+two names: `ProcessCollector` and `PythonProviderCollector`. All other budget ceilings
+remain unchanged; proved reductions use the ordinary downward ratchet.
 
 ## Code alignment and acceptance
 

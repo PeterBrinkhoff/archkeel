@@ -2176,16 +2176,16 @@ def proven_class_value_candidates(
         for name, provider in modules.items()
         for node in provider.all_nodes
         if isinstance(node, ast.Name) and node.id in builtin_types
-    ) | frozenset(
-        (name, binding)
-        for name, provider in modules.items()
-        for binding, imported in provider.aliases.items()
-        if imported.target == "builtins" or imported.target.startswith("builtins.")
     )
+    for name in modules:
+        for binding in modules[name].aliases:
+            target: str = modules[name].aliases[binding].target
+            if target == "builtins" or target.startswith("builtins."):
+                builtin_dependencies |= {(name, binding)}
     type_values_static = not any(
-        exposes_dynamic_namespace(provider, node, member_surface=True)
-        for provider in modules.values()
-        for node in provider.all_nodes
+        exposes_dynamic_namespace(modules[name], node, member_surface=True)
+        for name in modules
+        for node in modules[name].all_nodes
     )
     classes: dict[tuple[str, str], ast.ClassDef] = {
         (name, node.name): node

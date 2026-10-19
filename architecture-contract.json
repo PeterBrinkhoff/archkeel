@@ -490,7 +490,7 @@
       {
         "source": "cli",
         "target": "analyzer",
-        "max_names": 1,
+        "max_names": 2,
         "provenance": [
           "docs/architecture/decisions/ad-99-facade-and-coupling-budgets-are-contract-ceilings.md"
         ]
