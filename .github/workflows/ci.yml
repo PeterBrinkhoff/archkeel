@@ -90,8 +90,33 @@ jobs:
           verify_area mermaid "$MERMAID" "$MERMAID_RESULT"
 
   pr-core-check:
+    name: pr-core-check
+    needs: [changes, pr-core-shards]
+    if: ${{ always() && (needs.changes.result != 'success' || needs.changes.outputs.core != 'false') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Fail core check after workflow cancellation
+        if: cancelled()
+        run: exit 1
+
+      - name: Require every selected core shard
+        if: ${{ !cancelled() }}
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          CORE: ${{ needs.changes.outputs.core }}
+          SHARDS_RESULT: ${{ needs.pr-core-shards.result }}
+        run: |
+          set -euo pipefail
+          [[ "$CHANGES_RESULT" == success && "$CORE" == true && "$SHARDS_RESULT" == success ]] || exit 1
+
+  pr-core-shards:
     needs: changes
     if: (github.event_name == 'pull_request' || github.event_name == 'push') && needs.changes.outputs.core == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1]
     runs-on: ubuntu-latest
     timeout-minutes: 35
     permissions:
@@ -124,13 +149,13 @@ jobs:
       - name: Run PR core checks
         env:
           BASE: ${{ github.event.pull_request.base.sha }}
-        run: make ci-pr-check
+        run: make ci-pr-check PR_TEST_SHARD=${{ matrix.shard }}
 
       - name: Upload PR core JUnit results
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: pytest-results-pr-core
+          name: pytest-results-pr-core-${{ matrix.shard }}
           path: test-artifacts/pytest/pr-core.xml
           if-no-files-found: warn
           retention-days: 7

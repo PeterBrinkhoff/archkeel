@@ -8,6 +8,8 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
+from collections import Counter
 from pathlib import Path
 from textwrap import dedent
 
@@ -371,11 +373,11 @@ def test_ci_workflow_keeps_fast_required_checks_and_routes_full_verification() -
 
     for job_id, next_job, area, make_target, junit_name, junit_path, timeout in (
         (
-            "pr-core-check",
+            "pr-core-shards",
             "pr-report-check",
             "core",
             "ci-pr-check",
-            "pytest-results-pr-core",
+            "pytest-results-pr-core-${{ matrix.shard }}",
             "pr-core.xml",
             35,
         ),
@@ -402,8 +404,21 @@ def test_ci_workflow_keeps_fast_required_checks_and_routes_full_verification() -
         assert f"name: {junit_name}" in job
         assert junit_path in job
         assert "retention-days: 7" in job
-    core_job = workflow.split("  pr-core-check:\n", 1)[1].split("\n  pr-report-check:", 1)[0]
+    core_job = workflow.split("  pr-core-shards:\n", 1)[1].split("\n  pr-report-check:", 1)[0]
     assert "BASE: ${{ github.event.pull_request.base.sha }}" in core_job
+    assert "fail-fast: false" in core_job
+    assert "shard: [0, 1]" in core_job
+    assert "run: make ci-pr-check PR_TEST_SHARD=${{ matrix.shard }}" in core_job
+    aggregate = workflow.split("  pr-core-check:\n", 1)[1].split("\n  pr-core-shards:", 1)[0]
+    assert "name: pr-core-check" in aggregate
+    assert "needs: [changes, pr-core-shards]" in aggregate
+    assert "timeout-minutes: 35" in aggregate
+    assert (
+        "always() && (needs.changes.result != 'success' || needs.changes.outputs.core != 'false')"
+        in aggregate
+    )
+    assert "continue-on-error" not in aggregate
+    assert "if: cancelled()\n        run: exit 1" in aggregate
     report_job = workflow.split("  pr-report-check:\n", 1)[1].split(
         "\n  prune-report-artifacts:", 1
     )[0]
@@ -704,3 +719,160 @@ def test_browser_runtime_gate_installs_before_running_the_actual_publication_tes
     install = command.index("npm ci --prefix tools/browser-runtime")
     publication = command.index("python -m pytest -q tests/test_flow_runtime_publication.py")
     assert install < publication
+
+
+def test_pr_core_shards_partition_the_actual_make_arguments_once(tmp_path, monkeypatch) -> None:
+    from tools import pr_test
+
+    arguments_path = tmp_path / "arguments.json"
+    runner = tmp_path / "uv"
+    runner.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, os, sys\nfrom pathlib import Path\n"
+        "Path(os.environ['SHARD_ARGUMENTS']).write_text(json.dumps(sys.argv[1:]))\n"
+    )
+    runner.chmod(0o755)
+
+    def invocation(shard):
+        result = subprocess.run(
+            ["make", "pr-test", f"UV={runner}", f"PR_TEST_SHARD={'' if shard is None else shard}"],
+            cwd=ROOT,
+            env={**os.environ, "MAKEFLAGS": "", "SHARD_ARGUMENTS": str(arguments_path)},
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        assert result.returncode == 0, result.stderr
+        tokens = json.loads(arguments_path.read_text())
+        arguments = tokens[tokens.index("tools.pr_test") + 1 :]
+        calls = []
+        monkeypatch.setattr(pr_test.os, "execv", lambda executable, argv: calls.append(argv))
+        pr_test.main(arguments)
+        [command] = calls
+        assert command[:3] == [sys.executable, "-m", "pytest"]
+        if shard is None:
+            assert command[3:] == [arg for arg in arguments if arg != "--"]
+        return command[3:]
+
+    full = invocation(None)
+    shards = [invocation(0), invocation(1)]
+    selectors = [arg for arg in full if arg.startswith("tests/")]
+    options = [arg for arg in full if not arg.startswith("tests/")]
+    assert options == [
+        "-n",
+        "2",
+        "--dist=loadfile",
+        "--max-worker-restart=0",
+        "-q",
+        "--durations=10",
+        "--junitxml=test-artifacts/pytest/pr-core.xml",
+    ]
+    assert len(selectors) == len(set(selectors))
+    assert selectors.count("tests/test_binding_proof_reuse.py") == 1
+    assert selectors.count("tests/test_local_inherited_methods.py") == 1
+    assert Counter(arg for shard in shards for arg in shard if arg.startswith("tests/")) == Counter(
+        selectors
+    )
+    owners = {}
+    for number, shard in enumerate(shards):
+        assert [arg for arg in shard if not arg.startswith("tests/")] == options
+        for selector in (arg for arg in shard if arg.startswith("tests/")):
+            filename = selector.partition("::")[0]
+            assert owners.setdefault(filename, number) == number
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        ["--shard=2", "--", "-q", "--", "tests/test_a.py"],
+        ["--shard=-1", "--", "-q", "--", "tests/test_a.py"],
+        ["--shard=invalid", "--", "-q", "--", "tests/test_a.py"],
+        ["--shard=1", "--", "-q", "--", "tests/test_a.py"],
+        ["--", "-q", "--"],
+        ["--", "-q", "tests/test_a.py"],
+        ["--", "-q", "--", "--ignore=tests/test_a.py"],
+    ],
+)
+def test_pr_core_shard_rejects_invalid_or_empty_selection(monkeypatch, arguments) -> None:
+    from tools import pr_test
+
+    monkeypatch.setattr(
+        pr_test.os, "execv", lambda *args: pytest.fail("invalid shard reached pytest")
+    )
+    with pytest.raises(SystemExit) as error:
+        pr_test.main(arguments)
+    assert error.value.code == 2
+
+
+@pytest.mark.parametrize("shard", [None, 0, 1])
+@pytest.mark.parametrize("exit_code", [0, 7])
+def test_pr_core_runner_preserves_pytest_exit_and_node_selectors(
+    tmp_path, shard, exit_code
+) -> None:
+    result_path = tmp_path / "arguments.json"
+    (tmp_path / "pytest.py").write_text(
+        "import json, os, sys\nfrom pathlib import Path\n"
+        "Path(os.environ['SHARD_ARGUMENTS']).write_text(json.dumps(sys.argv[1:]))\n"
+        "raise SystemExit(int(os.environ['SHARD_EXIT']))\n"
+    )
+    selectors = ["tests/a.py::first", "tests/b.py", "tests/a.py::second"]
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "tools.pr_test",
+            *([] if shard is None else [f"--shard={shard}"]),
+            "--",
+            "-q",
+            "--",
+            *selectors,
+        ],
+        cwd=ROOT,
+        env={
+            **os.environ,
+            "PYTHONPATH": str(tmp_path),
+            "SHARD_ARGUMENTS": str(result_path),
+            "SHARD_EXIT": str(exit_code),
+        },
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    assert result.returncode == exit_code, result.stderr
+    expected = (
+        selectors
+        if shard is None
+        else [selectors[0], selectors[2]]
+        if shard == 0
+        else [selectors[1]]
+    )
+    assert json.loads(result_path.read_text()) == ["-q", *expected]
+
+
+@pytest.mark.parametrize(
+    "changes,core,shards,success",
+    [
+        ("success", "true", "success", True),
+        ("success", "true", "failure", False),
+        ("success", "true", "cancelled", False),
+        ("success", "true", "skipped", False),
+        ("success", "true", "", False),
+        ("failure", "true", "success", False),
+        ("cancelled", "true", "success", False),
+        ("success", "false", "success", False),
+        ("success", "invalid", "success", False),
+    ],
+)
+def test_pr_core_aggregate_executes_its_workflow_script_fail_closed(
+    changes, core, shards, success
+) -> None:
+    workflow = (ROOT / ".github/workflows/ci.yml").read_text()
+    aggregate = workflow.split("  pr-core-check:\n", 1)[1].split("\n  pr-core-shards:", 1)[0]
+    script = dedent(aggregate.split("        run: |\n", 1)[1])
+    result = subprocess.run(
+        ["bash", "-eu", "-c", script],
+        env={**os.environ, "CHANGES_RESULT": changes, "CORE": core, "SHARDS_RESULT": shards},
+        capture_output=True,
+        text=True,
+    )
+    assert (result.returncode == 0) is success, result.stderr
