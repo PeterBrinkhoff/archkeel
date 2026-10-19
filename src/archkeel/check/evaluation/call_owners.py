@@ -37,20 +37,31 @@ def call_owner_results(
     complete: bool,
     bindings_measured: bool,
     blank_modules: frozenset[str],
+    source_modules: frozenset[str] | None = None,
 ) -> tuple[list[RawRecord], list[RawRecord], list[RawRecord]]:
     violations: list[RawRecord] = []
     limits: list[RawRecord] = []
     receipts: list[RawRecord] = []
+    source_records = [
+        r
+        for r in modules
+        if source_modules is None or r["data"]["qualified_name"] in source_modules
+    ] + [r for r in symbols if source_modules is None or r["data"]["module"] in source_modules]
     for rule in contract.rules:
         if not isinstance(rule, CallOwnerRule):
             continue
         subjects = [
             r
-            for r in [*modules, *symbols]
+            for r in source_records
             if in_scope(r["data"]["qualified_name"], rule.source)
             and r["data"]["qualified_name"] not in blank_modules
         ]
-        selected = [r for r in calls if in_scope(r["data"]["source_scope"], rule.source)]
+        selected = [
+            r
+            for r in calls
+            if (source_modules is None or r["data"]["source_module"] in source_modules)
+            and in_scope(r["data"]["source_scope"], rule.source)
+        ]
         targets = [
             r
             for r in symbols

@@ -303,6 +303,9 @@ def _inside_rule_results(
     type_shapes: TypeShapeIndex,
     construct_capabilities: tuple[ConstructCapability, ...],
     symbols_measured: bool,
+    calls: Sequence[RawRecord],
+    calls_complete: bool,
+    bindings_measured: bool,
     root_contract: ArchitectureContract | None = None,
     imports: Sequence[RawRecord],
     typing_signals: Sequence[RawRecord],
@@ -384,6 +387,20 @@ def _inside_rule_results(
         unknowns.extend(results[1])
         failures.extend(results[2])
         allowances.extend(results[3])
+        call_violations, call_limits, call_receipts = call_owner_results(
+            scoped,
+            scope=mount.parent_id,
+            calls=calls,
+            modules=modules,
+            symbols=symbols,
+            complete=calls_complete,
+            bindings_measured=bindings_measured,
+            blank_modules=blank_modules,
+            source_modules=source_modules,
+        )
+        violations.extend(call_violations)
+        unknowns.extend(call_limits)
+        assessments.extend(call_receipts)
     return _sort_inside_rule_results(
         violations, unknowns, failures, assessments, allowances, symbols
     )
@@ -863,6 +880,8 @@ def evaluate_source(
         receipt_scan_roots=roots if _source_inventory_complete(facts) else (),
         type_shapes=type_shapes,
     )
+    calls_complete = _source_inventory_complete(facts)
+    bindings_measured = CALL_BINDINGS_FEATURE in facts.capabilities.resolution_features
     (
         inside_violations,
         inside_unknowns,
@@ -874,6 +893,9 @@ def evaluate_source(
         inside_contracts,
         construct_capabilities=facts.capabilities.constructs,
         symbols_measured=symbols_measured,
+        calls=calls,
+        calls_complete=calls_complete,
+        bindings_measured=bindings_measured,
         root_contract=contract,
         imports=imports,
         typing_signals=typing_signals,
@@ -938,23 +960,19 @@ def evaluate_source(
         *rule_failures,
     ]
 
-    for call_scope, declared in (
-        ("root", contract),
-        *((mount.parent_id, mount.contract) for mount in inside_contracts),
-    ):
-        call_violations, call_limits, call_receipts = call_owner_results(
-            declared,
-            scope=call_scope,
-            calls=calls,
-            modules=module_facts,
-            symbols=symbols,
-            complete=_source_inventory_complete(facts),
-            bindings_measured=CALL_BINDINGS_FEATURE in facts.capabilities.resolution_features,
-            blank_modules=blank_modules,
-        )
-        violations.extend(call_violations)
-        unknowns.extend(call_limits)
-        scope_observations.extend(call_receipts)
+    call_violations, call_limits, call_receipts = call_owner_results(
+        contract,
+        scope="root",
+        calls=calls,
+        modules=module_facts,
+        symbols=symbols,
+        complete=calls_complete,
+        bindings_measured=bindings_measured,
+        blank_modules=blank_modules,
+    )
+    violations.extend(call_violations)
+    unknowns.extend(call_limits)
+    scope_observations.extend(call_receipts)
 
     dynamic_limits = [
         item
