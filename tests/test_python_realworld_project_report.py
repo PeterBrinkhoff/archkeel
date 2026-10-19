@@ -15,7 +15,10 @@ from urllib.parse import parse_qs, urlsplit
 import pytest
 from test_uml_rendering import _wait_for_layout
 
+from archkeel.analyzer.process import ProcessCollector
+from archkeel.ir.facts import SourceFacts
 from archkeel.ir.graph_codec import parse_report
+from archkeel.ir.protocol import PythonSettings
 from fixtures.architecture_demo import CATALOG, REPORT_CASES, UML_DEMO_COMPARISONS, replay
 from fixtures.demo_catalog_python_realworld import (
     PYTHON_REALWORLD_FIXTURE_DIR,
@@ -32,6 +35,7 @@ TARGET_FILES = (
     "contracts/postgres-adapter.json",
 )
 TARGET_DIGEST = "5dcc89c72c96c49f80524b86137a4aba103bbe604f83bc2518aa542c6fa0519d"
+# Fixture bytes remain pinned; native digests also bind captured provider sources.
 SOURCE_DIGESTS = {
     "python-realworld-project": (
         "177b3854b42b7edd5ffad71c95d167aba3086013686d9a964e198bb079d047ce"
@@ -47,16 +51,32 @@ SOURCE_DIGESTS = {
     ),
 }
 EXPECTED_ASSESSMENT_STATUSES = {
-    "python-realworld-project": Counter(PASS=1195, UNKNOWN=47, FAIL=0),
-    "python-realworld-forbidden-edge": Counter(PASS=1195, UNKNOWN=47, FAIL=0),
-    "python-realworld-signature-fail": Counter(PASS=1194, UNKNOWN=47, FAIL=1),
-    "python-realworld-dynamic-unknown": Counter(PASS=1194, UNKNOWN=48, FAIL=0),
+    "python-realworld-project": Counter(PASS=1228, UNKNOWN=14, FAIL=0),
+    "python-realworld-forbidden-edge": Counter(PASS=1228, UNKNOWN=14, FAIL=0),
+    "python-realworld-signature-fail": Counter(PASS=1227, UNKNOWN=14, FAIL=1),
+    "python-realworld-dynamic-unknown": Counter(PASS=1227, UNKNOWN=15, FAIL=0),
 }
 EXPECTED_UNKNOWN_ASPECTS = {
-    "python-realworld-project": Counter(relationship=13, completeness=34),
-    "python-realworld-forbidden-edge": Counter(relationship=13, completeness=34),
-    "python-realworld-signature-fail": Counter(relationship=13, completeness=34),
-    "python-realworld-dynamic-unknown": Counter(relationship=14, completeness=34),
+    "python-realworld-project": Counter(relationship=13, completeness=1),
+    "python-realworld-forbidden-edge": Counter(relationship=13, completeness=1),
+    "python-realworld-signature-fail": Counter(relationship=13, completeness=1),
+    "python-realworld-dynamic-unknown": Counter(relationship=14, completeness=1),
+}
+
+UNKNOWN_INHERITANCE = {
+    "inherits-app-api-dependencies-authentication-rwapikeyheader-symbol-fastapi-security-apikeyheader",
+    "inherits-app-core-settings-app-appsettings-app-core-settings-base-baseappsettings",
+    "inherits-app-core-settings-base-baseappsettings-symbol-pydantic-basesettings",
+    "inherits-app-core-settings-development-devappsettings-app-core-settings-app-appsettings",
+    "inherits-app-core-settings-production-prodappsettings-app-core-settings-app-appsettings",
+    "inherits-app-core-settings-test-testappsettings-app-core-settings-app-appsettings",
+    "inherits-app-models-domain-articles-article-app-models-common-datetimemodelmixin",
+    "inherits-app-models-domain-articles-article-app-models-common-idmodelmixin",
+    "inherits-app-models-domain-comments-comment-app-models-common-datetimemodelmixin",
+    "inherits-app-models-domain-comments-comment-app-models-common-idmodelmixin",
+    "inherits-app-models-domain-users-userindb-app-models-common-datetimemodelmixin",
+    "inherits-app-models-domain-users-userindb-app-models-common-idmodelmixin",
+    "inherits-app-models-schemas-articles-articleforresponse-app-models-domain-articles-article",
 }
 
 
@@ -163,8 +183,41 @@ def test_python_realworld_variants_are_source_only_and_keep_all_upstream_inputs(
     assert "token = jwt.create_access_token_for_user(" in register
 
 
+def _check_native_source_digest(request, facts, fixture_digest):
+    assert isinstance(facts, SourceFacts)
+    assert isinstance(request.resolver, PythonSettings)
+    providers = request.resolver.provider_sources
+    assert providers
+    snapshot = json.loads((PYTHON_REALWORLD_FIXTURE_DIR / "SNAPSHOT.json").read_bytes())
+    selected = {
+        item["path"]
+        for item in snapshot["files"]
+        if item["path"].startswith("app/") and item["path"].endswith(".py")
+    }
+    assert set(facts.coverage.selected_files) == selected
+    source = hashlib.sha256()
+    inputs = {}
+    for path in sorted(selected | {"pyproject.toml"}):
+        content = (Path(request.snapshot.root) / path).read_bytes()
+        inputs[path] = (
+            hashlib.sha256(content).hexdigest(),
+            "selected" if path in selected else "resolution",
+        )
+        source.update(path.encode() + b"\0" + content + b"\0")
+    assert source.hexdigest() == fixture_digest
+    for provider in sorted(providers, key=lambda item: item.path):
+        assert provider.path not in inputs
+        content = provider.source.encode("utf-8")
+        assert hashlib.sha256(content).hexdigest() == provider.digest
+        inputs[provider.path] = (provider.digest, "resolution")
+        source.update(provider.path.encode() + b"\0" + content + b"\0")
+    assert len(facts.inputs) == len(inputs)
+    assert {item.path: (item.digest, item.role) for item in facts.inputs} == inputs
+    assert facts.source.source_digest == source.hexdigest()
+
+
 def test_python_realworld_reports_keep_coverage_architecture_and_uml_distinct(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     expected = {
         "python-realworld-project": ("UNKNOWN", "UNKNOWN", 0),
@@ -172,6 +225,7 @@ def test_python_realworld_reports_keep_coverage_architecture_and_uml_distinct(
         "python-realworld-signature-fail": ("FAIL", "FAIL", 2),
         "python-realworld-dynamic-unknown": ("UNKNOWN", "UNKNOWN", 0),
     }
+    collect = ProcessCollector.collect
     reports = {}
     target_digests = set()
     target_module_sets = set()
@@ -179,7 +233,23 @@ def test_python_realworld_reports_keep_coverage_architecture_and_uml_distinct(
     for variant_id, (rules_status, comparison_status, replay_exit) in expected.items():
         assert REPORT_CASES[f"uml-{variant_id}"] == (variant_id, replay_exit)
         output = tmp_path / f"{variant_id}.json"
-        assert replay(variant_id, output) == REPORT_CASES[f"uml-{variant_id}"][1]
+        captured_digests = []
+
+        def checked_collect(
+            collector,
+            request,
+            *,
+            fixture_digest=SOURCE_DIGESTS[variant_id],
+            captured=captured_digests,
+        ):
+            facts = collect(collector, request)
+            _check_native_source_digest(request, facts, fixture_digest)
+            captured.append(facts.source.source_digest)
+            return facts
+
+        with monkeypatch.context() as capture:
+            capture.setattr(ProcessCollector, "collect", checked_collect)
+            assert replay(variant_id, output) == REPORT_CASES[f"uml-{variant_id}"][1]
         summaries = [
             json.loads(line)
             for line in capsys.readouterr().out.splitlines()
@@ -199,7 +269,8 @@ def test_python_realworld_reports_keep_coverage_architecture_and_uml_distinct(
         assert report_summary["coverage"]["failures"] == []
 
         raw = json.loads(output.read_text(encoding="utf-8"))
-        assert raw["source"]["source_digest"] == SOURCE_DIGESTS[variant_id]
+        assert captured_digests
+        assert set(captured_digests) == {raw["source"]["source_digest"]}
         target_digests.add(raw["contract"]["digest"])
         assert output.with_suffix(".report.html").is_file()
         assert output.with_suffix(".detail.html").is_file()
@@ -217,6 +288,34 @@ def test_python_realworld_reports_keep_coverage_architecture_and_uml_distinct(
             )
             == EXPECTED_UNKNOWN_ASPECTS[variant_id]
         )
+        incomplete_enum = "Host and runtime composition:class-app-core-settings-base-appenvtypes"
+        closed = {
+            item.subject_id: item.status
+            for item in report.comparison.assessments
+            if item.aspect == "completeness"
+        }
+        assert len(closed) == 34
+        assert closed == {
+            scope.scope_id: "UNKNOWN" if scope.scope_id == incomplete_enum else "PASS"
+            for scope in report.target.target_scopes
+        }
+        unknown = {
+            (item.subject_id, item.aspect): item.reason
+            for item in report.comparison.assessments
+            if item.status == "UNKNOWN"
+        }
+        expected_unknown = {
+            (identity, "relationship"): "Unresolved source sites may refer to this endpoint."
+            for identity in UNKNOWN_INHERITANCE
+        }
+        expected_unknown[incomplete_enum, "completeness"] = (
+            "Closed scope inventory or resolution is incomplete."
+        )
+        if variant_id == "python-realworld-dynamic-unknown":
+            expected_unknown["login-creates-access-token", "relationship"] = (
+                "Unresolved source sites may refer to this endpoint."
+            )
+        assert unknown == expected_unknown
         assert len(report.target.entities) == 329
         assert len(report.target.relationships) == 259
         assert sum(item.kind == "imports" for item in report.target.relationships) == 170

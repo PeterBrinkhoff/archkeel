@@ -140,7 +140,7 @@ def test_expanded_self_target_proves_all_formerly_incomplete_member_scopes(
         if item.aspect == "completeness" and item.subject_id in ids
     }
     assert inventory == dict.fromkeys(ids, "PASS")
-    from archkeel.check.ratchets import unknown_positions_by_rule
+    from archkeel.check.ratchets import unknown_positions, unknown_positions_by_rule
 
-    assert unknown_positions_by_rule(self_observation) == ()
-    assert self_observation.records("unknowns") == ()
+    assert unknown_positions_by_rule(self_observation) == {}
+    assert unknown_positions(self_observation) == 0

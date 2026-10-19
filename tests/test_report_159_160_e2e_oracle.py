@@ -168,6 +168,12 @@ def test_tour_freezes_pass_fail_and_permission_oracles_from_real_cli_report(
     result, observation = _cli_report(root, tmp_path, capsys)
 
     assert result["declared_rules"] == "FAIL"
+    order = next(
+        item
+        for item in observation.records("symbols") or ()
+        if item.data.get("qualified_name") == "shop.model.entities.Order"
+    )
+    assert order.data.get("source_binding_unique") is True
     for rule_id, (
         expected_status,
         unknowns,
@@ -196,6 +202,39 @@ def test_tour_freezes_pass_fail_and_permission_oracles_from_real_cli_report(
             )
 
 
+def test_eval_beside_dto_preserves_the_unproven_return_type(tmp_path: Path, capsys) -> None:
+    tour = _variant("tour")
+    files = dict(tour.files)
+    promotions, audit = files["shop/model/promotions.py"].split("def audit_total(", 1)
+    files["shop/model/promotions.py"] = promotions
+    files["shop/model/entities.py"] = (
+        files["shop/model/entities.py"].replace(
+            "from typing import TypedDict", "from typing import Any, TypedDict"
+        )
+        + "\n\ndef audit_total("
+        + audit
+    )
+    root = _prepare_repo(tmp_path, files, tour.fixture)
+    result, observation = _cli_report(root, tmp_path, capsys)
+
+    _assert_assessment(result, "APP-TYPES-NOT-DICT", "FAIL", 1, 1, _PROVENANCE)
+    _assert_assessment(result, "CONSTRUCT-NO-DYNAMIC", "FAIL", 0, 2, _PROVENANCE)
+    [position] = [
+        item
+        for item in observation.records("unknowns") or ()
+        if item.kind == "boundary_type_position" and "APP-TYPES-NOT-DICT" in item.rule_ids
+    ]
+    assert position.data.get("position") == "return"
+    assert position.data.get("annotation") == "Order"
+    assert position.data.get("reason") == "ambiguous_binding"
+    order = next(
+        item
+        for item in observation.records("symbols") or ()
+        if item.data.get("qualified_name") == "shop.model.entities.Order"
+    )
+    assert order.data.get("source_binding_unique") is False
+
+
 def test_fail_and_unknown_for_one_rule_are_from_the_same_real_evaluation_scope(
     tmp_path: Path, capsys
 ) -> None:
@@ -216,6 +255,10 @@ def test_fail_and_unknown_for_one_rule_are_from_the_same_real_evaluation_scope(
         record for record in observation.records("unknowns") or () if rule_id in record.rule_ids
     ]
     assert [record.kind for record in records].count("boundary_type_position") == 1
+    [position] = [record for record in records if record.kind == "boundary_type_position"]
+    assert position.data.get("position") == "extra_path"
+    assert position.data.get("annotation") == "FutureOrder"
+    assert position.data.get("reason") == "unresolved_name"
     assert [record.kind for record in records].count("boundary_type_limit") == 1
     aggregate = next(record for record in records if record.kind == "boundary_type_limit")
     assert aggregate.data.get("undecided") == 1
