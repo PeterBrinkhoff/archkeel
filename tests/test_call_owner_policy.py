@@ -36,6 +36,25 @@ def test_saved_call_policy_requires_a_reader_with_the_new_wire_version(tmp_path,
     assert replayed == row
 
 
+def test_stored_receiver_candidates_cannot_certify_call_ownership(tmp_path):
+    result, row = _observe(
+        tmp_path,
+        "from .storage import Storage\nclass Holder:\n"
+        "    def __init__(self, client: Storage): self.client = client\n"
+        "    def run(self): self.client.page()\n",
+        allowed=(),
+    )
+    call = next(
+        record
+        for record in result.observation.records("calls")
+        if record.data.get("expression") == "self.client.page"
+    )
+    assert call.data.get("status") == "partially_resolved"
+    assert call.data.get("targets") == ("sample.storage.Storage.page",)
+    assert call.data.get("call_binding") is None
+    assert row.status == "UNKNOWN" and not row.evaluation_proven
+
+
 def _observe(
     root,
     caller,

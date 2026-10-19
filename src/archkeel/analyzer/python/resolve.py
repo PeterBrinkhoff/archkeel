@@ -377,17 +377,20 @@ def _resolve_dotted(
     receiver_result = _resolve_receiver_bound_call(parts, receiver_types)
     if receiver_result:
         return receiver_result
+    candidates = index.by_tail.get(parts[-1], [])
     receiver_class = scopes.receiver_class(binding, parts[0])
     if receiver_class:
         target = f"{receiver_class}.{'.'.join(parts[1:])}"
         if target in index.declaration_names:
             return _named_binding(target, index, "method on current class")
-        return (
-            SourceResolution.PARTIALLY_RESOLVED,
-            [target],
-            "current-class attribute without indexed method target",
-            1,
-        )
+        # A stored receiver's method need not belong to the containing class.
+        if len(parts) == 2 or not candidates:
+            return (
+                SourceResolution.PARTIALLY_RESOLVED,
+                [target],
+                "current-class attribute without indexed method target",
+                1,
+            )
     targets = tuple(
         target
         for root in binding.targets
@@ -396,7 +399,6 @@ def _resolve_dotted(
     )
     if targets:
         return _scoped_binding(binding, targets, index, "class-qualified local method")
-    candidates = index.by_tail.get(parts[-1], [])
     if candidates:
         return (
             SourceResolution.PARTIALLY_RESOLVED,

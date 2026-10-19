@@ -2731,6 +2731,67 @@ def test_call_results_of_documented_type_resolve_their_methods(
     assert match["data"]["reason"] == reason
 
 
+@pytest.mark.parametrize(
+    ("source", "expression", "targets", "reason"),
+    [
+        (
+            "class Service:\n    def handle(self): pass\n"
+            "class Holder:\n    def run(self): self.client.handle()\n",
+            "self.client.handle",
+            ["sample.mod.Service.handle"],
+            "dynamic receiver with matching internal methods",
+        ),
+        (
+            "class First:\n    def handle(self): pass\n"
+            "class Second:\n    def handle(self): pass\n"
+            "class Holder:\n    def run(self): self.client.handle()\n",
+            "self.client.handle",
+            ["sample.mod.First.handle", "sample.mod.Second.handle"],
+            "dynamic receiver with matching internal methods",
+        ),
+        (
+            "class Other:\n    def missing(self): pass\n"
+            "class Holder:\n    def run(self): self.missing()\n",
+            "self.missing",
+            ["sample.mod.Holder.missing"],
+            "current-class attribute without indexed method target",
+        ),
+        (
+            "class Holder:\n    def run(self): self.client.missing()\n",
+            "self.client.missing",
+            ["sample.mod.Holder.client.missing"],
+            "current-class attribute without indexed method target",
+        ),
+    ],
+)
+def test_nested_current_class_receivers_keep_only_uncertain_candidates(
+    source: str, expression: str, targets: list[str], reason: str
+) -> None:
+    module = _parsed_module(source)
+    symbols, _, _ = collect_symbols([module], {})
+    index = build_symbol_index(symbols)
+    calls = collect_calls([module], index, {})
+    call = next(item["data"] for item in calls if item["data"]["expression"] == expression)
+    assert call["status"] == "partially_resolved"
+    assert call["targets"] == targets
+    assert call["reason"] == reason
+    assert call["call_binding"] is None
+
+
+def test_indexed_nested_current_class_method_keeps_its_declaration() -> None:
+    module = _parsed_module(
+        "class Holder:\n    class client:\n        @staticmethod\n"
+        "        def handle(): pass\n    def run(self): self.client.handle()\n"
+    )
+    symbols, _, _ = collect_symbols([module], {})
+    calls = collect_calls([module], build_symbol_index(symbols), {})
+    call = next(
+        item["data"] for item in calls if item["data"]["expression"] == "self.client.handle"
+    )
+    assert call["status"] == "resolved"
+    assert call["targets"] == ["sample.mod.Holder.client.handle"]
+
+
 def test_a_requires_entry_covers_only_the_modules_it_goes_through() -> None:
     """AD-42: `through` narrows a `requires` entry to module prefixes of the required component.
 
