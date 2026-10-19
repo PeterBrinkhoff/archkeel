@@ -303,6 +303,7 @@ def _inside_rule_results(
     symbols_measured: bool,
     root_contract: ArchitectureContract | None = None,
     imports: Sequence[RawRecord],
+    source_unknowns: Sequence[RawRecord],
     typing_signals: Sequence[RawRecord],
     constructs: Sequence[RawRecord],
     packages: Sequence[RawRecord],
@@ -339,6 +340,16 @@ def _inside_rule_results(
         available_by_owner[mount.parent_id] = source_modules
         contract_by_owner[mount.parent_id] = scoped
         failures.extend(scope_failures)
+        unknowns.extend(
+            dynamic_dependency_limits(
+                scoped,
+                [
+                    item
+                    for item in source_unknowns
+                    if item["data"].get("source_module") in source_modules
+                ],
+            )
+        )
         results = _evaluate_inside_contract(
             parent,
             scoped,
@@ -874,6 +885,7 @@ def evaluate_source(
         symbols_measured=symbols_measured,
         root_contract=contract,
         imports=imports,
+        source_unknowns=source_unknowns,
         typing_signals=typing_signals,
         constructs=constructs,
         packages=package_facts,
@@ -904,6 +916,7 @@ def evaluate_source(
     unknowns = [
         *(_analysis_limits(calls, declarations, namespace) if is_python else []),
         *source_unknowns,
+        *dynamic_dependency_limits(contract, source_unknowns),
         *symbol_limits(imports, contract, facade_exports),
         *construct_capability_limits(contract, facts.capabilities.constructs, "root"),
         # AD-67: a boundary position the rule could not decide is reported, not silent. It
@@ -936,13 +949,12 @@ def evaluate_source(
         *rule_failures,
     ]
 
-    dynamic_limits = [
-        item
-        for declared in (contract, *(mount.contract for mount in inside_contracts))
-        for item in dynamic_dependency_limits(declared, source_unknowns)
-    ]
-    unknowns.extend(dynamic_limits)
-    incomplete_dependencies = {rule_id for item in dynamic_limits for rule_id in item["rule_ids"]}
+    incomplete_dependencies = {
+        rule_id
+        for item in unknowns
+        if item["kind"] == "dynamic_dependency_limit"
+        for rule_id in item["rule_ids"]
+    }
     scope_observations = [
         item
         for item in scope_observations

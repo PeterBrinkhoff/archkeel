@@ -18,7 +18,7 @@ from archkeel.ir.reexports import resolve_reexports as resolve_import_origins
 
 from .binding_types import AliasBinding, BindingKind, ImportKind
 from .resolve import dotted_expression
-from .scopes import LexicalScopes
+from .scopes import LexicalScopes, NameBinding
 from .source import (
     FRAMEWORK_BASES,
     NATIVE_DATACLASS_DECORATOR,
@@ -966,6 +966,29 @@ def _literal(node: ast.expr | None) -> str | None:
     return node.value if isinstance(node, ast.Constant) and isinstance(node.value, str) else None
 
 
+def _binding_may_be_absent(scopes: LexicalScopes, binding: NameBinding, node: ast.Name) -> bool:
+    owner = binding.owner
+    if owner is None or binding.uncertain:
+        return True
+    for site in owner.bindings.get(node.id, ()):
+        if scopes.by_node[site] is not owner:
+            continue
+        statement = site
+        while not isinstance(statement, ast.stmt) and statement in scopes.parents:
+            statement = scopes.parents[statement]
+        # Assignment targets become visible only after the complete RHS has run.
+        if (
+            isinstance(statement, ast.stmt)
+            and statement.end_lineno is not None
+            and statement.end_col_offset is not None
+            and not (isinstance(statement, ast.AnnAssign) and statement.value is None)
+            and not (isinstance(site, ast.Name) and isinstance(site.ctx, ast.Del))
+            and (statement.end_lineno, statement.end_col_offset) <= (node.lineno, node.col_offset)
+        ):
+            return False
+    return True
+
+
 def _import_targets(scopes: LexicalScopes, node: ast.expr) -> frozenset[str]:
     targets: set[str] = set()
     pending: list[tuple[ast.expr, str, frozenset[tuple[ast.AST, str]]]] = [(node, "", frozenset())]
@@ -977,22 +1000,37 @@ def _import_targets(scopes: LexicalScopes, node: ast.expr) -> frozenset[str]:
             root = root.value
         if dotted is None or not isinstance(root, ast.Name):
             continue
-        binding = scopes.lookup(root, root.id)
-        owner = binding.owner
-        if owner is None or (owner.node, root.id) in seen:
-            continue
+        bindings = [scopes.lookup(root, root.id)]
+        owner = bindings[0].owner
+        if (
+            root.id == "__import__"
+            and owner is not None
+            and isinstance(owner.node, ast.ClassDef)
+            and _binding_may_be_absent(scopes, bindings[0], root)
+        ):
+            # A missing class-local value checks globals before builtins.
+            bindings.append(scopes.lookup(scopes.root.node, root.id))
         tail = dotted[len(root.id) :] + suffix
-        targets.update(target + tail for target in binding.targets)
-        if binding.kind is BindingKind.UNBOUND and root.id == "__import__":
-            targets.add("builtins.__import__" + tail)
-        for site in owner.bindings.get(root.id, ()):
-            parent = scopes.parents.get(site)
-            if (
-                isinstance(site, ast.Name)
-                and isinstance(parent, ast.Assign | ast.AnnAssign)
-                and parent.value is not None
+        for binding in bindings:
+            owner = binding.owner
+            if owner is None or (owner.node, root.id) in seen:
+                continue
+            targets.update(target + tail for target in binding.targets)
+            if root.id == "__import__" and (
+                binding.kind is BindingKind.UNBOUND
+                # Unbound module globals fall through to builtins; function locals do not.
+                or owner is scopes.root
+                and _binding_may_be_absent(scopes, binding, root)
             ):
-                pending.append((parent.value, tail, seen | {(owner.node, root.id)}))
+                targets.add("builtins.__import__" + tail)
+            for site in owner.bindings.get(root.id, ()):
+                parent = scopes.parents.get(site)
+                if (
+                    isinstance(site, ast.Name)
+                    and isinstance(parent, ast.Assign | ast.AnnAssign)
+                    and parent.value is not None
+                ):
+                    pending.append((parent.value, tail, seen | {(owner.node, root.id)}))
     return frozenset(targets)
 
 

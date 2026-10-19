@@ -388,3 +388,139 @@ def test_long_assignment_aliases_do_not_recurse_in_loader_identity():
     assert _import_targets(LexicalScopes(module), call.func) == frozenset(
         {"importlib.import_module"}
     )
+
+
+@pytest.mark.parametrize(
+    "body, expected",
+    [
+        (
+            'if condition:\n    __import__ = lambda name: name\n__import__("sample.retired.old")\n',
+            "UNKNOWN",
+        ),
+        (
+            "if condition:\n    def __import__(name): return name\n"
+            '__import__("sample.retired.old")\n',
+            "UNKNOWN",
+        ),
+        (
+            "if condition:\n    __import__ = lambda name: name\n"
+            'load = __import__\nload("sample.retired.old")\n',
+            "UNKNOWN",
+        ),
+        (
+            '__import__ = lambda name: name\ndel __import__\n__import__("sample.retired.old")\n',
+            "UNKNOWN",
+        ),
+        (
+            "def shadow():\n    global __import__\n"
+            "    if condition:\n        __import__ = lambda name: name\n"
+            '__import__("sample.retired.old")\n',
+            "UNKNOWN",
+        ),
+        (
+            "class X:\n    if flag:\n        __import__ = lambda name: name\n"
+            '    __import__("sample.retired.old")\n',
+            "UNKNOWN",
+        ),
+        (
+            "__import__ = lambda name: name\n"
+            "class X:\n    if flag:\n        __import__ = lambda name: name\n"
+            '    __import__("sample.retired.old")\n',
+            "PASS",
+        ),
+        (
+            'class X:\n    __import__ = lambda name: name\n    __import__("sample.retired.old")\n',
+            "PASS",
+        ),
+        (
+            "def outer():\n    __import__ = lambda name: name\n"
+            "    class C:\n        if flag:\n            __import__ = lambda name: name\n"
+            '        __import__("sample.retired.old")\n',
+            "UNKNOWN",
+        ),
+        (
+            "def outer():\n    __import__ = lambda name: name\n"
+            '    class C:\n        __import__("sample.retired.old")\n',
+            "PASS",
+        ),
+        (
+            "def outer():\n    __import__ = lambda name: name\n"
+            "    class C:\n        nonlocal __import__\n"
+            "        if flag:\n            __import__ = lambda name: name\n"
+            '        __import__("sample.retired.old")\n',
+            "PASS",
+        ),
+        (
+            '__import__("sample.retired.old")\n__import__ = lambda name: name\n',
+            "UNKNOWN",
+        ),
+        (
+            'load = __import__\n__import__ = lambda name: name\nload("sample.retired.old")\n',
+            "UNKNOWN",
+        ),
+        (
+            '__import__ = __import__("sample.retired.old")\n',
+            "UNKNOWN",
+        ),
+        (
+            '__import__ = lambda name: name; __import__("sample.retired.old")\n',
+            "PASS",
+        ),
+        (
+            '__import__("sample.retired.old"); __import__ = lambda name: name\n',
+            "UNKNOWN",
+        ),
+        (
+            'def run():\n    __import__("sample.retired.old")\n'
+            "    __import__ = lambda name: name\n",
+            "PASS",
+        ),
+        (
+            'class C:\n    __import__ = __import__("sample.retired.old")\n',
+            "UNKNOWN",
+        ),
+        (
+            "__import__ = lambda name: name\n"
+            'class C:\n    __import__ = __import__("sample.retired.old")\n',
+            "PASS",
+        ),
+        (
+            "def shadow():\n    global __import__\n    __import__ = lambda name: name\n"
+            '__import__("sample.retired.old")\n',
+            "UNKNOWN",
+        ),
+        (
+            '__import__: object\n__import__("sample.retired.old")\n',
+            "UNKNOWN",
+        ),
+        (
+            '__import__ = lambda name: name\n__import__("sample.retired.old")\n',
+            "PASS",
+        ),
+        (
+            "def run():\n    if condition:\n        __import__ = lambda name: name\n"
+            '    return __import__("sample.retired.old")\n',
+            "PASS",
+        ),
+        (
+            "def outer():\n    if condition:\n        __import__ = lambda name: name\n"
+            "    def run():\n        nonlocal __import__\n"
+            '        return __import__("sample.retired.old")\n',
+            "PASS",
+        ),
+    ],
+)
+def test_builtin_import_fallback_respects_lexical_owner(tmp_path, body, expected):
+    result = _observe_namespace(tmp_path, body)
+    assert result.observation is not None, result.diagnostics
+    [row] = [
+        r
+        for r in rule_assessments(result.observation, undecided_by_rule={})
+        if r.kind == "forbidden_dependency"
+    ]
+    assert row.status == expected, row
+    assert row.evaluation_proven is (expected == "PASS")
+    assert any(
+        item.kind == "dynamic_dependency_limit"
+        for item in result.observation.records("unknowns") or ()
+    ) is (expected == "UNKNOWN")
