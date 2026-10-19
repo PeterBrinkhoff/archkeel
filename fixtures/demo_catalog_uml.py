@@ -312,6 +312,14 @@ TS_PARTIAL_SOURCE = TS_CORE_SOURCE.replace(
     "const constructors = [Unit];\n  const item = new constructors[0]();",
 )
 TS_CLOSED_CONTRACT_JSON = json.dumps(TS_CLOSED_CONTRACT, indent=2) + "\n"
+TS_MATCH_CONTRACT = json.loads(TS_CLOSED_CONTRACT_JSON)
+# The match source uses a template literal, so it does not reference String.
+TS_MATCH_CONTRACT["declarations"]["uml"]["relationships"].remove(
+    next(row for row in TS_UML["relationships"] if row["id"] == "core-string-reference")
+)
+TS_MATCH_CONTRACT["declarations"]["uml"]["entities"].remove(
+    next(row for row in TS_UML["entities"] if row["id"] == "string-global")
+)
 VARIANTS += (
     Variant(
         id="uml-typescript-match",
@@ -319,7 +327,7 @@ VARIANTS += (
         item="ContractDeclarations.uml",
         summary="TypeScript source matches the independently declared classifier contract.",
         files={
-            "architecture-contract.json": TS_CLOSED_CONTRACT_JSON,
+            "architecture-contract.json": json.dumps(TS_MATCH_CONTRACT, indent=2) + "\n",
             "src/core.ts": TS_MATCH_SOURCE,
         },
         expected_violations=(),

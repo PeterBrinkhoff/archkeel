@@ -2,7 +2,8 @@
 
 The demo component owns the port, implementation and request entry point.
 Client extends Base, implements Port and delegates run to helper. App imports core
-and calls helper. Build creates Unit and assigns it to item. State names two literals.
+and calls helper. Core references the standard String global for helper conversion.
+Build creates Unit and assigns it to item. State names two literals.
 Client has private token storage, a static limit and reset. Text is a type alias;
 VERSION is a constant. The contract is independent of collector output.
 
@@ -11,10 +12,10 @@ demo.src.core_x2e_ts and demo.src.app_x2e_ts. The UI labels their declared sourc
 
 The current collector records TypeScript SourceFacts independently of this Target:
 definitions, member inventories, calls, references, bases, and bindings. The original
-closed module scopes remain UNKNOWN where evidence is incomplete. Three variants share
-the same entities and relationships, closing only classifier member inventories with
+closed module scopes remain UNKNOWN where evidence is incomplete. Three variants close only classifier member inventories with
 complete receipts: matching source is PASS, a return-type change is FAIL, and a computed
-constructor is UNKNOWN. As-Is and Diff show only recorded facts.
+constructor is UNKNOWN. The matching source uses a template literal instead of String;
+its Target therefore omits that exact global reference and external symbol. As-Is and Diff show only recorded facts.
 
 Replay with `make demo-architecture VARIANT=uml-typescript-match OUTPUT=demo-output/ts-match.json`.
 The `uml-typescript-mismatch` and `uml-typescript-partial` variants exercise FAIL and
