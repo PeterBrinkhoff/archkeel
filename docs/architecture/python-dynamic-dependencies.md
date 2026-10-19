@@ -4,6 +4,7 @@ Existing dependency rules consume proven literal `importlib.import_module` and
 builtin `__import__` calls. Import aliases, keyword `name`, and relative importlib
 names with a literal `package` are supported. Python code is parsed, never imported.
 The call site and source evidence back each added import fact.
+Call IDs distinguish nested calls even when their source evidence spans coincide.
 
 A loader needs a unique stable lexical import/builtin binding. Native member-escape
 syntax and lexical binding owners invalidate visibly mutated or escaped loader

@@ -27,6 +27,7 @@ from .source import (
     ParsedModule,
     add_evidence,
     annotation_text,
+    call_id,
     control_flow_contexts,
     definition_id,
     lexical_binding_names,
@@ -287,14 +288,7 @@ class CallCollector(ast.NodeVisitor):
             }
         )
         evidence_id = add_evidence(self.evidence, self.module, node)
-        line, _, column = location(node)
-        item_id = stable_id(
-            "CALL",
-            self.module.rel_path,
-            line,
-            column,
-            expression,
-        )
+        item_id = call_id(self.module, node, expression)
         self.items.append(
             classified(
                 item_id=item_id,
