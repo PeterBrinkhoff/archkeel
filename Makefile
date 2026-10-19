@@ -3,7 +3,7 @@ UV ?= uv
 DART_EXECUTABLE ?= dart
 FLUTTER_EXECUTABLE ?= flutter
 
-.PHONY: against gate ci ci-check ci-core-check ci-report-check ci-pr-check ci-pr-report-check pr-test pr-report-test ci-typescript ci-artifacts-clean prune-report-artifacts mermaid check test collector-safety typescript-native typescript-compiler-check dart-test lint typecheck self-validate fixtures self-observation demo demo-github github-pr-report demo-onboarding demo-dart demo-typescript demo-snapshot-check demo-architecture demo-uml loop-figure demo-screenshots browser-install report-browser report-browser-tests report-browser-proof report-pages plugin plugin-directory build smoke release-check rule-yield architecture-graph-schema report-timing flutter-demo-check
+.PHONY: against gate ci ci-check ci-core-check ci-report-check ci-pr-check ci-pr-report-check pr-test pr-report-test ci-typescript ci-artifacts-clean prune-report-artifacts prune-workflows mermaid check test collector-safety typescript-native typescript-compiler-check dart-test lint typecheck self-validate fixtures self-observation demo demo-github github-pr-report demo-onboarding demo-dart demo-typescript demo-snapshot-check demo-architecture demo-uml loop-figure demo-screenshots browser-install report-browser report-browser-tests report-browser-proof report-pages plugin plugin-directory plugin-release build smoke release-check rule-yield architecture-graph-schema report-timing flutter-demo-check
 
 check: lint typecheck browser-architecture-check test
 
@@ -32,7 +32,7 @@ pr-test:
 	$(UV) run --locked python -m tools.pr_test $(if $(PR_TEST_SHARD),--shard=$(PR_TEST_SHARD),) -- \
 		-n 2 --dist=loadfile --max-worker-restart=0 \
 		-q --durations=10 --junitxml=test-artifacts/pytest/pr-core.xml -- \
-		tests/test_ci_changes.py tests/test_make_gate.py tests/test_repository_hygiene.py \
+		tests/test_workflow_registry.py tests/test_ci_changes.py tests/test_make_gate.py tests/test_publish_release.py tests/test_repository_hygiene.py \
 		tests/test_responsibility_validation.py tests/test_target_architecture.py tests/test_contract_maintenance.py tests/test_skill.py \
 		tests/test_contract_model.py tests/test_contract_version_types.py tests/test_dependency_selectors.py tests/test_requires_symbol_ports.py tests/test_typed_dependency_api.py tests/test_dependency_api_target.py tests/test_module_object_grants.py tests/test_dependency_typed_control.py tests/test_typed_state_protocol.py tests/test_typed_python_bindings.py tests/test_typed_python_receivers.py tests/test_typed_method_descriptors.py tests/test_typed_graph_vocabulary.py tests/test_typed_diagnostic_owner.py tests/test_state_facts.py tests/test_boundary_type_nested_mapping.py tests/test_typed_dict_bound_aliases.py tests/test_decisions.py tests/test_typed_python_properties.py tests/test_typed_contract_rule_grammar.py tests/test_typed_contract_rule_native.py tests/test_core_command_result.py tests/test_typed_measurement_controls.py tests/test_typed_parameter_kinds.py tests/test_atlas_deviation_target.py tests/test_definition_context_types.py tests/test_permission_status_types.py tests/test_snapshot_language_types.py tests/test_source_resolution_types.py tests/test_known_delta_action_types.py tests/test_typed_symbol_class_kinds.py tests/test_source_name_visibility.py tests/test_git_blob_types.py tests/test_typed_structure_levels.py tests/test_classifier_projections.py tests/test_unresolved_call_change_types.py \
 		tests/test_target_graph.py::test_contract_corpus_preserves_version_and_uml_presence \
@@ -142,6 +142,15 @@ prune-report-artifacts:
 			echo "Dry run: review $$plan; rerun with DELETE=true to delete selected IDs."; \
 		fi
 
+WORKFLOW_PRUNE_DIR ?= test-artifacts/workflow-prune
+DISABLE ?= false
+prune-workflows:
+	@set -eu; \
+		case "$(DISABLE)" in true|false) ;; *) echo "DISABLE must be true or false" >&2; exit 2 ;; esac; \
+		: "$${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is required}"; \
+		python3 -m tools.workflow_registry --repository "$$GITHUB_REPOSITORY" \
+			--output "$(WORKFLOW_PRUNE_DIR)/plan.json" $(if $(filter true,$(DISABLE)),--disable,)
+
 mermaid:
 	@set -eu; mermaid_dir=$$(mktemp -d); \
 		trap 'rm -rf "$$mermaid_dir"' 0; \
@@ -213,7 +222,7 @@ LINT_PATHS := src tests tools/pr_test.py tools/terminal_svg.py tools/interface_p
 	fixtures/reproduce_dart.py fixtures/reproduce_snapshot_check.py fixtures/consume_result.py fixtures/reproduce_github.py \
 	fixtures/reproduce_typescript.py fixtures/typescript_differential.py fixtures/typescript_scenarios.py fixtures/typescript_realworld.py \
 	fixtures/architecture_demo.py fixtures/demo_catalog_*.py \
-	tools/architecture_graph_schema.py tools/report_timing.py tools/report_artifact_retention.py tools/browser_runtime.py tools/browser_graph_protocol.py tools/browser_architecture.py
+	tools/architecture_graph_schema.py tools/report_timing.py tools/report_artifact_retention.py tools/workflow_registry.py tools/browser_runtime.py tools/browser_graph_protocol.py tools/browser_architecture.py tools/publish_release.py
 
 # The same commit measured 80-96s on hosted runners; allow for runner noise.
 REPORT_MAX_SECONDS ?= 120
@@ -233,7 +242,7 @@ lint:
 	$(UV) run --locked ruff check $(LINT_PATHS)
 
 typecheck:
-	$(UV) run --locked mypy src/archkeel tools/pr_test.py tools/github_pr_report.py tools/against.py tools/architecture_graph_schema.py tools/report_timing.py tools/ci_changes.py tools/report_artifact_retention.py tools/browser_architecture.py
+	$(UV) run --locked mypy src/archkeel tools/pr_test.py tools/github_pr_report.py tools/against.py tools/architecture_graph_schema.py tools/report_timing.py tools/ci_changes.py tools/report_artifact_retention.py tools/workflow_registry.py tools/browser_architecture.py tools/publish_release.py
 
 fixtures:
 	$(UV) run --locked python fixtures/reproduce_milestone1.py $(if $(OUTPUT),--output "$(OUTPUT)")
@@ -319,6 +328,11 @@ browser-install:
 plugin:
 	@test -n "$(OUTPUT)" || { echo "OUTPUT is required"; exit 2; }
 	$(UV) run --locked python -m tools.package_plugin "$(OUTPUT)"
+
+plugin-release:
+	@test -n "$(VERSION)" || { echo "VERSION is required"; exit 2; }
+	$(UV) run --locked python -m tools.package_plugin --expected-version "$(VERSION)" "build/plugin-release/archkeel-plugin-$(VERSION)"
+	$(UV) run --locked python -m tools.package_plugin --check --expected-version "$(VERSION)" "build/plugin-release/archkeel-plugin-$(VERSION).zip"
 
 plugin-directory:
 	@mkdir -p build plugins/archkeel

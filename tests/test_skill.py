@@ -205,3 +205,161 @@ def test_directory_plugin_stays_current_regular_and_within_submission_limits(
     with zipfile.ZipFile(Path(str(target) + ".zip")) as bundle:
         assert {item.filename for item in bundle.infolist() if not item.is_dir()} == paths
         assert all(bundle.read(name) == (target / name).read_bytes() for name in paths)
+
+
+def test_plugin_release_requires_matching_explicit_version_before_output(tmp_path: Path) -> None:
+    version = json.loads((ROOT / "plugin.json").read_text())["version"]
+    target = tmp_path / "release"
+    command = [sys.executable, "-m", "tools.package_plugin", str(target), "--expected-version"]
+    rejected = subprocess.run(command + [version + ".wrong"], cwd=ROOT, capture_output=True)
+    assert rejected.returncode != 0
+    assert not target.exists()
+    built = subprocess.run(command + [version], cwd=ROOT, capture_output=True)
+    assert built.returncode == 0, built.stderr
+    archive = Path(str(target) + ".zip")
+    checked = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "tools.package_plugin",
+            str(archive),
+            "--check",
+            "--expected-version",
+            version,
+        ],
+        cwd=ROOT,
+        capture_output=True,
+    )
+    assert checked.returncode == 0, checked.stderr
+    Path(str(archive) + ".sha256").write_text("wrong checksum\n")
+    rejected = subprocess.run(
+        [sys.executable, "-m", "tools.package_plugin", str(archive), "--check"],
+        cwd=ROOT,
+        capture_output=True,
+    )
+    assert rejected.returncode != 0
+
+
+@pytest.mark.parametrize("damage", ["missing", "duplicate", "manifest", "unexpected"])
+def test_plugin_release_rejects_malformed_zip_even_with_matching_checksum(
+    tmp_path: Path,
+    damage: str,
+) -> None:
+    import hashlib
+
+    target = tmp_path / "release"
+    built = subprocess.run(
+        [sys.executable, "-m", "tools.package_plugin", str(target)],
+        cwd=ROOT,
+        capture_output=True,
+    )
+    assert built.returncode == 0, built.stderr
+    archive = Path(str(target) + ".zip")
+    with zipfile.ZipFile(archive) as bundle:
+        files = {
+            entry.filename: bundle.read(entry) for entry in bundle.infolist() if not entry.is_dir()
+        }
+    if damage == "missing":
+        del files["skills/archkeel/SKILL.md"]
+    elif damage == "manifest":
+        files["plugin.json"] = b"malformed"
+    elif damage == "unexpected":
+        files["../unexpected"] = b"not distributable"
+    with zipfile.ZipFile(archive, "w") as bundle:
+        for name, content in files.items():
+            bundle.writestr(name, content)
+        if damage == "duplicate":
+            with pytest.warns(UserWarning, match="Duplicate name"):
+                bundle.writestr("plugin.json", files["plugin.json"])
+    Path(str(archive) + ".sha256").write_text(
+        f"{hashlib.sha256(archive.read_bytes()).hexdigest()}  {archive.name}\n"
+    )
+    checked = subprocess.run(
+        [sys.executable, "-m", "tools.package_plugin", str(archive), "--check"],
+        cwd=ROOT,
+        capture_output=True,
+    )
+    assert checked.returncode != 0
+
+
+def test_plugin_release_rejects_disagreeing_manifest_versions(tmp_path: Path, monkeypatch) -> None:
+    from tools import package_plugin
+
+    (tmp_path / ".claude-plugin").mkdir()
+    (tmp_path / "plugin.json").write_bytes((ROOT / "plugin.json").read_bytes())
+    claude = json.loads((ROOT / ".claude-plugin/plugin.json").read_text())
+    claude["version"] = "0.0.0"
+    (tmp_path / ".claude-plugin/plugin.json").write_text(json.dumps(claude))
+    monkeypatch.setattr(package_plugin, "ROOT", tmp_path)
+    with pytest.raises(ValueError, match="release version"):
+        package_plugin._plugin_files(None)
+
+
+@pytest.mark.parametrize(
+    ("mode", "directory", "dos_attributes", "accepted"),
+    [
+        (0o120777, False, 0, False),
+        (0o010644, False, 0, False),
+        (0o020644, False, 0, False),
+        (0o060644, False, 0, False),
+        (0o140644, False, 0, False),
+        (0o120777, True, 0x10, False),
+        (0o100644, True, 0x10, False),
+        (0, True, 0, False),
+        (0, False, 0x20, True),
+        (0, True, 0x10, True),
+    ],
+)
+def test_plugin_release_validates_entry_types_with_valid_checksums(
+    tmp_path: Path,
+    mode: int,
+    directory: bool,
+    dos_attributes: int,
+    accepted: bool,
+) -> None:
+    from tools import package_plugin
+
+    files = package_plugin._plugin_files(None)
+    archive = tmp_path / "plugin.zip"
+    with zipfile.ZipFile(archive, "w") as bundle:
+        for name, content in files.items():
+            entry = zipfile.ZipInfo(name)
+            entry.create_system = 0
+            entry.external_attr = 0x20
+            if name == "plugin.json" and not directory:
+                entry.external_attr = mode << 16 | dos_attributes
+            bundle.writestr(entry, content)
+        if directory:
+            entry = zipfile.ZipInfo("skills/")
+            entry.create_system = 0
+            entry.external_attr = mode << 16 | dos_attributes
+            bundle.writestr(entry, b"")
+    Path(str(archive) + ".sha256").write_text(package_plugin._checksum(archive))
+    if accepted:
+        package_plugin._check_bundle(archive, files)
+    else:
+        with pytest.raises(ValueError, match="entry metadata"):
+            package_plugin._check_bundle(archive, files)
+
+
+def test_plugin_release_zip_is_identical_when_local_time_changes(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import time
+
+    from tools import package_plugin
+
+    archives = []
+    for name, year in [("first", 2020), ("second", 2030)]:
+        monkeypatch.setattr(
+            time, "localtime", lambda *args, year=year: (year, 2, 3, 4, 5, 6, 0, 1, 0)
+        )
+        target = tmp_path / name
+        monkeypatch.setattr(sys, "argv", ["package_plugin", str(target)])
+        package_plugin.main()
+        archives.append(Path(str(target) + ".zip").read_bytes())
+    assert archives[0] == archives[1]
+    with zipfile.ZipFile(tmp_path / "first.zip") as bundle:
+        assert bundle.namelist() == sorted(package_plugin._plugin_files(None))
+        assert all(entry.date_time == (1980, 1, 1, 0, 0, 0) for entry in bundle.infolist())
+        assert all(entry.external_attr >> 16 == 0o100644 for entry in bundle.infolist())

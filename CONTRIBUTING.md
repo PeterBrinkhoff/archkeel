@@ -42,6 +42,15 @@ browser proof, gallery generation, plus Windows collector safety and a shared Py
 also supports manual dispatch. Release tags call that same full workflow before package build and
 publication. Use `make ci BASE=origin/main` locally for the complete gate.
 
+Keep five workflow files: CI, Full verification, release, and the two initial-PR
+receipts. Use existing Make targets or dispatch Full verification for diagnostics;
+do not add temporary workflows. The tested file inventory requires an explicit
+reviewed change for a new workflow. Trusted Main maintenance disables active
+file-backed registrations absent from live Main, retaining their run history.
+Use `GITHUB_REPOSITORY=rapiddweller/archkeel make prune-workflows` to preview the
+plan; `DISABLE=true` applies it. A Main change aborts the operation; GitHub provides
+no transaction spanning the ref check and disable request.
+
 The [published architecture report](https://rapiddweller.github.io/archkeel/) updates after a
 successful scheduled or manual full verification on Main. Reports retain FAIL and UNKNOWN
 findings; a failed build leaves the published report intact. GitHub Pages must use **GitHub
@@ -88,3 +97,13 @@ Contract or baseline budget widenings require a reviewed v2 amendment binding bo
 
 Edit [skills/archkeel/SKILL.md](skills/archkeel/SKILL.md). The CLI asset links to this source.
 Run `make plugin-directory` to refresh the committed compact plugin; do not edit its copy.
+
+## Release assets
+
+Keep both source plugin manifests at the release version and refresh the compact
+copy. `make plugin-release VERSION=5.0.0` builds and verifies the ZIP and checksum
+under `build/plugin-release/`, separately from Python distributions in `dist/`.
+The tag workflow owns one draft GitHub release: it verifies uploaded downloads
+before PyPI publication, then publishes that same draft. Do not create a competing
+release manually. Pages keeps its Main-only deployment policy: after publication,
+the existing full Main workflow refreshes the gallery if the tag is still Main.

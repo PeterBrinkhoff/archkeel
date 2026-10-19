@@ -298,5 +298,8 @@ Trusted host receipts are required. Local/synthetic replays do not prove authent
 GitHub event history alone cannot prove first publication. [Protocol tests](../tests/test_git_lock.py)
 and [host evidence boundaries](architecture/archkeel.md#host-evidence) define supported evidence.
 
-Plugins reuse the CLI skill. See [plugin instructions](../plugins/archkeel/README.md)
-for installation; listing and publication remain separate acceptance steps.
+Plugins reuse the CLI skill. New [GitHub releases](https://github.com/rapiddweller/archkeel/releases)
+include `archkeel-plugin-<version>.zip` and its SHA-256 checksum. The ZIP contains
+both plugin manifests and the canonical skill; install the CLI separately.
+See [plugin instructions](../plugins/archkeel/README.md); directory listing and
+host activation remain separate acceptance steps.

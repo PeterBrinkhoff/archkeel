@@ -347,6 +347,16 @@ def test_main_core_uses_pinned_playwright_once_and_report_stage_only_runs_proof(
     assert "make report-browser-tests" not in commands
 
 
+def test_workflow_files_require_an_explicit_governance_change() -> None:
+    assert {path.name for path in (ROOT / ".github/workflows").iterdir() if path.is_file()} == {
+        "ci.yml",
+        "full-verification.yml",
+        "release.yml",
+        "github-opened.yml",
+        "github-opened-receipt.yml",
+    }
+
+
 def test_ci_workflow_keeps_fast_required_checks_and_routes_full_verification() -> None:
     workflow = (ROOT / ".github/workflows/ci.yml").read_text()
     check = workflow.split("  check:\n", 1)[1].split("\n  pr-core-check:", 1)[0]
@@ -433,6 +443,9 @@ def test_ci_workflow_keeps_fast_required_checks_and_routes_full_verification() -
     assert "actions: write" in cleanup
     assert "ref: ${{ github.sha }}" in cleanup
     assert "make prune-report-artifacts DELETE=true" in cleanup
+    assert "make prune-workflows DISABLE=true" in cleanup
+    assert "group: actions-maintenance" in cleanup
+    assert "workflow-prune/plan.json" in cleanup
     assert "cancel-in-progress: ${{ github.event_name == 'pull_request' }}" in workflow
     mermaid = workflow.split("  mermaid:\n", 1)[1].split("\n    steps:", 1)[0]
     assert "needs.changes.outputs.mermaid == 'true'" in mermaid
@@ -467,6 +480,9 @@ def test_ci_workflow_keeps_fast_required_checks_and_routes_full_verification() -
     prune = full.split("  prune-report-artifacts:\n", 1)[1].split("\n  deploy-report-pages:", 1)[0]
     assert "needs: [verified, deploy-report-pages]" in prune
     assert "make prune-report-artifacts DELETE=true" in prune
+    assert "make prune-workflows DISABLE=true" in prune
+    assert "group: actions-maintenance" in prune
+    assert "workflow-prune/plan.json" in prune
     assert "needs: [full-suite-and-reports, verified]" in full
     assert "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'" in full
     assert "name: report-browser-evidence" in full
@@ -476,6 +492,7 @@ def test_ci_workflow_keeps_fast_required_checks_and_routes_full_verification() -
     )[0]
     assert "github.ref == 'refs/heads/main'" in pages_upload
     assert "retention-days: 1" in pages_upload
+    assert "startsWith(github.ref, 'refs/tags/')" not in pages_upload
     assert "actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9" in full
     assert "name: scheduled-report-site" not in full
 

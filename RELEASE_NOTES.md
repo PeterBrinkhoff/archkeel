@@ -34,6 +34,13 @@ native source evidence and conservative UNKNOWNs.
   rebuild the index; binding decisions are not cached.
   Main and detail HTML share one strictly decoded observation and report projection;
   existing entry points and page bytes remain compatible.
+- **Complete release assets.** Releases require a version-matched plugin ZIP and
+  checksum, verified against the canonical skill and both manifests. GitHub assets
+  are downloaded and checked before publishing the Python package.
+- **Bounded Actions inventory.** Five reviewed workflow files cover CI, full
+  verification, release and initial-PR receipts. Main maintenance disables obsolete
+  file-backed registrations while preserving history; temporary workflows fail
+  the repository inventory check. Pages retains its Main-only deployment policy.
 
 ## Upgrade from 4.0.1
 
