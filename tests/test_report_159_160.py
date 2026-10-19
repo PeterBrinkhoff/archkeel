@@ -13,6 +13,7 @@ matching is not visual or accessibility proof.
 import json
 from pathlib import Path
 
+import pytest
 from test_baseline import GETATTR_RULE, PROBE, _repo
 from test_html_report import _start_tags
 from test_report_filter import CONFIG, _tour_root
@@ -52,8 +53,19 @@ def _linked_audit(page: str, directory: Path):
     return model
 
 
-def _report(tmp_path: Path, *, only_violations: bool = False, mixed_evidence: bool = False):
+def _report(
+    tmp_path: Path,
+    *,
+    only_violations: bool = False,
+    mixed_evidence: bool = False,
+    opaque_provider: bool = False,
+):
     root = _tour_root(tmp_path)
+    if opaque_provider:
+        provider = root / "shop/model/entities.py"
+        provider.write_text(
+            provider.read_text() + "\ndef opaque_probe():\n    return eval('Order')\n"
+        )
     if mixed_evidence:
         (root / "shop/app/mixed.py").write_text(
             "def mixed(payload: dict, stamp: 'Missing') -> str:\n    return ''\n"
@@ -166,10 +178,13 @@ def test_report_lists_every_declared_rule_and_its_provenance(tmp_path: Path) -> 
     )
 
 
+@pytest.mark.parametrize("opaque_provider", [False, True])
 def test_fail_and_unknown_evidence_coexist_without_downgrading_the_verdict(
-    tmp_path: Path,
+    tmp_path: Path, opaque_provider: bool
 ) -> None:
-    result, observation, page = _report(tmp_path, mixed_evidence=True)
+    result, observation, page = _report(
+        tmp_path, mixed_evidence=True, opaque_provider=opaque_provider
+    )
     violations = [
         item
         for item in observation.records("violations") or ()
@@ -191,36 +206,43 @@ def test_fail_and_unknown_evidence_coexist_without_downgrading_the_verdict(
     ]
     assert violation.rule_ids == unknown.rule_ids == ("APP-TYPES-NOT-DICT",)
     assert violation.id != unknown.id
-    assert tuple(
-        violation.data.get(key) for key in ("qualified_name", "position", "annotation")
-    ) == ("shop.app.mixed.mixed", "payload", "dict")
     assert unknown.data.get("ambiguous_facade") == 0
-    assert unknown.data.get("ambiguous_binding") == 1
+    assert unknown.data.get("ambiguous_binding") == int(opaque_provider)
     assert unknown.data.get("forward_reference") == 1
     assert tuple(unknown.data.get(key) for key in ("positions", "decided", "undecided")) == (
         9,
-        7,
-        2,
+        8 - int(opaque_provider),
+        1 + int(opaque_provider),
     )
     positions = [
         item
         for item in observation.records("unknowns") or ()
         if item.kind == "boundary_type_position" and item.rule_ids == unknown.rule_ids
     ]
-    assert len(positions) == 2
-    assert {
-        tuple(item.data.get(key) for key in ("module", "qualified_name", "position", "occurrence"))
-        for item in positions
-    } == {
-        ("shop.app.orders", "shop.app.orders.place_order", "return", 0),
-    } | {("shop.app.mixed", "shop.app.mixed.mixed", "stamp", 0)}
+    expected_positions = {
+        ("shop.app.mixed", "shop.app.mixed.mixed", "stamp", 0, "'Missing'", "forward_reference")
+    }
+    if opaque_provider:
+        expected_positions.add(
+            (
+                "shop.app.orders",
+                "shop.app.orders.place_order",
+                "return",
+                0,
+                "Order",
+                "ambiguous_binding",
+            )
+        )
+    assert len(positions) == len(expected_positions)
+    keys = ("module", "qualified_name", "position", "occurrence", "annotation", "reason")
+    assert {tuple(item.data.get(key) for key in keys) for item in positions} == expected_positions
     assessment = next(row for row in result.rule_assessments if row.id == "APP-TYPES-NOT-DICT")
     assert (
         assessment.status,
         assessment.evaluation_proven,
         assessment.count,
         assessment.undecided,
-    ) == ("FAIL", True, 2, 2)
+    ) == ("FAIL", True, 2, 1 + int(opaque_provider))
     assert result.declared_rules == "FAIL"
     assert result.measurements is not None
     assert result.measurements.scalars.violations == len(observation.records("violations") or ())

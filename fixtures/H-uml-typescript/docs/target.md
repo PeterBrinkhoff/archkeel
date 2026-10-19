@@ -14,8 +14,7 @@ The current collector records TypeScript SourceFacts independently of this Targe
 definitions, member inventories, calls, references, bases, and bindings. The original
 closed module scopes remain UNKNOWN where evidence is incomplete. Three variants close only classifier member inventories with
 complete receipts: matching source is PASS, a return-type change is FAIL, and a computed
-constructor is UNKNOWN. The matching source uses a template literal instead of String;
-its Target therefore omits that exact global reference and external symbol. As-Is and Diff show only recorded facts.
+constructor is UNKNOWN. All three variants share one unchanged Target. As-Is and Diff show only recorded facts.
 
 Replay with `make demo-architecture VARIANT=uml-typescript-match OUTPUT=demo-output/ts-match.json`.
 The `uml-typescript-mismatch` and `uml-typescript-partial` variants exercise FAIL and

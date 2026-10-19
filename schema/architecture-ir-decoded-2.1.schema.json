@@ -107,7 +107,7 @@
       "$ref": "urn:archkeel:architecture-ir:decoded:2.0.0#/properties/python_version"
     },
     "bindings": {
-      "$ref": "urn:archkeel:architecture-ir:decoded:2.0.0#/properties/bindings"
+      "type": ["array", "null"]
     },
     "references": {
       "$ref": "urn:archkeel:architecture-ir:decoded:2.0.0#/properties/references"
@@ -121,6 +121,42 @@
   },
   "additionalProperties": false,
   "allOf": [
+    {
+      "if": {
+        "properties": {
+          "analyzer": {
+            "properties": {
+              "name": {"const": "archkeel-typescript-imports"}
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "bindings": {
+            "anyOf": [
+              {"type": "null"},
+              {
+                "type": "array",
+                "items": {
+                  "oneOf": [
+                    {"$ref": "urn:archkeel:architecture-ir:python-decoded:2.0.0#/properties/bindings/items"},
+                    {"$ref": "#/$defs/directExportBinding"}
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "bindings": {
+            "$ref": "urn:archkeel:architecture-ir:decoded:2.0.0#/properties/bindings"
+          }
+        }
+      }
+    },
     {
       "$ref": "urn:archkeel:architecture-ir:decoded:2.0.0#/allOf/0"
     },
@@ -154,6 +190,32 @@
       }
     }
   ],
+  "$defs": {
+    "directExportBinding": {
+      "allOf": [
+        {"$ref": "urn:archkeel:architecture-ir:common:1.2.0#/$defs/record"},
+        {
+          "properties": {
+            "evidence_class": {"const": "FACT"},
+            "area": {"const": "source"},
+            "kind": {"const": "bindings"},
+            "evidence_ids": {"minItems": 1},
+            "data": {
+              "type": "object",
+              "required": ["module", "source_module", "source_scope", "name"],
+              "properties": {
+                "module": {"type": "string", "minLength": 1},
+                "source_module": {"type": "string", "minLength": 1},
+                "source_scope": {"type": "string", "minLength": 1},
+                "name": {"type": "string", "minLength": 1}
+              },
+              "additionalProperties": false
+            }
+          }
+        }
+      ]
+    }
+  },
   "title": "ArchitectureIR 2.1.0, decoded observation profiles",
   "$comment": "AD-241. Versioned call ownership evidence. Reuse unchanged historical constraints without widening published resources. Register all bundled schemas by $id for offline validation."
 }

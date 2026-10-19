@@ -10,6 +10,7 @@ without Node: the frontend may be more conservative than the reference, never le
 import hashlib
 import json
 import os
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -23,6 +24,7 @@ from archkeel.ir.facts import (
     UnresolvedTarget,
 )
 from archkeel.ir.facts_codec import decode_response, encode_response
+from archkeel.ir.facts_validation import validate_source_facts
 from archkeel.ir.protocol import (
     CollectionRequest,
     CollectionResponse,
@@ -60,6 +62,61 @@ def _manifest(name: str, **fields: object) -> str:
 
 def _only(*paths: str) -> dict[str, object]:
     return {"files": list(paths), "include": []}
+
+
+@pytest.mark.parametrize(
+    "source,complete",
+    [
+        ("const fs = require('node:fs');", True),
+        ("const fs = require(name);", False),
+        ("const load = require; load('node:fs');", False),
+        ("function require(name) {} require('node:fs');", False),
+        ("require('./missing.js');", False),
+    ],
+)
+def test_commonjs_loader_is_observed_once_without_certifying_unknown_loads(
+    tmp_path, source, complete
+):
+    facts = _facts(
+        tmp_path,
+        {"src/runtime.js": source},
+        options={"allowJs": True, "module": "commonjs", "moduleResolution": "node"},
+    )
+    assert facts.coverage.full_scope is complete
+    if complete:
+        assert len(facts.imports) == 1
+        assert isinstance(facts.imports[0], BuiltinTarget)
+        assert facts.imports[0].name == "node:fs"
+        assert not facts.coverage.gaps
+
+
+@pytest.mark.parametrize("fault", ["missing-binding", "missing-evidence", "wrong-module"])
+def test_named_import_route_cannot_detach_its_source_witness(tmp_path, fault):
+    facts = _facts(
+        tmp_path,
+        {
+            "src/main.js": "import {port} from './ports.js';",
+            "src/ports.js": "export function port() {}",
+        },
+        options={"allowJs": True, "module": "esnext", "moduleResolution": "node"},
+    )
+    section = next(section for section in facts.sections if section.name == "bindings")
+    [binding] = section.records
+    if fault == "missing-binding":
+        records = ()
+    elif fault == "missing-evidence":
+        records = (replace(binding, evidence_ids=()),)
+    else:
+        wrong = next(item.id for item in facts.evidence if item.file == "src/main.js")
+        records = (replace(binding, evidence_ids=(wrong,)),)
+    changed = replace(
+        facts,
+        sections=tuple(
+            replace(item, records=records) if item == section else item for item in facts.sections
+        ),
+    )
+    with pytest.raises(ValueError, match="source (fact reference|record evidence)"):
+        validate_source_facts(changed)
 
 
 @pytest.mark.parametrize("allow_js", [None, False, True])
@@ -900,6 +957,7 @@ def test_named_esm_imports_bind_unique_source_exports_and_live_cells(tmp_path, d
     assert record.data.get("symbol") == "port"
     assert record.data.get("binding") == local
     assert record.data.get("symbols_known") is True
+    assert record.data.get("reexport_chain") == ("app.src.ports_x2e_js.port",)
     evidence = {item.id: item for item in facts.evidence}
     assert {evidence[key].file for key in record.evidence_ids} == {"src/main.js"}
     bindings = {
@@ -959,6 +1017,7 @@ def test_esm_source_binding_uncertainty_never_becomes_named_permission(
         if r.data.get("source_module") == "app.src.main_x2e_ts"
     ]
     assert records and all(r.data.get("symbols_known") is False for r in records)
+    assert all(not r.data.get("reexport_chain") for r in records)
 
 
 def test_named_esm_imports_keep_every_member_and_type_namespace_separate(tmp_path):

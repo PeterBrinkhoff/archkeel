@@ -361,6 +361,9 @@ class _Collection:
                             "symbol": None if binding.namespace else binding.imported,
                             "binding": binding.local,
                             "symbols_known": known,
+                            "reexport_chain": [f"{target.module}.{binding.imported}"]
+                            if known and isinstance(target, LocalTarget)
+                            else [],
                             "type_only": binding.type_only,
                             "under_type_checking": binding.type_only,
                         },
@@ -426,10 +429,21 @@ class _Collection:
         }
         self.script_source_writes = tuple(source_writes)
         self._script_unbounded_effects(publications, writes)
+        loader_sites = {
+            (rel, reference.span.line, reference.span.column)
+            for rel, syntax in self.syntax.items()
+            for reference in syntax.references
+            if reference.form is ReferenceForm.REQUIRE
+        } & set(self.import_sites.values())
         for rel, syntax in self.syntax.items():
             if not self._global_dependency_scope(rel):
                 continue
             for site in syntax.sites:
+                if (
+                    site.kind is SiteKind.CALL
+                    and (rel, site.span.line, site.span.column) in loader_sites
+                ):
+                    continue
                 destructures = [
                     item for item in syntax.script_destructures if item.span == site.span
                 ]
