@@ -17,7 +17,7 @@ from archkeel.ir.codec import (
     load_inside_contract_tree,
     parse_observation,
 )
-from archkeel.ir.decisions import dependency_binding_id
+from archkeel.ir.decisions import dependency_binding_id, rule_evaluation_binding_id
 from archkeel.ir.digest import package_digest
 from archkeel.ir.facts import ResolutionRole as _ResolutionRole
 from archkeel.ir.facts import (
@@ -698,7 +698,7 @@ def _certify_call_owner_scopes(
     receipts = [
         r
         for r in scan.scope_observations
-        if r["kind"] == "rule_evaluation" and rules.intersection(r["rule_ids"])
+        if r["kind"] == "rule_evaluation" and len(r["rule_ids"]) == 1 and r["rule_ids"][0] in rules
     ]
     if not receipts:
         return
@@ -706,11 +706,16 @@ def _certify_call_owner_scopes(
         "source_digest": facts.source.source_digest,
         "source_scope": list(facts.source.scope),
         "contract_digest": contract_digest,
-        "binding_id": _dependency_binding_id(scan, declarations, include_calls=True),
         "selected_files": list(facts.coverage.selected_files),
     }
+    inventory_binding_id = _dependency_binding_id(scan, declarations, include_calls=True)
     for receipt in receipts:
-        receipt["data"]["call_scope_proof"] = proof
+        receipt["data"]["call_scope_proof"] = {
+            **proof,
+            "binding_id": rule_evaluation_binding_id(
+                inventory_binding_id, parse_record(receipt), SCHEMA_VERSION
+            ),
+        }
 
 
 def _certify_dependency_scopes(

@@ -769,7 +769,11 @@ def _rule_receipt_complete(
     if declaration.kind == "no_component_cycles":
         return receipt is not None and receipt.data.get("cycle_scope_complete") is True
     if declaration.kind == "call_owner":
-        return _call_owner_receipt_complete(observation, receipt)
+        return (
+            receipt is not None
+            and receipt.rule_ids == (declaration.id,)
+            and _call_owner_receipt_complete(observation, receipt)
+        )
     return receipt is not None and receipt.data.get("assessment_complete", True) is True
 
 
@@ -857,6 +861,30 @@ def dependency_binding_id(
                 tuple(sorted(evidence, key=lambda item: item.id)),
             )
         ),
+    )
+
+
+def rule_evaluation_binding_id(
+    inventory_binding_id: str, receipt: Record, observation_schema_version: str
+) -> str:
+    """Bind one evaluator claim without recursively including its own proof."""
+    claim = (
+        receipt.id,
+        receipt.evidence_class,
+        receipt.area,
+        receipt.kind,
+        receipt.title,
+        receipt.subjects,
+        receipt.evidence_ids,
+        receipt.rule_ids,
+        receipt.fact_ids,
+        receipt.provenance,
+        tuple(
+            (key, value) for key, value in sorted(receipt.data.entries) if key != "call_scope_proof"
+        ),
+    )
+    return stable_id(
+        "RULE-EVALUATION-PROOF", observation_schema_version, inventory_binding_id, repr(claim)
     )
 
 
@@ -1007,8 +1035,12 @@ def _call_owner_receipt_complete(observation: Observation, receipt: Record | Non
         and proof.get("source_scope") == observation.source.scope
         and proof.get("contract_digest") == observation.contract.digest
         and proof.get("binding_id")
-        == dependency_binding_id(
-            observation.sections, coverage.failures, observation.evidence, include_calls=True
+        == rule_evaluation_binding_id(
+            dependency_binding_id(
+                observation.sections, coverage.failures, observation.evidence, include_calls=True
+            ),
+            receipt,
+            observation.schema_version,
         )
     )
 

@@ -27,7 +27,12 @@ Every call carries a proof or explicit null, with source/declaration evidence.
 Completion requires the capability, complete inventory and per-call consideration;
 the rule receipt cites all selected call
 IDs and the native source/scope/digest binding. A global capability alone cannot
-certify it. Legacy observations without these facts remain UNKNOWN for this
+certify it. Each receipt binds its complete claim and observation schema version
+to that inventory. Copying a receipt to another rule/scope, changing its claim or
+downgrading the observation version cannot retain a proven assessment. Re-observe
+pre-release artifacts containing only a shared inventory proof; saved readers keep
+them UNKNOWN. This binding detects inconsistent evidence, not artifact authenticity.
+Legacy observations without these facts remain UNKNOWN for this
 new rule only. Existing call-graph candidate status and old-rule receipts are
 preserved; candidates alone never prove ownership.
 
@@ -60,7 +65,7 @@ member mutation, missing scope, stale/missing capabilities, mounted rules and
 known FAIL beside UNKNOWN. This slice does not retire any EE checker until
 its full supported forms and installed-release evidence are equivalent.
 
-Native verification tightened the original 837 unresolved-call ceiling to 835.
+Native verification tightened the original 837 unresolved-call ceiling to 833.
 The canonical baseline remains authoritative; the 52 typing-position ceiling remains.
 Closed attribute scopes for `CallOwnerRule` and `CallBinding` remain strict;
 required positions need positive proof, with no additional UNKNOWN allowance.

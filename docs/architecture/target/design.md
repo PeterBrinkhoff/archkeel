@@ -360,7 +360,7 @@ Accept only a frozen candidate with complete scope, zero required UNKNOWNs,
 no diagnostics or violations, and passing relevant Core/report/browser,
 packaging and final-head CI checks. Earlier receipts do not validate later code.
 The 120-second report ceiling and 52 typing-position ceiling remain unchanged.
-The native writer tightened unresolved calls from 837 to 835 without `--accept-new`;
+The native writer tightened unresolved calls from 837 to 833 without `--accept-new`;
 that tighter ceiling remains binding.
 Microbenchmarks do not establish whole-report acceptance.
 

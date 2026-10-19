@@ -1,6 +1,6 @@
 {
   "budgets": {
-    "calls_unresolved": 835,
+    "calls_unresolved": 833,
     "coupling_names": {
       "api -> ir": [
         "archkeel.ir.baseline:ViolationFingerprint",
