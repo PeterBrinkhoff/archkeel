@@ -66,7 +66,12 @@ class LexicalScopes(ast.NodeVisitor):
     def for_module(module: ParsedModule) -> LexicalScopes:
         cached = module._lexical_scopes
         key = (module.source, module.rel_path, module.module)
-        if cached is not None and cached[0] is module.tree and cached[1:4] == key:
+        if (
+            cached is not None
+            and cached[0] is module.tree
+            and cached[1:4] == key
+            and isinstance(cached[4], LexicalScopes)
+        ):
             return cached[4]
         scopes = LexicalScopes(module)
         module._lexical_scopes = (module.tree, *key, scopes)

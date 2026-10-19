@@ -72,6 +72,20 @@ def test_index_reads_current_import_aliases_without_caching_resolution():
     assert index.lookup(call.func, "value").targets == ("after.value",)
 
 
+def test_another_ast_visitor_cannot_supply_lexical_proof():
+    module = _parsed_module("value = 1\n")
+    module._lexical_scopes = (
+        module.tree,
+        module.source,
+        module.rel_path,
+        module.module,
+        ast.NodeVisitor(),
+    )
+    index = LexicalScopes.for_module(module)
+    assert isinstance(index, LexicalScopes)
+    assert LexicalScopes.for_module(module) is index
+
+
 def test_failed_index_construction_is_not_published(monkeypatch):
     module = _parsed_module("value = 1\n")
 

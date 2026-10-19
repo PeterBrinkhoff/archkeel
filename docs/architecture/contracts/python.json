@@ -1060,7 +1060,7 @@
             "static"
           ],
           "responsibilities": [
-            "Reuse lexical structure only for the exact AST identity, source text, relative path and module name. Rebuild changed inputs without caching binding proofs; failed construction publishes nothing."
+            "Reuse only a checked LexicalScopes index for the exact AST identity, source text, relative path and module name. Rebuild changed inputs or another AST visitor without caching binding proofs; failed construction publishes nothing."
           ],
           "provenance": [
             "docs/architecture/target/design.md"

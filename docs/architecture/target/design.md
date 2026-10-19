@@ -248,6 +248,8 @@ collection must observe changed bindings. No persistent proof cache is introduce
 
 The Source owner shares one lexical index per parsed module. Its AST identity,
 source text, relative path and module name bind reuse; changed inputs rebuild it.
+Source retains the AST visitor through its standard base type; the lexical owner
+checks the concrete index before reuse, keeping the module dependency acyclic.
 Import aliases remain live inputs to lookup. The cache stores compiler structure,
 not lookup results or binding proofs, and lives only as long as the parsed snapshot.
 The ordinary `LexicalScopes` constructor still creates a fresh index.
