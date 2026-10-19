@@ -323,6 +323,52 @@ def _response() -> dict:
     }
 
 
+def test_collection_json_keeps_sorted_nested_object_order() -> None:
+    from archkeel.ir.facts_codec import _decode
+
+    raw = _response()
+    raw["facts"]["sections"][0]["records"][0]["data"]["codec_order"] = {
+        "z": {"ä": 2, "a": 1},
+        "a": [],
+    }
+    decoded = _decode(json.dumps(raw, ensure_ascii=False).encode())
+    assert list(decoded) == ["facts", "protocol_version"]
+    facts = decoded["facts"]
+    assert list(facts) == sorted(raw["facts"])
+    nested = facts["sections"][0]["records"][0]["data"]["codec_order"]
+    assert list(nested) == ["a", "z"]
+    assert list(nested["z"]) == ["a", "ä"]
+
+
+@pytest.mark.parametrize("token", ["NaN", "Infinity", "-Infinity", "1e400", "-1e400"])
+def test_collection_json_rejects_nested_nonfinite_numbers(token: str) -> None:
+    from archkeel.ir.facts_codec import ProtocolError, decode_response
+
+    raw = _response()
+    raw["facts"]["sections"][0]["records"][0]["data"]["codec_number"] = ["CODEC_NUMBER"]
+    payload = json.dumps(raw).encode().replace(b'"CODEC_NUMBER"', token.encode())
+    with pytest.raises(ProtocolError, match="JSON numbers must be finite"):
+        decode_response(payload)
+
+
+@pytest.mark.parametrize(
+    "payload,reason",
+    [
+        (b'{"value":NaN,"value":0}', "duplicate field value"),
+        (b'{"outer":{"value":1e400,"value":0}}', "duplicate field value"),
+        (b'{"value":NaN} trailing', "Extra data"),
+        (b'{"value":1e400,}', "Expecting property name"),
+        (b'{"value":-NaN}', "Expecting value"),
+    ],
+)
+def test_collection_json_reports_duplicate_or_syntax_errors_before_nonfinite(payload, reason):
+    from archkeel.ir.facts_codec import ProtocolError, decode_request, decode_response
+
+    for decoder in (decode_request, decode_response):
+        with pytest.raises(ProtocolError, match=reason):
+            decoder(payload)
+
+
 def test_source_response_is_immutable_and_preserves_alternate_parser_identity() -> None:
     from dataclasses import FrozenInstanceError
 

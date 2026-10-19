@@ -190,7 +190,7 @@ def _unique_fields(pairs: list[tuple[str, RawJson]]) -> dict[str, RawJson]:
         if key in result:
             raise ProtocolError(f"duplicate field {key}")
         result[key] = value
-    return result
+    return {key: result[key] for key in sorted(result)}
 
 
 def _json_value(value: object) -> RawJson:
@@ -211,8 +211,21 @@ def _json_value(value: object) -> RawJson:
 
 
 def _decode(payload: bytes) -> RawJson:
+    nonfinite = False
+
+    def number(token: str) -> float:
+        nonlocal nonfinite
+        value = float(token)
+        nonfinite |= not isfinite(value)
+        return value
+
     try:
-        return _json_value(json.loads(payload, object_pairs_hook=_unique_fields))
+        value: RawJson = json.loads(
+            payload, object_pairs_hook=_unique_fields, parse_float=number, parse_constant=number
+        )
+        if nonfinite:
+            raise ProtocolError("JSON numbers must be finite")
+        return value
     except (ValueError, UnicodeDecodeError, RecursionError) as error:
         raise ProtocolError(f"invalid collection JSON: {error}") from error
 
