@@ -383,9 +383,9 @@ packaging and final-head CI checks. Earlier receipts do not validate later code.
 The 120-second report ceiling and 52 typing-position ceiling remain unchanged.
 Earlier native integrations tightened unresolved calls from 837 to 832. After
 eight additional Source/browser calls, Alex expressly authorizes up to 840.
-The canonical-vendor size correction reduces the current measurement to 839;
-the native baseline records that exact value, bound by the amendment. All other
-debt budgets and rules remain unchanged.
+The native baseline records that approved ceiling, bound by the amendment.
+The final single-pass publication index measures 840; its chained list append
+remains unresolved. All other debt budgets and rules remain unchanged.
 Microbenchmarks do not establish whole-report acceptance.
 
 Preserve every original field of 921 UML entities, exclusions and 121 original

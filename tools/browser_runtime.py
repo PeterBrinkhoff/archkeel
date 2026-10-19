@@ -47,7 +47,7 @@ def prepare_dependencies() -> None:
     if manifest["name"] != "elkjs" or manifest["version"] != "0.12.0":
         raise SystemExit("ELK package identity differs from the pinned browser dependency")
     canonical = _ASSETS / "elkjs-0.12.0.bundled.js"
-    expected = (_ASSETS / "ELKJS-LICENSE.md").read_text().splitlines()[3]
+    expected = (_ASSETS / "ELKJS-LICENSE.md").read_text(encoding="utf-8").splitlines()[3]
     if expected != f"Bundle SHA-256: `{sha256(canonical.read_bytes()).hexdigest()}`.":
         raise SystemExit("Canonical ELK bytes differ from the recorded license provenance")
     if (package / "lib/elk.bundled.js").read_bytes() != canonical.read_bytes():
