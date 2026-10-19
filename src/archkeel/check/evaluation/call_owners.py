@@ -12,6 +12,28 @@ from archkeel.ir.model import ArchitectureContract, CallOwnerRule
 from .rule_support import _rule_evaluation_receipt
 
 
+def _target_binding_static(target: RawRecord, symbols: Sequence[RawRecord]) -> bool:
+    data = target["data"]
+    if target["kind"] == "class":
+        return data.get("source_binding_unique") is True and (
+            data.get("class_header_static") is True
+            or data.get("source_class_header_static") is True
+            or data.get("typed_dict_header_static") is True
+        )
+    if data.get("decorators"):
+        return False
+    if target["kind"] == "method":
+        parent = data.get("parent")
+        owners = [r for r in symbols if r["data"]["qualified_name"] == parent]
+        return (
+            len(owners) == 1
+            and owners[0]["kind"] == "class"
+            and owners[0]["data"].get("source_binding_unique") is True
+            and owners[0]["data"].get("source_member_binding_static") is True
+        )
+    return data.get("source_binding_unique") is True and data.get("source_binding_static") is True
+
+
 def _limit(rule: CallOwnerRule, scope: str, reason: str, facts: Sequence[RawRecord]) -> RawRecord:
     return classified(
         item_id=stable_id("UNKNOWN-CALL-OWNER", scope, rule.id, reason, *(r["id"] for r in facts)),
@@ -69,7 +91,8 @@ def call_owner_results(
             and r["kind"] in {"class", "function", "method"}
         ]
         rule_limits: list[RawRecord] = []
-        if not subjects or not targets or not complete or not bindings_measured:
+        target_proven = len(targets) == 1 and _target_binding_static(targets[0], symbols)
+        if not subjects or not target_proven or not complete or not bindings_measured:
             rule_limits.append(
                 _limit(
                     rule,

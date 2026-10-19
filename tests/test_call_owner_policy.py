@@ -260,6 +260,94 @@ def test_missing_target_or_empty_source_cannot_certify_absence(tmp_path, caller,
     assert row.status == "UNKNOWN" and not row.evaluation_proven
 
 
+@pytest.mark.parametrize("mounted", [False, True])
+@pytest.mark.parametrize(
+    "provider,target,expected",
+    [
+        ("def settle(): pass\n", "settle", "PASS"),
+        ("def settle(): pass\nsettle()\n", "settle", "PASS"),
+        ("def settle(): pass\nsettle = other\n", "settle", "UNKNOWN"),
+        ("def settle(): pass\ndel settle\n", "settle", "UNKNOWN"),
+        ("@decorate\ndef settle(): pass\n", "settle", "UNKNOWN"),
+        ("class Storage:\n    def page(self): pass\n", "Storage.page", "PASS"),
+        (
+            "class Storage:\n    def page(self): pass\n    page = other\n",
+            "Storage.page",
+            "UNKNOWN",
+        ),
+        (
+            "class Storage:\n    def page(self): pass\n    del page\n",
+            "Storage.page",
+            "UNKNOWN",
+        ),
+        (
+            "class Storage:\n    def page(self): pass\nStorage.page = other\n",
+            "Storage.page",
+            "UNKNOWN",
+        ),
+        (
+            "class Storage:\n    def page(self): pass\nStorage = other\n",
+            "Storage.page",
+            "UNKNOWN",
+        ),
+        (
+            "class Storage:\n    def page(self): pass\ndel Storage\n",
+            "Storage.page",
+            "UNKNOWN",
+        ),
+        (
+            "class Storage:\n    @decorate\n    def page(self): pass\n",
+            "Storage.page",
+            "UNKNOWN",
+        ),
+        (
+            "from opaque import Base\nclass Storage(Base):\n    def page(self): pass\n",
+            "Storage.page",
+            "UNKNOWN",
+        ),
+        ("class Storage: pass\n", "Storage", "PASS"),
+        (
+            "from dataclasses import dataclass\n@dataclass\nclass Storage:\n    value: int\n",
+            "Storage",
+            "PASS",
+        ),
+        (
+            "from typing import TypedDict\nclass Storage(TypedDict):\n    value: int\n",
+            "Storage",
+            "PASS",
+        ),
+        ("class Storage: pass\nStorage = other\n", "Storage", "UNKNOWN"),
+        ("class Storage: pass\ndel Storage\n", "Storage", "UNKNOWN"),
+        ("@decorate\nclass Storage: pass\n", "Storage", "UNKNOWN"),
+        ("from opaque import Base\nclass Storage(Base): pass\n", "Storage", "PASS"),
+    ],
+)
+def test_uncalled_target_requires_its_binding_proof(tmp_path, provider, target, expected, mounted):
+    result, row = _observe(
+        tmp_path,
+        "VALUE = 1\n",
+        source="sample.caller",
+        target=f"sample.storage.{target}",
+        extra={"sample/storage.py": provider},
+        mounted=mounted,
+    )
+    assert not [
+        call
+        for call in result.observation.records("calls") or ()
+        if call.data.get("source_module") == "sample.caller"
+    ]
+    assert row.status == expected, row
+    assert row.evaluation_proven is (expected != "UNKNOWN")
+    if provider == "def settle(): pass\nsettle()\n":
+        [symbol] = [
+            item
+            for item in result.observation.records("symbols")
+            if item.data.get("qualified_name") == "sample.storage.settle"
+        ]
+        assert symbol.data.get("source_binding_static") is True
+        assert symbol.data.get("source_member_binding_static") is False
+
+
 @pytest.fixture
 def owner_facts(tmp_path):
     from archkeel.analyzer.python.collect import collect
