@@ -17,8 +17,10 @@ direct import aliases) and plain parameter annotations of scanned class methods.
 External targets, constructors, stored receiver members, inherited surfaces,
 decorated functions/methods, reexports and ambiguous/mutated bindings remain
 UNKNOWN. It proves the declared static boundary, not runtime conformance.
-This rule requires a source/contract/inventory/call-bound receipt; legacy saved
-observations cannot certify it. Other language profiles do not support it.
+This rule requires a source/contract/inventory/call-bound receipt for its exact
+claim and observation version; legacy saved observations cannot certify it.
+Re-observe pre-release artifacts with inventory-only proofs. These consistency
+bindings do not authenticate artifacts. Other language profiles do not support it.
 
 An explicitly certified `complete_requires` scope can PASS with unrelated source
 resolution gaps. Arbitrary imports still block their own scopes and ancestors;

@@ -12761,6 +12761,51 @@
           "responsibilities": [
             "Own the closed vocabulary of supported static call-binding origins."
           ]
+        },
+        {
+          "id": "COMPACT-IR-RULE-EVALUATION-BINDING",
+          "kind": "function",
+          "qualified_name": "archkeel.ir.decisions.rule_evaluation_binding_id",
+          "language": "python",
+          "presence": "planned",
+          "parent_id": "IR-COMPARISON-decisions",
+          "responsibilities": [
+            "Derive one deterministic consistency identity from the inventory, complete typed evaluation claim and observation schema version. Exclude the proof itself to avoid recursion. Producer and saved reader share this pure operation; it owns no mutable state or IO and does not authenticate artifacts."
+          ],
+          "provenance": [
+            "docs/architecture/decisions/ad-241-call-ownership-policy.md",
+            "docs/architecture/target/design.md"
+          ],
+          "signature": {
+            "parameters": [
+              {
+                "name": "inventory_binding_id",
+                "annotation": "str",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "receipt",
+                "annotation": "Record",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              },
+              {
+                "name": "observation_schema_version",
+                "annotation": "str",
+                "kind": "positional",
+                "default": null,
+                "default_known": true
+              }
+            ],
+            "returns": "str"
+          },
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          }
         }
       ],
       "relationships": [

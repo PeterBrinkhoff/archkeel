@@ -27,7 +27,8 @@ native source evidence and conservative UNKNOWNs.
 - **Call ownership.** Opt-in contract **3.7.0** adds `call_owner` for exact targets
   and allowed caller scopes. Bound calls can fail; unrelated same-named methods
   do not. Missing target proof stays UNKNOWN. Declared receivers prove a static
-  boundary, not runtime dispatch.
+  boundary, not runtime dispatch. Saved receipts bind the exact evaluation claim
+  and observation version; copying a receipt cannot certify a different scope.
 - **Less repeated collector work.** Python collectors share lexical indexes within
   one parsed snapshot while resolving import bindings live. Changed compiler inputs
   rebuild the index; binding decisions are not cached.

@@ -183,6 +183,7 @@ compatibility in their authoritative native entries. These are the required seam
 | Check workflows → observation / Host ports | Existing `Analyzer` is the workflow observation callable returning `ObservationResult`; `Host` returns records or ordering evidence/error. Check does not import concrete adapters. Unauthenticated evidence remains unproven. |
 | Check observation → injected collector | Check-owned `Observer` calls `SourceCollector.collect(CollectionRequest) -> SourceFacts | CollectionError`. CLI injects the collector implementation; retain timeout/output bounds, response validation and child cleanup. |
 | CLI → Render | `render_architecture_pages(RunResult, bytes, *, repository: str, architecture_href: str)` returns ordered immutable filename/bytes pairs after one strict decode/projection. Terminal consumes the existing typed result/summary. Neither changes verdicts. |
+| Check producer / saved reader → IR | `rule_evaluation_binding_id(str, Record, str) -> str` binds the inventory, full claim and observation version through one pure operation. It detects inconsistent evidence; it does not authenticate artifacts. |
 | Browser Explorer → projection/layout | Reuse typed scene/layout ports. Specify shared state and cancellation ownership; no new route codec or state model without a demonstrated need. |
 
 The paired renderer prepares the entire HTML set before the caller writes it.
@@ -376,14 +377,15 @@ Accept only a frozen candidate with complete scope, zero required UNKNOWNs,
 no diagnostics or violations, and passing relevant Core/report/browser,
 packaging and final-head CI checks. Earlier receipts do not validate later code.
 The 120-second report ceiling and 52 typing-position ceiling remain unchanged.
-The native writer tightened unresolved calls from 837 to 835; the paired-render
-port reduces them again to 834. These downward ratchets remain binding.
+The native writer tightened unresolved calls from 837 to 835. Integration retains
+both branches' downward ratchets: paired rendering reaches 834, and the namespace
+scan branch reaches 833. The native combined measurement tightens it to 832.
 Microbenchmarks do not establish whole-report acceptance.
 
 Preserve every original field of 921 UML entities, exclusions and 121 original
 rules. The accepted Mapping replacement removes only its obsolete constructor-map
 allowance and corrects the rationale. Nine Python contracts add four constraints
-and 154 entities, including the call-owner model, lexical index and paired-render port;
+and 155 entities, including call ownership, its receipt-binding port, lexical index and paired rendering;
 one separate browser contract adds five owners and one rule.
 The original 59-to-58 scope reconciliation is not an evidence gain.
 
