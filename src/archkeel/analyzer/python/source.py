@@ -136,6 +136,12 @@ def definition_id(module: ParsedModule, node: ast.AST, qualified_name: str) -> s
     return stable_id("SYM", qualified_name, module.rel_path, line, column)
 
 
+def call_id(module: ParsedModule, node: ast.Call, expression: str) -> str:
+    """Nested calls may share evidence spans but must keep distinct identities."""
+    line, _, column = location(node)
+    return stable_id("CALL", module.rel_path, line, column, expression)
+
+
 def definition_sites(
     node: ast.AST,
     parent: DefinitionNode | None = None,

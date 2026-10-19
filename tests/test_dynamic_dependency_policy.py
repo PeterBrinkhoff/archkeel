@@ -388,3 +388,56 @@ def test_long_assignment_aliases_do_not_recurse_in_loader_identity():
     assert _import_targets(LexicalScopes(module), call.func) == frozenset(
         {"importlib.import_module"}
     )
+
+
+@pytest.mark.parametrize(
+    "loader, suffix",
+    [
+        ("importlib.import_module", ".loads('sample.retired.old')"),
+        ("importlib.import_module", ".dump('sample.retired.old')"),
+        ("importlib.import_module", ".load().run()"),
+        ("importlib.import_module", "(name)"),
+        ("__import__", ".loads('sample.retired.old')"),
+    ],
+)
+@pytest.mark.parametrize("target", ["name", "'sample.errors'"])
+def test_chained_loader_keeps_exact_call_identity(tmp_path, loader, suffix, target):
+    from archkeel.analyzer.python.collect import collect
+    from archkeel.ir.facts_codec import decode_response, encode_response, record_payload
+    from archkeel.ir.protocol import (
+        CollectionRequest,
+        CollectionResponse,
+        PythonSettings,
+        SnapshotInput,
+        SourceScope,
+    )
+
+    package = tmp_path / "sample"
+    package.mkdir()
+    (package / "caller.py").write_text(
+        f"import importlib\ndef run(name):\n    return {loader}({target}){suffix}\n"
+    )
+    facts = collect(
+        CollectionRequest(
+            SnapshotInput(str(tmp_path), "a" * 40, False),
+            SourceScope(("sample",), "sample"),
+            PythonSettings(),
+        )
+    )
+    assert decode_response(encode_response(CollectionResponse(facts))).facts == facts
+    sections = {
+        str(section.name): [record_payload(record) for record in section.records]
+        for section in facts.sections
+    }
+    [call] = [record for record in sections["calls"] if record["data"]["expression"] == loader]
+    dynamic = [record for record in sections["imports"] if record["fact_ids"]]
+    limits = [record for record in sections["unknowns"] if record["kind"] == "dynamic_import_limit"]
+    if target == "name":
+        assert not dynamic
+        [limit] = limits
+        assert limit["fact_ids"] == [call["id"]]
+    else:
+        assert not limits
+        [dependency] = dynamic
+        assert dependency["data"]["target_module"] == "sample.errors"
+        assert dependency["fact_ids"] == [call["id"]]

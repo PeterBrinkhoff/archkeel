@@ -25,6 +25,8 @@ from .source import (
     NATIVE_TYPED_DICT_BASE,
     ParsedModule,
     add_evidence,
+    annotation_text,
+    call_id,
     class_namespace_static,
     explicit_provider_escapes,
     exposes_dynamic_namespace,
@@ -1092,7 +1094,8 @@ class _DynamicImports(ImportCollector):
 
     def visit_Call(self, node: ast.Call) -> None:
         evidence_id = add_evidence(self.evidence, self.module, node)
-        call = self.calls.get(evidence_id)
+        item_id = call_id(self.module, node, annotation_text(node.func) or "<unparseable>")
+        call = self.calls.get(item_id)
         direct = call["data"]["targets"] if call else []
         targets = {
             origin
@@ -1133,7 +1136,7 @@ class _DynamicImports(ImportCollector):
             if incomplete:
                 self.unknowns.append(
                     classified(
-                        item_id=stable_id("UNKNOWN-DYNAMIC-IMPORT", evidence_id),
+                        item_id=stable_id("UNKNOWN-DYNAMIC-IMPORT", item_id),
                         evidence_class=EvidenceClass.UNKNOWN,
                         area="dependencies",
                         kind="dynamic_import_limit",
@@ -1158,7 +1161,7 @@ def collect_dynamic_imports(
     *,
     namespace: str,
 ) -> tuple[list[RawRecord], list[RawRecord]]:
-    by_evidence = {evidence_id: call for call in calls for evidence_id in call["evidence_ids"]}
+    by_id = {call["id"]: call for call in calls}
     routes: dict[str, set[str]] = {}
     for item in static_imports:
         data = item["data"]
@@ -1174,9 +1177,7 @@ def collect_dynamic_imports(
     imports: list[RawRecord] = []
     unknowns: list[RawRecord] = []
     for module in parsed:
-        collector = _DynamicImports(
-            module, evidence, namespace, by_evidence, mutations, imported_origins
-        )
+        collector = _DynamicImports(module, evidence, namespace, by_id, mutations, imported_origins)
         collector.visit(module.tree)
         imports.extend(collector.items)
         unknowns.extend(collector.unknowns)
