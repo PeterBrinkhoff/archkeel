@@ -282,6 +282,15 @@ def _symbol_data(
             data["property_members"] = sorted({method.name for method in properties})
     else:
         data.update(_function_signature(node))
+        if parent_node is None:
+            data["source_binding_unique"] = (
+                node in module.tree.body and node.name in stable_direct_module_bindings(module)
+            )
+            data["source_binding_static"] = (
+                data["source_binding_unique"] is True
+                and module.owner_exposed_bindings is not None
+                and node.name not in module.owner_exposed_bindings
+            )
         data["symbol_category"] = "method" if parent_node else "function"
         data["overload_signature"] = any(
             _is_proven_decorator(

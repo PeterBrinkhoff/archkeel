@@ -238,7 +238,7 @@
       },
       {
         "path": "src/archkeel/analyzer/python/imports.py",
-        "responsibility": "Collect imports source facts."
+        "responsibility": "Observe static and proven literal loader dependencies, with explicit binding uncertainty."
       },
       {
         "path": "src/archkeel/analyzer/python/references.py",

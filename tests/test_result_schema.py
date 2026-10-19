@@ -116,16 +116,21 @@ def _validator(schema_name: str) -> Draft202012Validator:
 
 
 @pytest.fixture(scope="module")
-def validator() -> Draft202012Validator:
+def legacy_validator() -> Draft202012Validator:
     return _validator("command-result.schema.json")
 
 
 @pytest.fixture(scope="module")
+def validator() -> Draft202012Validator:
+    return _validator("command-result-9.0.schema.json")
+
+
+@pytest.fixture(scope="module")
 def current_validator() -> Draft202012Validator:
-    return _validator("command-result-8.0.schema.json")
+    return _validator("command-result-9.0.schema.json")
 
 
-def test_command_coverage_distinguishes_unmeasured_from_mixed_call_counts(validator) -> None:
+def test_command_coverage_distinguishes_unmeasured_from_mixed_call_counts(legacy_validator) -> None:
     coverage = json.loads((ROOT / "schema/architecture-ir-common.schema.json").read_bytes())[
         "$defs"
     ]["coverage"]
@@ -147,11 +152,11 @@ def test_command_coverage_distinguishes_unmeasured_from_mixed_call_counts(valida
             )
         ),
     }
-    neutral = validator.evolve(schema=validator.schema["properties"]["coverage"])
+    neutral = legacy_validator.evolve(schema=legacy_validator.schema["properties"]["coverage"])
     assert neutral.is_valid(payload)
     payload["calls_analyzed"] = 0
     assert not neutral.is_valid(payload)
-    assert not validator.evolve(schema=coverage).is_valid(payload)
+    assert not legacy_validator.evolve(schema=coverage).is_valid(payload)
 
 
 @pytest.mark.parametrize(
@@ -246,7 +251,7 @@ def test_real_cli_call_totals_preserve_availability(
     ],
 )
 def test_measurement_schema_rejects_incoherent_count_availability(
-    validator, total: object, unresolved: int | None, resolution: str, valid: bool
+    legacy_validator, total: object, unresolved: int | None, resolution: str, valid: bool
 ) -> None:
     from dataclasses import asdict
 
@@ -257,11 +262,12 @@ def test_measurement_schema_rejects_incoherent_count_availability(
         "calls_total": total,
         "resolution": resolution,
     }
-    measurements = validator.evolve(schema=validator.schema["$defs"]["measurements"])
+    measurements = legacy_validator.evolve(schema=legacy_validator.schema["$defs"]["measurements"])
     assert measurements.is_valid(payload) is valid
 
 
-def test_decoded_typescript_schema_preserves_unmeasured_call_availability() -> None:
+@pytest.mark.parametrize("version", ["2.0.0", "2.1.0"])
+def test_decoded_typescript_schema_preserves_unmeasured_call_availability(version) -> None:
     from test_nullable_profile_measurements import _profile_model
 
     from archkeel.ir.codec import observation_payload, parse_observation
@@ -270,9 +276,11 @@ def test_decoded_typescript_schema_preserves_unmeasured_call_availability() -> N
     registry = Registry().with_resources(
         (schema["$id"], Resource.from_contents(schema)) for schema in schemas
     )
-    schema = json.loads((ROOT / "schema/architecture-ir-decoded.schema.json").read_bytes())
-    decoded = Draft202012Validator(schema, registry=registry)
+    decoded = Draft202012Validator(
+        {"$ref": f"urn:archkeel:architecture-ir:decoded:{version}"}, registry=registry
+    )
     payload = observation_payload(parse_observation(_profile_model("archkeel-typescript-imports")))
+    payload["schema_version"] = version
     assert not list(decoded.iter_errors(payload))
     payload["coverage"].update(
         calls_analyzed=0,
@@ -466,7 +474,7 @@ def test_real_cli_init_results_match_the_published_schema(validator, tmp_path: P
 
 @pytest.mark.parametrize("compact", [False, True])
 def test_real_cli_validate_decision_summaries_match_supported_schemas(
-    validator, current_validator, tmp_path: Path, compact: bool
+    legacy_validator, current_validator, tmp_path: Path, compact: bool
 ) -> None:
     root = _onboarding_repository(tmp_path / "repository")
     init = subprocess.run(
@@ -496,7 +504,7 @@ def test_real_cli_validate_decision_summaries_match_supported_schemas(
     assert payload["open_decision_count"] == 6
     assert payload["open_decisions_complete"] is not compact
     assert len(payload["open_decisions"]) == (3 if compact else 6)
-    for schema in (validator, current_validator):
+    for schema in (legacy_validator, current_validator):
         assert not list(schema.iter_errors(payload))
         for field, value in (
             ("open_decision_count", -1),
@@ -526,7 +534,7 @@ def test_real_dart_delta_matches_the_published_schema(validator, tmp_path: Path)
     assert not schema.is_valid(delta)
 
 
-def test_delta_schema_keeps_legacy_integer_call_totals(validator, tmp_path: Path) -> None:
+def test_delta_schema_keeps_legacy_integer_call_totals(legacy_validator, tmp_path: Path) -> None:
     result = _observe_tree(tmp_path, {"sample/a.py": ""}, _contract([]))
     assert result.observation is not None
     delta = delta_payload(
@@ -538,7 +546,7 @@ def test_delta_schema_keeps_legacy_integer_call_totals(validator, tmp_path: Path
             checker_digest="b" * 64,
         )
     )
-    schema = validator.evolve(schema=validator.schema["$defs"]["delta"])
+    schema = legacy_validator.evolve(schema=legacy_validator.schema["$defs"]["delta"])
     for side in ("baseline", "head"):
         delta["ratchets"][side]["scalars"]["calls_unresolved"] = None
     for version in ("1.3.0", "1.4.0"):
@@ -555,7 +563,7 @@ def test_incomplete_dart_check_preserves_profile_sections(validator, tmp_path: P
     assert result.exit_code == 2 and result.observation is not None
     payload = result_payload(_incomplete(result))
     assert not list(validator.iter_errors(payload))
-    python = validator.evolve(schema={"$ref": "urn:archkeel:architecture-ir:python-decoded:2.0.0"})
+    python = validator.evolve(schema={"$ref": "urn:archkeel:architecture-ir:python-decoded:2.1.0"})
     assert not python.is_valid(payload["observation"])
     for section in ("symbols", "references", "bindings", "imports"):
         assert isinstance(payload["observation"][section], list), section
@@ -573,8 +581,8 @@ def test_python_observation_sections_remain_required(validator, tmp_path: Path) 
     assert result.exit_code == 0 and result.observation is not None
     observation = observation_payload(result.observation)
     schemas = (
-        validator.evolve(schema=validator.schema["properties"]["observation"]),
-        validator.evolve(schema={"$ref": "urn:archkeel:architecture-ir:python-decoded:2.0.0"}),
+        validator.evolve(schema={"$ref": "urn:archkeel:architecture-ir:decoded:2.1.0"}),
+        validator.evolve(schema={"$ref": "urn:archkeel:architecture-ir:python-decoded:2.1.0"}),
     )
     for schema in schemas:
         assert schema.is_valid(observation)
@@ -586,9 +594,9 @@ def test_python_observation_sections_remain_required(validator, tmp_path: Path) 
             assert not schema.is_valid(malformed), section
 
 
-def test_result_properties_cover_the_writer(validator) -> None:
-    assert set(validator.schema["properties"]) == {field.name for field in fields(RunResult)}
-    diagnostic = validator.schema["$defs"]["diagnostic"]["properties"]
+def test_result_properties_cover_the_writer(legacy_validator) -> None:
+    assert set(legacy_validator.schema["properties"]) == {field.name for field in fields(RunResult)}
+    diagnostic = legacy_validator.schema["$defs"]["diagnostic"]["properties"]
     assert set(diagnostic["kind"]["enum"]) == set(DiagnosticKind)
     assert set(diagnostic["code"]["enum"]) == set(DiagnosticCode)
 
@@ -730,31 +738,31 @@ def test_small_consumer_preserves_report_fail_and_unknown(results) -> None:
         assert run.stdout == expected
 
 
-def test_diagnostic_validate_preserves_complete_evidence_only(validator, results) -> None:
+def test_diagnostic_validate_preserves_complete_evidence_only(legacy_validator, results) -> None:
     payload = copy.deepcopy(results["tour-validate"])
     assert payload["exit_code"] == 2
     assert [payload[key] for key in VERDICTS] == ["PASS", "FAIL", "n/a"]
-    assert validator.is_valid(payload)
+    assert legacy_validator.is_valid(payload)
     for field in ("measurements", "coverage", "claims"):
         invalid = copy.deepcopy(payload)
         invalid[field] = None
-        assert not validator.is_valid(invalid), field
+        assert not legacy_validator.is_valid(invalid), field
     for command in ("check", "report"):
         invalid = copy.deepcopy(payload)
         invalid["command"] = command
-        assert not validator.is_valid(invalid), command
+        assert not legacy_validator.is_valid(invalid), command
     incomplete = copy.deepcopy(payload)
     incomplete["observation_complete"] = "UNKNOWN"
-    assert not validator.is_valid(incomplete)
-    legacy = copy.deepcopy(validator.schema)
+    assert not legacy_validator.is_valid(incomplete)
+    legacy = copy.deepcopy(legacy_validator.schema)
     diagnostic_validate = next(
         branch["then"]
         for branch in legacy["else"]["allOf"]
         if branch["if"] == {"properties": {"exit_code": {"const": 2}}}
     )
     diagnostic_validate["then"] = diagnostic_validate["else"]
-    assert not validator.evolve(schema=legacy).is_valid(payload)
-    assert validator.evolve(schema=legacy).is_valid(results["invalid-validate"])
+    assert not legacy_validator.evolve(schema=legacy).is_valid(payload)
+    assert legacy_validator.evolve(schema=legacy).is_valid(results["invalid-validate"])
 
 
 @pytest.mark.parametrize(
@@ -779,7 +787,9 @@ def test_validate_assessments_require_completed_inspection(validator, results) -
 
 
 @pytest.mark.parametrize("version", ["1.3.0", "1.4.0", "2.0.0"])
-def test_delta_schema_requires_new_wire_version_for_runtime_metadata(validator, tmp_path, version):
+def test_delta_schema_requires_new_wire_version_for_runtime_metadata(
+    legacy_validator, tmp_path, version
+):
     observed = _observe_tree(tmp_path, {"sample/a.py": ""}, _contract([]))
     raw = delta_payload(
         build_architecture_delta(
@@ -791,7 +801,7 @@ def test_delta_schema_requires_new_wire_version_for_runtime_metadata(validator, 
         )
     )
     raw["schema_version"] = version
-    schema = validator.evolve(schema=validator.schema["$defs"]["delta"])
+    schema = legacy_validator.evolve(schema=legacy_validator.schema["$defs"]["delta"])
     for side in ("baseline", "head"):
         raw[side]["runtime"] = {"name": "python", "version": "3.11.12"}
     assert schema.is_valid(raw)

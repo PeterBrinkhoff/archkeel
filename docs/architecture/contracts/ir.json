@@ -12473,6 +12473,294 @@
           "provenance": [
             "docs/architecture/language-adapter-target.md"
           ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/decisions/ad-241-call-ownership-policy.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-CALL-OWNER-RULE",
+          "kind": "class",
+          "qualified_name": "archkeel.ir.model.CallOwnerRule",
+          "parent_id": "IR-DEPENDENCY-model",
+          "responsibilities": [
+            "Keep call ownership policy immutable and separate from observed source facts."
+          ],
+          "modifiers": [
+            "frozen"
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/decisions/ad-241-call-ownership-policy.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-CALL-OWNER-RULE-id",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.model.CallOwnerRule.id",
+          "parent_id": "IR-CALL-OWNER-RULE",
+          "responsibilities": [
+            "Identify one attributable ownership decision."
+          ],
+          "annotation": "str"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/decisions/ad-241-call-ownership-policy.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-CALL-OWNER-RULE-kind",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.model.CallOwnerRule.kind",
+          "parent_id": "IR-CALL-OWNER-RULE",
+          "responsibilities": [
+            "Fix the call-owner variant in the shared rule vocabulary."
+          ],
+          "annotation": "Literal[ArchitectureRuleKind.CALL_OWNER]"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/decisions/ad-241-call-ownership-policy.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-CALL-OWNER-RULE-source",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.model.CallOwnerRule.source",
+          "parent_id": "IR-CALL-OWNER-RULE",
+          "responsibilities": [
+            "Select the observed module or function scope whose calls require proof."
+          ],
+          "annotation": "str"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/decisions/ad-241-call-ownership-policy.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-CALL-OWNER-RULE-target",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.model.CallOwnerRule.target",
+          "parent_id": "IR-CALL-OWNER-RULE",
+          "responsibilities": [
+            "Name one canonical scanned callee without method-name guessing."
+          ],
+          "annotation": "str"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/decisions/ad-241-call-ownership-policy.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-CALL-OWNER-RULE-rationale",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.model.CallOwnerRule.rationale",
+          "parent_id": "IR-CALL-OWNER-RULE",
+          "responsibilities": [
+            "Explain the ownership restriction."
+          ],
+          "annotation": "str"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/decisions/ad-241-call-ownership-policy.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-CALL-OWNER-RULE-provenance",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.model.CallOwnerRule.provenance",
+          "parent_id": "IR-CALL-OWNER-RULE",
+          "responsibilities": [
+            "Bind the restriction to its recorded decision."
+          ],
+          "annotation": "tuple[str, ...]"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/decisions/ad-241-call-ownership-policy.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-CALL-OWNER-RULE-decided_by",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.model.CallOwnerRule.decided_by",
+          "parent_id": "IR-CALL-OWNER-RULE",
+          "responsibilities": [
+            "Attribute the rule to the shared decision-maker type."
+          ],
+          "annotation": "DecisionMaker"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/decisions/ad-241-call-ownership-policy.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-CALL-OWNER-RULE-allowed_sources",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.model.CallOwnerRule.allowed_sources",
+          "parent_id": "IR-CALL-OWNER-RULE",
+          "responsibilities": [
+            "Declare the permitted caller prefixes."
+          ],
+          "annotation": "tuple[str, ...]"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/decisions/ad-241-call-ownership-policy.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-CALL-OWNER-RULE-exact_sources",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.model.CallOwnerRule.exact_sources",
+          "parent_id": "IR-CALL-OWNER-RULE",
+          "responsibilities": [
+            "Declare caller scopes without granting their descendants."
+          ],
+          "annotation": "tuple[str, ...]"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/decisions/ad-241-call-ownership-policy.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-CALL-BINDING",
+          "kind": "class",
+          "qualified_name": "archkeel.ir.facts.CallBinding",
+          "parent_id": "archkeel.ir.facts",
+          "responsibilities": [
+            "Retain one validated static call identity with its source evidence; carry no policy verdict."
+          ],
+          "modifiers": [
+            "frozen"
+          ]
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/decisions/ad-241-call-ownership-policy.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-CALL-BINDING-origin",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.facts.CallBinding.origin",
+          "parent_id": "IR-CALL-BINDING",
+          "responsibilities": [
+            "Distinguish lexical function binding from a declared receiver boundary."
+          ],
+          "annotation": "CallBindingOrigin"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/decisions/ad-241-call-ownership-policy.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-CALL-BINDING-target",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.facts.CallBinding.target",
+          "parent_id": "IR-CALL-BINDING",
+          "responsibilities": [
+            "Name the canonical declaration established by the observer."
+          ],
+          "annotation": "str"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/decisions/ad-241-call-ownership-policy.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-CALL-BINDING-evidence_ids",
+          "kind": "attribute",
+          "qualified_name": "archkeel.ir.facts.CallBinding.evidence_ids",
+          "parent_id": "IR-CALL-BINDING",
+          "responsibilities": [
+            "Link the invocation and its declaration to measured source evidence."
+          ],
+          "annotation": "tuple[str, ...]"
+        },
+        {
+          "language": "python",
+          "presence": "planned",
+          "provenance": [
+            "docs/architecture/decisions/ad-241-call-ownership-policy.md"
+          ],
+          "visibility": {
+            "kind": "public",
+            "basis": "declared"
+          },
+          "id": "IR-CALL-BINDING-ORIGIN",
+          "kind": "enum",
+          "qualified_name": "archkeel.ir.facts.CallBindingOrigin",
+          "parent_id": "archkeel.ir.facts",
+          "responsibilities": [
+            "Own the closed vocabulary of supported static call-binding origins."
+          ]
         }
       ],
       "relationships": [
@@ -12949,6 +13237,30 @@
           "rationale": "The source-only envelope has no architecture policy or report fields.",
           "provenance": [
             "docs/architecture/language-adapter-target.md"
+          ],
+          "entity_kinds": [
+            "attribute"
+          ],
+          "relationship_kinds": []
+        },
+        {
+          "scope_id": "IR-CALL-OWNER-RULE",
+          "mode": "closed",
+          "rationale": "Every source field belongs to the declared immutable API.",
+          "provenance": [
+            "docs/architecture/decisions/ad-241-call-ownership-policy.md"
+          ],
+          "entity_kinds": [
+            "attribute"
+          ],
+          "relationship_kinds": []
+        },
+        {
+          "scope_id": "IR-CALL-BINDING",
+          "mode": "closed",
+          "rationale": "Every source field belongs to the declared immutable API.",
+          "provenance": [
+            "docs/architecture/decisions/ad-241-call-ownership-policy.md"
           ],
           "entity_kinds": [
             "attribute"

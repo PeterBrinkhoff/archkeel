@@ -265,6 +265,7 @@ _PROVENANCE = ["docs/architecture/shop.md"]
 def _maximal_contract(version: str = "3.0.0") -> dict[str, object]:
     """The shop contract fills every field available to its version."""
     raw = json.loads((ROOT / "fixtures/F-architecture/architecture-contract.json").read_text())
+    raw["rules"] = [rule for rule in raw["rules"] if rule["kind"] != "call_owner"]
     app = next(item for item in raw["components"] if item["id"] == "COMP-APP")
     app["exact_modules"] = ["shop.app.orders"]
     app["planned"] = ["shop.app.refunds"]
@@ -478,6 +479,20 @@ def _maximal_contract(version: str = "3.0.0") -> dict[str, object]:
         interface["module_object_grants"] = [
             {"source_module": "shop.app.orders", "target_module": "shop.model"}
         ]
+    if version == "3.7.0":
+        raw["rules"].append(
+            {
+                "id": "CALL-OWNER",
+                "kind": "call_owner",
+                "source": "shop.app",
+                "target": "shop.model.Store.page",
+                "allowed_sources": ["shop.app.owner"],
+                "exact_sources": ["shop.app.adapter.run"],
+                "rationale": "Keep paging with its owner.",
+                "provenance": _PROVENANCE,
+                "decided_by": "architect",
+            }
+        )
     return raw
 
 
@@ -692,7 +707,7 @@ def test_the_maximal_contract_fills_every_field() -> None:
     """The completeness test below only sees a field this contract fills."""
     documents = [
         json.loads(contract_bytes(parse_contract(_maximal_contract(version))))
-        for version in ("3.0.0", "3.1.0", "3.2.0", "3.3.0", "3.4.0", "3.5.0", "3.6.0")
+        for version in ("3.0.0", "3.1.0", "3.2.0", "3.3.0", "3.4.0", "3.5.0", "3.6.0", "3.7.0")
     ]
 
     assert _unfilled(ArchitectureContract, documents, "contract") == []

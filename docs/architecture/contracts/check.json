@@ -386,6 +386,10 @@
         "responsibility": "Compose evidence coverage and profile-bound evaluation through the existing rule owners."
       },
       {
+        "path": "src/archkeel/check/evaluation/call_owners.py",
+        "responsibility": "Evaluate declared caller permissions over bound call targets; emit violations, uncertainty and scope-bound evaluation receipts."
+      },
+      {
         "path": "src/archkeel/check/evaluation/topology.py",
         "responsibility": "Aggregate dependency and declared-scope evidence in Core."
       }

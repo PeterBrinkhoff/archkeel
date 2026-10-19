@@ -81,12 +81,38 @@ limit for initialization and saves it in the generated config. `report`, `valida
 and `check` use the configured limit; `check` binds it to the accepted config like
 the other scan inputs. See [AD-224](architecture/decisions/ad-224-configurable-collector-output-limit.md).
 
-SourceFacts 3.0.0 adds neutral list type syntax for explicit callback arguments.
-Readers retain byte-compatible 1.0.0/2.0.0 packets; those versions reject the new
-list vocabulary, including nested shapes. Runtime `requirement_state` remains
-required from SourceFacts 2.0.0 onward. ArchitectureIR/Delta stay 2.0.0;
-command-result uses 8.0.0. New requests name protocol 3.0.0; pin collectors,
-Core and strict schemas together. See [AD-223](architecture/decisions/ad-223-explicit-callable-boundaries.md).
+SourceFacts 3.0.0 introduced neutral list type syntax for explicit callback arguments.
+Readers retain 1.0.0/2.0.0 packets; those versions reject that list vocabulary,
+including nested shapes. Runtime `requirement_state` is required from SourceFacts
+2.0.0 onward. At that migration, ArchitectureIR/Delta remained 2.0.0 and
+command-result used 8.0.0. See [AD-223](architecture/decisions/ad-223-explicit-callable-boundaries.md).
+
+### Current wire formats
+
+The bundled Python provider collector uses **SourceFacts/protocol 4.0.0** for its
+provider-source survey and collections enriched with captured providers. This
+carries `provider_sources`, source-bound `provider_bindings` and supported
+context-manager signatures. Source bytes, digests and inputs are checked across
+passes within one collector deadline; project modules are parsed, not imported.
+The generic request default remains **3.0.0**. Known legacy 1/2/3 packets remain
+readable; a legacy packet cannot carry the new provider or signature payloads.
+
+New **ArchitectureIR 2.1.0** Python call records require `call_binding`: a validated
+binding object or explicit JSON null when unproved. Omission is invalid. Existing
+call-graph candidates remain separate from this ownership evidence. Strict command
+consumers need **command-result 9.0.0**, which also accepts supported historical
+observations. Command schemas 6/7/8 reject 2.1 observations; older reports remain
+readable under their supported profiles. Delta remains **2.0.0** and still requires
+comparable observations.
+
+These evidence/protocol changes require a new package major under the compatibility
+policy above. Pin CLI, collectors and schemas together, and re-observe both revisions
+before comparing them. Historical reports do not acquire missing proofs on replay.
+
+The internal `FilesToWrite` port now stores immutable ordered
+`entries: tuple[tuple[str, bytes], ...]`, replacing its Mapping interface. Construct
+`FilesToWrite(entries=(("path", content),))` and iterate `files.entries`; the caller
+still owns writes. Documented `archkeel.api` exports retain their interfaces.
 
 
 ## Results
@@ -123,9 +149,11 @@ instead of 0. Agent drafts and components without explicit architect attribution
 remain accepted; rule verdicts and rationale validation are unchanged.
 
 JSON null means unavailable/inapplicable; an empty list means measured empty.
-Pin CLI and [command schema](../schema/command-result-8.0.schema.json) together.
-Version 8 retains version 6/7 readers and permits an incomplete report to preserve
-a traceable FAIL assessment while coverage stays UNKNOWN/FAIL; it cannot claim PASS.
+Pin CLI and [command schema](../schema/command-result-9.0.schema.json) together.
+Version 9 accepts ArchitectureIR 2.1 observations with strict call-binding shapes
+and retains supported version 6/7/8 results. Incomplete reports may preserve a
+traceable FAIL while
+coverage stays UNKNOWN/FAIL; they cannot claim PASS.
 Ignore unknown result properties; required fields and enum meanings remain strict.
 Schema shape validation proves neither authenticity nor conformance.
 `report`/`check --output` also write `.report.html`/`.check.html` companions.

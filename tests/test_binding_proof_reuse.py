@@ -978,3 +978,50 @@ def test_callable_source_proof_is_order_independent_and_keeps_safe_sibling(
     assert ("Callable[[Safe], Safe]" in protected) is not bool(escape)
     assert ("Callable[[Payload], Payload]" in protected) is not bool(escape)
     assert ("Payload" in unproven_member_bindings(provider)) is bool(escape)
+
+
+def test_member_containment_reuses_only_immutable_syntax() -> None:
+    with patch.object(
+        source, "_protected_type_expressions", wraps=source._protected_type_expressions
+    ) as scans:
+        module = _parsed_module(
+            "class Payload: pass\nclass Container:\n"
+            "    def read(self, value: Payload) -> Payload: return value\n",
+            "sample.api",
+            rel_path="sample/api.py",
+        )
+        expected = source._contained_member_roots(module, module.all_nodes)
+        first = scans.call_count
+        assert first
+        assert source._contained_member_roots(module, module.all_nodes) == expected
+        assert scans.call_count == first
+        assert source._contained_member_roots(module, ()) == set()
+        fresh = _parsed_module(module.source, "sample.api", rel_path="sample/api.py")
+        assert source._contained_member_roots(fresh, fresh.all_nodes) == expected
+        assert scans.call_count > first
+
+
+def test_import_source_projection_does_not_replace_factory_cache():
+    module = _parsed_module("__import__('sample')\nVALUE = 1\n")
+    call = next(node for node in module.all_nodes if isinstance(node, ast.Call))
+    assert source.exposes_dynamic_namespace(module, call)
+    assert not source.exposes_dynamic_namespace(module, call, include_import_effects=False)
+    assert stable_direct_module_bindings(module) == frozenset()
+    factory_cache = module.stable_binding_cache
+    assert stable_direct_module_bindings(module, include_import_effects=False) == {"VALUE"}
+    assert module.stable_binding_cache is factory_cache
+    assert stable_direct_module_bindings(module) == frozenset()
+
+
+@pytest.mark.parametrize(
+    "expression",
+    ["globals()", "exec('x = 1')", "eval('x')", "__builtins__", "frame.f_globals"],
+)
+def test_import_source_projection_preserves_namespace_mutation_guards(expression):
+    module = _parsed_module(expression + "\n")
+    assert any(
+        source.exposes_dynamic_namespace(
+            module, node, member_surface=True, include_import_effects=False
+        )
+        for node in module.all_nodes
+    )

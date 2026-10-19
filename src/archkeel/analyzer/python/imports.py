@@ -1,7 +1,7 @@
 # Archkeel
 # Copyright (c) 2026 Rapiddweller Asia Co., Ltd.
 # SPDX-License-Identifier: MIT
-"""Import statement collection for the Python architecture scanner."""
+"""Observe static imports and bounded literal loader dependencies."""
 
 from __future__ import annotations
 
@@ -17,19 +17,25 @@ from archkeel.ir.facts_codec import RawData as RecordData
 from archkeel.ir.facts_codec import RawEvidence, RawRecord, classified
 from archkeel.ir.reexports import resolve_reexports as resolve_import_origins
 
-from .binding_types import AliasBinding, ImportKind
+from .binding_types import AliasBinding, BindingKind, ImportKind
+from .resolve import dotted_expression
+from .scopes import LexicalScopes, NameBinding
 from .source import (
     FRAMEWORK_BASES,
     NATIVE_DATACLASS_DECORATOR,
-    NATIVE_TYPED_DICT_BASE,
+    NATIVE_TYPED_DICT_BASES,
     ParsedModule,
     add_evidence,
+    annotation_text,
+    call_id,
     class_creation_static,
     class_namespace_static,
     explicit_provider_escapes,
+    exposes_dynamic_namespace,
     intrinsic_nullable_aliases,
     location,
     member_binding_closure,
+    member_escape_references,
     module_scope_bindings,
     native_owner_creation_static,
     native_typed_dict_provider_static,
@@ -531,6 +537,10 @@ def _converge_member_escapes(
         escaped_bindings = escaped
         exposed_bindings = {name: set(values) for name, values in exposed.items()}
         transferred_bindings = {name: set(values) for name, values in transferred.items()}
+    for name, module in modules.items():
+        module.owner_exposed_bindings = frozenset(
+            exposed_bindings[name] | transferred_bindings[name]
+        )
     return escaped_bindings, frozenset(unsafe_providers)
 
 
@@ -562,7 +572,11 @@ def _type_reference_candidates(
     map_candidates = {
         name: proven_map_union_candidates(module, aliases[name]) for name, module in modules.items()
     }
-    class_values = proven_class_value_candidates(modules, class_value_bindings)
+    class_values = proven_class_value_candidates(
+        modules,
+        class_value_bindings,
+        unsafe_providers=explicit_factory_unsafe_providers(imports, tuple(modules.values())),
+    )
     candidates = {
         name: {
             **map_candidates[name],
@@ -733,7 +747,7 @@ def explicit_factory_unsafe_providers(
 ) -> frozenset[str]:
     modules = {module.module: module for module in parsed}
     explicit_escapes = {name: explicit_provider_escapes(module) for name, module in modules.items()}
-    factories = {NATIVE_DATACLASS_DECORATOR, NATIVE_TYPED_DICT_BASE, "typing_extensions.TypedDict"}
+    factories = {NATIVE_DATACLASS_DECORATOR, *NATIVE_TYPED_DICT_BASES}
     providers: set[str] = set()
     for factory in factories:
         origin: str = factory
@@ -779,7 +793,7 @@ def _unsafe_native_creation_providers(
     exposed_origins: AbstractSet[str], modules: Mapping[str, ParsedModule]
 ) -> set[str]:
     providers: set[str] = set()
-    for native_origin in (NATIVE_DATACLASS_DECORATOR, NATIVE_TYPED_DICT_BASE):
+    for native_origin in (NATIVE_DATACLASS_DECORATOR, *NATIVE_TYPED_DICT_BASES):
         origin: str = native_origin
         providers.add(origin.rpartition(".")[0])
     if any(not any(in_scope(origin, name) for name in modules) for origin in exposed_origins):
@@ -956,7 +970,7 @@ def _opaque_import_member_escapes(
                     owner_exposure_only
                     or native_typed_dict
                     and len(owner.bases) == 1
-                    and resolve_static_name(module, owner.bases[0]) == NATIVE_TYPED_DICT_BASE
+                    and resolve_static_name(module, owner.bases[0]) in NATIVE_TYPED_DICT_BASES
                 )
                 and native_owner_creation_static(module, owner, unsafe_providers)
             ):
@@ -1024,3 +1038,283 @@ def literal_all_exports(tree: ast.Module) -> set[str]:
             if isinstance(element, ast.Constant) and isinstance(element.value, str):
                 exports.add(element.value)
     return exports
+
+
+_LOADERS = frozenset({"importlib.import_module", "builtins.__import__"})
+
+
+def _argument(node: ast.Call, position: int, keyword: str) -> ast.expr | None:
+    for keyword_argument in node.keywords:
+        if keyword_argument.arg is None:
+            return None
+    for argument in node.args:
+        if isinstance(argument, ast.Starred):
+            return None
+    values = [item.value for item in node.keywords if item.arg == keyword]
+    if len(node.args) > position:
+        values.append(node.args[position])
+    return values[0] if len(values) == 1 else None
+
+
+def _literal(node: ast.expr | None) -> str | None:
+    return node.value if isinstance(node, ast.Constant) and isinstance(node.value, str) else None
+
+
+def _binding_may_be_absent(scopes: LexicalScopes, binding: NameBinding, node: ast.Name) -> bool:
+    owner = binding.owner
+    if owner is None or binding.uncertain:
+        return True
+    for site in owner.bindings.get(node.id, ()):
+        if scopes.by_node[site] is not owner:
+            continue
+        statement = site
+        while not isinstance(statement, ast.stmt) and statement in scopes.parents:
+            statement = scopes.parents[statement]
+        # Assignment targets become visible only after the complete RHS has run.
+        if (
+            isinstance(statement, ast.stmt)
+            and statement.end_lineno is not None
+            and statement.end_col_offset is not None
+            and not (isinstance(statement, ast.AnnAssign) and statement.value is None)
+            and not (isinstance(site, ast.Name) and isinstance(site.ctx, ast.Del))
+            and (statement.end_lineno, statement.end_col_offset) <= (node.lineno, node.col_offset)
+        ):
+            return False
+    return True
+
+
+def _import_targets(scopes: LexicalScopes, node: ast.expr) -> frozenset[str]:
+    targets: set[str] = set()
+    pending: list[tuple[ast.expr, str, frozenset[tuple[ast.AST, str]]]] = [(node, "", frozenset())]
+    while pending:
+        expression, suffix, seen = pending.pop()
+        dotted = dotted_expression(expression)
+        root = expression
+        while isinstance(root, ast.Attribute):
+            root = root.value
+        if dotted is None or not isinstance(root, ast.Name):
+            continue
+        bindings = [scopes.lookup(root, root.id)]
+        owner = bindings[0].owner
+        if (
+            root.id == "__import__"
+            and owner is not None
+            and isinstance(owner.node, ast.ClassDef)
+            and _binding_may_be_absent(scopes, bindings[0], root)
+        ):
+            # A missing class-local value checks globals before builtins.
+            bindings.append(scopes.lookup(scopes.root.node, root.id))
+        tail = dotted[len(root.id) :] + suffix
+        for binding in bindings:
+            owner = binding.owner
+            if owner is None or (owner.node, root.id) in seen:
+                continue
+            targets.update(target + tail for target in binding.targets)
+            if root.id == "__import__" and (
+                binding.kind is BindingKind.UNBOUND
+                # Unbound module globals fall through to builtins; function locals do not.
+                or owner is scopes.root
+                and _binding_may_be_absent(scopes, binding, root)
+            ):
+                targets.add("builtins.__import__" + tail)
+            for site in owner.bindings.get(root.id, ()):
+                parent = scopes.parents.get(site)
+                if (
+                    isinstance(site, ast.Name)
+                    and isinstance(parent, ast.Assign | ast.AnnAssign)
+                    and parent.value is not None
+                ):
+                    pending.append((parent.value, tail, seen | {(owner.node, root.id)}))
+    return frozenset(targets)
+
+
+def _import_origins(target: str, routes: Mapping[str, frozenset[str]]) -> frozenset[str]:
+    origins: set[str] = set()
+    pending: list[tuple[str, frozenset[str]]] = [(target, frozenset())]
+    while pending:
+        current, seen = pending.pop()
+        prefix = current
+        while prefix and prefix not in routes:
+            name: str = prefix
+            prefix = name.rpartition(".")[0]
+        if not prefix:
+            origins.add(current)
+        elif prefix not in seen:
+            pending.extend(
+                (origin + current[len(prefix) :], seen | {prefix})
+                for origin in routes[prefix]
+                if origin != prefix
+            )
+    return frozenset(origins)
+
+
+def _loader_mutations(
+    parsed: Sequence[ParsedModule], routes: Mapping[str, frozenset[str]]
+) -> frozenset[str]:
+    changed: set[str] = set()
+    for module in parsed:
+        if module.module in {"importlib", "builtins"} or any(
+            exposes_dynamic_namespace(
+                module, node, member_surface=True, include_import_effects=False
+            )
+            for node in module.all_nodes
+        ):
+            changed.update(_LOADERS)
+        scopes = LexicalScopes(module)
+        for node in member_escape_references(
+            module, module.all_nodes, member_surface=True, owner_exposure_only=True
+        ):
+            for target in _import_targets(scopes, node):
+                changed.update(_import_origins(target, routes))
+    return frozenset(
+        loader for loader in _LOADERS if any(in_scope(loader, target) for target in changed)
+    )
+
+
+def _dynamic_target(
+    node: ast.Call, targets: AbstractSet[str], proven: bool
+) -> tuple[str | None, bool]:
+    target = _literal(_argument(node, 0, "name")) if proven else None
+    module_name: str = target or ""
+    incomplete = not target
+    if "builtins.__import__" in targets:
+        fromlist = _argument(node, 3, "fromlist")
+        supplied = len(node.args) > 3 or any(k.arg == "fromlist" for k in node.keywords)
+        incomplete |= supplied and not (
+            isinstance(fromlist, ast.Tuple | ast.List)
+            and not fromlist.elts
+            or isinstance(fromlist, ast.Constant)
+            and fromlist.value is None
+        )
+        level = _argument(node, 4, "level")
+        if level is not None and not (
+            isinstance(level, ast.Constant) and type(level.value) is int and level.value == 0
+        ):
+            target = None
+    elif module_name.startswith("."):
+        package = _literal(_argument(node, 1, "package"))
+        try:
+            target = importlib.util.resolve_name(module_name, package) if package else None
+        except (ImportError, ValueError):
+            target = None
+    return target, incomplete
+
+
+class _DynamicImports(ImportCollector):
+    def __init__(
+        self,
+        module: ParsedModule,
+        evidence: dict[str, RawEvidence],
+        namespace: str,
+        calls: dict[str, RawRecord],
+        mutations: frozenset[str],
+        routes: Mapping[str, frozenset[str]],
+    ) -> None:
+        ImportCollector.__init__(self, module, set(), evidence, {}, namespace=namespace)
+        self.calls = calls
+        self.mutations = mutations
+        self.routes = routes
+        self.scopes = LexicalScopes(module)
+        self.stable_bindings = stable_direct_module_bindings(module, include_import_effects=False)
+        self.unknowns: list[RawRecord] = []
+
+    def visit_Import(self, node: ast.Import) -> None:
+        pass
+
+    def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
+        pass
+
+    def visit_Call(self, node: ast.Call) -> None:
+        evidence_id = add_evidence(self.evidence, self.module, node)
+        item_id = call_id(self.module, node, annotation_text(node.func) or "<unparseable>")
+        call = self.calls.get(item_id)
+        direct = call["data"]["targets"] if call else []
+        targets = {
+            origin
+            for target in {*direct, *_import_targets(self.scopes, node.func)}
+            for origin in _import_origins(target, self.routes)
+        }
+        if targets & _LOADERS:
+            callee: str = dotted_expression(node.func) or ""
+            binding = self.scopes.lookup(node.func, callee.split(".")[0]) if callee else None
+            binding_static = bool(
+                callee
+                and binding
+                and binding.owner is not None
+                and not binding.uncertain
+                and (
+                    binding.kind is BindingKind.UNBOUND
+                    or binding.owner is not self.scopes.root
+                    or callee.split(".")[0] in self.stable_bindings
+                )
+            )
+            proven = (
+                len(direct) == 1
+                and direct[0] in _LOADERS
+                and call is not None
+                and binding_static
+                and not self.mutations.intersection(targets)
+            )
+            target, incomplete = _dynamic_target(node, targets, proven)
+            module_name: str = target or ""
+            if module_name and all(part.isidentifier() for part in module_name.split(".")):
+                self._record(node, target=module_name, symbol=None, binding="", relative_level=0)
+                # Loading a module proves a dependency, not a statically bound public symbol.
+                record: RawRecord = self.items[-1]
+                record["data"]["binding"] = None
+                record["data"]["symbols_known"] = False
+                record["data"]["reexport"] = False
+                record["data"]["reexport_candidate"] = False
+                record["fact_ids"] = [call["id"]] if call else []
+            else:
+                incomplete = True
+            if incomplete:
+                self.unknowns.append(
+                    classified(
+                        item_id=stable_id("UNKNOWN-DYNAMIC-IMPORT", item_id),
+                        evidence_class=EvidenceClass.UNKNOWN,
+                        area="dependencies",
+                        kind="dynamic_import_limit",
+                        title="Dynamic loading has an unproven binding, target or fromlist",
+                        subjects=[self.module.module],
+                        evidence_ids=[evidence_id],
+                        fact_ids=[call["id"]] if call else [],
+                        data={
+                            "source_module": self.module.module,
+                            "under_type_checking": self.under_type_checking,
+                        },
+                    )
+                )
+        self.generic_visit(node)
+
+
+def collect_dynamic_imports(
+    parsed: Sequence[ParsedModule],
+    calls: Sequence[RawRecord],
+    static_imports: Sequence[RawRecord],
+    evidence: dict[str, RawEvidence],
+    *,
+    namespace: str,
+) -> tuple[list[RawRecord], list[RawRecord]]:
+    by_id = {call["id"]: call for call in calls}
+    routes: dict[str, set[str]] = {}
+    for item in static_imports:
+        data = item["data"]
+        if data.get("module_level_import") is not True or not data.get("binding"):
+            continue
+        alias = f"{data['source_module']}.{data['binding']}"
+        target = data["target_module"] + (f".{data['symbol']}" if data["symbol"] else "")
+        route: set[str] = routes.setdefault(alias, set())
+        route.update(
+            {target, data.get("origin_definition") or target, *data.get("reexport_candidates", ())}
+        )
+    imported_origins = {name: frozenset(values) for name, values in routes.items()}
+    mutations = _loader_mutations(parsed, imported_origins)
+    imports: list[RawRecord] = []
+    unknowns: list[RawRecord] = []
+    for module in parsed:
+        collector = _DynamicImports(module, evidence, namespace, by_id, mutations, imported_origins)
+        collector.visit(module.tree)
+        imports.extend(collector.items)
+        unknowns.extend(collector.unknowns)
+    return imports, unknowns

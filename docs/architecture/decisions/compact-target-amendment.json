@@ -1,9 +1,9 @@
 {
   "after_baseline_digest": "591b4198f2d1229e505a3ed6609eecc3969ec3445688eea68ffe80d4396e3211",
-  "after_digest": "26236d532ab02c2e16cc4eed46560a8144f024f09ffb325ec2b1d3489e1c96bd",
+  "after_digest": "0fe1482696530b6b77ed342e52ddcbc60d3c748117474e9dc9627c36f4e6d26e",
   "before_baseline_digest": "2bfdc9930db2c00cefe098c1d4d8aef8d7a6916e703643ae5bf349116916bf8d",
   "before_digest": "5f1fd86c8b171e082e7ab16dd2558839b2ee8a825c7aa19e2c000ecbe0fe7ae8",
   "decided_by": "Alex: explicit Mapping API replacement and PythonProviderCollector approval; agent implementation",
-  "rationale": "Preserve the 121 original rules and 921 original entity fields except the obsolete FilesToWrite constructor-map allowance and its corrected rationale. Accept the user-approved incompatible frozen output model and exactly one additional CLI-to-Analyzer port, PythonProviderCollector. Bind both required collect-to-collect_response-to-_exchange calls after moving provider capture inside the bounded child. Separate native source declaration identity from runtime uncertainty; retain the nine Python contracts and the independently verified browser target. Only proved downward debt ratchets are allowed; every other ceiling, exclusion and trust check remains.",
+  "rationale": "Preserve the 121 original rules and 921 original entities and all their fields except the obsolete FilesToWrite constructor-map allowance and its corrected rationale. Accept the user-approved incompatible frozen output model and exactly one additional CLI-to-Analyzer port, PythonProviderCollector. Bind both required collect-to-collect_response-to-_exchange calls after moving provider capture inside the bounded child. Separate native source declaration identity from runtime uncertainty; retain the nine Python contracts and the independently verified browser target. Only proved downward debt ratchets are allowed; every other ceiling, exclusion and trust check remains. The approved PythonProviderCollector port gives CLI-to-Analyzer exactly its two-name target ceiling; every other ceiling remains unchanged. Integrate the user-requested literal dependency and call-owner capabilities, including the three explicit shared version-API exports. Required closed scopes retain positive proof; no added call, typing or UNKNOWN allowance is accepted.",
   "schema_version": "2.0.0"
 }

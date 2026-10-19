@@ -1,3 +1,55 @@
+# ArchKeel 5.0.0 — Explicit architecture ports and native ownership evidence
+
+Declare component responsibilities, exact interfaces and invocation ownership, with
+native source evidence and conservative UNKNOWNs.
+
+## Highlights
+
+- **Detailed architecture contracts.** ArchKeel's own Target defines lower-level
+  owners, ports and responsibilities across Core, language collectors and reports.
+  Observation, policy evaluation and rendering have separate owners.
+- **Bounded native Python proof.** Supported provider sources, class creation,
+  inherited generic signatures and context-manager signatures retain source-bound
+  evidence. Missing binding identity and unsupported forms remain UNKNOWN;
+  known declaration violations remain visible beside runtime uncertainty.
+  Source declaration identity does not establish runtime immutability.
+- **Literal dynamic dependencies.** Dependency rules include proven literal
+  `importlib.import_module` and builtin `__import__` calls. Uncertain loader
+  bindings remove complete proof only from affected rule scopes. Conditional and
+  later bindings retain the possible builtin fallback; mounted rules use their
+  clipped source domain.
+- **Call ownership.** Opt-in contract **3.7.0** adds `call_owner` for exact targets
+  and allowed caller scopes. Bound calls can fail; unrelated same-named methods
+  do not. Missing target proof stays UNKNOWN. Declared receivers prove a static
+  boundary, not runtime dispatch.
+
+## Upgrade from 4.0.1
+
+Upgrade CLI, collectors and strict JSON consumers together. Native Python provider
+collection adds **SourceFacts/protocol 4.0.0** for captured source, provider bindings
+and supported context-manager signatures. Generic collection retains its 3.0.0
+default; known 1/2/3 packets remain readable without the new payloads.
+
+New observations use ArchitectureIR **2.1.0** and command-result **9.0.0**.
+Python 2.1 call records require `call_binding`, including an explicit `null` when
+unproved; an omitted key is invalid. Supported historical reports remain readable;
+command schemas 6/7/8 reject 2.1 observations.
+Older readers reject the new evidence and cannot assess the new call policy.
+Re-observe both revisions with the same release before comparing snapshots.
+These documented evidence/protocol incompatibilities require a new package major
+under the existing compatibility policy.
+
+The internal `FilesToWrite` mapping becomes an immutable `entries` tuple. Internal
+callers must use `FilesToWrite(entries=(("path", content),))` and iterate
+`files.entries`. Mapping operations are no longer supported. Documented CLI commands,
+configuration and `archkeel.api` exports retain their interfaces.
+
+See [dependency evidence](docs/architecture/python-dynamic-dependencies.md),
+[call ownership](docs/architecture/decisions/ad-241-call-ownership-policy.md),
+[compatibility](docs/reference.md#compatibility) and [known limits](docs/known-limits.md).
+
+---
+
 # ArchKeel 4.0.1 — Exact dependency rules and typed controls
 
 Declare narrower component APIs and check more native source evidence.

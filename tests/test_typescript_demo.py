@@ -279,7 +279,7 @@ def _decoded_validator():
     registry = Registry().with_resources(
         (schema["$id"], Resource.from_contents(schema)) for schema in schemas
     )
-    schema = json.loads((root / "schema/architecture-ir-decoded.schema.json").read_bytes())
+    schema = json.loads((root / "schema/architecture-ir-decoded-2.1.schema.json").read_bytes())
     return Draft202012Validator(schema, registry=registry)
 
 

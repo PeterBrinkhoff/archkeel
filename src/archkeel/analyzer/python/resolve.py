@@ -12,7 +12,7 @@ from __future__ import annotations
 import ast
 import builtins
 import sys
-from collections import defaultdict
+from collections import Counter, defaultdict
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
@@ -74,9 +74,11 @@ class SymbolIndex:
     constructor_results: dict[str, bool]
     binding_ids: frozenset[str]
     declaration_names: frozenset[str]
+    binding_declarations: dict[str, RawRecord]
 
 
 def build_symbol_index(symbols: Sequence[RawRecord]) -> SymbolIndex:
+    counts = Counter(item["data"]["qualified_name"] for item in symbols)
     definition_ids = frozenset(
         item["id"] for item in symbols if item["kind"] in {"class", "function", "method"}
     )
@@ -127,6 +129,12 @@ def build_symbol_index(symbols: Sequence[RawRecord]) -> SymbolIndex:
         constructor_results,
         frozenset(item["id"] for item in symbols if item["kind"] == "dynamic_binding"),
         declarations,
+        {
+            item["data"]["qualified_name"]: item
+            for item in symbols
+            if counts[item["data"]["qualified_name"]] == 1
+            and item["kind"] in {"class", "function", "method"}
+        },
     )
 
 

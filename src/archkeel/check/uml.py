@@ -22,6 +22,7 @@ from archkeel.ir.codec import (
     parse_required_component,
     value_bytes,
 )
+from archkeel.ir.contract_version import ContractFeature, ContractVersion, supports_feature
 from archkeel.ir.model import (
     ARCHITECTURE_TARGET_KIND,
     RULE_KINDS,
@@ -443,15 +444,7 @@ def validated_member_inventory_result(result: ObservationResult) -> ObservationR
 
 def _has_architecture_declarations(version: str, known: dict[str, Record]) -> bool:
     return version in {
-        "2.2.0",
-        "2.3.0",
-        "3.0.0",
-        "3.1.0",
-        "3.2.0",
-        "3.3.0",
-        "3.4.0",
-        "3.5.0",
-        "3.6.0",
+        v.value for v in ContractVersion if supports_feature(v, ContractFeature.UML)
     } or any(
         record.kind in TARGET_GRAPH_RECORD_KINDS
         or record.kind

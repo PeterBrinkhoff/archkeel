@@ -14,6 +14,7 @@ from typing import Any, TypeAlias
 
 from archkeel.ir.codec import InsideContractMount
 from archkeel.ir.facts import (
+    CALL_BINDINGS_FEATURE,
     SOURCE_RESOLUTION_GAP_KIND,
     BuiltinTarget,
     ConstructCapability,
@@ -52,7 +53,9 @@ from archkeel.ir.model import (
 from archkeel.ir.profiles import Profile, profile_for
 from archkeel.ir.type_shapes import TypeShapeIndex
 
+from .call_owners import call_owner_results
 from .imports import strip_internal_reexport_facts
+from .rule_support import dynamic_dependency_limits
 from .rules import (
     boundary_type_limits,
     construct_capability_limits,
@@ -301,8 +304,12 @@ def _inside_rule_results(
     type_shapes: TypeShapeIndex,
     construct_capabilities: tuple[ConstructCapability, ...],
     symbols_measured: bool,
+    calls: Sequence[RawRecord],
+    calls_complete: bool,
+    bindings_measured: bool,
     root_contract: ArchitectureContract | None = None,
     imports: Sequence[RawRecord],
+    source_unknowns: Sequence[RawRecord],
     typing_signals: Sequence[RawRecord],
     constructs: Sequence[RawRecord],
     packages: Sequence[RawRecord],
@@ -340,6 +347,12 @@ def _inside_rule_results(
         available_by_owner[mount.parent_id] = source_modules
         contract_by_owner[mount.parent_id] = scoped
         failures.extend(scope_failures)
+        scoped_unknowns: list[RawRecord] = []
+        for item in source_unknowns:
+            data: dict[str, object] = item["data"]
+            if data.get("source_module") in source_modules:
+                scoped_unknowns.append(item)
+        unknowns.extend(dynamic_dependency_limits(scoped, scoped_unknowns))
         results = _evaluate_inside_contract(
             parent,
             scoped,
@@ -384,6 +397,20 @@ def _inside_rule_results(
         unknowns.extend(results[1])
         failures.extend(results[2])
         allowances.extend(results[3])
+        call_violations, call_limits, call_receipts = call_owner_results(
+            scoped,
+            scope=mount.parent_id,
+            calls=calls,
+            modules=modules,
+            symbols=symbols,
+            complete=calls_complete,
+            bindings_measured=bindings_measured,
+            blank_modules=blank_modules,
+            source_modules=source_modules,
+        )
+        violations.extend(call_violations)
+        unknowns.extend(call_limits)
+        assessments.extend(call_receipts)
     return _sort_inside_rule_results(
         violations, unknowns, failures, assessments, allowances, symbols
     )
@@ -868,6 +895,8 @@ def evaluate_source(
         receipt_scan_roots=roots if _source_inventory_complete(facts) else (),
         type_shapes=type_shapes,
     )
+    calls_complete = _source_inventory_complete(facts)
+    bindings_measured = CALL_BINDINGS_FEATURE in facts.capabilities.resolution_features
     (
         inside_violations,
         inside_unknowns,
@@ -880,8 +909,12 @@ def evaluate_source(
         provider_bindings=facts.provider_bindings,
         construct_capabilities=facts.capabilities.constructs,
         symbols_measured=symbols_measured,
+        calls=calls,
+        calls_complete=calls_complete,
+        bindings_measured=bindings_measured,
         root_contract=contract,
         imports=imports,
+        source_unknowns=source_unknowns,
         typing_signals=typing_signals,
         constructs=constructs,
         packages=package_facts,
@@ -938,6 +971,7 @@ def evaluate_source(
     unknowns = [
         *(_analysis_limits(calls, declarations, namespace) if is_python else []),
         *source_unknowns,
+        *dynamic_dependency_limits(contract, source_unknowns),
         *symbol_limits(imports, contract, facade_exports),
         *construct_capability_limits(contract, facts.capabilities.constructs, "root"),
         # AD-67: a boundary position the rule could not decide is reported, not silent. It
@@ -969,6 +1003,33 @@ def evaluate_source(
         *inside_unknowns,
         *failures,
         *rule_failures,
+    ]
+
+    call_violations, call_limits, call_receipts = call_owner_results(
+        contract,
+        scope="root",
+        calls=calls,
+        modules=module_facts,
+        symbols=symbols,
+        complete=calls_complete,
+        bindings_measured=bindings_measured,
+        blank_modules=blank_modules,
+    )
+    violations += call_violations
+    unknowns += call_limits
+    scope_observations += call_receipts
+
+    incomplete_dependencies = {
+        rule_id
+        for item in unknowns
+        if item["kind"] == "dynamic_dependency_limit"
+        for rule_id in item["rule_ids"]
+    }
+    scope_observations = [
+        item
+        for item in scope_observations
+        if item["kind"] != "rule_evaluation"
+        or not incomplete_dependencies.intersection(item["rule_ids"])
     ]
 
     coverage = coverage_payload(

@@ -26,6 +26,7 @@ from archkeel.analyzer.runtime import (
     python_requirement,
 )
 from archkeel.ir.facts import (
+    CALL_BINDINGS_FEATURE,
     BuiltinTarget,
     Capabilities,
     CollectionCoverage,
@@ -69,7 +70,12 @@ from .callable_signatures import (
 )
 from .calls import collect_calls
 from .constructs import collect_constructs
-from .imports import collect_imports, explicit_factory_unsafe_providers, resolve_reexports
+from .imports import (
+    collect_dynamic_imports,
+    collect_imports,
+    explicit_factory_unsafe_providers,
+    resolve_reexports,
+)
 from .private_attributes import collect_private_attributes
 from .references import collect_references
 from .resolve import build_symbol_index
@@ -344,7 +350,7 @@ def collect(request: CollectionRequest) -> SourceFacts:
     modules = parsed_sources.modules
     evidence: dict[str, RawEvidence] = {}
 
-    imports = collect_imports(
+    imports: list[RawRecord] = collect_imports(
         modules,
         {module.module for module in modules},
         evidence,
@@ -432,6 +438,10 @@ def collect(request: CollectionRequest) -> SourceFacts:
     type_shapes = collect_type_shapes(symbol_type_expressions(symbols))
     symbol_index = build_symbol_index(symbols)
     calls = collect_calls(modules, symbol_index, evidence)
+    dynamic_imports, dynamic_limits = collect_dynamic_imports(
+        modules, calls, imports, evidence, namespace=request.scope.namespace
+    )
+    imports.extend(dynamic_imports)
     references = collect_references(modules, symbol_index, evidence)
     bindings = collect_bindings(modules, evidence)
     typing_signals = collect_typing_signals(modules, calls, symbols, imports, evidence)
@@ -454,6 +464,7 @@ def collect(request: CollectionRequest) -> SourceFacts:
         SourceSectionName.CONSTRUCTS: constructs,
         SourceSectionName.UNKNOWNS: [
             *parsed_sources.failures,
+            *dynamic_limits,
             *(raw_record(record) for record in source_unknowns),
         ],
     }
@@ -476,6 +487,7 @@ def collect(request: CollectionRequest) -> SourceFacts:
         ),
         Capabilities(
             _SECTION_NAMES,
+            resolution_features=(CALL_BINDINGS_FEATURE,),
             constructs=tuple(
                 ConstructCapability(kind, ConstructSupport.DECIDED)
                 for kind in ForbiddenConstructKind

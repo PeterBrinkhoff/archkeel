@@ -169,7 +169,10 @@
         "archkeel.ir.amendment:Amendment",
         "archkeel.ir.amendment:verify_amendment",
         "archkeel.ir.architecture_graph:RuleAssessmentStatus",
-        "archkeel.ir.architecture_projection:PermissionStatus"
+        "archkeel.ir.architecture_projection:PermissionStatus",
+        "archkeel.ir.contract_version:ContractFeature",
+        "archkeel.ir.contract_version:ContractVersion",
+        "archkeel.ir.contract_version:supports_feature"
       ],
       "responsibilities": [
         "Own typed values, strict codecs and pure evidence derivations."
@@ -490,7 +493,7 @@
       {
         "source": "cli",
         "target": "analyzer",
-        "max_names": 1,
+        "max_names": 2,
         "provenance": [
           "docs/architecture/decisions/ad-99-facade-and-coupling-budgets-are-contract-ceilings.md"
         ]

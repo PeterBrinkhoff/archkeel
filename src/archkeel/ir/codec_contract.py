@@ -41,6 +41,7 @@ from archkeel.ir.model import (
     BoundaryAliasBody,
     BoundaryTypeAllowance,
     BoundaryTypesRule,
+    CallOwnerRule,
     CompatibilityLifetime,
     CompatibilityShim,
     CompleteAssignmentRule,
@@ -258,6 +259,11 @@ def parse_contract(raw: object) -> ArchitectureContract:
     uml = parse_target(declarations["uml"]) if _has_field(declarations, "uml") else None
     kinds = tuple(_rule_kind(value, f"rules[{index}]") for index, value in enumerate(rules_raw))
     if (
+        not supports_feature(version, ContractFeature.CALL_OWNER)
+        and ArchitectureRuleKind.CALL_OWNER in kinds
+    ):
+        raise ValueError("call_owner requires contract schema_version 3.7.0")
+    if (
         not supports_feature(version, ContractFeature.LAYERS)
         and ArchitectureRuleKind.LAYER_ORDER in kinds
     ):
@@ -387,6 +393,10 @@ def parse_contract(raw: object) -> ArchitectureContract:
 
 
 def _validate_encoding_version(contract: ArchitectureContract) -> None:
+    if not supports_feature(contract.schema_version, ContractFeature.CALL_OWNER) and any(
+        isinstance(rule, CallOwnerRule) for rule in contract.rules
+    ):
+        raise ValueError("call_owner requires contract schema_version 3.7.0")
     if not supports_feature(contract.schema_version, ContractFeature.MODULE_OBJECT_GRANTS) and any(
         isinstance(rule, InterfaceBoundaryRule) and rule.module_object_grants is not None
         for rule in contract.rules
@@ -1285,7 +1295,28 @@ def _parse_boundary_types(raw: RawJson, label: str) -> BoundaryTypesRule:
     )
 
 
+def _parse_call_owner(raw: RawJson, label: str) -> CallOwnerRule:
+    item, item_id, provenance = _contract_record(
+        raw,
+        {"kind", "source", "target", "rationale", "decided_by"},
+        {"allowed_sources", "exact_sources"},
+        label,
+    )
+    return CallOwnerRule(
+        item_id,
+        ArchitectureRuleKind.CALL_OWNER,
+        _nonempty(item["source"], f"{label}.source"),
+        _nonempty(item["target"], f"{label}.target"),
+        _nonempty(item["rationale"], f"{label}.rationale"),
+        provenance,
+        _decided_by(item["decided_by"], f"{label}.decided_by"),
+        _contract_strings(item.get("allowed_sources", []), f"{label}.allowed_sources"),
+        _contract_strings(item.get("exact_sources", []), f"{label}.exact_sources"),
+    )
+
+
 _RULE_PARSERS: Final[dict[ArchitectureRuleKind, Callable[[RawJson, str], ArchitectureRule]]] = {
+    ArchitectureRuleKind.CALL_OWNER: _parse_call_owner,
     ArchitectureRuleKind.FORBIDDEN_DEPENDENCY: _parse_forbidden_dependency,
     ArchitectureRuleKind.ALLOWED_DEPENDENCY: _parse_allowed_dependency,
     ArchitectureRuleKind.FORBIDDEN_CONSTRUCT: _parse_forbidden_construct,

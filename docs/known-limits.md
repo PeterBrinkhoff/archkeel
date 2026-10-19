@@ -12,6 +12,14 @@ receipts keep their rows and aggregate verdict UNKNOWN. Only Python initializers
 with no AST statements may be unowned without breaking this proof; docstrings and
 imports are statements. An empty violation list is insufficient.
 
+Python `call_owner` initially supports stable plain top-level functions (including
+direct import aliases) and plain parameter annotations of scanned class methods.
+External targets, constructors, stored receiver members, inherited surfaces,
+decorated functions/methods, reexports and ambiguous/mutated bindings remain
+UNKNOWN. It proves the declared static boundary, not runtime conformance.
+This rule requires a source/contract/inventory/call-bound receipt; legacy saved
+observations cannot certify it. Other language profiles do not support it.
+
 An explicitly certified `complete_requires` scope can PASS with unrelated source
 resolution gaps. Arbitrary imports still block their own scopes and ancestors;
 signature gaps do not prove or disprove imports. Legacy or unbound gaps remain
@@ -50,13 +58,28 @@ An allowance cannot clear uncertainty elsewhere. Non-exempt UNKNOWN evidence
 prevents aggregate PASS; external-type positions outside component policy and
 standing scan disclaimers retain their separate meanings.
 
+## Python declaration and runtime proof
+
+Source declaration identity is separate from runtime member and creation proof.
+An opaque alias transfer can retain the known declaration and its source violations
+while blocking an exact allowance. Missing or mutated binding identity remains
+UNKNOWN. Exact metadata allowances also need positive member-binding evidence;
+a class header alone cannot rule out metaclass replacement.
+
+Creation and alias-value proofs cover bounded builtin forms and supported native
+providers. Arbitrary operators, class namespace redirects and opaque module/object
+transfers can invalidate proof across the scanned closure. Captured provider source
+does not establish runtime immutability or arbitrary factory behavior.
+
 ## Other static blind spots
 
 - Calls are partly resolved. Annotated receivers do not enforce runtime types;
   candidates are not confirmed calls. Unresolved calls feed regression measures.
-- Dynamic imports add no static dependency edge. As-written construct matching
-  can miss aliases or report shadowed names. Type-checking imports still count
-  in cycle graphs.
+- Python literal loaders contribute bounded dependency evidence; unproved bindings,
+  targets and nonempty builtin fromlists withhold affected dependency receipts. See
+  [supported loader forms](architecture/python-dynamic-dependencies.md). As-written
+  construct matching can miss aliases or report shadowed names. Type-checking
+  imports still count in cycle graphs.
 - Facade name budgets need provable exports and uses. Dynamic `__all__` mutation,
   bare module imports and unenumerated stars cannot prove counts.
 - Package roll-up cycles need not be module cycles. Read their backing SCC evidence.

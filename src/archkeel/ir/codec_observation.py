@@ -16,6 +16,7 @@ from typing import Any, TypeGuard
 from archkeel.ir.codec_wire import (
     _count,
     _exact,
+    _has_field,
     _nonempty,
     _object,
     _raw_object,
@@ -23,11 +24,18 @@ from archkeel.ir.codec_wire import (
     _strings,
     canonical_json_bytes,
 )
-from archkeel.ir.facts import RuntimeRequirementState, parse_runtime_requirement_state, source_dirty
+from archkeel.ir.facts import (
+    RuntimeRequirementState,
+    SourceProfile,
+    parse_runtime_requirement_state,
+    source_dirty,
+)
+from archkeel.ir.facts import call_binding as _call_binding
 from archkeel.ir.model import (
     CLASSIFIED_SECTIONS,
     EVIDENCE_FIELDS,
     RECORD_FIELDS,
+    SCHEMA_VERSION,
     AnalyzerInfo,
     ContractInfo,
     Coverage,
@@ -39,7 +47,12 @@ from archkeel.ir.model import (
     identity_is_known,
 )
 from archkeel.ir.model import RawJson as RawJson
-from archkeel.ir.profiles import ObservedSection, Profile, UnmeasurableScalar, profile_for
+from archkeel.ir.profiles import (
+    ObservedSection,
+    Profile,
+    UnmeasurableScalar,
+    profile_for,
+)
 
 from .facts_codec import parse_evidence as parse_evidence
 from .facts_codec import parse_record as parse_record
@@ -50,6 +63,7 @@ class _ObservationVersion(StrEnum):
     V1_2 = "1.2.0"
     V1_3 = "1.3.0"
     V2 = "2.0.0"
+    V2_1 = SCHEMA_VERSION
 
 
 class _EncodingKind(StrEnum):
@@ -182,6 +196,16 @@ def parse_observation(raw: object) -> Observation:
         for name in CLASSIFIED_SECTIONS
         if isinstance(section_items := item[name], list)
     )
+    if schema_version is _ObservationVersion.V2_1:
+        python_calls = SourceProfile(profile.analyzer) is SourceProfile.PYTHON
+        for section in sections:
+            if section.name == ObservedSection.CALLS:
+                for call in section.records:
+                    if python_calls and not _has_field(
+                        (key for key, _ in call.data.entries), "call_binding"
+                    ):
+                        raise ValueError("Python 2.1.0 calls require explicit call_binding or null")
+                    _call_binding(call.data.get("call_binding"))
     return Observation(
         schema_version=schema_version,
         analyzer=AnalyzerInfo(
@@ -203,7 +227,9 @@ def parse_observation(raw: object) -> Observation:
         if item.get("python_version", _MISSING_VALUE) is not _MISSING_VALUE
         else None,
         runtime=_parse_runtime(
-            item["runtime"], allow_requirement_state=schema_version is _ObservationVersion.V2
+            item["runtime"],
+            allow_requirement_state=schema_version
+            in {_ObservationVersion.V2, _ObservationVersion.V2_1},
         )
         if item.get("runtime", _MISSING_VALUE) is not _MISSING_VALUE
         else None,
@@ -355,7 +381,8 @@ def _validate_profile_sections(model: Mapping[str, RawJson], profile: Profile) -
 
 def observation_payload(observation: Observation) -> dict[str, RawJson]:
     if (
-        _observation_version(observation.schema_version) is not _ObservationVersion.V2
+        _observation_version(observation.schema_version)
+        not in {_ObservationVersion.V2, _ObservationVersion.V2_1}
         and observation.runtime is not None
         and observation.runtime.requirement_state != RuntimeRequirementState.DECLARED
     ):

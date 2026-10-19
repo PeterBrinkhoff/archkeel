@@ -150,6 +150,19 @@
             },
             "contextmanager_signature": {
               "$ref": "#/$defs/ContextManagerSignature"
+            },
+            "call_binding": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/$defs/CallBinding"
+                }
+              ]
+            },
+            "source_binding_static": {
+              "type": "boolean"
             }
           }
         }
@@ -2007,6 +2020,36 @@
         "abc"
       ],
       "additionalProperties": false
+    },
+    "CallBinding": {
+      "type": "object",
+      "required": [
+        "origin",
+        "target",
+        "evidence_ids"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "origin": {
+          "enum": [
+            "direct",
+            "declared_receiver"
+          ]
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
     }
   },
   "oneOf": [

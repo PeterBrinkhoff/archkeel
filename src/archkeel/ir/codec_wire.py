@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from typing import Any
 
 from archkeel.ir.model import JsonValue, RecordData
@@ -19,7 +19,7 @@ def _object(raw: object, label: str) -> dict[str, RawJson]:
     return raw
 
 
-def _has_field(item: Mapping[str, RawJson], name: str) -> bool:
+def _has_field(item: Iterable[str], name: str) -> bool:
     """Apply open field grammar while distinguishing absence from explicit null."""
     return name in item
 

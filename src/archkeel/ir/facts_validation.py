@@ -7,8 +7,11 @@ from collections.abc import Collection, Iterable, Mapping
 from pathlib import PurePosixPath
 
 from .facts import (
+    CALL_BINDINGS_FEATURE,
     SOURCE_RESOLUTION_GAP_KIND,
     BuiltinTarget,
+    CallBinding,
+    CallBindingOrigin,
     ConstructSupport,
     ContextManagerSignature,
     Evidence,
@@ -27,6 +30,7 @@ from .facts import (
     SourceResolution,
     SourceSectionName,
     UnresolvedTarget,
+    call_binding,
     contextmanager_signature,
     in_scope,
     member_inventories,
@@ -129,6 +133,7 @@ _PROOF_FLAGS = frozenset(
     {
         "origin_binding_unique",
         "source_binding_unique",
+        "source_binding_static",
         "source_member_binding_static",
         "origin_member_binding_static",
         "class_header_static",
@@ -419,6 +424,35 @@ def _property_bindings(records: list[Record], evidence: dict[str, Evidence]) -> 
             raise ValueError("property members disagree with method binding proofs")
 
 
+def _call_declaration(binding: CallBinding, declarations: Mapping[str, list[Record]]) -> Record:
+    targets = declarations.get(binding.target, [])
+    if len(targets) != 1:
+        raise ValueError("call binding needs one target declaration")
+    [target] = targets
+    if binding.origin is CallBindingOrigin.DIRECT:
+        if (
+            target.kind != "function"
+            or target.data.get("source_binding_unique") is not True
+            or target.data.get("source_binding_static") is not True
+            or target.data.get("decorators")
+        ):
+            raise ValueError("direct call needs a stable plain function declaration")
+    else:
+        parent = target.data.get("parent")
+        owners = declarations.get(parent, []) if isinstance(parent, str) else []
+        if target.kind != "method" or len(owners) != 1 or target.data.get("decorators"):
+            raise ValueError("declared receiver needs a plain method and class owner")
+        [owner] = owners
+        if (
+            owner.kind != "class"
+            or owner.data.get("source_binding_unique") is not True
+            or owner.data.get("source_member_binding_static") is not True
+            or not set(owner.evidence_ids) <= set(binding.evidence_ids)
+        ):
+            raise ValueError("declared receiver needs a stable class binding")
+    return target
+
+
 def _source_record(record: Record, section: SourceSectionName) -> None:
     if record.evidence_class not in (EvidenceClass.FACT, EvidenceClass.UNKNOWN):
         raise ValueError("source records cannot carry governance decisions")
@@ -448,6 +482,10 @@ def _source_record(record: Record, section: SourceSectionName) -> None:
         contextmanager_signature(record.data.get("contextmanager_signature"))
     if "base_declarations" in fields:
         _base_declarations(record, section)
+    if "call_binding" in fields:
+        if section is not SourceSectionName.CALLS:
+            raise ValueError("call binding needs its call owner")
+        call_binding(record.data.get("call_binding"))
     _payload(record.data)
 
 
@@ -808,6 +846,39 @@ def validate_source_facts(facts: SourceFacts) -> None:
             raise ValueError("dangling source evidence reference")
         if not set(record.fact_ids).issubset(fact_ids):
             raise ValueError("dangling source fact reference")
+    declarations: dict[str, list[Record]] = {}
+    for symbol_section in facts.sections:
+        if symbol_section.name is not SourceSectionName.SYMBOLS:
+            continue
+        for symbol in symbol_section.records:
+            symbol_name = symbol.data.get("qualified_name")
+            if symbol.kind in {"class", "function", "method"} and isinstance(symbol_name, str):
+                symbol_declarations: list[Record] = declarations.setdefault(symbol_name, [])
+                symbol_declarations.append(symbol)
+    for section in facts.sections:
+        if section.name is not SourceSectionName.CALLS:
+            continue
+        for record in section.records:
+            if CALL_BINDINGS_FEATURE in facts.capabilities.resolution_features and not any(
+                key == "call_binding" for key, _ in record.data.entries
+            ):
+                raise ValueError("complete call consideration needs explicit binding or null")
+            call_proof = call_binding(record.data.get("call_binding"))
+            if call_proof is not None and (
+                not set(call_proof.evidence_ids) <= evidence_ids
+                or not set(record.evidence_ids) <= set(call_proof.evidence_ids)
+            ):
+                raise ValueError("call binding evidence disagrees with its call")
+            targets = record.data.get("targets")
+            if call_proof is not None and (
+                not isinstance(targets, tuple)
+                or call_proof.target not in targets
+                or call_proof.origin is CallBindingOrigin.DIRECT
+                and record.data.get("status") != SourceResolution.RESOLVED
+                or not set(_call_declaration(call_proof, declarations).evidence_ids)
+                & set(call_proof.evidence_ids)
+            ):
+                raise ValueError("call binding disagrees with its target declaration")
     record_by_id = {record.id: record for record in records}
     effects = [record for record in records if record.kind == "script_namespace_effect"]
     effect_gaps = [

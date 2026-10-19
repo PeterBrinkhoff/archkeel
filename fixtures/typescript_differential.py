@@ -249,8 +249,9 @@ def _variants(workspace: Path) -> list[Case]:
     frozen = json.loads((FIXTURES / "typescript-reference-demos.json").read_text(encoding="utf-8"))
     fixture = workspace / "reference-typescript-demo"
     _write(fixture, frozen["fixtures"]["H-typescript"])
-    for current in VARIANTS:
-        variant = replace(current, fixture=fixture, files=frozen["variants"][current.id])
+    current = {variant.id: variant for variant in VARIANTS}
+    for identifier, files in frozen["variants"].items():
+        variant = replace(current[identifier], fixture=fixture, files=files)
         root = repository(workspace / "variants", variant)
         config = load_config(root)
         request = request_for(

@@ -42,7 +42,8 @@ _TOUR_APP_ORDERS = HEADER + (
     "from shop.model.entities import Line, Money, Order\n"
     "from shop.store import OrderRepository\n"
     "from shop.store.backend.files import write_payload\n"
-    "from shop.store.sqlite import vacuum\n\n"
+    "from shop.store.sqlite import vacuum\n"
+    "from shop.app.maintenance import run_maintenance\n\n"
     "if TYPE_CHECKING:\n"
     "    from shop.store.sqlite import Connection\n\n\n"
     "def place_order(\n"
@@ -61,6 +62,7 @@ _TOUR_APP_ORDERS = HEADER + (
     "    return OrderRepository(store_dir).load(order_id).total()\n\n\n"
     "def describe_connection(connection: Connection) -> str:\n"
     '    """Type-only use of the maintenance connection; never imported at runtime here."""\n'
+    "    run_maintenance(connection)\n"
     '    return f"connection to {connection.path}"\n\n\n'
     "def restate_total(order: Order) -> Money:\n"
     '    """A second home for the arithmetic shop.model is declared to own (AD-30)."""\n'
@@ -201,8 +203,8 @@ _TOUR = Variant(
     "parameter on place_order itself, the one function app.orders declares public (AD-63: "
     "only a declared facade function is inspected, so touch_store's own bare-object "
     "parameter, never declared, no longer fires here). Real "
-    "run: 20 rule ids and 21 violations, since CONSTRUCT-NO-DYNAMIC answers both the eval "
-    "and the getattr; at validate time the same 21 rule.violated diagnostics plus 2 "
+    "run: 21 rule ids and 22 violations, since CONSTRUCT-NO-DYNAMIC answers both the eval "
+    "and the getattr; at validate time the same 22 rule.violated diagnostics plus 2 "
     "closed_world.observed_forbidden pairs (model->render, render->store) and 1 graph.drift, "
     "since the marked component graph never declared either edge.",
     files={
@@ -223,6 +225,7 @@ _TOUR = Variant(
     expected_violations=(
         "APP-TYPES-NOT-DICT",
         "ASSIGNMENT-COMPLETE",
+        "CALL-DESCRIBE-NO-MAINTENANCE",
         "COMPONENT-NO-CYCLES",
         "CONSTRUCT-NO-ANY",
         "CONSTRUCT-NO-ASSERT",
@@ -247,6 +250,7 @@ _TOUR = Variant(
         "closed_world.observed_forbidden",
         "closed_world.observed_forbidden",
         "graph.drift",
+        "rule.violated",
         "rule.violated",
         "rule.violated",
         "rule.violated",

@@ -12,6 +12,7 @@ import pytest
 from graph_report_support import findings_for, import_sites
 from test_analyzer import _component, _inside_component, _observe
 from test_architecture_demo import FIXTURE_DIR, _prepare_repo
+from test_exact_module_ownership import _observe_tree
 from test_html_report import _native_audit, _native_details
 
 from archkeel.check.ports import ScanConfig
@@ -78,6 +79,79 @@ def _inside_edge(root: Path):
     sites = import_sites(report, "sample.core.b", "sample.core.a")
     assert sites
     return result, sites, findings_for(report, sites)
+
+
+@pytest.mark.parametrize("loader_module", ["a", "b"])
+@pytest.mark.parametrize("nested_package", ["sample.core.a", "sample.core"])
+def test_inside_dynamic_dependency_limits_use_clipped_source_domains(
+    tmp_path: Path, loader_module: str, nested_package: str
+) -> None:
+    rule = {
+        "id": "EXTERNAL",
+        "kind": "complete_external_scope",
+        "source": "sample.core",
+        "rationale": "Require proof only for imports in the mounted source domain.",
+        "provenance": ["docs/architecture/sample.md"],
+        "decided_by": "architect",
+    }
+    parents = [
+        _component("narrow", packages=["sample.core.a"]) | {"inside": "narrow.json"},
+        _component("wide", packages=["sample.core"]) | {"inside": "wide.json"},
+        _component("exact")
+        | {"packages": [], "exact_modules": ["sample.core.a"], "inside": "exact.json"},
+    ]
+    files = {
+        "sample/__init__.py": "",
+        "sample/core/__init__.py": "",
+        "sample/core/a.py": "VALUE = 1\n",
+        "sample/core/b.py": "VALUE = 2\n",
+    }
+    for parent in parents:
+        label = parent["label"]
+        child = _component("child") | {
+            "packages": parent["packages"],
+            "exact_modules": parent.get("exact_modules", []),
+        }
+        if label == "narrow":
+            child["packages"] = [nested_package]
+            child["inside"] = "deep.json"
+        files[f"{label}.json"] = json.dumps(
+            {"schema_version": "2.1.0", "components": [child], "rules": [rule]}
+        )
+    files["deep.json"] = json.dumps(
+        {
+            "schema_version": "2.1.0",
+            "components": [_component("leaf", packages=[nested_package])],
+            "rules": [rule],
+        }
+    )
+    files[f"sample/core/{loader_module}.py"] = "def load(name):\n    return __import__(name)\n"
+    result = _observe_tree(
+        tmp_path,
+        files,
+        {"schema_version": "2.1.0", "components": parents, "rules": [rule]},
+    )
+    assert result.observation is not None, result.diagnostics
+    observation = result.observation
+    validate_evidence_classes(observation)
+    expected_limits = {"EXTERNAL", "wide:EXTERNAL"}
+    if loader_module == "a":
+        expected_limits.update({"narrow:EXTERNAL", "exact:EXTERNAL"})
+        if nested_package == "sample.core.a":
+            expected_limits.add("narrow:child:EXTERNAL")
+    limits = [
+        item
+        for item in observation.records("unknowns") or ()
+        if item.kind == "dynamic_dependency_limit"
+    ]
+    assert {rule_id for item in limits for rule_id in item.rule_ids} == expected_limits
+    assert all(item.fact_ids and item.evidence_ids for item in limits)
+    rows = {row.id: row for row in rule_assessments(observation, undecided_by_rule={})}
+    assert rows["EXTERNAL"].status == rows["wide:EXTERNAL"].status == "UNKNOWN"
+    scoped_unknown = loader_module == "a" or nested_package == "sample.core"
+    assert rows["narrow:EXTERNAL"].status == ("UNKNOWN" if scoped_unknown else "PASS")
+    assert rows["exact:EXTERNAL"].status == ("UNKNOWN" if scoped_unknown else "PASS")
+    assert rows["narrow:child:EXTERNAL"].status == ("UNKNOWN" if scoped_unknown else "PASS")
 
 
 def _scan_config(

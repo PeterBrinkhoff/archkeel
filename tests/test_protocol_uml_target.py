@@ -129,6 +129,8 @@ def test_expanded_self_target_proves_all_formerly_incomplete_member_scopes(
         "ir:response",
         "ir:error",
         "check:port",
+        "ir:IR-CALL-OWNER-RULE",
+        "ir:IR-CALL-BINDING",
     }
     comparison = architecture_report(self_observation).comparison
     assert comparison is not None

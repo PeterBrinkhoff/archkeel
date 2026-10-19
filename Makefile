@@ -33,7 +33,7 @@ pr-test:
 		-q --durations=10 --junitxml=test-artifacts/pytest/pr-core.xml \
 		tests/test_ci_changes.py tests/test_make_gate.py tests/test_repository_hygiene.py \
 		tests/test_responsibility_validation.py tests/test_target_architecture.py tests/test_contract_maintenance.py tests/test_skill.py \
-		tests/test_contract_model.py tests/test_contract_version_types.py tests/test_dependency_selectors.py tests/test_requires_symbol_ports.py tests/test_typed_dependency_api.py tests/test_dependency_api_target.py tests/test_module_object_grants.py tests/test_dependency_typed_control.py tests/test_typed_state_protocol.py tests/test_typed_python_bindings.py tests/test_typed_python_receivers.py tests/test_typed_method_descriptors.py tests/test_typed_graph_vocabulary.py tests/test_typed_diagnostic_owner.py tests/test_state_facts.py tests/test_boundary_type_nested_mapping.py tests/test_decisions.py tests/test_typed_python_properties.py tests/test_typed_contract_rule_grammar.py tests/test_typed_contract_rule_native.py tests/test_core_command_result.py tests/test_typed_measurement_controls.py tests/test_typed_parameter_kinds.py tests/test_atlas_deviation_target.py tests/test_definition_context_types.py tests/test_permission_status_types.py tests/test_snapshot_language_types.py tests/test_source_resolution_types.py tests/test_known_delta_action_types.py tests/test_typed_symbol_class_kinds.py tests/test_source_name_visibility.py tests/test_git_blob_types.py tests/test_typed_structure_levels.py tests/test_classifier_projections.py tests/test_unresolved_call_change_types.py \
+		tests/test_contract_model.py tests/test_contract_version_types.py tests/test_dependency_selectors.py tests/test_requires_symbol_ports.py tests/test_typed_dependency_api.py tests/test_dependency_api_target.py tests/test_module_object_grants.py tests/test_dependency_typed_control.py tests/test_typed_state_protocol.py tests/test_typed_python_bindings.py tests/test_typed_python_receivers.py tests/test_typed_method_descriptors.py tests/test_typed_graph_vocabulary.py tests/test_typed_diagnostic_owner.py tests/test_state_facts.py tests/test_boundary_type_nested_mapping.py tests/test_typed_dict_bound_aliases.py tests/test_decisions.py tests/test_typed_python_properties.py tests/test_typed_contract_rule_grammar.py tests/test_typed_contract_rule_native.py tests/test_core_command_result.py tests/test_typed_measurement_controls.py tests/test_typed_parameter_kinds.py tests/test_atlas_deviation_target.py tests/test_definition_context_types.py tests/test_permission_status_types.py tests/test_snapshot_language_types.py tests/test_source_resolution_types.py tests/test_known_delta_action_types.py tests/test_typed_symbol_class_kinds.py tests/test_source_name_visibility.py tests/test_git_blob_types.py tests/test_typed_structure_levels.py tests/test_classifier_projections.py tests/test_unresolved_call_change_types.py \
 		tests/test_target_graph.py::test_contract_corpus_preserves_version_and_uml_presence \
 		tests/test_collection_protocol.py tests/test_typed_collector_protocol.py tests/test_typed_collector_native.py tests/test_source_trust_boundary.py tests/test_shared_runtime_bootstrap.py \
 		tests/test_python_class_value_proofs.py tests/test_local_inherited_methods.py tests/test_python_provider_sources.py tests/test_python_contextmanager_signatures.py tests/test_boundary_types_contextmanager.py \
@@ -48,6 +48,7 @@ pr-test:
 		tests/test_typescript_script_globals.py tests/test_typescript_standard_globals.py tests/test_typescript_umd_providers.py tests/test_browser_architecture.py tests/test_source_graph.py tests/test_binding_proof_reuse.py \
 		tests/test_boundary_types_chain_proof.py tests/test_boundary_types_reexport_proofs.py tests/test_boundary_types_facades.py tests/test_boundary_types_aliases.py tests/test_boundary_type_recursive_aliases.py \
 		tests/test_boundary_type_bound_aliases.py::test_opaque_alias_transfer_keeps_source_identity_without_an_exact_permission \
+		tests/test_boundary_type_bound_aliases.py::test_redirected_metadata_class_cannot_grant_an_exact_alias_permission \
 		tests/test_boundary_type_bound_aliases.py::test_alias_body_separates_source_identity_from_runtime_member_proof \
 		tests/test_boundary_type_bound_aliases.py::test_literal_outer_and_sibling_survive_uncertain_alias \
 		tests/test_boundary_type_bound_aliases.py::test_uncertain_inner_alias_does_not_erase_exact_literal_outer_map_permission \
@@ -64,6 +65,7 @@ pr-test:
 		tests/test_report_agent_json.py \
 		tests/test_native_violation_filter.py \
 		tests/test_scoped_dependency_proof.py \
+		tests/test_call_owner_policy.py tests/test_call_owner_wire_compatibility.py \
 		tests/test_typescript_namespace_identities.py \
 		tests/test_result_schema.py \
 		tests/test_dart_parse.py tests/test_dart_snapshot.py tests/test_dart_resolve.py \
@@ -87,7 +89,8 @@ pr-test:
 		tests/test_onboarding_demo.py tests/test_pypi_description.py tests/test_typescript_onboarding.py \
 		tests/test_unknown_positions.py tests/test_inside_rule_coverage.py tests/test_report_159_160.py \
 		tests/test_target_navigation_graph.py \
-		tests/test_absent_import_namespace.py tests/test_string_comparison_observation.py tests/test_local_string_comparisons.py tests/test_string_predicate_observation.py tests/test_python_string_predicate_target.py tests/test_typed_host_events.py
+		tests/test_binding_proof_reuse.py tests/test_annotation_carriers.py tests/test_local_inherited_methods.py \
+		tests/test_absent_import_namespace.py tests/test_dynamic_dependency_policy.py tests/test_string_comparison_observation.py tests/test_local_string_comparisons.py tests/test_string_predicate_observation.py tests/test_python_string_predicate_target.py tests/test_typed_host_events.py
 
 pr-report-test:
 	$(UV) run --locked --with playwright==$(PLAYWRIGHT_VERSION) python -m pytest -n 2 --dist=loadfile --max-worker-restart=0 -q \
@@ -222,7 +225,7 @@ report-pages:
 	$(UV) run --locked python -m tools.report_pages
 
 architecture-graph-schema:
-	$(UV) run --locked python -m tools.architecture_graph_schema schema/architecture-graph.schema.json --contract schema/architecture-contract.schema.json --contract schema/architecture-contract-3.0.schema.json --contract schema/architecture-contract-3.1.schema.json --contract schema/architecture-contract-3.2.schema.json --contract schema/architecture-contract-3.3.schema.json --contract schema/architecture-contract-3.4.schema.json --contract schema/architecture-contract-3.5.schema.json --contract schema/architecture-contract-3.6.schema.json --comparison schema/architecture-comparison.schema.json --report schema/architecture-report.schema.json --source-inventory schema/source-member-inventory.schema.json --source-profile schema/architecture-ir-python-decoded.schema.json --projection schema/architecture-projection.schema.json --command schema/architecture-command-2.0.schema.json
+	$(UV) run --locked python -m tools.architecture_graph_schema schema/architecture-graph.schema.json --contract schema/architecture-contract.schema.json --contract schema/architecture-contract-3.0.schema.json --contract schema/architecture-contract-3.1.schema.json --contract schema/architecture-contract-3.2.schema.json --contract schema/architecture-contract-3.3.schema.json --contract schema/architecture-contract-3.4.schema.json --contract schema/architecture-contract-3.5.schema.json --contract schema/architecture-contract-3.6.schema.json --contract schema/architecture-contract-3.7.schema.json --comparison schema/architecture-comparison.schema.json --report schema/architecture-report.schema.json --source-inventory schema/source-member-inventory.schema.json --source-profile schema/architecture-ir-python-decoded.schema.json --projection schema/architecture-projection.schema.json --command schema/architecture-command-2.0.schema.json
 
 lint:
 	$(UV) run --locked ruff format --check $(LINT_PATHS)
