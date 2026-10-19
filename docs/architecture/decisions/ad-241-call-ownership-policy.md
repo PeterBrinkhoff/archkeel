@@ -16,25 +16,22 @@ not child modules; an exact function allowance covers only that function scope.
 Missing/empty/unreadable sources or an unobserved target cannot certify a receipt.
 Root and mounted rules share one evaluator. No import permission changes.
 
-The call observer adds optional, validated `CallBinding` evidence to existing
-call records, with nominal `CallBindingOrigin` and one canonical target.
-Initial origins are direct lexical bindings to scanned declarations and declared
-receivers. Construction requires a later bounded extension.
+Call records carry `CallBinding` with source/declaration evidence, nominal
+`CallBindingOrigin` and one canonical target, or explicit null. Initial origins are
+direct lexical bindings to scanned declarations and declared receivers; construction
+needs a later extension.
 Function source identity reuses the existing fixed-point owner exposure/transfer
 result; the broader member-escape set also includes ordinary calls and cannot
 prove that a provider binding was replaced. Missing exposure measurement is UNKNOWN.
-Every call carries a proof or explicit null, with source/declaration evidence.
 Completion requires the capability, complete inventory and per-call consideration;
-the rule receipt cites all selected call
-IDs and the native source/scope/digest binding. A global capability alone cannot
-certify it. Each receipt binds its complete claim and observation schema version
-to that inventory. Copying a receipt to another rule/scope, changing its claim or
+the rule receipt cites all selected call IDs and native source/scope/digest binding.
+A global capability cannot certify it. Each receipt binds its complete claim and
+observation schema version to the inventory. Copying it to another rule/scope, changing its claim or
 downgrading the observation version cannot retain a proven assessment. Re-observe
 pre-release artifacts containing only a shared inventory proof; saved readers keep
 them UNKNOWN. This binding detects inconsistent evidence, not artifact authenticity.
-Legacy observations without these facts remain UNKNOWN for this
-new rule only. Existing call-graph candidate status and old-rule receipts are
-preserved; candidates alone never prove ownership.
+Legacy observations without these facts remain UNKNOWN for this new rule only.
+Call-graph candidates and old-rule receipts are preserved; candidates never prove ownership.
 
 Declared receivers bind one scanned class/protocol through a plain parameter
 annotation. This proves a declared static boundary, not runtime conformance or
@@ -65,9 +62,8 @@ member mutation, missing scope, stale/missing capabilities, mounted rules and
 known FAIL beside UNKNOWN. This slice does not retire any EE checker until
 its full supported forms and installed-release evidence are equivalent.
 
-Native verification tightened the original 837 unresolved-call ceiling to 832 in the combined integration.
-The canonical baseline remains authoritative; the 52 typing-position ceiling remains.
-Closed attribute scopes for `CallOwnerRule` and `CallBinding` remain strict;
-required positions need positive proof, with no additional UNKNOWN allowance.
-The [shared amendment](compact-target-amendment.json) binds this target together with
-the three explicit version-API exports. This does not prove EE checker equivalence.
+Combined native verification lowers unresolved calls from 837 to 832; typing stays 52.
+The canonical baseline remains authoritative. Closed attribute scopes for
+`CallOwnerRule` and `CallBinding` require positive proof without extra UNKNOWN
+allowances. The [shared amendment](compact-target-amendment.json) binds this Target
+and the three explicit version-API exports; EE checker equivalence remains unproved.

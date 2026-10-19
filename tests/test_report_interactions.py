@@ -24,6 +24,7 @@ from archkeel.cli.observe import observe
 from archkeel.ir.architecture_graph import Relationship
 from archkeel.ir.codec import canonical_report_bytes, decode_canonical_model, parse_observation
 from archkeel.ir.model import stable_id
+from archkeel.ir.report_graph import architecture_report
 from archkeel.render.html import (
     _atlas_document,
     render_architecture_details,
@@ -221,6 +222,7 @@ def test_atlas_structure_measurements_keep_unavailable_edges_and_route_state(tmp
     unavailable = _atlas_document(
         _atlas_result(unavailable_model),
         unavailable_model,
+        architecture_report(unavailable_model),
         repository="One target",
         architecture_href="architecture.json",
     ).decode()
