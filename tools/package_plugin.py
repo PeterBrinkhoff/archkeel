@@ -13,7 +13,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def _plugin_files(expected_version: str | None) -> dict[str, bytes]:
+def _plugin_files(
+    expected_version: str | None, release_version: str | None = None
+) -> dict[str, bytes]:
     metadata = json.loads((ROOT / "plugin.json").read_text(encoding="utf-8"))
     claude = json.loads((ROOT / ".claude-plugin/plugin.json").read_text(encoding="utf-8"))
     version = metadata["version"]
@@ -23,9 +25,13 @@ def _plugin_files(expected_version: str | None) -> dict[str, bytes]:
         or not isinstance(version, str)
         or not version
         or claude["version"] != version
-        or expected_version is not None
-        and version != expected_version
     ):
+        raise ValueError("Plugin manifests must share the expected ArchKeel release version")
+    if release_version is not None:
+        if not release_version:
+            raise ValueError("Plugin release version must not be empty")
+        metadata["version"] = claude["version"] = release_version
+    if expected_version is not None and metadata["version"] != expected_version:
         raise ValueError("Plugin manifests must share the expected ArchKeel release version")
     interface = metadata["extensions"]["com.openai"]["interface"]
     readme = (
@@ -33,8 +39,16 @@ def _plugin_files(expected_version: str | None) -> dict[str, bytes]:
         f"{interface['longDescription']}\n"
     ).encode()
     return {
-        "plugin.json": (ROOT / "plugin.json").read_bytes(),
-        ".claude-plugin/plugin.json": (ROOT / ".claude-plugin/plugin.json").read_bytes(),
+        "plugin.json": (
+            (json.dumps(metadata, indent=2, ensure_ascii=False) + "\n").encode()
+            if release_version is not None
+            else (ROOT / "plugin.json").read_bytes()
+        ),
+        ".claude-plugin/plugin.json": (
+            (json.dumps(claude, indent=2, ensure_ascii=False) + "\n").encode()
+            if release_version is not None
+            else (ROOT / ".claude-plugin/plugin.json").read_bytes()
+        ),
         "skills/archkeel/SKILL.md": (ROOT / "skills/archkeel/SKILL.md").read_bytes(),
         "LICENSE": (ROOT / "LICENSE").read_bytes(),
         "README.md": readme,
@@ -87,10 +101,13 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("output", type=Path, help="New plugin directory, or ZIP with --check.")
     parser.add_argument("--expected-version", help="Required version in both plugin manifests.")
+    parser.add_argument(
+        "--release-version", help="Stamp both exported manifests; keep source unchanged."
+    )
     parser.add_argument("--check", action="store_true", help="Verify an existing ZIP and checksum.")
     args = parser.parse_args()
     target = args.output.resolve()
-    files = _plugin_files(args.expected_version)
+    files = _plugin_files(args.expected_version, args.release_version)
     if args.check:
         _check_bundle(target, files)
         print(target)

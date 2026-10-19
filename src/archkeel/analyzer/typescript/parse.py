@@ -160,6 +160,7 @@ class _NodeKind(Enum):
     METHOD_DEFINITION = "method_definition"
     METHOD_SIGNATURE = "method_signature"
     NAMED_IMPORTS = "named_imports"
+    NAMESPACE_EXPORT = "namespace_export"
     NAMESPACE_IMPORT = "namespace_import"
     NEW_EXPRESSION = "new_expression"
     NON_NULL_EXPRESSION = "non_null_expression"
@@ -1590,7 +1591,8 @@ def _global_publication_target(node: _RawNode) -> bool:
 def _declaration_name(node: _RawNode) -> bool:
     parent = node.parent
     return parent is not None and (
-        any(parent.child_by_field_name(field) == node for field in ("name", "pattern"))
+        any(parent.child_by_field_name(field) == node for field in ("name", "pattern", "alias"))
+        or _node_kind(parent) is _NodeKind.NAMESPACE_EXPORT
         or _node_kind(parent) is _NodeKind.PAIR_PATTERN
         and parent.child_by_field_name("key") == node
     )
@@ -1762,6 +1764,8 @@ def _script_free(
     bindings: dict[_RawNode, dict[str, int]],
     ambiguous_bindings: set[_RawNode],
 ) -> bool:
+    if _in_type(node):
+        return False
     path = _static_path(target)
     parent = target.parent
     if (

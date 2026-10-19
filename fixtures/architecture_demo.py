@@ -160,8 +160,8 @@ PROJECT_REPORT_GROUPS = (
         ),
         "target_depth": "Five responsibility areas with closed principal class and method scopes.",
         "evidence_limits": (
-            "All files have AST coverage; 34 class inventories and 13 inheritance "
-            "relationships remain UNKNOWN."
+            "All files have AST coverage; 33 closed declaration inventories pass; the "
+            "AppEnvTypes enum inventory and 13 inheritance relationships remain UNKNOWN."
         ),
         "baseline": "uml-python-realworld-project",
         "variants": (

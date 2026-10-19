@@ -408,19 +408,11 @@ class _Collection:
         )
 
     def _script_dependencies(self) -> None:
-        """Reuse the dependency fact port without disguising global reads as ES imports."""
         self._script_vendor_publications()
-        publications = {
-            name: [
-                (rel, item)
-                for rel, syntax in self.syntax.items()
-                for item in syntax.script_globals
-                if item.name == name
-            ]
-            for name in {
-                item.name for syntax in self.syntax.values() for item in syntax.script_globals
-            }
-        }
+        publications: dict[str, list[tuple[str, ScriptGlobal]]] = {}
+        for rel, syntax in self.syntax.items():
+            for publication in syntax.script_globals:
+                publications.setdefault(publication.name, []).append((rel, publication))
         writes = self._script_global_writes(publications)
         source_writes = {
             (rel, name, span)

@@ -112,9 +112,10 @@ Run `make plugin-directory` to refresh the committed compact plugin; do not edit
 
 ## Release assets
 
-Keep both source plugin manifests at the release version and refresh the compact
-copy. `make plugin-release VERSION=5.0.0` builds and verifies the ZIP and checksum
-under `build/plugin-release/`, separately from Python distributions in `dist/`.
+The tag workflow automatically builds the plugin alongside the Python package.
+`make plugin-release VERSION=5.0.0` sets both exported manifest versions from the tag
+and verifies the ZIP and checksum under `build/plugin-release/`. Source manifests
+stay unchanged; no manual version bump or later asset upload is needed.
 The tag workflow owns one draft GitHub release: it verifies uploaded downloads
 before PyPI publication, then publishes that same draft. Do not create a competing
 release manually. Pages keeps its Main-only deployment policy: after publication,

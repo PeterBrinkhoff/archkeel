@@ -195,7 +195,7 @@ collector-safety:
 typescript-compiler-check:
 	npx --yes --package typescript@5.9.3 tsc --noEmit --project fixtures/H-uml-typescript/tsconfig.json
 
-typescript-native:
+typescript-native: browser-runtime-install
 	$(UV) run --locked python -m pytest -q tests/test_typescript_parse.py \
 		tests/test_typescript_inner.py tests/test_typescript_uml_acceptance.py \
 		tests/test_typescript_namespace_identities.py \
@@ -331,8 +331,8 @@ plugin:
 
 plugin-release:
 	@test -n "$(VERSION)" || { echo "VERSION is required"; exit 2; }
-	$(UV) run --locked python -m tools.package_plugin --expected-version "$(VERSION)" "build/plugin-release/archkeel-plugin-$(VERSION)"
-	$(UV) run --locked python -m tools.package_plugin --check --expected-version "$(VERSION)" "build/plugin-release/archkeel-plugin-$(VERSION).zip"
+	$(UV) run --locked python -m tools.package_plugin --release-version "$(VERSION)" --expected-version "$(VERSION)" "build/plugin-release/archkeel-plugin-$(VERSION)"
+	$(UV) run --locked python -m tools.package_plugin --check --release-version "$(VERSION)" --expected-version "$(VERSION)" "build/plugin-release/archkeel-plugin-$(VERSION).zip"
 
 plugin-directory:
 	@mkdir -p build plugins/archkeel

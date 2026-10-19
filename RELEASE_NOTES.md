@@ -42,8 +42,9 @@ native source evidence and conservative UNKNOWNs.
   existing Python entry points retain their behavior. Browser assets are republished
   as a checked first-party bundle after the canonical vendor.
 - **Complete release assets.** Releases require a version-matched plugin ZIP and
-  checksum, verified against the canonical skill and both manifests. GitHub assets
-  are downloaded and checked before publishing the Python package.
+  checksum. The release tag sets both exported manifest versions automatically;
+  canonical skill content and the finished ZIP are checked independently. GitHub
+  assets are downloaded and checked before publishing the Python package.
 - **Bounded Actions inventory.** Five reviewed workflow files cover CI, full
   verification, release and initial-PR receipts. Main maintenance disables obsolete
   file-backed registrations while preserving history; temporary workflows fail

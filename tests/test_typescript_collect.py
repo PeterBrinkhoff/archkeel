@@ -1055,6 +1055,53 @@ def test_named_esm_imports_keep_every_member_and_type_namespace_separate(tmp_pat
 
 
 @pytest.mark.parametrize(
+    "source",
+    [
+        "export {port as alias} from './ports.js';",
+        "export * as namespace from './ports.js';",
+        "import {port} from './ports.js'; export {port as alias};",
+        "import type {Shape} from './ports.js'; export type {Shape as Alias};",
+        "export {}; type Shape = typeof missing;",
+        "export {}; type Shape = typeof missing.member;",
+    ],
+)
+def test_export_names_and_type_queries_are_not_runtime_global_reads(tmp_path, source):
+    facts = _facts(
+        tmp_path,
+        {"src/main.ts": source, "src/ports.js": "export function port() {} export class Shape {}"},
+        options={"allowJs": True, "module": "esnext", "moduleResolution": "node"},
+    )
+    assert not [
+        record
+        for section in facts.sections
+        for record in section.records
+        if record.kind == "script_global"
+    ]
+    assert facts.coverage.full_scope
+
+
+def test_runtime_global_read_remains_unknown_beside_export_alias_and_type_query(tmp_path):
+    facts = _facts(
+        tmp_path,
+        {
+            "src/main.ts": (
+                "const local = 1; export {local as alias}; "
+                "type Shape = typeof missing; missing.member();"
+            ),
+        },
+        options={"module": "esnext", "moduleResolution": "node"},
+    )
+    globals = [
+        record
+        for section in facts.sections
+        for record in section.records
+        if record.kind == "script_global"
+    ]
+    assert [record.data.get("script_global") for record in globals] == ["missing"]
+    assert not facts.coverage.full_scope
+
+
+@pytest.mark.parametrize(
     "expression",
     [
         "Scene.search();",

@@ -282,7 +282,10 @@ def test_plugin_release_rejects_malformed_zip_even_with_matching_checksum(
     assert checked.returncode != 0
 
 
-def test_plugin_release_rejects_disagreeing_manifest_versions(tmp_path: Path, monkeypatch) -> None:
+@pytest.mark.parametrize("release_version", [None, "5.0.1"])
+def test_plugin_release_rejects_disagreeing_manifest_versions(
+    tmp_path: Path, monkeypatch, release_version: str | None
+) -> None:
     from tools import package_plugin
 
     (tmp_path / ".claude-plugin").mkdir()
@@ -292,7 +295,90 @@ def test_plugin_release_rejects_disagreeing_manifest_versions(tmp_path: Path, mo
     (tmp_path / ".claude-plugin/plugin.json").write_text(json.dumps(claude))
     monkeypatch.setattr(package_plugin, "ROOT", tmp_path)
     with pytest.raises(ValueError, match="release version"):
-        package_plugin._plugin_files(None)
+        package_plugin._plugin_files(None, release_version)
+
+
+@pytest.mark.parametrize(
+    ("source_version", "release_version"), [("3.0.1", "4.0.1"), ("5.0.0", "5.0.1")]
+)
+def test_plugin_release_stamps_only_exported_manifests(
+    tmp_path: Path, monkeypatch, source_version: str, release_version: str
+) -> None:
+    from tools import package_plugin
+
+    source = tmp_path / "source"
+    names = (
+        "plugin.json",
+        ".claude-plugin/plugin.json",
+        "skills/archkeel/SKILL.md",
+        "LICENSE",
+        "src/archkeel/render/assets/archkeel-mark.svg",
+    )
+    for name in names:
+        path = source / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        content = (ROOT / name).read_bytes()
+        if name.endswith("plugin.json"):
+            metadata = json.loads(content)
+            metadata["version"] = source_version
+            content = (json.dumps(metadata, indent=2) + "\n").encode()
+        path.write_bytes(content)
+    before = {name: (source / name).read_bytes() for name in names}
+    monkeypatch.setattr(package_plugin, "ROOT", source)
+    canonical = package_plugin._plugin_files(source_version)
+    target = tmp_path / "export"
+    arguments = ["package_plugin", str(target), "--release-version", release_version]
+    monkeypatch.setattr(sys, "argv", arguments + ["--expected-version", source_version])
+    with pytest.raises(ValueError, match="release version"):
+        package_plugin.main()
+    assert not target.exists() and not Path(str(target) + ".zip").exists()
+    monkeypatch.setattr(sys, "argv", arguments + ["--expected-version", release_version])
+    package_plugin.main()
+    archive = Path(str(target) + ".zip")
+    expected = package_plugin._plugin_files(release_version, release_version)
+    package_plugin._check_bundle(archive, expected)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "package_plugin",
+            str(archive),
+            "--check",
+            "--release-version",
+            release_version,
+            "--expected-version",
+            release_version,
+        ],
+    )
+    package_plugin.main()
+    repeated = tmp_path / "repeated"
+    monkeypatch.setattr(
+        sys, "argv", ["package_plugin", str(repeated), "--release-version", release_version]
+    )
+    package_plugin.main()
+    assert Path(str(repeated) + ".zip").read_bytes() == archive.read_bytes()
+    assert {name: (source / name).read_bytes() for name in names} == before
+    with zipfile.ZipFile(archive) as bundle:
+        assert set(bundle.namelist()) == set(canonical)
+        for name, original in canonical.items():
+            actual = bundle.read(name)
+            if name.endswith("plugin.json"):
+                metadata = json.loads(actual)
+                assert metadata.pop("version") == release_version
+                original_metadata = json.loads(original)
+                original_metadata.pop("version")
+                assert metadata == original_metadata
+            else:
+                assert actual == original
+    for manifest in ("plugin.json", ".claude-plugin/plugin.json"):
+        damaged = dict(expected)
+        damaged[manifest] = canonical[manifest]
+        with zipfile.ZipFile(archive, "w") as bundle:
+            for name, content in damaged.items():
+                bundle.writestr(name, content)
+        Path(str(archive) + ".sha256").write_text(package_plugin._checksum(archive))
+        with pytest.raises(ValueError, match="differs from canonical source"):
+            package_plugin._check_bundle(archive, expected)
 
 
 @pytest.mark.parametrize(
