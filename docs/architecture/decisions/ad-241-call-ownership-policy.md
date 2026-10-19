@@ -43,8 +43,8 @@ not import one another. Source facts contain identity/evidence, never allowed
 callers or policy verdicts. Policy and receipts belong to Core evaluation.
 
 New observations use wire schema 2.1 and observer 0.75. New decoded profiles and
-command-result9 reuse historical constraints; published6/7/8 and2.0 profiles
-remain unchanged. Current readers strictly admit known binding origins and shapes.
+command-result9 add call-binding evidence; command schemas6/7/8 retain their version
+boundaries. Current readers strictly admit known binding origins and shapes.
 Older readers must reject them: 4.0.1 otherwise silently omitted call-owner assessments, including known
 violations. Historical 1.2/1.3/2.0 report bytes remain readable by the new reader;
 Delta comparison still requires the same schema, analyzer and contract.
