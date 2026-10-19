@@ -377,9 +377,10 @@ Accept only a frozen candidate with complete scope, zero required UNKNOWNs,
 no diagnostics or violations, and passing relevant Core/report/browser,
 packaging and final-head CI checks. Earlier receipts do not validate later code.
 The 120-second report ceiling and 52 typing-position ceiling remain unchanged.
-The native writer tightened unresolved calls from 837 to 835. Integration retains
-both branches' downward ratchets: paired rendering reaches 834, and the namespace
-scan branch reaches 833. The native combined measurement tightens it to 832.
+Earlier native integrations tightened unresolved calls from 837 to 832. The explicit
+browser module implementation adds eight unproved calls. Alex expressly accepts
+840 as the new ceiling, bound by the canonical baseline amendment. All other
+debt budgets and rules remain unchanged.
 Microbenchmarks do not establish whole-report acceptance.
 
 Preserve every original field of 921 UML entities, exclusions and 121 original

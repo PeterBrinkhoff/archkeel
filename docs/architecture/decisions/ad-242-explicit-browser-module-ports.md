@@ -17,7 +17,11 @@ Native named-import evidence requires an actual source binding. Missing, competi
 or unsupported bindings remain UNKNOWN; spelling alone cannot certify a port.
 A handwritten module rewriter or an ELK purity whitelist would add weaker machinery.
 
+Alex expressly accepts an unresolved-call ceiling of 840, replacing 832 after the
+eight additional Source/browser calls. The canonical baseline amendment binds this
+specific change. No other rule, debt budget or performance gate changes.
+
 Required checks: actual-source PASS, forbidden-port FAIL, missing-publication
 UNKNOWN or build failure, stale-output rejection, offline browser navigation,
 layout/export behavior and wheel/sdist source parity. All existing quality gates
-and budgets remain unchanged.
+and other budgets remain unchanged.
