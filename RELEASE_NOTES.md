@@ -20,8 +20,9 @@ native source evidence and conservative UNKNOWNs.
   clipped source domain; module-cycle uncertainty follows the full scanned graph.
 - **JavaScript script-global dependencies.** The TypeScript adapter records supported
   script-global crossings for existing dependency rules, including bounded alias,
-  factory-member and destructuring forms. Standard globals and UMD publications
-  require matching host and provider evidence. Ambiguous bindings and unsupported
+  factory-member and destructuring forms. Standard globals follow supported
+  compiler target/lib settings; UMD publications require an explicit classic-browser
+  host and authenticated provider evidence. Ambiguous bindings and unsupported
   effects remain UNKNOWN; source identity does not prove runtime availability.
 - **Call ownership.** Opt-in contract **3.7.0** adds `call_owner` for exact targets
   and allowed caller scopes. Bound calls can fail; unrelated same-named methods
