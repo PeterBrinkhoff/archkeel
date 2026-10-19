@@ -51,7 +51,9 @@ def _repository(tmp_path, *, source=UMD, host="classic-browser", metadata=None):
 
 def test_actual_vendor_binds_its_existing_package_provenance_and_native_publication():
     source = (ROOT / BUNDLE).read_bytes()
-    assert umd_publication(BUNDLE, source)[0] == "ELK"
+    publication = umd_publication(BUNDLE, source)
+    assert publication is not None and publication[0] == "ELK"
+    assert publication[2] is None
     snapshot = Snapshot(str(ROOT))
     from archkeel.analyzer.typescript.config import Config, Options
 
@@ -211,7 +213,7 @@ def _native(tmp_path, *, v4=False):
 
 
 def test_actual_vendor_collects_through_v4_without_selecting_or_executing_it(tmp_path):
-    from archkeel.ir.facts import ExternalPackageTarget
+    from archkeel.ir.facts import UnresolvedTarget
 
     _repository(tmp_path)
     (tmp_path / "vendor.js").write_bytes((ROOT / BUNDLE).read_bytes())
@@ -219,8 +221,9 @@ def test_actual_vendor_collects_through_v4_without_selecting_or_executing_it(tmp
     (tmp_path / "main.js").write_text("new ELK();")
     facts = _native(tmp_path, v4=True)
     assert facts.coverage.selected_files == ("main.js",) and len(facts.files) == 1
-    assert len(facts.imports) == 1 and isinstance(facts.imports[0], ExternalPackageTarget)
-    assert facts.imports[0].package == "elkjs"
+    assert len(facts.imports) == 1 and isinstance(facts.imports[0], UnresolvedTarget)
+    assert facts.imports[0].specifier == "ELK"
+    assert any(gap.data.get("resolution_dimension") == "imports" for gap in facts.coverage.gaps)
     assert (
         next(item.digest for item in facts.inputs if item.path == "vendor.js")
         == hashlib.sha256((ROOT / BUNDLE).read_bytes()).hexdigest()
@@ -522,26 +525,84 @@ def test_umd_factory_explicit_global_rebindings_are_recorded(body):
 @pytest.mark.parametrize(
     "body",
     [
-        "touch();",
         "let Math; Math = replacement;",
         "const window = {}; window.Math = replacement;",
         "const local = {}; local.Math = replacement;",
         "const local = ({}); (local).Math = replacement;",
         "const window = {}; (window).Math = replacement;",
-        'Reflect["set"]({}, "Math", replacement);',
-        '(Object["defineProperty"])({}, "Math", {value: replacement});',
         "const local = {}; local[key] = replacement;",
         "let root = window; root = {};",
         "window['namespace'][key] = replacement;",
-        "Object.assign({}, {Math: replacement});",
-        "Object.defineProperty({}, 'Math', {value: replacement});",
     ],
 )
-def test_umd_factory_local_writes_and_opaque_effects_keep_source_identity(body):
+def test_umd_factory_local_assignments_keep_bounded_writes(body):
     source = UMD.replace("return function Widget(){};", body + "return function Widget(){};")
     publication = umd_publication("vendor.js", source.encode())
     assert publication is not None and publication[0] == "Widget"
     assert publication[2] == frozenset()
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "touch();",
+        "window.eval('Math = replacement');",
+        "eval('Math = replacement');",
+        "window['eval']('Math = replacement');",
+        "window?.eval?.('Math = replacement');",
+        "(window.eval)('Math = replacement');",
+        "const run = window.eval; run('Math = replacement');",
+        "const run = touch; (run)?.();",
+        "new Function('Math = replacement');",
+        "const Build = Function; new Build('Math = replacement');",
+        "new window.Constructor();",
+        "new (window.Constructor)();",
+        "touch`Math = replacement`;",
+        "function later(){ touch(); }",
+        "const later = () => touch();",
+        "(function(){ window.Math = replacement; })();",
+        "Object.assign(window, {Other: replacement});",
+        "Reflect['set']({}, 'Math', replacement);",
+        "(Object['defineProperty'])({}, 'Math', {value: replacement});",
+        "Object.assign({}, {Math: replacement});",
+        "const Object = {assign: touch}; Object.assign(window, {Other: 1});",
+        "Object.assign = touch; Object.assign(window, {Other: 1});",
+        "const Reflect = {set: touch}; Reflect.set(window, 'Other', 1);",
+        "Object.defineProperty({}, 'Other', descriptor);",
+    ],
+)
+def test_umd_factory_unproved_calls_preserve_publication_but_not_namespace_proof(tmp_path, body):
+    from archkeel.ir.facts import BuiltinTarget, ExternalPackageTarget, UnresolvedTarget
+
+    source = UMD.replace("return function Widget(){};", body + "return function Widget(){};")
+    publication = umd_publication("vendor.js", source.encode())
+    assert publication is not None and publication[0] == "Widget"
+    assert publication[2] is None
+    _repository(tmp_path, source=source)
+    (tmp_path / "main.js").write_text("Math.abs(-1); new Widget();")
+    facts = _native(tmp_path, v4=True)
+    assert facts.imports and all(isinstance(target, UnresolvedTarget) for target in facts.imports)
+    assert not any(
+        isinstance(target, BuiltinTarget | ExternalPackageTarget) for target in facts.imports
+    )
+    assert any(gap.data.get("resolution_dimension") == "imports" for gap in facts.coverage.gaps)
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "window.Math = replacement;",
+        "const root = window; root.Math = replacement;",
+        "Math = replacement;",
+        "delete window.Math;",
+        "window.Math++;",
+    ],
+)
+def test_umd_factory_direct_global_writes_keep_exact_names(body):
+    source = UMD.replace("return function Widget(){};", body + "return function Widget(){};")
+    publication = umd_publication("vendor.js", source.encode())
+    assert publication is not None and publication[0] == "Widget"
+    assert publication[2] == frozenset({"Math"})
 
 
 def test_vendor_checkout_preserves_authenticated_bytes_with_autocrlf(tmp_path):

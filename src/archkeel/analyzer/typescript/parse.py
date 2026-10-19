@@ -238,11 +238,6 @@ class _SpecialName(Enum):
     EVAL = "eval"
     FUNCTION = "Function"
     REFLECT = "Reflect"
-    OBJECT = "Object"
-    ASSIGN = "assign"
-    SET = "set"
-    DELETE_PROPERTY = "deleteProperty"
-    UNKNOWN_MEMBER = "*"
     GET_PROTOTYPE_OF = "getPrototypeOf"
     GET_OWN_PROPERTY_DESCRIPTOR = "getOwnPropertyDescriptor"
     GET_OWN_PROPERTY_DESCRIPTORS = "getOwnPropertyDescriptors"
@@ -355,8 +350,7 @@ _QUERIES: Final = {
          (class) (class_declaration) (variable_declarator)] @binding
         [(assignment_expression) (augmented_assignment_expression)
          (for_in_statement) (update_expression) (unary_expression)] @write
-        (call_expression function: [(member_expression) (subscript_expression)
-         (parenthesized_expression)]) @call
+        [(call_expression) (new_expression)] @call
         """,
     "errors": "[(ERROR) (MISSING)] @error",
     "require_names": """
@@ -3551,6 +3545,9 @@ def umd_publication(rel: str, content: bytes) -> tuple[str, Span, frozenset[str]
 
 def _umd_factory_global_writes(factory: _RawNode, source: _Source) -> frozenset[str] | None:
     captures = source.captures("umd_writes", factory)
+    if captures.get("call"):
+        # Publication syntax does not prove callees or argument effects.
+        return None
     nodes = captures.get("binding", [])
     bindings, _ = _script_bindings(source, nodes)
     declarations: dict[tuple[_RawNode, str], list[_RawNode]] = {}
@@ -3580,40 +3577,6 @@ def _umd_factory_global_writes(factory: _RawNode, source: _Source) -> frozenset[
                 if not path or path[0] is None:
                     return None
                 written.add(path[0])
-    for node in captures.get("call", []):
-        function = node.child_by_field_name("function")
-        arguments = node.child_by_field_name("arguments")
-        intrinsic_path = _umd_intrinsic_path(function) if function is not None else ()
-        if (
-            len(intrinsic_path) == 2
-            and intrinsic_path[0]
-            in {_SpecialName.OBJECT, _SpecialName.REFLECT, _SpecialName.UNKNOWN_MEMBER}
-            and (
-                intrinsic_path[1] is _SpecialName.UNKNOWN_MEMBER
-                or intrinsic_path[1]
-                in {
-                    _SpecialName.DEFINE_PROPERTY,
-                    _SpecialName.DEFINE_PROPERTIES,
-                    _SpecialName.SET_PROTOTYPE_OF,
-                }
-                or intrinsic_path
-                in {
-                    (_SpecialName.OBJECT, _SpecialName.ASSIGN),
-                    (_SpecialName.REFLECT, _SpecialName.SET),
-                    (_SpecialName.REFLECT, _SpecialName.DELETE_PROPERTY),
-                }
-            )
-            and arguments is not None
-            and arguments.named_children
-            and _umd_global_path(
-                arguments.named_children[0], factory, source, bindings, declarations
-            )
-            == ()
-        ):
-            names = _umd_intrinsic_write_names(intrinsic_path, arguments)
-            if names is None:
-                return None
-            written.update(names)
     return frozenset(written)
 
 
@@ -3643,37 +3606,6 @@ def _umd_global_path(
     return (*path, *reversed(suffix)) if path is not None else None
 
 
-def _umd_intrinsic_write_names(
-    path: tuple[_SpecialName | None, ...], arguments: _RawNode
-) -> frozenset[str] | None:
-    values = arguments.named_children[1:]
-    if path in {
-        (_SpecialName.OBJECT, _SpecialName.ASSIGN),
-        (_SpecialName.OBJECT, _SpecialName.DEFINE_PROPERTIES),
-    }:
-        names: set[str] = set()
-        for value in values:
-            if _node_kind(value) is not _NodeKind.OBJECT:
-                return None
-            if any(
-                not _valid_unicode_member_name(member.child_by_field_name("key") or member)
-                for member in value.named_children
-            ):
-                return None
-            members = _script_object_values(value)
-            if not members and value.named_children:
-                return None
-            names.update(name for name, _ in members)
-        return frozenset(names)
-    if (
-        path[-1] in {_SpecialName.DEFINE_PROPERTY, _SpecialName.SET, _SpecialName.DELETE_PROPERTY}
-        and values
-    ):
-        name = _literal(values[0])
-        return frozenset({name}) if name is not None else None
-    return None
-
-
 def _unparenthesized(node: _RawNode) -> _RawNode:
     while _node_kind(node) is _NodeKind.PARENTHESIZED_EXPRESSION:
         child = next(iter(node.named_children), None)
@@ -3681,21 +3613,3 @@ def _unparenthesized(node: _RawNode) -> _RawNode:
             break
         node = child
     return node
-
-
-def _umd_intrinsic_path(node: _RawNode) -> tuple[_SpecialName | None, ...]:
-    node = _unparenthesized(node)
-    receiver = node.child_by_field_name("object")
-    if receiver is None:
-        return ()
-    receiver = _unparenthesized(receiver)
-    key = node.child_by_field_name("property")
-    name = _text(key) if key is not None else _literal(node.child_by_field_name("index"))
-    if not _valid_unicode_member_name(receiver):
-        return (_SpecialName.UNKNOWN_MEMBER, _SpecialName.UNKNOWN_MEMBER)
-    if name is None or (key is not None and not _valid_unicode_member_name(key)):
-        return (
-            *(_special_name(part) for part in _static_path(receiver)),
-            _SpecialName.UNKNOWN_MEMBER,
-        )
-    return (*(_special_name(part) for part in _static_path(receiver)), _special_name(name))

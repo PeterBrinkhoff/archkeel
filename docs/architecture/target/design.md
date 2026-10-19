@@ -293,7 +293,9 @@ the actual UMD envelope and existing package/hash provenance. Host contradiction
 that proof. Real opaque effects remain bound runtime-effect gaps; Core authenticates
 their own source facts, evidence, profile and replay digest. Runtime calls stay conservative.
 Captured UMD factory writes exclude competing standard globals or vendor publications.
-An unbounded global write target cannot certify that namespace.
+An unbounded global write target or unproved factory call cannot certify that namespace.
+Factory calls and constructors retain the authenticated publication declaration, but no
+callee or argument effect proof is inferred from an Object/Reflect spelling.
 
 The user approved exactly one additional CLI-to-Analyzer coupling name:
 `archkeel.analyzer.python.collect:PythonProviderCollector`. It keeps Python-specific

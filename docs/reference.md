@@ -62,7 +62,9 @@ For supported UMD vendors, the `tsconfig` extension `archkeel` declares
 [browser configuration](architecture/browser.tsconfig.json) and
 [provenance example](../src/archkeel/render/assets/ELKJS-LICENSE.md).
 Provenance records the package, version, bundle SHA-256 and license; the hash binds
-the exact bundle bytes. Missing, invalid or competing evidence stays UNKNOWN.
+the exact bundle bytes. Publication identity does not bound factory effects: unproved
+calls or constructors leave standard-global and vendor dependencies UNKNOWN.
+Missing, invalid or competing evidence stays UNKNOWN.
 
 `report` and `validate --config PATH` select a root-relative file. `check` uses
 only `archkeel.toml`, bound by its accepted lock. Give separate scopes separate
