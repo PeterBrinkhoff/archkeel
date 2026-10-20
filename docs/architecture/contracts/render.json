@@ -467,7 +467,8 @@
             "basis": "declared"
           },
           "responsibilities": [
-            "Project authenticated Core values into the compact browser payload."
+            "Project authenticated Core values into the compact browser payload.",
+            "Reuse invocation-local immutable module exploration when composing both report pages."
           ],
           "provenance": [
             "docs/architecture/render-target.md"
@@ -514,6 +515,13 @@
                 "annotation": "str",
                 "kind": "keyword_only",
                 "default": null,
+                "default_known": true
+              },
+              {
+                "name": "exploration_levels",
+                "annotation": "tuple[ModuleExploreLevel, ...] | None",
+                "kind": "keyword_only",
+                "default": "None",
                 "default_known": true
               }
             ],

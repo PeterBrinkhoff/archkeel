@@ -172,7 +172,8 @@
         "archkeel.ir.architecture_projection:PermissionStatus",
         "archkeel.ir.contract_version:ContractFeature",
         "archkeel.ir.contract_version:ContractVersion",
-        "archkeel.ir.contract_version:supports_feature"
+        "archkeel.ir.contract_version:supports_feature",
+        "archkeel.ir.source_records:source_name_visibility"
       ],
       "responsibilities": [
         "Own typed values, strict codecs and pure evidence derivations."
@@ -439,6 +440,24 @@
         "responsibility": "Rule kinds, record shapes and scope matching stay the single source of truth every component reads.",
         "provenance": [
           "docs/architecture/archkeel.md"
+        ]
+      },
+      {
+        "id": "OWNER-STABLE-IDENTITY",
+        "label": "Deterministic record identity",
+        "owner": "archkeel.ir.facts.stable_id",
+        "responsibility": "Derive deterministic record and evidence identities from their supplied content.",
+        "provenance": [
+          "docs/architecture/archkeel.md"
+        ]
+      },
+      {
+        "id": "OWNER-SOURCE-NAME-VISIBILITY",
+        "label": "Source spelling privacy",
+        "owner": "archkeel.ir.source_records.source_name_visibility",
+        "responsibility": "Classify leading-underscore source names independently of language API visibility and explicit exports.",
+        "provenance": [
+          "docs/architecture/decisions/ad-243-contract-owned-source-maintenance.md"
         ]
       }
     ],

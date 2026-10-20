@@ -536,8 +536,14 @@ def atlas_payload(
     *,
     repository: str,
     architecture_href: str,
+    exploration_levels: tuple[ModuleExploreLevel, ...] | None = None,
 ) -> dict[str, object]:
-    exploration = _leaf_levels(report, module_exploration(model, report=report))
+    exploration = _leaf_levels(
+        report,
+        module_exploration(model, report=report)
+        if exploration_levels is None
+        else exploration_levels,
+    )
     root = exploration[0]
     references: dict[str, int] = {}
     cells, indices, module_indices = _cell_payload(root, references)

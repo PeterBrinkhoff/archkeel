@@ -26,6 +26,7 @@ from .model import (
     RecordData,
     module_in_ownership,
 )
+from .source_records import source_name_visibility as _source_name_visibility
 
 _CLASS_KINDS = frozenset(
     {SymbolClassKind.DATACLASS, SymbolClassKind.PROTOCOL, SymbolClassKind.ENUM}
@@ -299,7 +300,10 @@ def _reexports(observation: Observation) -> dict[str, frozenset[str]]:
             and isinstance(module, str)
             and isinstance(binding, str)
         ):
-            if not binding.startswith("_") and binding != "*":
+            if (
+                _source_name_visibility(binding) is SourceNameVisibility.PUBLIC_NAME
+                and binding != "*"
+            ):
                 names[module].add(binding)
     return {module: frozenset(values) for module, values in names.items()}
 
@@ -321,7 +325,11 @@ def _declared_facades(
             names = all_exports.get(module, frozenset())
         else:
             names = symbols.get(module, frozenset()) | reexports.get(module, frozenset())
-        names = frozenset(name for name in names if name and not name.startswith("_"))
+        names = frozenset(
+            name
+            for name in names
+            if name and _source_name_visibility(name) is SourceNameVisibility.PUBLIC_NAME
+        )
         local = frozenset(name for name in symbols.get(module, frozenset()) if name in names)
         facade_reexports = frozenset(
             name for name in reexports.get(module, frozenset()) if name in names
@@ -376,7 +384,10 @@ def _facade_use(
             continue
         if name in names:
             return ((owner, name),), None
-        if not name.startswith("_") and (target, owner) in open_facades:
+        if (
+            _source_name_visibility(name) is SourceNameVisibility.PUBLIC_NAME
+            and (target, owner) in open_facades
+        ):
             return (), f"{owner}:{name}"
     return (), None
 
