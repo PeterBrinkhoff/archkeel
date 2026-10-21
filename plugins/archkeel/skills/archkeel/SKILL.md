@@ -282,23 +282,68 @@ inputs against the installed release, including aliases and dynamic forms. A sou
 checkout or Draft PR is not proof that the installed release supports them.
 
 Use `call_owner` only where its installed observer proves the complete selected
-call scope. Its initial plain-function/annotated-parameter support does not prove
-external, constructed or stored receivers, arguments or guards. Check the rule
-receipt and supported forms before retiring any method-name scanner. New observations
-use wire 2.2; older readers must reject them rather than omit the new rule.
-The new reader continues to accept historical1.2/1.3/2.0 observations.
+call scope. Observation 2.4 adds bounded proofs for stored typed receivers,
+stable default constructions, and selected native targets (`random`,
+`secrets.token_hex`, and CPython `datetime.datetime.now`). Inheritance is followed
+only through a unique recorded base path. Dynamic dispatch, custom allocation,
+unsupported mutation, and native APIs without an admitted provider witness remain
+UNKNOWN. The datetime witness inspects the isolated collector runtime’s stdlib
+descriptor and source digest; it does not import project modules. Arguments and
+guards are not proved by this change. Check the rule receipt and supported forms
+before retiring any method-name scanner. Older readers must reject observation
+2.4 rather than omit the added proof vocabulary; current readers continue to
+accept historical observations.
 
 Contract 3.8 `bounded_numeric_operand` checks selected Python `%` and `%=` sites
 by written terminal identifier suffix. Only bounded integer/Boolean literals,
 unary signs, powers and unique preceding aliases prove values. Review its source
 evidence: each operation and alias must fit a replayable single-line excerpt
 of at most 16,384 characters; single-line `if`, `elif`, `while`, `for`, `with`,
-function and class headers and inline suites are supported with Python indentation. Multiline
+function and class headers and inline suites are supported with Python indentation;
+`if`/`while` conditions are supported. Multiline
 or otherwise incomplete evidence remains UNKNOWN. Review the source
 receipt and UNKNOWNs; it does not establish runtime types, reachability, entropy
 or collision freedom. Empty/missing selected scope is UNKNOWN. See
 [AD-246](../../docs/architecture/decisions/ad-246-bounded-numeric-operand.md)
 and [rule limits](../../docs/known-limits.md).
+
+call scope. Use `forbidden_call_argument` to select one written-literal policy
+for a canonical target's formal parameter. It binds explicit source actuals to
+the observed signature; spreads, invalid bindings, missing signatures and
+unproven targets leave UNKNOWN. Calls without canonical binding carry null
+argument facts; a proven call with no actuals carries an empty list. It does not check runtime type compatibility
+or apply omitted defaults. Check the rule receipt and supported forms before
+retiring any method-name scanner. Argument facts require observation 2.5 and
+contract 3.10; older readers must reject that evidence. The current reader
+continues to accept historical observation formats.
+
+Use `catalog_argument` to compare a bound operation argument against canonical Python enum string values, and `catalog_use` to require a real selected member read. The contract names declaration owners, never copied values or `used` flags. Comments, docs, definitions and annotation-only links are not reads; `TYPE_CHECKING` reads count syntactically. Missing or partial scope remains UNKNOWN. These rules require contract 3.14 and observation 2.9; older saved artifacts remain readable but cannot certify them. See AD-251 for limits.
+Use `forbidden_construct.selector` when a policy must select one nominal
+receiver/member and access or comparison role. Contract 3.11 and observation
+2.6 enable the Python slice: annotated direct member reads, positional literal
+reflection names, selected local constructors and type probes, literal equality
+in either direction, membership, `match`, and `startswith`/`endswith`.
+Dynamic names, unannotated or ambiguous receivers and missing selected subjects
+remain UNKNOWN. Other language profiles do not claim selector support. See
+[AD-248](../docs/architecture/decisions/ad-248-construct-selectors.md) and
+the [rule grammar](../docs/rules.md#forbidden-construct).
+
+Use `source_ownership` for Python-local policy over source roles. In `retired` mode,
+select `symbols` and roles `definition`, `read`, `write` and/or `delete`. In `confined`
+mode, select `symbols` plus `owner`, or formal `parameters` plus `value_owner`; choose
+roles `value_transfer`, `parameter_default` and `fallback` only when the observer can
+link each value to admitted source evidence. Unsupported or ambiguous expressions remain
+UNKNOWN. This rule is available with contract 3.8 and observation wire 2.2; older readers
+must reject those formats rather than silently ignore the rule or role facts. See
+[AD-249](https://github.com/rapiddweller/archkeel/blob/main/docs/architecture/decisions/ad-249-source-ownership-defaults.md)
+and the [rule catalog](https://github.com/rapiddweller/archkeel/blob/main/docs/rules.md).
+`forbidden_effect_under_condition` is a static ownership rule. It can prove a declared
+Boolean parameter/member through truth, negation, `if`/`else`, ternary and early
+`return`/`raise`, plus one unique private helper with signature-bound actuals. A known
+unconditional effect is reachable while the condition is true. Reassignment, named
+expressions, short-circuiting, loops, `try`/`finally`, reflection and helper chains or
+recursion remain UNKNOWN. Inspect the rule receipt and path evidence before relying on
+PASS; see [AD-250](../../docs/architecture/decisions/ad-250-bounded-guarded-effect-ownership.md).
 
 ## Daily loop
 

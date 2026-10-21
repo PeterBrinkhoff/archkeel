@@ -44,6 +44,7 @@ from .model import (
     ContractDeclarations,
     DependencyTargetKind,
     ExternalDependencyScopeRule,
+    ForbiddenCallArgumentRule,
     ForbiddenConstructRule,
     ForbiddenDependencyRule,
     InterfaceBoundaryRule,
@@ -52,6 +53,7 @@ from .model import (
     RootLayoutRule,
     SelectorMatch,
     SiblingIsolationRule,
+    SourceOwnershipRule,
     last_name,
     requires_covers,
 )
@@ -95,6 +97,8 @@ _RESTRICTION_RULE_KINDS: Final = frozenset(
         "call_owner",
         "bounded_numeric_operand",
         "protocol_declarations",
+        "forbidden_call_argument",
+        "forbidden_effect_under_condition",
         "forbidden_dependency",
         "forbidden_construct",
         "external_dependency_scope",
@@ -108,6 +112,9 @@ _RESTRICTION_RULE_KINDS: Final = frozenset(
         "sibling_isolation",
         "symbol_placement",
         "boundary_types",
+        "catalog_argument",
+        "catalog_use",
+        "source_ownership",
     }
 )
 
@@ -498,6 +505,10 @@ def _matched_rule_widenings(
         after, ExternalDependencyScopeRule | CallOwnerRule
     ):
         return _external_dependency_scope_widenings(subject, before, after)
+    if isinstance(before, ForbiddenCallArgumentRule) and isinstance(
+        after, ForbiddenCallArgumentRule
+    ):
+        return _generic_field_widenings(subject, before, after, handled=frozenset())
     if isinstance(before, CompleteRequiresRule) and isinstance(after, CompleteRequiresRule):
         return _type_checking_rule_widenings(subject, before, after)
     if isinstance(before, RootLayoutRule) and isinstance(after, RootLayoutRule):
@@ -524,6 +535,8 @@ def _matched_rule_widenings(
                 subject, before, after, handled=frozenset({"allowed_positions"})
             ),
         ]
+    if isinstance(before, SourceOwnershipRule) and isinstance(after, SourceOwnershipRule):
+        return _generic_field_widenings(subject, before, after, handled=frozenset())
     if isinstance(before, CompleteAssignmentRule) and isinstance(after, CompleteAssignmentRule):
         return _generic_field_widenings(subject, before, after, handled=frozenset())
     if isinstance(before, CompleteExternalScopeRule) and isinstance(

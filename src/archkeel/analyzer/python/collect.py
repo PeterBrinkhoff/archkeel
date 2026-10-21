@@ -26,7 +26,11 @@ from archkeel.analyzer.runtime import (
     python_requirement,
 )
 from archkeel.ir.facts import (
+    CALL_ARGUMENTS_FEATURE,
     CALL_BINDINGS_FEATURE,
+    EXTENDED_CALL_BINDINGS_FEATURE,
+    GUARDED_EFFECTS_FEATURE,
+    NATIVE_CALL_TARGETS,
     BuiltinTarget,
     Capabilities,
     CollectionCoverage,
@@ -68,7 +72,7 @@ from .callable_signatures import (
     contextmanager_dependency_bindings,
     contextmanager_signatures,
 )
-from .calls import collect_calls
+from .calls import collect_calls_with_resolvers
 from .constructs import collect_constructs
 from .imports import (
     collect_dynamic_imports,
@@ -161,10 +165,10 @@ class PythonProviderCollector:
             replace(
                 request,
                 resolver=PythonSettings(provider_sources=providers),
-                protocol_version=ProtocolVersion.V4,
+                protocol_version=ProtocolVersion.V6,
             )
             if providers
-            else request
+            else replace(request, protocol_version=ProtocolVersion.V6)
         )
         remaining_collector: ProcessCollector = replace(self.collector, timeout_seconds=remaining)
         enriched = remaining_collector.collect(final_request)
@@ -427,17 +431,23 @@ def collect(request: CollectionRequest) -> SourceFacts:
     )
     providers = _provider_modules(captured_sources, modules)
     provider_bindings = _provider_bindings(providers, modules, imports, evidence)
+    required, requirement_state = python_requirement(root)
+    adapter, runtime = collector_provenance(
+        Language.PYTHON, required=required, requirement_state=requirement_state
+    )
     symbols, symbol_nodes, symbol_owners = collect_symbols(
         modules,
         evidence,
         unsafe_creation_providers=unsafe_creation_providers,
         unsafe_source_header_providers=explicit_factory_unsafe_providers(imports, modules),
     )
-    if request.protocol_version is ProtocolVersion.V4:
+    if request.protocol_version in {ProtocolVersion.V4, ProtocolVersion.V5, ProtocolVersion.V6}:
         contextmanager_signatures(modules, providers, symbols, provider_bindings, evidence)
     type_shapes = collect_type_shapes(symbol_type_expressions(symbols))
     symbol_index = build_symbol_index(symbols)
-    calls = collect_calls(modules, symbol_index, evidence)
+    calls, call_resolvers = collect_calls_with_resolvers(
+        modules, symbol_index, evidence, provider_bindings, runtime, imports
+    )
     dynamic_imports, dynamic_limits = collect_dynamic_imports(
         modules, calls, imports, evidence, namespace=request.scope.namespace
     )
@@ -445,7 +455,15 @@ def collect(request: CollectionRequest) -> SourceFacts:
     references = collect_references(modules, symbol_index, evidence)
     bindings = collect_bindings(modules, evidence)
     typing_signals = collect_typing_signals(modules, calls, symbols, imports, evidence)
-    constructs = collect_constructs(modules, evidence, imports=imports)
+    constructs = collect_constructs(
+        modules,
+        evidence,
+        imports=imports,
+        symbol_index=symbol_index,
+        receiver_resolvers=call_resolvers,
+        include_parameter_owner_proof=request.protocol_version
+        in {ProtocolVersion.V5, ProtocolVersion.V6},
+    )
     typed_symbols = tuple(parse_record(symbol) for symbol in symbols)
     state, state_evidence = collect_state(modules, typed_symbols, symbol_nodes, symbol_owners)
     source_unknowns, private_evidence = collect_private_attributes(modules)
@@ -471,10 +489,6 @@ def collect(request: CollectionRequest) -> SourceFacts:
     for item in private_evidence:
         evidence[item.id] = _raw_evidence(item)
 
-    required, requirement_state = python_requirement(root)
-    adapter, runtime = collector_provenance(
-        Language.PYTHON, required=required, requirement_state=requirement_state
-    )
     return SourceFacts(
         SourceProfile.PYTHON,
         adapter,
@@ -487,7 +501,12 @@ def collect(request: CollectionRequest) -> SourceFacts:
         ),
         Capabilities(
             _SECTION_NAMES,
-            resolution_features=(CALL_BINDINGS_FEATURE,),
+            resolution_features=(
+                CALL_BINDINGS_FEATURE,
+                EXTENDED_CALL_BINDINGS_FEATURE,
+                CALL_ARGUMENTS_FEATURE,
+                GUARDED_EFFECTS_FEATURE,
+            ),
             constructs=tuple(
                 ConstructCapability(kind, ConstructSupport.DECIDED)
                 for kind in ForbiddenConstructKind
@@ -625,6 +644,13 @@ def _provider_bindings(
         for item in imports
         if item["data"]["symbol"] not in {None, "*"}
     }
+    wanted.update(
+        item["data"]["target_module"] for item in imports if item["data"]["symbol"] is None
+    )
+    imported_modules = {item["data"]["target_module"] for item in imports}
+    wanted.update(
+        target for target in NATIVE_CALL_TARGETS if _first_part(target, ".") in imported_modules
+    )
     decorators = {
         resolve_static_name(module, node.decorator_list[0])
         for module in selected
@@ -639,36 +665,158 @@ def _provider_bindings(
     bindings = _provider_aliases(wanted, by_module, provider_imports, evidence, discover=discover)
     for module in providers:
         runtime_parent = _provider_parents_static(module.module, by_module)
-        if not runtime_parent and not _provider_parents_static(
-            module.module, by_module, source_identity=True
-        ):
+        stdlib_root = module.module in sys.stdlib_module_names and "." not in module.module
+        if not _provider_module_is_relevant(module, runtime_parent, stdlib_root, by_module):
             continue
-        if (
-            runtime_parent
-            and module.module in wanted
-            and _provider_identity_static(module, registry_identity=False)
-        ):
+        if _provider_module_binding(module, runtime_parent, stdlib_root, wanted):
             evidence_id = file_evidence(evidence, module.rel_path, module.lines)
             bindings.append(ProviderBinding(module.module, ProviderBindingKind.MODULE, evidence_id))
-        for node in module.tree.body:
-            for name, kind in _provider_declarations(node):
-                qualified = f"{module.module}.{name}"
-                if (
-                    module.scope_bound_names.count(name) != 1
-                    or name in module.global_names
-                    or qualified not in wanted
-                    or not _provider_identity_static(
-                        module, registry_identity=kind is not ProviderBindingKind.DECLARATION
-                    )
-                ):
-                    continue
-                if not runtime_parent:
-                    if qualified in direct_wanted:
-                        continue
-                    kind = ProviderBindingKind.DECLARATION
-                evidence_id = add_evidence(evidence, module, node)
-                bindings.append(ProviderBinding(qualified, kind, evidence_id))
+        bindings.extend(
+            _provider_member_bindings(
+                module, runtime_parent, stdlib_root, wanted, direct_wanted, evidence
+            )
+        )
     return tuple(sorted(bindings, key=lambda item: item.qualified_name))
+
+
+def _provider_module_is_relevant(
+    module: ParsedModule,
+    runtime_parent: bool,
+    stdlib_root: bool,
+    by_module: dict[str, ParsedModule],
+) -> bool:
+    return (
+        runtime_parent
+        or stdlib_root
+        or _provider_parents_static(module.module, by_module, source_identity=True)
+    )
+
+
+def _provider_module_binding(
+    module: ParsedModule,
+    runtime_parent: bool,
+    stdlib_root: bool,
+    wanted: set[str],
+) -> bool:
+    return (
+        (runtime_parent or stdlib_root)
+        and module.module in wanted
+        and _provider_identity_static(module, registry_identity=False)
+    )
+
+
+def _provider_member_bindings(
+    module: ParsedModule,
+    runtime_parent: bool,
+    stdlib_root: bool,
+    wanted: set[str],
+    direct_wanted: set[str],
+    evidence: dict[str, RawEvidence],
+) -> list[ProviderBinding]:
+    bindings: list[ProviderBinding] = []
+    for node in module.tree.body:
+        for name, kind in _provider_declarations(node):
+            qualified = f"{module.module}.{name}"
+            if not _provider_declaration_selected(module, name, qualified, kind, wanted):
+                continue
+            if not runtime_parent:
+                if qualified in direct_wanted and not stdlib_root:
+                    continue
+                if not stdlib_root:
+                    kind = ProviderBindingKind.DECLARATION
+            bindings.append(ProviderBinding(qualified, kind, add_evidence(evidence, module, node)))
+        if isinstance(node, ast.ClassDef):
+            bindings.extend(_provider_class_member_bindings(module, node, wanted, evidence))
+    return bindings
+
+
+def _provider_declaration_selected(
+    module: ParsedModule,
+    name: str,
+    qualified: str,
+    kind: ProviderBindingKind,
+    wanted: set[str],
+) -> bool:
+    return (
+        module.scope_bound_names.count(name) == 1
+        and name not in module.global_names
+        and qualified in wanted
+        and _provider_identity_static(
+            module, registry_identity=kind is not ProviderBindingKind.DECLARATION
+        )
+    )
+
+
+def _provider_class_member_bindings(
+    module: ParsedModule,
+    node: ast.ClassDef,
+    wanted: set[str],
+    evidence: dict[str, RawEvidence],
+) -> list[ProviderBinding]:
+    methods = {
+        method.name
+        for method in node.body
+        if isinstance(method, ast.FunctionDef | ast.AsyncFunctionDef)
+    }
+    bindings = _provider_class_method_bindings(module, node, wanted, evidence)
+    bindings.extend(_provider_native_class_members(module, node, methods, wanted, evidence))
+    return bindings
+
+
+def _provider_class_method_bindings(
+    module: ParsedModule,
+    node: ast.ClassDef,
+    wanted: set[str],
+    evidence: dict[str, RawEvidence],
+) -> list[ProviderBinding]:
+    bindings: list[ProviderBinding] = []
+    for method in node.body:
+        if not isinstance(method, ast.FunctionDef | ast.AsyncFunctionDef):
+            continue
+        qualified = f"{module.module}.{node.name}.{method.name}"
+        if (
+            qualified in wanted
+            and not method.decorator_list
+            and node.name not in module.global_names
+            and module.scope_bound_names.count(node.name) == 1
+            and class_header_static(node)
+            and _provider_identity_static(module, registry_identity=False)
+        ):
+            bindings.append(
+                ProviderBinding(
+                    qualified,
+                    ProviderBindingKind.FUNCTION,
+                    add_evidence(evidence, module, method),
+                )
+            )
+    return bindings
+
+
+def _provider_native_class_members(
+    module: ParsedModule,
+    node: ast.ClassDef,
+    methods: set[str],
+    wanted: set[str],
+    evidence: dict[str, RawEvidence],
+) -> list[ProviderBinding]:
+    bindings: list[ProviderBinding] = []
+    for native_target in wanted & NATIVE_CALL_TARGETS:
+        prefix = f"{module.module}.{node.name}."
+        member = native_target[len(prefix) :] if _starts_with(native_target, prefix) else ""
+        if (
+            member
+            and member not in methods
+            and class_header_static(node)
+            and _provider_identity_static(module, registry_identity=False)
+        ):
+            bindings.append(
+                ProviderBinding(
+                    native_target,
+                    ProviderBindingKind.FUNCTION,
+                    add_evidence(evidence, module, node),
+                )
+            )
+    return bindings
 
 
 def _provider_aliases(
@@ -912,3 +1060,15 @@ def _import_targets(
         else:
             targets.append(UnresolvedTarget(import_id, module, "module source not found"))
     return tuple(targets)
+
+
+def _first_part(value: str, separator: str) -> str:
+    for index in range(len(value)):
+        if value[index] == separator:
+            return value[:index]
+    return value
+
+
+def _starts_with(value: str, prefix: str) -> bool:
+    length = len(prefix)
+    return len(value) >= length and value[:length] == prefix

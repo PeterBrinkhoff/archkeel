@@ -23,6 +23,7 @@ from archkeel.ir.codec import (
     parse_observation,
 )
 from archkeel.ir.decisions import rule_assessments, unknown_positions_by_rule
+from archkeel.ir.model import SCHEMA_VERSION
 from archkeel.ir.trace import trace_valid_violations
 
 ROOT = Path(__file__).parents[1]
@@ -76,6 +77,39 @@ def test_protocol_identity_requires_a_qualified_symbol_in_reader_and_schema() ->
     assert list(Draft202012Validator(schema).iter_errors(raw))
     with pytest.raises(ValueError, match="protocol must be a canonical module.symbol"):
         parse_contract(raw)
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "diagnostic"),
+    [
+        ("source", "sample..api", "source must be a dotted source identity"),
+        ("protocol", "sample..Port", "protocol must be a canonical module.symbol"),
+        ("protocol", "sample.Port-1", "protocol must be a canonical module.symbol"),
+        ("selector", "client.name", "name must be one exact source identifier"),
+        ("selector", "2client", "name must be one exact source identifier"),
+    ],
+)
+def test_contract_310_protocol_schema_and_reader_reject_noncanonical_names(
+    field: str, value: str, diagnostic: str
+) -> None:
+    raw = _contract()
+    raw["schema_version"] = "3.10.0"
+    if field == "selector":
+        raw["rules"][0]["selectors"][0]["name"] = value
+    else:
+        raw["rules"][0][field] = value
+    schema = json.loads((ROOT / "schema/architecture-contract-3.10.schema.json").read_bytes())
+    assert list(Draft202012Validator(schema).iter_errors(raw))
+    with pytest.raises(ValueError, match=diagnostic):
+        parse_contract(raw)
+
+
+def test_contract_310_protocol_schema_and_reader_accept_canonical_names() -> None:
+    raw = _contract()
+    raw["schema_version"] = "3.10.0"
+    schema = json.loads((ROOT / "schema/architecture-contract-3.10.schema.json").read_bytes())
+    assert not list(Draft202012Validator(schema).iter_errors(raw))
+    assert parse_contract(raw).rules[0].protocol == "sample.core.Reader"
 
 
 def test_protocol_selector_identity_duplicates_are_reader_semantics() -> None:
@@ -1356,7 +1390,8 @@ def test_legacy_reports_reject_all_protocol_vocabulary(
             profile = "python-decoded" if boundary == "python_schema" else "decoded"
             payload = observation_payload(observation)
             current = Draft202012Validator(
-                {"$ref": f"urn:archkeel:architecture-ir:{profile}:2.3.0"}, registry=registry
+                {"$ref": f"urn:archkeel:architecture-ir:{profile}:{SCHEMA_VERSION}"},
+                registry=registry,
             )
             assert not list(current.iter_errors(payload))
             payload["schema_version"] = version

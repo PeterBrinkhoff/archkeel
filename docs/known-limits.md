@@ -12,11 +12,18 @@ receipts keep their rows and aggregate verdict UNKNOWN. Only Python initializers
 with no AST statements may be unowned without breaking this proof; docstrings and
 imports are statements. An empty violation list is insufficient.
 
-Python `call_owner` initially supports stable plain top-level functions (including
-direct import aliases) and plain parameter annotations of scanned class methods.
-External targets, constructors, stored receiver members, inherited surfaces,
-decorated functions/methods, reexports and ambiguous/mutated bindings remain
-UNKNOWN. It proves the declared static boundary, not runtime conformance.
+Python `call_owner` supports stable plain top-level functions, plain parameter
+annotations, one typed parameter copied to a stable `self` field, proven default
+construction, and uniquely inherited method origins for an otherwise admitted
+receiver. Inheriting a default constructor alone remains UNKNOWN. Its native witnesses are
+limited to import-bound `random.random`, `random.Random` methods,
+`datetime.datetime.now`, and `secrets.token_hex`. Other external targets,
+constructors, dynamic attributes, custom allocation, descriptors, ambiguous
+inheritance, decorated functions/methods, and mutated or revoked bindings remain
+UNKNOWN. Dynamic `setattr` or `delattr` with an unresolved member name revokes
+native identities under the affected provider. It proves the declared static
+boundary, not runtime conformance. See
+[AD-252](architecture/decisions/ad-252-bounded-call-identity.md).
 This rule requires a source/contract/inventory/call-bound receipt for its exact
 claim and observation version; legacy saved observations cannot certify it.
 Re-observe pre-release artifacts with inventory-only proofs. These consistency
@@ -33,6 +40,42 @@ Unsupported expressions, unstable or shadowed bindings, oversized values, and
 empty or missing selected scopes remain UNKNOWN. It does not infer runtime types,
 operator overloads, execution reachability, entropy or collision freedom. See
 [AD-246](architecture/decisions/ad-246-bounded-numeric-operand.md).
+
+Named numeric operands inside Python 3.12 generic function and class definition
+intervals, including defaults, remain UNKNOWN because their header scopes are not
+replayed independently. Literal operands remain provable; decorators stay in their
+outer scope.
+
+`forbidden_call_argument` requires a unique, statically proven target
+declaration and observed callable signature. Only explicit actuals with
+complete, valid bindings are considered; spreads, duplicates, missing
+signatures and unproven calls leave the scope UNKNOWN. Omitted defaults are not
+actuals. Calls without canonical binding carry `call_arguments: null`; a
+canonical call whose complete actual inventory cannot be tied to a bounded
+source excerpt also keeps its binding but carries null arguments and remains
+UNKNOWN for argument rules. Both cases differ from a proven call with an empty
+argument list. The first slice
+recognizes written string constants, including empty and adjacent literals;
+f-strings, concatenations and named expressions remain unclaimed. It does not
+check actual type compatibility. Argument facts require
+observation 2.5 and contract 3.10; older readers reject the new evidence.
+`forbidden_effect_under_condition` proves only declared Boolean parameters or members,
+truth/negation, `if`/`else`, ternary expressions, and early `return`/`raise` domination.
+It follows at most one unique private helper whose actuals bind to its observed signature.
+Reassignment, named expressions, short-circuit Boolean operators, loops, exception/finally
+paths, reflection, ambiguous identities, helper chains and recursion remain UNKNOWN. A
+known forbidden effect remains FAIL beside unrelated UNKNOWN paths. These receipts bind
+the source, contract, selected inventory, effect and exact rule claim; they are consistency
+bindings, not artifact authentication ([AD-250](architecture/decisions/ad-250-bounded-guarded-effect-ownership.md)).
+
+`catalog_argument` and `catalog_use` currently consume unique scanned Python enum declarations with literal string member values and the existing call/reference facts. `catalog_use` can count a string actual only when its optional target and parameter identify a proven read operation; unrelated same-text calls do not count. Non-literal enum values, dynamic projections, non-Python catalogs and ambiguous or incomplete source scopes remain UNKNOWN. Overlay selectors identify enum declaration owners. This is syntactic source use, not runtime reachability. The argument member-reference case depends on #613 call identity and #617 canonical read roles in the final stack.
+`forbidden_construct.selector` adds nominal Python selections for member reads,
+reflection probes, constructors, type probes, equality, membership, `match`,
+`startswith` and `endswith`. The current receiver proof begins with direct unique
+annotations on scanned classes. Dynamic reflection names, unannotated or
+ambiguous receivers and scopes with no selected subject remain UNKNOWN. Other
+language profiles do not support this slice. Selector facts require observation
+2.6 and contract 3.11; older readers reject the new evidence.
 
 An explicitly certified `complete_requires` scope can PASS with unrelated source
 resolution gaps. Arbitrary imports still block their own scopes and ancestors;

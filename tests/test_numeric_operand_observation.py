@@ -4,12 +4,467 @@
 """Bounded modulo operands retain source identity and exact alias derivations."""
 
 import json
+import sys
 from dataclasses import replace
 
 import pytest
 from test_analyzer import _component, _observe, _parsed_module
 
 from archkeel.analyzer.python.constructs import collect_constructs
+
+
+@pytest.mark.skipif(sys.version_info < (3, 12), reason="PEP 695 type aliases require Python 3.12")
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        (
+            "WIDTH = 4\ntype Alias[WIDTH] = job_nonce % WIDTH\n",
+            "unknown",
+        ),
+        (
+            "WIDTH = 4\ntype Alias = job_nonce % WIDTH\n",
+            "known",
+        ),
+        (
+            "WIDTH = 4\ndef outer():\n    WIDTH = 7\n    type Alias[T] = job_nonce % WIDTH\n",
+            "known",
+        ),
+        ("WIDTH = 4\ntype Alias = tuple[job_nonce % WIDTH]\n", "known"),
+        (
+            "WIDTH = 4\ndef outer[WIDTH]():\n    type Alias[T] = job_nonce % WIDTH\n",
+            "unknown",
+        ),
+        (
+            "WIDTH = 4\ntype Alias[T] = job_nonce % WIDTH\n",
+            "known",
+        ),
+        (
+            "WIDTH = 4\nclass Holder:\n    WIDTH = 8\n    type Alias[WIDTH] = job_nonce % WIDTH\n",
+            "unknown",
+        ),
+    ],
+)
+def test_generic_type_alias_respects_type_parameter_binding(source, expected):
+    operation = next(
+        row
+        for row in collect_constructs([_parsed_module(source)], {})
+        if row["kind"] == "numeric_operand"
+    )
+    assert operation["data"]["proof"] == expected
+
+
+@pytest.mark.skipif(sys.version_info >= (3, 12), reason="PEP 695 syntax is unsupported")
+def test_type_alias_syntax_is_unsupported_before_python_312():
+    with pytest.raises(SyntaxError):
+        _parsed_module("WIDTH = 4\ntype Alias[WIDTH] = job_nonce % WIDTH\n")
+
+
+@pytest.mark.skipif(sys.version_info < (3, 12), reason="PEP 695 type aliases require Python 3.12")
+def test_generic_type_alias_type_parameter_bounds_stay_unknown(tmp_path):
+    from archkeel.analyzer.python.collect import collect
+    from archkeel.ir.facts_validation import validate_source_facts
+    from archkeel.ir.protocol import CollectionRequest, PythonSettings, SnapshotInput, SourceScope
+
+    (tmp_path / "sample").mkdir()
+    (tmp_path / "sample/core.py").write_text(
+        "WIDTH = 4\ntype Alias[WIDTH, T: job_nonce % WIDTH] = T\n"
+    )
+    facts = collect(
+        CollectionRequest(
+            SnapshotInput(str(tmp_path), "a" * 40, False),
+            SourceScope(("sample",), "sample"),
+            PythonSettings(),
+        )
+    )
+    operation = next(
+        record
+        for section in facts.sections
+        for record in section.records
+        if record.kind == "numeric_operand"
+    )
+    assert operation.data.get("proof") == "unknown"
+    validate_source_facts(facts)
+
+
+@pytest.mark.skipif(sys.version_info < (3, 12), reason="PEP 695 type aliases require Python 3.12")
+def test_dangling_type_alias_evidence_is_a_validation_error(tmp_path):
+    from archkeel.analyzer.python.collect import collect
+    from archkeel.ir.facts_validation import validate_source_facts
+    from archkeel.ir.protocol import CollectionRequest, PythonSettings, SnapshotInput, SourceScope
+
+    (tmp_path / "sample").mkdir()
+    (tmp_path / "sample/core.py").write_text("type Alias[T] = job_nonce % 4\n")
+    facts = collect(
+        CollectionRequest(
+            SnapshotInput(str(tmp_path), "a" * 40, False),
+            SourceScope(("sample",), "sample"),
+            PythonSettings(),
+        )
+    )
+    malformed = replace(
+        facts,
+        sections=tuple(
+            replace(
+                section,
+                records=tuple(
+                    replace(record, evidence_ids=("absent-evidence",))
+                    if record.kind == "dynamic_binding"
+                    else record
+                    for record in section.records
+                ),
+            )
+            for section in facts.sections
+        ),
+    )
+    with pytest.raises(ValueError, match="dangling source evidence reference"):
+        validate_source_facts(malformed)
+
+
+@pytest.mark.skipif(sys.version_info < (3, 12), reason="PEP 695 type aliases require Python 3.12")
+@pytest.mark.parametrize(
+    ("source", "expected_proof"),
+    [
+        ("WIDTH = 4\ntype Alias[\n    T\n] = job_nonce % WIDTH\n", "unknown"),
+        ("WIDTH = 4\ntype Alias[T] = (\n    job_nonce % WIDTH\n)\n", "unknown"),
+        ("WIDTH = 4\ntype Alias[T] = (\n    job_nonce % 4\n)\n", "known"),
+        ("WIDTH = 4\ntype Alias = (\n    job_nonce % WIDTH\n)\n", "known"),
+    ],
+)
+def test_multiline_type_alias_witnesses_only_prove_replayable_names(
+    tmp_path, source, expected_proof
+):
+    from archkeel.analyzer.python.collect import collect
+    from archkeel.ir.facts_codec import CollectionResponse, decode_response, encode_response
+    from archkeel.ir.protocol import CollectionRequest, PythonSettings, SnapshotInput, SourceScope
+
+    (tmp_path / "sample").mkdir()
+    (tmp_path / "sample/core.py").write_text(source)
+    facts = collect(
+        CollectionRequest(
+            SnapshotInput(str(tmp_path), "a" * 40, False),
+            SourceScope(("sample",), "sample"),
+            PythonSettings(),
+        )
+    )
+    operation = next(
+        record
+        for section in facts.sections
+        for record in section.records
+        if record.kind == "numeric_operand"
+    )
+    assert operation.data.get("proof") == expected_proof
+    decode_response(encode_response(CollectionResponse(facts)))
+
+
+@pytest.mark.skipif(sys.version_info < (3, 12), reason="PEP 695 syntax requires Python 3.12")
+@pytest.mark.parametrize(
+    ("source", "expected_proof"),
+    [
+        ("WIDTH = 4\ndef choose[WIDTH](x: job_nonce % WIDTH): pass\n", "unknown"),
+        (
+            "WIDTH = 4\ndef choose[WIDTH]() -> (\n    job_nonce % WIDTH\n): pass\n",
+            "unknown",
+        ),
+        (
+            "WIDTH = 4\nclass Base: pass\nclass Child[WIDTH](Base[job_nonce % WIDTH]): pass\n",
+            "unknown",
+        ),
+        (
+            "WIDTH = 4\nclass Holder:\n"
+            "    def choose[WIDTH](self, value: job_nonce % WIDTH): pass\n",
+            "unknown",
+        ),
+        (
+            "WIDTH = 4\nclass Plain: # [not a type parameter]\n"
+            "    def choose(job_nonce): return job_nonce % WIDTH\n",
+            "known",
+        ),
+        ("WIDTH = 4\ndef choose[T: job_nonce % WIDTH](): pass\n", "unknown"),
+        ("WIDTH = 4\ndef choose[T](x=job_nonce % WIDTH): pass\n", "unknown"),
+        (
+            "WIDTH = 4\ndef choose[T](x=(\n    job_nonce % WIDTH\n)): pass\n",
+            "unknown",
+        ),
+        ("WIDTH = 4\ndef choose[T](x: job_nonce % 4): pass\n", "known"),
+        (
+            "WIDTH = 4\ndef choose[T](job_nonce): return job_nonce % WIDTH\n",
+            "unknown",
+        ),
+        (
+            "WIDTH = 4\nclass Box[T]:\n    value = job_nonce % WIDTH\n",
+            "unknown",
+        ),
+        ("class Box[T]:\n    value = job_nonce % 4\n", "known"),
+        (
+            "WIDTH = 4\n@decorate(job_nonce % WIDTH)\ndef choose[T](): pass\n",
+            "known",
+        ),
+    ],
+)
+def test_generic_definition_headers_use_type_parameter_scope(tmp_path, source, expected_proof):
+    from archkeel.analyzer.python.collect import collect
+    from archkeel.ir.facts_codec import CollectionResponse, decode_response, encode_response
+    from archkeel.ir.protocol import CollectionRequest, PythonSettings, SnapshotInput, SourceScope
+
+    (tmp_path / "sample").mkdir()
+    (tmp_path / "sample/core.py").write_text(source)
+    facts = collect(
+        CollectionRequest(
+            SnapshotInput(str(tmp_path), "a" * 40, False),
+            SourceScope(("sample",), "sample"),
+            PythonSettings(),
+        )
+    )
+    operation = next(
+        record
+        for section in facts.sections
+        for record in section.records
+        if record.kind == "numeric_operand"
+    )
+    assert operation.data.get("proof") == expected_proof
+    decode_response(encode_response(CollectionResponse(facts)))
+
+
+@pytest.mark.skipif(sys.version_info < (3, 12), reason="PEP 695 syntax requires Python 3.12")
+@pytest.mark.parametrize(
+    "source",
+    [
+        "WIDTH = 4\ndef choose[WIDTH](x: job_nonce % WIDTH): pass\n",
+        "WIDTH = 4\ndef choose[WIDTH]() -> (\n    job_nonce % WIDTH\n): pass\n",
+        "WIDTH = 4\nclass Base: pass\nclass Child[WIDTH](Base[job_nonce % WIDTH]): pass\n",
+        "WIDTH = 4\ndef outer[WIDTH]():\n    type Alias[T] = job_nonce % WIDTH\n",
+    ],
+)
+def test_saved_facts_reject_forged_generic_header_proofs(tmp_path, source):
+    from archkeel.analyzer.python.collect import collect
+    from archkeel.ir.facts_codec import (
+        CollectionResponse,
+        ProtocolError,
+        decode_response,
+        encode_response,
+    )
+    from archkeel.ir.protocol import CollectionRequest, PythonSettings, SnapshotInput, SourceScope
+
+    (tmp_path / "sample").mkdir()
+    (tmp_path / "sample/core.py").write_text(source)
+    facts = collect(
+        CollectionRequest(
+            SnapshotInput(str(tmp_path), "a" * 40, False),
+            SourceScope(("sample",), "sample"),
+            PythonSettings(),
+        )
+    )
+    payload = json.loads(encode_response(CollectionResponse(facts)))
+    evidence = next(
+        item for item in payload["facts"]["evidence"] if item.get("excerpt") == "WIDTH = 4"
+    )
+    operation = next(
+        record
+        for section in payload["facts"]["sections"]
+        for record in section["records"]
+        if record["kind"] == "numeric_operand"
+    )
+    operation["data"]["proof"] = "known"
+    operation["data"]["value"] = 4
+    operation["data"]["derivation"] = [
+        {
+            "name": "WIDTH",
+            "value": 4,
+            "expression": "4",
+            "evidence_id": evidence["id"],
+            "line": 1,
+            "column": 0,
+            "end_line": 1,
+            "end_column": 9,
+        }
+    ]
+    operation["evidence_ids"].append(evidence["id"])
+    header_evidence = next(
+        item
+        for item in payload["facts"]["evidence"]
+        if item.get("file") == "sample/core.py"
+        and item.get("line", 0) > 1
+        and item.get("excerpt", "")
+        .lstrip()
+        .startswith(("def choose[", "class Child[", "def outer["))
+    )
+    if "\n    job_nonce % WIDTH\n" in source or "def outer[WIDTH]" in source:
+        if header_evidence["id"] in operation["evidence_ids"]:
+            operation["evidence_ids"].remove(header_evidence["id"])
+        operation["data"]["binding_scopes"] = []
+    with pytest.raises(ProtocolError, match="unresolved type parameter"):
+        decode_response(json.dumps(payload).encode())
+
+
+@pytest.mark.skipif(sys.version_info < (3, 12), reason="PEP 695 type aliases require Python 3.12")
+@pytest.mark.parametrize(
+    (
+        "source",
+        "error",
+        "remove_type_alias_evidence",
+        "remove_alias_evidence_row",
+        "reader_version",
+        "copy_scope_witnesses",
+    ),
+    [
+        (
+            "WIDTH = 4\ntype Alias[WIDTH] = job_nonce % WIDTH\n",
+            "type parameter",
+            True,
+            False,
+            None,
+            False,
+        ),
+        (
+            "WIDTH = 4\ntype Alias[\n    WIDTH\n] = job_nonce % WIDTH\n",
+            "complete source witness",
+            False,
+            False,
+            None,
+            False,
+        ),
+        (
+            "WIDTH = 4\ntype Alias[WIDTH] = (\n    job_nonce % WIDTH\n)\n",
+            "type parameter",
+            True,
+            False,
+            None,
+            False,
+        ),
+        (
+            "WIDTH = 4\ntype Alias[WIDTH, T: job_nonce % WIDTH] = T\n",
+            "type parameter",
+            False,
+            False,
+            None,
+            False,
+        ),
+        (
+            "WIDTH = 4\ntype Alias[WIDTH] = (\n    job_nonce % WIDTH\n)\n",
+            "type parameter",
+            True,
+            False,
+            (3, 11),
+            False,
+        ),
+        (
+            "WIDTH = 4\ndef ordinary(job_nonce):\n"
+            "    type Alias[WIDTH] = (\n        job_nonce % WIDTH\n    )\n"
+            "    return job_nonce % WIDTH\n",
+            "numeric module alias",
+            True,
+            True,
+            None,
+            True,
+        ),
+        (
+            "WIDTH = 4\nclass Ordinary:\n"
+            "    type Alias[WIDTH] = (\n        job_nonce % WIDTH\n    )\n"
+            "    value = job_nonce % WIDTH\n",
+            "numeric module alias",
+            True,
+            True,
+            None,
+            True,
+        ),
+    ],
+)
+def test_saved_facts_reject_forged_known_type_parameter_alias(
+    tmp_path,
+    monkeypatch,
+    source,
+    error,
+    remove_type_alias_evidence,
+    remove_alias_evidence_row,
+    reader_version,
+    copy_scope_witnesses,
+):
+    from archkeel.analyzer.python.collect import collect
+    from archkeel.ir.facts_codec import (
+        CollectionResponse,
+        ProtocolError,
+        decode_response,
+        encode_response,
+    )
+    from archkeel.ir.protocol import CollectionRequest, PythonSettings, SnapshotInput, SourceScope
+
+    (tmp_path / "sample").mkdir()
+    (tmp_path / "sample/core.py").write_text(source)
+    facts = collect(
+        CollectionRequest(
+            SnapshotInput(str(tmp_path), "a" * 40, False),
+            SourceScope(("sample",), "sample"),
+            PythonSettings(),
+        )
+    )
+    payload = json.loads(encode_response(CollectionResponse(facts)))
+    evidence = next(
+        item for item in payload["facts"]["evidence"] if item.get("excerpt") == "WIDTH = 4"
+    )
+    operation = next(
+        record
+        for section in payload["facts"]["sections"]
+        for record in section["records"]
+        if record["kind"] == "numeric_operand" and record["data"]["proof"] == "unknown"
+    )
+    known_operation = (
+        next(
+            record
+            for section in payload["facts"]["sections"]
+            for record in section["records"]
+            if record["kind"] == "numeric_operand" and record["data"]["proof"] == "known"
+        )
+        if copy_scope_witnesses
+        else None
+    )
+    operation["data"]["proof"] = "known"
+    operation["data"]["value"] = 4
+    operation["data"]["derivation"] = [
+        {
+            "name": "WIDTH",
+            "value": 4,
+            "expression": "4",
+            "evidence_id": evidence["id"],
+            "line": 1,
+            "column": 0,
+            "end_line": 1,
+            "end_column": 9,
+        }
+    ]
+    operation["evidence_ids"].append(evidence["id"])
+    if remove_type_alias_evidence:
+        alias_evidence = next(
+            item
+            for item in payload["facts"]["evidence"]
+            if item.get("excerpt", "").lstrip().startswith("type Alias[")
+        )
+        operation["evidence_ids"].remove(alias_evidence["id"])
+        if remove_alias_evidence_row:
+            alias_evidence_id = alias_evidence["id"]
+            payload["facts"]["evidence"] = [
+                item for item in payload["facts"]["evidence"] if item["id"] != alias_evidence_id
+            ]
+            for section in payload["facts"]["sections"]:
+                for source_record in section["records"]:
+                    source_record["evidence_ids"] = [
+                        evidence_id
+                        for evidence_id in source_record["evidence_ids"]
+                        if evidence_id != alias_evidence_id
+                    ]
+    if known_operation is not None:
+        operation["data"]["binding_scopes"] = known_operation["data"]["binding_scopes"]
+        for scope in known_operation["data"]["binding_scopes"]:
+            scope_evidence_id = scope["scope_evidence_id"]
+            if scope_evidence_id not in operation["evidence_ids"]:
+                operation["evidence_ids"].append(scope_evidence_id)
+    if reader_version is not None:
+        from types import SimpleNamespace
+
+        from archkeel.ir import facts_validation
+
+        monkeypatch.setattr(facts_validation, "sys", SimpleNamespace(version_info=reader_version))
+    with pytest.raises(ProtocolError, match=error):
+        decode_response(json.dumps(payload).encode())
 
 
 @pytest.mark.parametrize("link", ["operation", "alias"])
@@ -918,6 +1373,14 @@ def test_numeric_module_alias_scope_chain_round_trips_native_facts(
             "sample.core.Holder",
             16,
         ),
+        (
+            "class Holder:\n"
+            "    WIDTH = 16\n"
+            "    @classmethod\n"
+            "    def choose(cls, value=job_nonce % WIDTH): return value\n",
+            "sample.core.Holder",
+            16,
+        ),
     ],
 )
 def test_numeric_definition_headers_use_their_enclosing_lexical_scope(
@@ -993,6 +1456,85 @@ def test_numeric_definition_headers_use_their_enclosing_lexical_scope(
             else json.dumps(observation_payload(observed.observation)).encode()
         )
         assert run_saved_report(saved).rule_assessments == assessments
+
+
+def test_class_default_reference_cannot_be_retargeted_to_same_named_foreign_class(tmp_path):
+    from archkeel.analyzer.python.collect import collect
+    from archkeel.ir.facts import RecordData, stable_id
+    from archkeel.ir.facts_validation import validate_source_facts
+    from archkeel.ir.protocol import (
+        CollectionRequest,
+        PythonSettings,
+        SnapshotInput,
+        SourceScope,
+    )
+
+    (tmp_path / "sample").mkdir()
+    (tmp_path / "sample/core.py").write_text(
+        "class First:\n"
+        "    class Holder:\n"
+        "        WIDTH = 16\n"
+        "        @classmethod\n"
+        "        def choose(cls, value=job_nonce % WIDTH): return value\n"
+        "class Second:\n"
+        "    class Holder:\n"
+        "        WIDTH = 32\n"
+    )
+    facts = collect(
+        CollectionRequest(
+            SnapshotInput(str(tmp_path), "a" * 40, False),
+            SourceScope(("sample",), "sample"),
+            PythonSettings(),
+        )
+    )
+    validate_source_facts(facts)
+    records = [record for section in facts.sections for record in section.records]
+    second = next(
+        record
+        for record in records
+        if record.kind == "class"
+        and record.data.get("qualified_name") == "sample.core.Second.Holder"
+    )
+    member = next(
+        item
+        for item in second.data.get("attribute_declarations", ())
+        if isinstance(item, RecordData) and item.get("name") == "WIDTH"
+    )
+    [witness_id] = member.get("evidence_ids")
+    reference = next(
+        record
+        for record in records
+        if record.kind == "value_reference"
+        and record.data.get("expression") == "WIDTH"
+        and record.data.get("local_source_binding") is True
+    )
+    target = "sample.core.Second.Holder.WIDTH"
+    data = dict(reference.data.entries)
+    data.update(
+        {
+            "declaration_evidence_ids": (witness_id,),
+            "declaration_id": stable_id("DECL", "sample/core.py", target),
+            "declaration_owner_id": second.id,
+            "declaration_owner_scope": "sample.core.Second.Holder",
+            "source_definition_id": second.id,
+            "source_scope": "sample.core.Second.Holder",
+            "targets": (target,),
+        }
+    )
+    rewritten = tuple(
+        replace(
+            section,
+            records=tuple(
+                replace(record, data=RecordData(tuple(data.items())))
+                if record.id == reference.id
+                else record
+                for record in section.records
+            ),
+        )
+        for section in facts.sections
+    )
+    with pytest.raises(ValueError, match="local definition witness"):
+        validate_source_facts(replace(facts, sections=rewritten))
 
 
 def test_numeric_module_alias_cannot_drop_an_enclosing_shadow_scope(tmp_path):

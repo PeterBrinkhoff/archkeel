@@ -54,6 +54,20 @@ class RuntimeRequirementState(StrEnum):
     REQUIREMENT_INVALID = "requirement_invalid"
 
 
+class StringTablePolicy(StrEnum):
+    """Typed policy names for the lossless JSON string table."""
+
+    SOURCE_FACTS = "source-facts"
+    OBSERVATION = "observation"
+
+
+class ReservedString(StrEnum):
+    DOLLAR = "$"
+    DOUBLE_DOLLAR = "$$"
+    MISSING = "$m"
+    DOUBLE_MISSING = "$$m"
+
+
 def parse_runtime_requirement_state(value: str) -> RuntimeRequirementState:
     """Validate the shared runtime vocabulary once, at a wire or metadata boundary."""
     try:
@@ -91,6 +105,14 @@ class SourceResolution(StrEnum):
     RESOLVED = "resolved"
     PARTIALLY_RESOLVED = "partially_resolved"
     UNRESOLVED = "unresolved"
+
+
+class SourceReferenceContext(StrEnum):
+    """Source occurrence contexts used for ownership classification."""
+
+    VALUE = "value"
+    ANNOTATION = "annotation"
+    UNKNOWN = "unknown"
 
 
 def parse_source_resolution(value: JsonValue | RawJson) -> SourceResolution | None:
@@ -184,6 +206,11 @@ def stable_id(prefix: str, *parts: object) -> str:
     return f"{prefix}-{hashlib.sha256(payload).hexdigest()[:16]}"
 
 
+def python_identifier(value: str) -> bool:
+    """Return whether a string is one complete Python identifier."""
+    return value.isidentifier()
+
+
 @dataclass(frozen=True, slots=True)
 class RecordData:
     """Immutable, profile-owned JSON payload; the common schema leaves its keys open."""
@@ -208,9 +235,100 @@ RawJson: TypeAlias = str | int | float | bool | None | list["RawJson"] | dict[st
 class CallBindingOrigin(StrEnum):
     DIRECT = "direct"
     DECLARED_RECEIVER = "declared_receiver"
+    STORED_RECEIVER = "stored_receiver"
+    CONSTRUCTED_RECEIVER = "constructed_receiver"
+    CONSTRUCTOR = "constructor"
+    NATIVE = "native"
+    NATIVE_RECEIVER = "native_receiver"
+
+
+class _CallBindingProofKind(StrEnum):
+    STORED_FIELD = "stored_field"
+    CONSTRUCTION = "construction"
+    CONSTRUCTOR = "constructor"
+    PROVIDER_MEMBER = "provider_member"
+    NATIVE_DESCRIPTOR = "native_descriptor"
+
+
+_DATETIME_DESCRIPTOR_IDENTITY = {
+    "target": "datetime.datetime.now",
+    "runtime_name": "python",
+    "runtime_implementation": "cpython",
+    "descriptor_owner_module": "datetime",
+    "descriptor_owner_qualname": "datetime",
+    "descriptor_member": "now",
+    "descriptor_kind": "classmethod_descriptor",
+}
+_CALL_BINDING_PROOF_FIELDS = {
+    _CallBindingProofKind.STORED_FIELD: {
+        "kind",
+        "owner",
+        "field",
+        "parameter",
+        "target",
+        "witness_evidence_ids",
+    },
+    _CallBindingProofKind.CONSTRUCTION: {
+        "kind",
+        "target",
+        "constructor_evidence_id",
+        "assignment_evidence_id",
+        "assignment_name",
+    },
+    _CallBindingProofKind.CONSTRUCTOR: {
+        "kind",
+        "target",
+        "constructor_evidence_id",
+        "provider_evidence_id",
+        "runtime_name",
+        "runtime_version",
+    },
+    _CallBindingProofKind.PROVIDER_MEMBER: {
+        "kind",
+        "target",
+        "provider_evidence_id",
+        "runtime_name",
+        "runtime_version",
+    },
+    _CallBindingProofKind.NATIVE_DESCRIPTOR: {
+        "kind",
+        "target",
+        "runtime_name",
+        "runtime_version",
+        "runtime_implementation",
+        "descriptor_owner_module",
+        "descriptor_owner_qualname",
+        "descriptor_member",
+        "descriptor_kind",
+        "stdlib_source_digest",
+        "witness_evidence_ids",
+    },
+}
 
 
 CALL_BINDINGS_FEATURE = "canonical_call_bindings"
+EXTENDED_CALL_BINDINGS_FEATURE = "extended_call_bindings"
+NATIVE_CALL_TARGETS = frozenset(
+    {
+        "random.Random",
+        "random.random",
+        "random.Random.random",
+        "random.Random.randrange",
+        "random.Random.randint",
+        "random.Random.choice",
+        "random.Random.choices",
+        "random.Random.sample",
+        "random.Random.shuffle",
+        "random.Random.uniform",
+        "random.Random.getrandbits",
+        "random.Random.seed",
+        "random.Random.getstate",
+        "random.Random.setstate",
+        "datetime.datetime.now",
+        "secrets.token_hex",
+    }
+)
+GUARDED_EFFECTS_FEATURE = "guarded_effect_paths"
 
 
 @dataclass(frozen=True, slots=True)
@@ -218,16 +336,299 @@ class CallBinding:
     origin: CallBindingOrigin
     target: str
     evidence_ids: tuple[str, ...]
+    proof: RecordData | None = None
+
+
+class CallArgumentKind(StrEnum):
+    POSITIONAL = "positional"
+    KEYWORD = "keyword"
+    STARRED_POSITIONAL = "starred_positional"
+    STARRED_KEYWORD = "starred_keyword"
+
+
+class CallArgumentValueKind(StrEnum):
+    STRING_LITERAL = "string_literal"
+    OTHER = "other"
+
+
+CALL_ARGUMENTS_FEATURE = "call_arguments"
+
+
+@dataclass(frozen=True, slots=True)
+class CallArgument:
+    kind: CallArgumentKind
+    keyword: str | None
+    value_kind: CallArgumentValueKind
+    value: str | None
+    evidence_ids: tuple[str, ...]
+
+
+def call_arguments(value: JsonValue) -> tuple[CallArgument, ...] | None:
+    if value is None:
+        return None
+    if not isinstance(value, tuple):
+        raise ValueError("invalid call arguments")
+    result: list[CallArgument] = []
+    for item in value:
+        if not isinstance(item, RecordData) or {key for key, _ in item.entries} != {
+            "kind",
+            "keyword",
+            "value_kind",
+            "value",
+            "evidence_ids",
+        }:
+            raise ValueError("invalid call argument fields")
+        kind, keyword = item.get("kind"), item.get("keyword")
+        value_kind, actual_value, evidence = (
+            item.get("value_kind"),
+            item.get("value"),
+            item.get("evidence_ids"),
+        )
+        if (
+            not isinstance(kind, str)
+            or not isinstance(value_kind, str)
+            or value_kind == CallArgumentValueKind.STRING_LITERAL
+            and not isinstance(actual_value, str)
+            or value_kind == CallArgumentValueKind.OTHER
+            and actual_value is not None
+            or not isinstance(evidence, tuple)
+            or not evidence
+            or any(not isinstance(identifier, str) or not identifier for identifier in evidence)
+            or (kind == CallArgumentKind.KEYWORD and (not isinstance(keyword, str) or not keyword))
+            or (kind != CallArgumentKind.KEYWORD and keyword is not None)
+        ):
+            raise ValueError("invalid call argument values")
+        result.append(
+            CallArgument(
+                CallArgumentKind(kind),
+                keyword if isinstance(keyword, str) else None,
+                CallArgumentValueKind(value_kind),
+                actual_value if isinstance(actual_value, str) else None,
+                tuple(identifier for identifier in evidence if isinstance(identifier, str)),
+            )
+        )
+    return tuple(result)
+
+
+class ConditionSelectorKind(StrEnum):
+    PARAMETER = "parameter"
+    MEMBER = "member"
+
+
+class GuardHelperTokenKind(StrEnum):
+    BOOLEAN_LITERAL = "boolean_literal"
+    CONDITION = "condition"
+    NOT_CONDITION = "not_condition"
+    UNKNOWN = "unknown"
+
+
+@dataclass(frozen=True, slots=True)
+class ConditionSelector:
+    kind: ConditionSelectorKind
+    owner: str
+    name: str
+
+    def __post_init__(self) -> None:
+        builtins.object.__setattr__(self, "kind", ConditionSelectorKind(self.kind))
+
+
+@dataclass(frozen=True, slots=True)
+class GuardHelperArgument:
+    argument_index: int
+    token_kind: GuardHelperTokenKind
+    token_value: bool | None
+    condition: ConditionSelector | None
+    evidence_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class GuardHelperBinding:
+    target: str
+    call_id: str
+    arguments: tuple[GuardHelperArgument, ...]
+    evidence_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class GuardedEffectEvidence:
+    condition: ConditionSelector
+    condition_value: bool | None
+    condition_evidence_ids: tuple[str, ...]
+    path_evidence_ids: tuple[str, ...]
+    effect_binding_evidence_ids: tuple[str, ...]
+    complete: bool
+    unknown_reason: str | None
+    helper_bindings: tuple[GuardHelperBinding, ...]
+
+
+def _evidence_ids(value: JsonValue, label: str) -> tuple[str, ...]:
+    if (
+        not isinstance(value, tuple)
+        or not value
+        or any(not isinstance(item, str) or not item for item in value)
+        or len(set(value)) != len(value)
+    ):
+        raise ValueError(f"{label} must contain unique nonempty evidence IDs")
+    return tuple(item for item in value if isinstance(item, str))
+
+
+def _guard_helper_argument(value: JsonValue) -> GuardHelperArgument:
+    if not isinstance(value, RecordData) or {key for key, _ in value.entries} != {
+        "argument_index",
+        "token_kind",
+        "token_value",
+        "condition",
+        "evidence_ids",
+    }:
+        raise ValueError("invalid guarded-effect helper argument fields")
+    index, token_kind, token_value = (
+        value.get("argument_index"),
+        value.get("token_kind"),
+        value.get("token_value"),
+    )
+    if (
+        not isinstance(index, int)
+        or isinstance(index, bool)
+        or index < 0
+        or not isinstance(token_kind, str)
+        or token_value is not None
+        and not isinstance(token_value, bool)
+    ):
+        raise ValueError("invalid guarded-effect helper argument values")
+    try:
+        token_kind_value = GuardHelperTokenKind(token_kind)
+    except ValueError as error:
+        raise ValueError("invalid guarded-effect helper token kind") from error
+    if (
+        token_kind_value is GuardHelperTokenKind.BOOLEAN_LITERAL
+        and not isinstance(token_value, bool)
+        or token_kind_value is not GuardHelperTokenKind.BOOLEAN_LITERAL
+        and token_value is not None
+    ):
+        raise ValueError("invalid guarded-effect helper argument values")
+    raw_condition = value.get("condition")
+    condition = None
+    if raw_condition is not None:
+        if not isinstance(raw_condition, RecordData) or {
+            key for key, _ in raw_condition.entries
+        } != {"kind", "owner", "name"}:
+            raise ValueError("invalid guarded-effect helper condition")
+        kind, owner, name = (
+            raw_condition.get("kind"),
+            raw_condition.get("owner"),
+            raw_condition.get("name"),
+        )
+        if not isinstance(kind, str) or not isinstance(owner, str) or not isinstance(name, str):
+            raise ValueError("invalid guarded-effect helper condition")
+        condition = ConditionSelector(ConditionSelectorKind(kind), owner, name)
+    if (
+        token_kind_value in {GuardHelperTokenKind.CONDITION, GuardHelperTokenKind.NOT_CONDITION}
+    ) != (condition is not None):
+        raise ValueError("guarded-effect helper token must match its condition selector")
+    return GuardHelperArgument(
+        index,
+        token_kind_value,
+        token_value,
+        condition,
+        _evidence_ids(value.get("evidence_ids"), "helper evidence_ids"),
+    )
+
+
+def _guard_helper_binding(value: JsonValue) -> GuardHelperBinding:
+    if not isinstance(value, RecordData) or {key for key, _ in value.entries} != {
+        "target",
+        "call_id",
+        "arguments",
+        "evidence_ids",
+    }:
+        raise ValueError("invalid guarded-effect helper binding fields")
+    target, call_id, arguments_raw = (
+        value.get("target"),
+        value.get("call_id"),
+        value.get("arguments"),
+    )
+    if not isinstance(target, str) or not target or not isinstance(call_id, str) or not call_id:
+        raise ValueError("invalid guarded-effect helper binding identity")
+    if not isinstance(arguments_raw, tuple):
+        raise ValueError("invalid guarded-effect helper arguments")
+    arguments = tuple(_guard_helper_argument(argument) for argument in arguments_raw)
+    evidence_ids = _evidence_ids(value.get("evidence_ids"), "helper evidence_ids")
+    return GuardHelperBinding(target, call_id, tuple(arguments), evidence_ids)
+
+
+def guarded_effect(value: JsonValue) -> GuardedEffectEvidence:
+    """Decode one strict path witness; call identity remains in `call_binding`."""
+    if not isinstance(value, RecordData) or {key for key, _ in value.entries} != {
+        "condition",
+        "condition_value",
+        "condition_evidence_ids",
+        "path_evidence_ids",
+        "effect_binding_evidence_ids",
+        "complete",
+        "unknown_reason",
+        "helper_bindings",
+    }:
+        raise ValueError("invalid guarded-effect fields")
+    selector = value.get("condition")
+    if not isinstance(selector, RecordData) or {key for key, _ in selector.entries} != {
+        "kind",
+        "owner",
+        "name",
+    }:
+        raise ValueError("invalid guarded-effect condition fields")
+    kind, owner, name = selector.get("kind"), selector.get("owner"), selector.get("name")
+    if not isinstance(kind, str) or not kind:
+        raise ValueError("invalid guarded-effect condition values")
+    if not isinstance(owner, str) or not owner:
+        raise ValueError("invalid guarded-effect condition values")
+    if not isinstance(name, str) or not name:
+        raise ValueError("invalid guarded-effect condition values")
+    condition = ConditionSelector(ConditionSelectorKind(kind), owner, name)
+    condition_value = value.get("condition_value")
+    if condition_value is not None and not isinstance(condition_value, bool):
+        raise ValueError("guarded-effect condition_value must be Boolean or null")
+    complete = value.get("complete")
+    if not isinstance(complete, bool):
+        raise ValueError("guarded-effect complete must be Boolean")
+    unknown_reason = value.get("unknown_reason")
+    if unknown_reason is not None and (not isinstance(unknown_reason, str) or not unknown_reason):
+        raise ValueError("guarded-effect unknown_reason must be nonempty or null")
+    if complete and unknown_reason is not None:
+        raise ValueError("complete guarded-effect evidence cannot retain unknown_reason")
+    if not complete and unknown_reason is None:
+        raise ValueError("incomplete guarded-effect evidence requires unknown_reason")
+    helpers_raw = value.get("helper_bindings")
+    if not isinstance(helpers_raw, tuple):
+        raise ValueError("guarded-effect helper_bindings must be an array")
+    effect_ids = value.get("effect_binding_evidence_ids")
+    if not isinstance(effect_ids, tuple):
+        raise ValueError("guarded-effect effect_binding_evidence_ids must be evidence IDs")
+    if any(not isinstance(item, str) or not item for item in effect_ids):
+        raise ValueError("guarded-effect effect_binding_evidence_ids must be evidence IDs")
+    if complete and not effect_ids:
+        raise ValueError("complete guarded-effect evidence requires call binding evidence")
+    return GuardedEffectEvidence(
+        condition,
+        condition_value,
+        _evidence_ids(value.get("condition_evidence_ids"), "condition_evidence_ids"),
+        _evidence_ids(value.get("path_evidence_ids"), "path_evidence_ids"),
+        tuple(item for item in effect_ids if isinstance(item, str)),
+        complete,
+        unknown_reason,
+        tuple(_guard_helper_binding(item) for item in helpers_raw),
+    )
 
 
 def call_binding(value: JsonValue) -> CallBinding | None:
     if value is None:
         return None
-    if not isinstance(value, RecordData) or {key for key, _ in value.entries} != {
-        "origin",
-        "target",
-        "evidence_ids",
-    }:
+    if not isinstance(value, RecordData):
+        raise ValueError("invalid call binding fields")
+    fields = {key for key, _ in value.entries}
+    if fields not in (
+        {"origin", "target", "evidence_ids"},
+        {"origin", "target", "evidence_ids", "proof"},
+    ):
         raise ValueError("invalid call binding fields")
     origin, target, evidence = value.get("origin"), value.get("target"), value.get("evidence_ids")
     if (
@@ -239,9 +640,130 @@ def call_binding(value: JsonValue) -> CallBinding | None:
         or any(not isinstance(item, str) or not item for item in evidence)
     ):
         raise ValueError("invalid call binding values")
+    proof = value.get("proof")
+    if proof is not None and not isinstance(proof, RecordData):
+        raise ValueError("invalid call binding proof")
+    parsed_origin = CallBindingOrigin(origin)
+    if (
+        parsed_origin
+        in {
+            CallBindingOrigin.STORED_RECEIVER,
+            CallBindingOrigin.CONSTRUCTED_RECEIVER,
+            CallBindingOrigin.CONSTRUCTOR,
+            CallBindingOrigin.NATIVE,
+            CallBindingOrigin.NATIVE_RECEIVER,
+        }
+        and proof is None
+    ):
+        raise ValueError("extended call binding needs a typed origin proof")
+    if proof is not None:
+        _validate_call_binding_proof(proof, parsed_origin, target, evidence)
     return CallBinding(
-        CallBindingOrigin(origin), target, tuple(item for item in evidence if isinstance(item, str))
+        parsed_origin,
+        target,
+        tuple(item for item in evidence if isinstance(item, str)),
+        proof,
     )
+
+
+def _validate_call_binding_proof(
+    proof: RecordData, origin: CallBindingOrigin, target: str, evidence: tuple[JsonValue, ...]
+) -> None:
+    _call_binding_proof_kind(proof, origin, target)
+    _validate_call_binding_proof_values(proof)
+    witness_ids = proof.get("witness_evidence_ids")
+    references = {
+        proof.get(key)
+        for key in ("constructor_evidence_id", "provider_evidence_id", "assignment_evidence_id")
+        if isinstance(proof.get(key), str)
+    }
+    if isinstance(witness_ids, tuple):
+        references.update(item for item in witness_ids if isinstance(item, str))
+    if not references <= set(evidence):
+        raise ValueError("call binding proof references evidence outside its binding")
+
+
+def _call_binding_proof_kind(
+    proof: RecordData, origin: CallBindingOrigin, target: str
+) -> _CallBindingProofKind:
+    proof_kind_raw = proof.get("kind")
+    if not isinstance(proof_kind_raw, str):
+        raise ValueError("invalid call binding proof kind")
+    try:
+        proof_kind = _CallBindingProofKind(proof_kind_raw)
+    except ValueError as error:
+        raise ValueError("invalid call binding proof kind") from error
+    if {key for key, _ in proof.entries} != _CALL_BINDING_PROOF_FIELDS.get(proof_kind):
+        raise ValueError("invalid call binding proof fields")
+    if (
+        proof_kind
+        in {
+            _CallBindingProofKind.CONSTRUCTOR,
+            _CallBindingProofKind.PROVIDER_MEMBER,
+            _CallBindingProofKind.NATIVE_DESCRIPTOR,
+        }
+        and proof.get("target") != target
+    ):
+        raise ValueError("call binding proof disagrees with its canonical target")
+    expected_origins = {
+        _CallBindingProofKind.STORED_FIELD: CallBindingOrigin.STORED_RECEIVER,
+        _CallBindingProofKind.CONSTRUCTION: CallBindingOrigin.CONSTRUCTED_RECEIVER,
+        _CallBindingProofKind.CONSTRUCTOR: CallBindingOrigin.CONSTRUCTOR,
+        _CallBindingProofKind.NATIVE_DESCRIPTOR: CallBindingOrigin.NATIVE,
+    }
+    if proof_kind in expected_origins and origin is not expected_origins[proof_kind]:
+        raise ValueError("call binding proof kind disagrees with its origin")
+    if proof_kind is _CallBindingProofKind.NATIVE_DESCRIPTOR and not (
+        _valid_datetime_descriptor_proof(proof)
+    ):
+        raise ValueError("native descriptor proof disagrees with the admitted runtime identity")
+    if proof_kind is _CallBindingProofKind.PROVIDER_MEMBER and origin not in {
+        CallBindingOrigin.NATIVE,
+        CallBindingOrigin.NATIVE_RECEIVER,
+        CallBindingOrigin.CONSTRUCTOR,
+    }:
+        raise ValueError("provider member proof needs a native call origin")
+    return proof_kind
+
+
+def _valid_datetime_descriptor_proof(proof: RecordData) -> bool:
+    source_digest = proof.get("stdlib_source_digest")
+    return (
+        not any(proof.get(key) != value for key, value in _DATETIME_DESCRIPTOR_IDENTITY.items())
+        and isinstance(source_digest, str)
+        and len(source_digest) == 64
+        and not any(character not in "0123456789abcdef" for character in source_digest)
+    )
+
+
+def _validate_call_binding_proof_values(proof: RecordData) -> None:
+    for key in ("constructor_evidence_id", "provider_evidence_id", "assignment_evidence_id"):
+        item = proof.get(key)
+        if item is not None and (not isinstance(item, str) or not item):
+            raise ValueError("invalid call binding proof evidence reference")
+    for key in (
+        "runtime_name",
+        "runtime_version",
+        "runtime_implementation",
+        "descriptor_owner_module",
+        "descriptor_owner_qualname",
+        "descriptor_member",
+        "descriptor_kind",
+        "stdlib_source_digest",
+        "owner",
+        "field",
+        "parameter",
+    ):
+        item = proof.get(key)
+        if item is not None and (not isinstance(item, str) or not item):
+            raise ValueError("invalid call binding proof identity")
+    witness_ids = proof.get("witness_evidence_ids")
+    if witness_ids is not None and (
+        not isinstance(witness_ids, tuple)
+        or not witness_ids
+        or any(not isinstance(item, str) or not item for item in witness_ids)
+    ):
+        raise ValueError("invalid call binding proof witness references")
 
 
 class PropertyOperation(Enum):
@@ -688,7 +1210,7 @@ def contextmanager_signature(value: JsonValue) -> ContextManagerSignature:
         or not isinstance(factory, str)
         or not isinstance(wrapper, str)
         or any(
-            len(parts := name.split(".")) < 2 or not all(part.isidentifier() for part in parts)
+            len(parts := name.split(".")) < 2 or not all(python_identifier(part) for part in parts)
             for name in (factory, wrapper)
         )
         or not isinstance(payload, str)

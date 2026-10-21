@@ -51,6 +51,9 @@ ANALYZER_PUBLIC_IR = frozenset(
         "archkeel.ir.type_shapes",
         "archkeel.ir.reexports",
         "archkeel.ir.source_records",
+        "archkeel.ir.guard_paths:GuardedCallPath",
+        "archkeel.ir.guard_paths:guarded_call_paths",
+        "archkeel.ir.source_proofs:class_instance_member_write_names",
     }
 )
 ROOT = Path(__file__).parents[1]
@@ -174,12 +177,13 @@ def test_self_contract_covers_modules_and_analyzer_interface(
     analyzer = next(item for item in contract.components if item.label == "analyzer")
     entry = next(item for item in analyzer.requires or () if item.component == "ir")
     assert frozenset(entry.through) == ANALYZER_PUBLIC_IR
+    public_modules = {name.partition(":")[0] for name in ANALYZER_PUBLIC_IR}
     for record in self_observation.records("imports") or ():
         source = record.data.get("source_module")
         target = record.data.get("target_module")
         assert isinstance(source, str) and isinstance(target, str)
         if in_scope(source, "archkeel.analyzer") and in_scope(target, "archkeel.ir"):
-            assert target in ANALYZER_PUBLIC_IR, (source, target)
+            assert target in public_modules, (source, target)
 
 
 def test_self_facades_record_the_declared_types_they_expose(self_observation: Observation) -> None:
@@ -303,6 +307,7 @@ def test_self_analyzer_inside_covers_its_modules(self_observation: Observation) 
         "archkeel.analyzer.python.collect",
         "archkeel.analyzer.python.constructs",
         "archkeel.analyzer.python.entry",
+        "archkeel.analyzer.python.guard_paths",
         "archkeel.analyzer.python.imports",
         "archkeel.analyzer.python.private_attributes",
         "archkeel.analyzer.python.receiver_types",

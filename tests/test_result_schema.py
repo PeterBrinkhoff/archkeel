@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 from jsonschema import Draft202012Validator
 from referencing import Registry, Resource
+from test_delta import _model
 
 from archkeel.check.delta import SUPPORTED_DIMENSIONS, build_architecture_delta
 from archkeel.check.run import _incomplete
@@ -26,6 +27,7 @@ from archkeel.ir.model import (
     DiagnosticKind,
     RunResult,
 )
+from archkeel.ir.profiles import PYTHON
 from fixtures.architecture_demo import CATALOG, materialized_fixture
 from tests.test_dart_profile import _observe
 from tests.test_exact_module_ownership import _contract, _observe_tree
@@ -119,6 +121,15 @@ def _validator(schema_name: str) -> Draft202012Validator:
     schema = json.loads((ROOT / "schema" / schema_name).read_bytes())
     Draft202012Validator.check_schema(schema)
     return Draft202012Validator(schema, registry=registry)
+
+
+def test_historical_python_call_binding_reference_resolves_frozen_v4_schema() -> None:
+    validator = _validator("architecture-ir-python-decoded-2.6.schema.json")
+    call_binding = validator.evolve(
+        schema={"$ref": ("https://archkeel.dev/schema/source-facts/4.0.0#/$defs/CallBinding")}
+    )
+
+    assert not call_binding.is_valid({})
 
 
 @pytest.fixture(scope="module")
@@ -602,6 +613,25 @@ def test_python_observation_sections_remain_required(validator, tmp_path: Path) 
             assert not schema.is_valid(malformed), section
             malformed[section] = None
             assert not schema.is_valid(malformed), section
+
+
+@pytest.mark.parametrize("version", [f"2.{minor}.0" for minor in range(1, 10)])
+@pytest.mark.parametrize("branch", [1, 2])
+def test_command_result_9_observation_branches_admit_supported_history(
+    validator, version: str, branch: int
+) -> None:
+    profile = PYTHON
+    observation = _model(git_head="a" * 40, schema_version=version)
+    observation["analyzer"]["name"] = profile.analyzer
+    observation["producer"] = dict(observation["analyzer"])
+    observation["runtime"] = {"name": "python", "version": "3.11.12"}
+    for section in profile.absent_sections | profile.all_optional_sections:
+        observation[section] = None
+
+    references = validator.schema["anyOf"][branch]["properties"]["observation"]
+    nested = validator.evolve(schema=references)
+    errors = list(nested.iter_errors(observation))
+    assert not errors, (version, branch, [(list(error.path), error.message) for error in errors])
 
 
 def test_result_properties_cover_the_writer(legacy_validator, current_validator) -> None:

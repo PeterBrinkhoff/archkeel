@@ -15,6 +15,7 @@ from collections.abc import Sequence
 from types import EllipsisType
 
 from archkeel.ir.facts import (
+    MAX_NUMERIC_EVIDENCE_CHARS,
     EvidenceClass,
     InventoryStatus,
     MemberInventory,
@@ -28,6 +29,7 @@ from archkeel.ir.facts import (
 )
 from archkeel.ir.facts_codec import RawData as RecordData
 from archkeel.ir.facts_codec import RawEvidence, RawRecord, classified, member_inventory_data
+from archkeel.ir.source_proofs import class_instance_member_write_names
 from archkeel.ir.source_records import source_name_visibility as _source_name_visibility
 
 from .resolve import dotted_expression
@@ -167,9 +169,56 @@ def _class_attribute_declarations(
                     ),
                     "evidence_ids": [add_evidence(evidence, module, child)],
                     **({"static": True} if isinstance(child, ast.Assign) else {}),
+                    **(
+                        {"literal_value": child.value.value}
+                        if isinstance(child, ast.Assign | ast.AnnAssign)
+                        and isinstance(child.value, ast.Constant)
+                        and type(child.value.value) is str
+                        else {}
+                    ),
                 }
             )
     return result
+
+
+def _guard_boolean_member_declarations(
+    node: ast.ClassDef, module: ParsedModule, evidence: dict[str, RawEvidence]
+) -> list[RecordData]:
+    """Record only explicitly Boolean class or instance members used by guard proofs."""
+    declarations: dict[str, ast.AST] = {}
+    ambiguous: set[str] = set()
+    for child in node.body:
+        if isinstance(child, ast.AnnAssign) and isinstance(child.target, ast.Name):
+            if annotation_text(child.annotation) == "bool":
+                if child.target.id in declarations:
+                    ambiguous.add(child.target.id)
+                else:
+                    declarations[child.target.id] = child
+        elif isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef):
+            receiver = next(iter((*child.args.posonlyargs, *child.args.args)), None)
+            if receiver is None:
+                continue
+            for statement in ast.walk(child):
+                if (
+                    isinstance(statement, ast.AnnAssign)
+                    and isinstance(statement.target, ast.Attribute)
+                    and isinstance(statement.target.value, ast.Name)
+                    and statement.target.value.id == receiver.arg
+                    and annotation_text(statement.annotation) == "bool"
+                ):
+                    name = statement.target.attr
+                    if name in declarations:
+                        ambiguous.add(name)
+                    else:
+                        declarations[name] = statement
+    return [
+        {
+            "name": name,
+            "evidence_ids": [add_evidence(evidence, module, statement)],
+        }
+        for name, statement in sorted(declarations.items())
+        if name not in ambiguous
+    ]
 
 
 def _class_member_names(node: ast.ClassDef) -> list[str]:
@@ -277,12 +326,16 @@ def _symbol_data(
     }
     if isinstance(node, ast.ClassDef):
         data.update(_class_symbol_data(module, node, evidence, member_escapes))
+        if guard_members := _guard_boolean_member_declarations(node, module, evidence):
+            data["guard_boolean_members"] = guard_members
         if data["source_binding_unique"] is True and (
             properties := property_bindings(module, node)
         ):
             data["property_members"] = sorted({method.name for method in properties})
     else:
         data.update(_function_signature(node))
+        if node.name == "__init__":
+            data["stored_field_writes"] = _stored_field_writes(node, module, evidence)
         if parent_node is None:
             data["source_binding_unique"] = (
                 node in module.tree.body and node.name in stable_direct_module_bindings(module)
@@ -311,6 +364,59 @@ def _symbol_data(
     return data
 
 
+def _stored_field_writes(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+    module: ParsedModule,
+    evidence: dict[str, RawEvidence],
+) -> list[RecordData]:
+    parameters = {
+        argument.arg: argument for argument in (*node.args.posonlyargs, *node.args.args)[1:]
+    }
+    writes: list[RecordData] = []
+    for statement in node.body:
+        if not isinstance(statement, ast.Assign | ast.AnnAssign):
+            continue
+        targets = statement.targets if isinstance(statement, ast.Assign) else [statement.target]
+        value = statement.value
+        if not isinstance(value, ast.Name) or value.id not in parameters:
+            continue
+        for target in targets:
+            if isinstance(target, ast.Attribute) and isinstance(target.value, ast.Name):
+                writes.append(
+                    _stored_field_write(
+                        target,
+                        target.value.id,
+                        statement,
+                        value,
+                        parameters,
+                        module,
+                        evidence,
+                    )
+                )
+    return writes
+
+
+def _stored_field_write(
+    target: ast.Attribute,
+    receiver_name: str,
+    statement: ast.Assign | ast.AnnAssign,
+    value: ast.Name,
+    parameters: dict[str, ast.arg],
+    module: ParsedModule,
+    evidence: dict[str, RawEvidence],
+) -> RecordData:
+    annotation = parameters[value.id].annotation
+    return {
+        "field": target.attr,
+        "receiver": receiver_name,
+        "parameter": value.id,
+        "evidence_id": add_evidence(evidence, module, statement),
+        "annotation_evidence_id": (
+            add_evidence(evidence, module, annotation) if annotation is not None else None
+        ),
+    }
+
+
 def _class_symbol_data(
     module: ParsedModule,
     node: ast.ClassDef,
@@ -318,6 +424,7 @@ def _class_symbol_data(
     member_escapes: frozenset[str],
 ) -> RecordData:
     attributes = _class_attribute_declarations(node, module, evidence)
+    instance_member_writes = class_instance_member_write_names(node)
     generic_parameters = _generic_parameters(module, node)
     generic_bases = _generic_bases(node)
     return {
@@ -336,8 +443,12 @@ def _class_symbol_data(
         "source_binding_unique": node in module.tree.body
         and node.name in stable_direct_module_bindings(module),
         "source_member_binding_static": node.name not in member_escapes,
+        "source_member_owner_static": module.owner_exposed_bindings is not None
+        and node.name not in module.owner_exposed_bindings,
         "class_header_static": class_header_static(node),
         "class_members": _class_member_names(node),
+        "instance_member_writes": list(instance_member_writes),
+        "instance_member_scope_evidence_id": _member_write_scope_evidence(module, node, evidence),
         "class_body_control_flow": any(
             isinstance(
                 child,
@@ -359,6 +470,27 @@ def _class_symbol_data(
         **({"generic_parameters": generic_parameters} if generic_parameters else {}),
         **({"generic_bases": generic_bases} if generic_bases else {}),
     }
+
+
+def _member_write_scope_evidence(
+    module: ParsedModule, node: ast.ClassDef, evidence: dict[str, RawEvidence]
+) -> str | None:
+    line, end_line, column = location(node)
+    if line < 1 or end_line > len(module.lines):
+        return None
+    excerpt = "\n".join(module.lines[line - 1 : end_line])
+    if not excerpt or len(excerpt) > MAX_NUMERIC_EVIDENCE_CHARS:
+        return None
+    evidence_id = stable_id("EVD", module.rel_path, line, end_line, column, "member_write_scope")
+    evidence[evidence_id] = {
+        "id": evidence_id,
+        "file": module.rel_path,
+        "line": line,
+        "end_line": end_line,
+        "column": column,
+        "excerpt": excerpt,
+    }
+    return evidence_id
 
 
 def _annotation_name_lookups(
@@ -1018,9 +1150,22 @@ def _definition_symbol(
         kind="class" if isinstance(node, ast.ClassDef) else "method" if classifier else "function",
         title=node.name,
         subjects=[qualname, module.module],
-        evidence_ids=[add_evidence(evidence, module, node)],
+        evidence_ids=_definition_evidence_ids(module, node, data, evidence),
         data=data,
     )
+
+
+def _definition_evidence_ids(
+    module: ParsedModule,
+    node: ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef,
+    data: RecordData,
+    evidence: dict[str, RawEvidence],
+) -> list[str]:
+    evidence_ids = [add_evidence(evidence, module, node)]
+    scope_id = data.get("instance_member_scope_evidence_id")
+    if isinstance(node, ast.ClassDef) and isinstance(scope_id, str):
+        evidence_ids.append(scope_id)
+    return evidence_ids
 
 
 def _default_constructor_body(node: ast.ClassDef) -> bool:
