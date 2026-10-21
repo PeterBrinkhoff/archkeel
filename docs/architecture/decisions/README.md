@@ -255,3 +255,4 @@ For current behavior, use the [contract](../../../architecture-contract.json), s
 | AD-245 | [Contained `requires` entries](ad-245-a-contained-requires-entry-narrows.md) |
 | AD-246 | [Bounded numeric operand proofs](ad-246-bounded-numeric-operand.md) |
 | AD-254 | [Canonical Protocol declarations](ad-254-canonical-protocol-declarations.md) |
+| AD-255 | [Narrowings in `--against`](ad-255-against-reports-narrowings.md) |
