@@ -668,7 +668,9 @@ class ConstructCollector(ast.NodeVisitor):
         call_collector: SelectorReceiverResolver | None = None,
         imports: Sequence[RawRecord] = (),
         include_parameter_owner_proof: bool = True,
+        include_selectors: bool = True,
     ) -> None:
+        self.include_selectors = include_selectors
         self.module = module
         self.evidence = evidence
         self.items: list[RawRecord] = []
@@ -676,7 +678,15 @@ class ConstructCollector(ast.NodeVisitor):
         self.comparisons = comparisons
         self.symbol_index = symbol_index
         self.call_collector = call_collector
-        self.imports = imports
+        # Selector lookups scanned every import per call; group this module's by binding once.
+        self.imports_by_binding: dict[object, list[RawRecord]] = {}
+        for item in imports:
+            data: RecordData = item["data"]
+            if data.get("source_module") == module.module:
+                binding_imports: list[RawRecord] = self.imports_by_binding.setdefault(
+                    data.get("binding"), []
+                )
+                binding_imports.append(item)
         self.include_parameter_owner_proof = include_parameter_owner_proof
         self.inherits_stack: list[bool] = []
         self.type_alias_evidence_ids: list[str] = []
@@ -686,7 +696,6 @@ class ConstructCollector(ast.NodeVisitor):
         }
         self.receiver_types: list[dict[str, str | None]] = []
         self.receiver_scope_names: list[str] = []
-        self.parameter_receivers: list[set[str]] = []
         self.parameter_annotations: list[dict[str, tuple[str, ast.expr]]] = []
         self.local_classes: set[str] = set()
         self.local_members: set[str] = set()
@@ -1001,11 +1010,6 @@ class ConstructCollector(ast.NodeVisitor):
                 return scope[node.id]
         return None
 
-    def _parameter_receiver(self, node: ast.expr) -> bool:
-        return isinstance(node, ast.Name) and any(
-            node.id in frame for frame in self.parameter_receivers
-        )
-
     def _receiver_binding(
         self, expression: ast.expr | None, use: ast.AST
     ) -> tuple[
@@ -1196,6 +1200,8 @@ class ConstructCollector(ast.NodeVisitor):
         operation: str = "read",
         receiver_node: ast.expr | None = None,
     ) -> None:
+        if not self.include_selectors:
+            return
         owner = self.scope_stack[-1]
         line, _, column = location(node)
         evidence_id = add_evidence(self.evidence, self.module, node)
@@ -1394,7 +1400,7 @@ class ConstructCollector(ast.NodeVisitor):
 
     def _direct_selector_import_targets(self, binding: str) -> set[str]:
         targets: set[str] = set()
-        for item in self.imports:
+        for item in self.imports_by_binding.get(binding, ()):
             data: RecordData = item["data"]
             target_module = data.get("target_module")
             symbol = data.get("symbol")
@@ -1411,7 +1417,7 @@ class ConstructCollector(ast.NodeVisitor):
         self, binding: str, target: str, suffix: list[str]
     ) -> list[RawRecord]:
         matches: list[RawRecord] = []
-        for item in self.imports:
+        for item in self.imports_by_binding.get(binding, ()):
             data: RecordData = item["data"]
             origin = data.get("origin_definition")
             if (
@@ -1503,7 +1509,6 @@ class ConstructCollector(ast.NodeVisitor):
         }
         self.receiver_types.append(receivers)
         self.receiver_scope_names.append(qualified)
-        self.parameter_receivers.append({argument.arg for argument in arguments})
         self.parameter_annotations.append(parameter_annotations)
         form = self._placeholder_form(node)
         if form is not None:
@@ -1512,7 +1517,6 @@ class ConstructCollector(ast.NodeVisitor):
             )
         for statement in node.body:
             self.visit(statement)
-        self.parameter_receivers.pop()
         self.parameter_annotations.pop()
         self.receiver_scope_names.pop()
         self.receiver_types.pop()
@@ -1645,12 +1649,7 @@ class ConstructCollector(ast.NodeVisitor):
         receiver = self._receiver_type(node.value)
         unresolved_name = isinstance(node.value, ast.Name) and node.value.id not in {"self", "cls"}
         expression_receiver = isinstance(node.value, ast.Attribute | ast.Call)
-        if (
-            receiver is not None
-            or self._parameter_receiver(node.value)
-            or unresolved_name
-            or expression_receiver
-        ):
+        if receiver is not None or unresolved_name or expression_receiver:
             parent = self.parents.get(node)
             operation = (
                 "call"
@@ -1891,6 +1890,7 @@ def collect_constructs(
     imports: Sequence[RawRecord] = (),
     symbol_index: SymbolIndex | None = None,
     receiver_resolvers: Sequence[SelectorReceiverResolver] = (),
+    include_selectors: bool = True,
     include_parameter_owner_proof: bool = True,
 ) -> list[RawRecord]:
     """Collect written constructs using scanned literal providers and resolved import origins."""
@@ -1924,6 +1924,13 @@ def collect_constructs(
                 known_classes.add(origin)
     items: list[RawRecord] = []
     resolvers = receiver_resolvers or (None,) * len(parsed)
+    imports_by_module: dict[object, list[RawRecord]] = {}
+    for item in imports:
+        item_data: RecordData = item["data"]
+        module_imports: list[RawRecord] = imports_by_module.setdefault(
+            item_data.get("source_module"), []
+        )
+        module_imports.append(item)
     for module, context, call_collector in zip(parsed, contexts, resolvers, strict=True):
         context.scalar_names = scalar_names
         context.enum_member_names = enum_member_names
@@ -1935,8 +1942,9 @@ def collect_constructs(
             context,
             symbol_index,
             call_collector,
-            imports,
+            imports_by_module.get(module.module, ()),
             include_parameter_owner_proof,
+            include_selectors,
         )
         collector.local_classes = known_classes
         collector.local_members = _class_member_names(module)

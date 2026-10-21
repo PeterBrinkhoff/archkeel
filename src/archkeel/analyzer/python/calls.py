@@ -320,6 +320,8 @@ def _assignment_name_values(statement: ast.Assign) -> list[tuple[ast.Name, ast.e
 
 
 class CallCollector(ast.NodeVisitor):
+    include_guarded_effects = True  # AD-257: collect_calls_with_resolvers narrows it per scan
+
     def __init__(
         self,
         module: ParsedModule,
@@ -1190,9 +1192,9 @@ class CallCollector(ast.NodeVisitor):
             binding.kind not in {BindingKind.MODULE, BindingKind.SYMBOL}
             or binding.uncertain
             or len(binding.targets) != 1
-            or binding.owner is None
-            or binding.owner is self.scopes.root
-            and root not in self.stable_bindings
+            # Validation can only witness a stable module-level import, not a function-local one.
+            or binding.owner is not self.scopes.root
+            or root not in self.stable_bindings
             or binding.targets[0] in self.escaped_native_targets
         ):
             return None
@@ -1866,7 +1868,9 @@ class CallCollector(ast.NodeVisitor):
         resolved_targets: list[str],
     ) -> tuple[RecordData, ...]:
         owner = scope.node
-        if not isinstance(owner, ast.FunctionDef | ast.AsyncFunctionDef):
+        if not self.include_guarded_effects or not isinstance(
+            owner, ast.FunctionDef | ast.AsyncFunctionDef
+        ):
             return ()
         candidates = self._guarded_candidates(node, owner, scope)
         facts: list[RecordData] = []
@@ -2215,16 +2219,32 @@ def collect_calls_with_resolvers(
     provider_bindings: Sequence[ProviderBinding] = (),
     runtime: RuntimeInfo | None = None,
     imports: Sequence[RawRecord] = (),
+    *,
+    include_guarded_effects: bool = True,
 ) -> tuple[list[RawRecord], tuple[CallCollector, ...]]:
     """Collect calls and retain their per-module resolver for construct evidence."""
     calls: list[RawRecord] = []
     resolvers: list[CallCollector] = []
+    imports_by_module: dict[object, list[RawRecord]] = {}
+    for item in imports:
+        module_imports: list[RawRecord] = imports_by_module.setdefault(
+            _mapping_value(item["data"], "source_module"), []
+        )
+        module_imports.append(item)
     collectors = [
-        CallCollector(module, index, evidence, provider_bindings, runtime, imports)
+        CallCollector(
+            module,
+            index,
+            evidence,
+            provider_bindings,
+            runtime,
+            imports_by_module.get(module.module, ()),
+        )
         for module in parsed
     ]
     revocation_cache: dict[str, bool] = {}
     for call_collector in collectors:
+        call_collector.include_guarded_effects = include_guarded_effects
         call_collector.native_mutation_collectors = tuple(collectors)
         call_collector.native_revocation_cache = revocation_cache
     for call_collector in collectors:
