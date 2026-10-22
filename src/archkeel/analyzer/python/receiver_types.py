@@ -23,6 +23,7 @@ from typing import TypeAlias
 # types below are keyed by their qualified name, so an annotation spelled `Table` never
 # reaches them: only a constructor or a return the import binding proves does (AD-40).
 _METHOD_TABLES: dict[str, tuple[str, frozenset[str]]] = {
+    "hmac.HMAC": ("hmac.HMAC", frozenset(("digest").split())),
     "random.Random": (
         "random.Random",
         frozenset(
@@ -74,6 +75,7 @@ _METHOD_TABLES: dict[str, tuple[str, frozenset[str]]] = {
             ).split()
         ),
     ),
+    "bytes": ("builtins.bytes", frozenset(("decode hex rstrip").split())),
     "Path": (
         "pathlib.Path",
         frozenset(
@@ -120,6 +122,18 @@ _METHOD_TABLES: dict[str, tuple[str, frozenset[str]]] = {
         "rich.table.Table",
         frozenset(("add_column add_row add_section get_row_style grid").split()),
     ),
+    "subprocess.Popen": (
+        "subprocess.Popen",
+        frozenset("communicate kill poll send_signal terminate wait".split()),
+    ),
+    "threading.Thread": (
+        "threading.Thread",
+        frozenset("is_alive join run start".split()),
+    ),
+    "threading.Event": (
+        "threading.Event",
+        frozenset("clear is_set set wait".split()),
+    ),
 }
 
 # A callable reached through an import binding whose documented result is a table type.
@@ -130,6 +144,14 @@ _CONSTRUCTORS: dict[str, str] = {
     "argparse.ArgumentParser": "argparse.ArgumentParser",
     "rich.console.Console": "rich.console.Console",
     "rich.table.Table": "rich.table.Table",
+    "subprocess.Popen": "subprocess.Popen",
+    "threading.Thread": "threading.Thread",
+    "threading.Event": "threading.Event",
+    "hmac.new": "hmac.HMAC",
+    "base64.b64encode": "bytes",
+    "base64.urlsafe_b64encode": "bytes",
+    "hmac.digest": "bytes",
+    "secrets.token_bytes": "bytes",
     **{
         f"hashlib.{name}": "hashlib._Hash"
         for name in (
@@ -155,6 +177,10 @@ _CONSTRUCTORS: dict[str, str] = {
 _METHOD_RETURNS: dict[tuple[str, str], str] = {
     ("str", "join"): "str",
     ("str", "strip"): "str",
+    ("bytes", "decode"): "str",
+    ("bytes", "hex"): "str",
+    ("bytes", "rstrip"): "bytes",
+    ("hmac.HMAC", "digest"): "bytes",
     ("argparse.ArgumentParser", "add_subparsers"): "argparse._SubParsersAction",
     ("argparse.ArgumentParser", "add_argument_group"): "argparse._ArgumentGroup",
     ("argparse.ArgumentParser", "add_mutually_exclusive_group"): "argparse._ArgumentGroup",
@@ -194,6 +220,14 @@ _ANNOTATION_BASES = {
     "str": "str",
     "Path": "Path",
     "pathlib.Path": "Path",
+}
+
+# External annotations need a separate entry point so callers cannot accept them without
+# first proving the name through the import binding at that source location.
+_IMPORTED_ANNOTATION_BASES = {
+    "subprocess.Popen": "subprocess.Popen",
+    "threading.Thread": "threading.Thread",
+    "threading.Event": "threading.Event",
 }
 
 # These builtins return an exact container type; callers reject shadowed builtin names.
@@ -265,6 +299,11 @@ def annotation_receiver_type(annotation: str | None) -> str | None:
         return None
     base = annotation.split("[", 1)[0].strip()
     return _ANNOTATION_BASES.get(base)
+
+
+def imported_annotation_receiver_type(qualified_name: str) -> str | None:
+    """Read an external type only after its caller proves this import-qualified name."""
+    return _IMPORTED_ANNOTATION_BASES.get(qualified_name)
 
 
 def receiver_call_target(type_name: str, method: str) -> str | None:

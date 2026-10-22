@@ -35,6 +35,12 @@ native source evidence and conservative UNKNOWNs.
   do not. Missing target proof stays UNKNOWN. Declared receivers prove a static
   boundary, not runtime dispatch. Saved receipts bind the exact evaluation claim
   and observation version; copying a receipt cannot certify a different scope.
+- **Typed standard-library receivers.** Import-proven `subprocess.Popen`,
+  `threading.Thread` and `threading.Event` methods receive partial targets.
+  Documented `base64`, `hmac` and `secrets` byte results support partial
+  `bytes.decode`, `bytes.hex` and `bytes.rstrip` targets. Unsupported or
+  optional annotations remain unresolved. Import-proven `hmac.new().digest().hex()` chains
+  also receive partial targets; HMAC runtime behavior is not inferred.
 - **Less repeated analysis work.** Python collectors share lexical indexes within
   one parsed snapshot while resolving import bindings live. Changed compiler inputs
   rebuild the index; binding decisions are not cached.

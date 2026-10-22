@@ -5,4 +5,12 @@ type. Follow results forward within the owning scope; later rebinding does not e
 result. Unlisted calls stop resolution.
 
 This supplies partial static evidence, not project-wide type inference or runtime behavior. Proof:
-[test_analyzer.py](../../../tests/test_analyzer.py).
+[test_analyzer.py](../../../tests/test_analyzer.py) and
+[test_typed_python_receivers.py](../../../tests/test_typed_python_receivers.py).
+
+The closed receiver table may include selected standard-library methods when the receiver type is
+proven by its import binding; optional unions stay unresolved without narrowing evidence.
+Import-bound `base64.b64encode`, `base64.urlsafe_b64encode`, `hmac.digest` and
+`secrets.token_bytes` document a `bytes` result; downstream method calls remain partial.
+Import-bound `hmac.new` documents an `hmac.HMAC` result, whose `digest` method documents
+`bytes`; the following `bytes.hex` call remains partial.
