@@ -69,6 +69,7 @@ from .facts_validation import (
     _validate_reference_contexts,
     _validate_source_role_identities,
     validate_source_facts,
+    without_unnamed_families,
 )
 from .facts_validation import (
     selector_receiver_site_matches as selector_receiver_site_matches,
@@ -1111,6 +1112,8 @@ def _source_facts(value: RawJson, version: ProtocolVersion) -> SourceFacts:
     ):
         raise ProtocolError("selector parameter owners require collection protocol 5.0.0")
     _contextmanager_protocol(facts, version)
+    if version is not ProtocolVersion.V7:
+        facts = without_unnamed_families(facts)
     validate_source_facts(facts)
     return facts
 
