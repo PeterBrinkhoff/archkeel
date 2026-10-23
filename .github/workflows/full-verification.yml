@@ -40,10 +40,8 @@ jobs:
         run: uv sync --locked
 
       - name: Run gates, TypeScript compiler check, browser proof, timing, and report gallery
-        run: |
-          make ci-check SHARDED_TESTS=1
-          make mermaid
-          make report-pages
+        # One make run: report-pages reuses the report that report-timing just measured.
+        run: make ci-check SHARDED_TESTS=1 mermaid report-pages
 
       - name: Upload latest report evidence
         if: always()
@@ -153,6 +151,10 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
         python: ["3.11.12", "3.12.10"]
+        # The full-suite shards already run these suites on Ubuntu with Python 3.11.12.
+        exclude:
+          - os: ubuntu-latest
+            python: "3.11.12"
     runs-on: ${{ matrix.os }}
     env:
       UV_PYTHON: ${{ matrix.python }}
@@ -178,8 +180,8 @@ jobs:
       - name: Verify Python-hosted language collectors
         shell: bash
         run: |
-          make typescript-native SHELL=bash
-          make dart-test SHELL=bash
+          make typescript-native TEST_WORKERS=4 SHELL=bash
+          make dart-test TEST_WORKERS=4 SHELL=bash
           make build smoke SHELL=bash
 
   verified:

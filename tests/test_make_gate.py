@@ -463,8 +463,7 @@ def test_ci_workflow_keeps_fast_required_checks_and_routes_full_verification() -
     for trigger in ("workflow_call:", "workflow_dispatch:", "schedule:"):
         assert trigger in full
     assert "make ci-check" in full
-    assert "make mermaid" in full
-    assert "make report-pages" in full
+    assert "make ci-check SHARDED_TESTS=1 mermaid report-pages" in full
     assert "test-artifacts/report-timing/architecture.timing.json" in full
     assert "test-artifacts/report-browser/" in full
     evidence = full.split("name: report-browser-evidence", 1)[1].split("      - name:", 1)[0]
@@ -474,7 +473,7 @@ def test_ci_workflow_keeps_fast_required_checks_and_routes_full_verification() -
     assert "setup-dart@" not in full
     assert "dart-setup" not in full
     assert "dart-native:" not in full
-    assert "make dart-test SHELL=bash" in full
+    assert "make dart-test TEST_WORKERS=4 SHELL=bash" in full
     assert "setup-dart@" not in workflow
     assert "dart-setup" not in workflow
     assert "if: always()" in full
