@@ -1,7 +1,7 @@
 # Archkeel
 # Copyright (c) 2026 Rapiddweller Asia Co., Ltd.
 # SPDX-License-Identifier: MIT
-"""Publish the browser-accepted demo reports beside the current Main report."""
+"""Publish generated demo reports beside the current Main report."""
 
 from __future__ import annotations
 
